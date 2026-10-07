@@ -95,7 +95,7 @@ Test.run = function (missionId, gunId, o) {
     sim.ev.length = 0;
   }
   const res = sim.result || { win: false, fail: { code: 'timeout', text: 'test ran out of time' }, stars: 0 };
-  return { ok: !!res.win, stars: res.stars, clean: res.clean, precise: res.precise, challenge: res.challenge, fail: res.fail ? res.fail.code + ': ' + res.fail.text : null, t: +sim.t.toFixed(1), shots: sim.stats.shots, log, outcome: res.outcome ? res.outcome.id : null, alarmBy: sim.alarmBy || null };
+  return { res: o.raw ? res : undefined, ok: !!res.win, stars: res.stars, clean: res.clean, precise: res.precise, challenge: res.challenge, fail: res.fail ? res.fail.code + ': ' + res.fail.text : null, t: +sim.t.toFixed(1), shots: sim.stats.shots, log, outcome: res.outcome ? res.outcome.id : null, alarmBy: sim.alarmBy || null };
 };
 
 // Every mission with every rifle it allows, and every shooting position.
@@ -164,3 +164,5 @@ Test.smoke = function (id, gun, frames, cfgOver) {
   UI.closeOverlay();
   return out;
 };
+Test.rank = function () { return rankOf(Save.data.xp).n; };
+Test.epi = function () { return epilogue(Save.data.flags).title; };

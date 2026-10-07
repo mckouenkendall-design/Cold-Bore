@@ -23,11 +23,12 @@ Game.init = function () {
 
 Game.resize = function () {
   const G = Game, W = window.innerWidth, H = window.innerHeight;
+  if (!G.resK) G.resK = 1;
   G.W = W; G.H = H;
   G.mode = H >= W * 1.05 ? 'portrait' : 'landscape';
   document.body.classList.toggle('portrait', G.mode === 'portrait');
   document.body.classList.toggle('landscape', G.mode !== 'portrait');
-  const dpr = Math.min(window.devicePixelRatio || 1, Save.data && Save.data.settings.lowRes ? 1.25 : 2);
+  const dpr = Math.max(0.75, Math.min(window.devicePixelRatio || 1, Save.data && Save.data.settings.lowRes ? 1.25 : 2) * G.resK);
   G.view.layout(W, H, dpr, G.mode);
   G.placeHud();
 };
@@ -178,6 +179,9 @@ Game.start = function (missionId, opts) {
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
+  G.slowN = 0; G.frames = 0;
+  // keep the screen awake while a mission is running, where the browser allows it
+  if (navigator.wakeLock && !G.wake) { try { navigator.wakeLock.request('screen').then((w) => { G.wake = w; w.addEventListener('release', () => { G.wake = null; }); }, () => {}); } catch (e) { /* fine */ } }
   G.resize();
 };
 Game.stop = function () {
@@ -185,6 +189,7 @@ Game.stop = function () {
   G.state = 'menu'; G.sim = null; document.body.classList.remove('in-mission');
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
+  if (G.wake) { try { G.wake.release(); } catch (e) { /* fine */ } G.wake = null; }
 };
 Game.pause = function (on) {
   const G = Game;
@@ -202,6 +207,9 @@ Game.loop = function (ts) {
   if (G.state !== 'mission' || !G.sim) { UI.tick && UI.tick(dt); return; }
   const sim = G.sim;
   if (G.paused) { return; }
+  // if the phone is struggling, quietly draw at a lower resolution rather than stutter
+  G.slowN = (G.slowN || 0) * 0.98 + (dt > 0.03 ? 1 : 0); G.frames = (G.frames || 0) + 1;
+  if (G.slowN > 30 && G.frames > 120 && G.resK > 0.55 && !Game.noAutoPause) { G.resK *= 0.8; G.slowN = 0; G.frames = 0; G.resize(); }
   // slow motion while a long shot is in the air
   let want = 1;
   if (Save.data.settings.slowmo) {
@@ -255,7 +263,7 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   const inv = Save.data.settings.invert ? -1 : 1;
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
-Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused) { Sfx.unlock(); G.sim.fire(); } };
+Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 

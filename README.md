@@ -15,7 +15,7 @@ right moment, take one shot.
 
 ## Play
 
-Open `index.html`, or the GitHub Pages address for this repo. On a phone, use
+Open `index.html`, or play it at https://mckouenkendall-design.github.io/Cold-Bore/ once GitHub Pages is switched on for this repo. On a phone, use
 the browser's "Add to Home Screen" to run it full screen. Progress is saved in
 the browser on that device.
 
