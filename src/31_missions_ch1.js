@@ -20,8 +20,8 @@ mission({
     ];
   },
   triggers() { return [
-    hint(1, 'Drag anywhere to move the scope. Slide ZOOM up to look closer. Find the man with the red hat band.'),
-    hint(13, 'The crosshair drifts as you breathe. Tap HOLD BREATH to steady it for a few seconds, then FIRE.'),
+    hint(1, () => (Game.touch ? 'Drag anywhere to move the scope. Slide ZOOM up to look closer. Find the man with the red hat band.' : 'Move the mouse to aim. Scroll the wheel to zoom in. Find the man with the red hat band.')),
+    hint(13, () => (Game.touch ? 'The crosshair drifts as you breathe. Tap HOLD BREATH to steady it for a few seconds, then FIRE.' : 'The crosshair drifts as you breathe. Hold SHIFT to steady it for a few seconds, then click to fire.')),
     say(24, 'Marlow', 'If someone sees him fall, you lose the clean rating. Pick a moment when he is alone.'),
   ]; },
   challenge: { id: 'head', text: 'Finish it with a headshot', test: (sim) => sim.kills.some((k) => k.id === 't' && k.part === 'head') },
@@ -62,7 +62,7 @@ mission({
 
 mission({
   id: 'c1m3', ch: 1, title: 'Thunder', range: 160,
-  objective: 'Two men: yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
+  objective: 'Yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
   brief: 'The Calloways moved their dice game and posted two spotters to watch for trouble. One on the roof in a yellow raincoat, one at the laundry door under a red umbrella. If either hears a shot, the game scatters and we start again. There is a storm over the harbour. Thunder is loud, and it is yours to use: fire inside it and nobody hears a thing.',
   intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.'],
   wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },

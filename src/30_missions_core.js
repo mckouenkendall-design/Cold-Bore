@@ -44,7 +44,7 @@ function passersBy(H, o) {
 }
 // Radio line from a character at a given time.
 function say(at, who, text, dur) { return { at, do(sim) { sim.msg(who, text, dur); } }; }
-function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', text, dur || 10); } }; }
+function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', typeof text === 'function' ? text() : text, dur || 10); } }; }
 function onEv(ev, fn, delay) { return { on: ev, delay: delay || 0, do: fn }; }
 
 // A train that crosses on the elevated line every so often and drowns out

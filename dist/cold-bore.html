@@ -1,15 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Cold Bore">
-<meta name="theme-color" content="#07090d">
 <title>Cold Bore</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307090d'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%23ffaa3c' stroke-width='4'/%3E%3Cpath d='M32 6v20M32 38v20M6 32h20M38 32h20' stroke='%23e9e4d6' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='2.5' fill='%23ff4a3d'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #07090d; --bg2: #0e1218; --panel: #121821; --panel2: #18202b; --line: #263140; --line2: #34465a;
@@ -354,9 +343,10 @@ body.landscape.touch .hintbox, body.landscape.touch .radio { font-size: 12px; li
 body.landscape.touch .h-strip .cell { padding: 3px 7px 4px; }
 body.short .h-fire { font-size: 16px; } body.short .h-breath { font-size: 9.5px; }
 
+:root { --sat: 0px; --sab: 0px; }
+html, body { height: 100%; }
+body { position: relative; inset: auto; }
 </style>
-</head>
-<body>
 <div id="stage">
   <canvas id="cv"></canvas>
   <div id="hud"></div>
@@ -12194,7 +12184,4 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 
 })();
-
 </script>
-</body>
-</html>

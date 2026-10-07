@@ -15,8 +15,12 @@ View.prototype.layout = function (W, H, dpr, mode) {
   this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(H * dpr);
   this.cv.style.width = W + 'px'; this.cv.style.height = H + 'px';
   if (mode === 'portrait') {
-    this.R = Math.max(118, Math.min(W * 0.5 - 4, (H - 58 - 336) / 2));
+    this.R = Math.max(118, Math.min(W * 0.5 - 4, (H - 58 - (H < 720 ? 300 : 336)) / 2));
     this.cx = W / 2; this.cy = 58 + this.R;
+  } else if (mode === 'attract') {
+    this.R = Math.min(W * 0.5 - 14, H * 0.27); this.cx = W / 2; this.cy = H * 0.3;
+  } else if (mode === 'plain') { // fills the whole canvas, no scope furniture (used for thumbnails)
+    this.R = Math.hypot(W, H) / 2 + 6; this.cx = W / 2; this.cy = H / 2;
   } else {
     this.R = Math.min(H * 0.5 - 10, W * 0.5 - 150);
     this.R = Math.max(this.R, Math.min(H, W) * 0.36);
@@ -313,7 +317,9 @@ View.prototype.draw = function (sim, dt, simDt) {
 
   // ---- the lens itself ----
   if (nv) {
-    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(30,70,38,0.85)'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    // amplify what little light there is (bright lamps blow out, as they do in a real tube), then tint it green
+    if (pal.dark > 0.3) { ctx.globalCompositeOperation = 'color-dodge'; ctx.fillStyle = '#c4c4c4'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(26,34,28,0.9)'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
     ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#5dff86'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - R + ((V.rt * 40) % 3); y < cy + R; y += 3) ctx.fillRect(cx - R, y, R * 2, 1);
@@ -327,7 +333,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
 
-  V.drawReticle(sim, cx, cy, ppm);
+  if (V.mode !== 'plain' && !V.noReticle) V.drawReticle(sim, cx, cy, ppm);
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -342,6 +348,7 @@ View.prototype.draw = function (sim, dt, simDt) {
 
   // ---- scope body ----
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (V.mode === 'plain') return;
   const ring = ctx.createRadialGradient(V.cx, V.cy, R, V.cx, V.cy, R + 16);
   ring.addColorStop(0, '#000'); ring.addColorStop(0.25, '#1c2026'); ring.addColorStop(0.55, '#0c0e11'); ring.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.strokeStyle = ring; ctx.lineWidth = 32; ctx.beginPath(); ctx.arc(V.cx, V.cy, R + 15, 0, TAU); ctx.stroke();

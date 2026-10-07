@@ -140,3 +140,27 @@ Test.gunSheet = function (cfgOver, skins) {
   document.body.appendChild(c);
   return GUNS.length;
 };
+
+// Run a mission through the REAL game loop (drawing, display and sound events
+// included) for a number of frames, firing a few shots, to catch any error in
+// the parts the fast bot never touches.
+Test.smoke = function (id, gun, frames, cfgOver) {
+  const cfg = Object.assign(defaultConfig(gun), cfgOver || {});
+  Game.noAutoPause = true;
+  Game.start(id, { gun, cfg, shotSeed: 3 });
+  let ts = performance.now(), shots = 0;
+  const sim = Game.sim;
+  for (let i = 0; i < frames; i++) {
+    ts += 16.7; Game.loop(ts);
+    if (!Game.sim) break;
+    if (i % 50 === 20) Game.aimDelta((Math.random() - 0.5) * 300, (Math.random() - 0.5) * 120, 600);
+    if (i % 90 === 45) Game.zoomTo(Math.random());
+    if (i === 140 || i === 260) { Game.sim.holdBreath(true); }
+    if (i === 150 || i === 300 || i === 420) { if (Game.sim.fire()) shots++; }
+    if (i === 200) Game.sim.dial(4);
+  }
+  const out = { id, gun, t: sim.t, state: sim.state, shots, fx: Game.view.fx.length };
+  if (Game.sim) Game.stop();
+  UI.closeOverlay();
+  return out;
+};

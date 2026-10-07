@@ -354,6 +354,9 @@ Sfx.onEvent = function (e, sim) {
       else if (n === 'church bells') { for (let t = 0; t < e.dur; t += 1.3) X.bell(130, t, 300); }
       else if (n === 'jet' || n === 'helicopter') X.jet(e.dur + 1);
       else if (n === 'car alarm') { for (let t = 0; t < e.dur; t += 0.5) Sfx.tone({ at: t, type: 'square', f: 1400, f1: 900, dur: 0.24, gain: 0.03, lp: 2600, verb: 0.6 }); }
+      else if (n === 'blasting') { for (let t = 0.2; t < e.dur; t += 1.4 + Math.random()) { Sfx.noise({ at: t, type: 'lowpass', f: 700, f1: 80, dur: 1.1, gain: 0.5, verb: 1.2 }); Sfx.tone({ at: t, f: 60, f1: 28, dur: 0.8, gain: 0.45 }); } }
+      else if (n === 'generator') { Sfx.noise({ type: 'lowpass', f: 240, dur: e.dur, att: 0.3, gain: 0.22, brown: true }); for (let t = 0; t < Math.min(e.dur, 40); t += 0.11) Sfx.tone({ at: t, f: 74, dur: 0.06, gain: 0.07 }); }
+      else if (n === 'test shot') { Sfx.tone({ type: 'sawtooth', f: 200, f1: 2600, dur: Math.max(0.6, e.dur * 0.6), att: e.dur * 0.5, gain: 0.08, lp: 3000 }); Sfx.noise({ at: e.dur * 0.62, type: 'highpass', f: 2000, dur: 0.1, gain: 0.5, verb: 1 }); Sfx.tone({ at: e.dur * 0.62, f: 110, f1: 40, dur: 0.4, gain: 0.5 }); }
       else if (n === 'band' || n === 'music') { for (let t = 0; t < e.dur; t += 0.5) { Sfx.tone({ at: t, f: 60, f1: 42, dur: 0.14, gain: 0.3 }); if ((t * 2) % 2 >= 1) Sfx.noise({ at: t, type: 'highpass', f: 2000, dur: 0.08, gain: 0.12 }); } }
       break;
     }

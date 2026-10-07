@@ -71,16 +71,31 @@ Game.placeHud = function () {
     P(h.msg, { left: 12, right: 12, top: sb + 64, width: 'auto', bottom: 'auto' });
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
-    P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
-    P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
-    P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
-    P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
+    const small = Hh < 720;
+    document.body.classList.toggle('short', small);
+    if (small) {
+      P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
+      P(h.breath, { right: 126, bottom: 18, width: 74, height: 74, left: 'auto', top: 'auto' });
+      P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
+      P(h.ammo, { left: 70, bottom: 26, right: 'auto', top: 'auto' });
+    } else {
+      P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
+      P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
+      P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
+      P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
+    }
   } else {
+    document.body.classList.remove('short');
     const side = Math.max(120, V.cx - V.R - 20);
-    P(h.strip, { left: 10, top: 'auto', bottom: 10, width: Math.min(side - 4, 230), right: 'auto' });
+    if (G.touch) { // phone held sideways: read-outs top left, zoom under them, thumbs bottom right
+      P(h.strip, { left: 10, top: 62, bottom: 'auto', width: Math.min(side - 4, 220), right: 'auto' });
+      P(h.zoom, { left: 18, top: 236, height: Math.max(90, Hh - 236 - 18), bottom: 'auto', right: 'auto' });
+    } else {
+      P(h.strip, { left: 10, top: 'auto', bottom: 10, width: Math.min(side - 4, 230), right: 'auto' });
+      P(h.zoom, { left: 18, top: Math.max(120, Hh * 0.2), height: Math.min(190, Hh * 0.42), bottom: 'auto', right: 'auto' });
+    }
     P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: V.cy - V.R + 12 });
     P(h.msg, { right: 10, top: 56, width: Math.min(side - 4, 280), left: 'auto', bottom: 'auto' });
-    P(h.zoom, { left: 18, top: Math.max(120, Hh * 0.2), height: Math.min(190, Hh * 0.42), bottom: 'auto', right: 'auto' });
     P(h.fire, { right: 22, bottom: 22, width: 112, height: 112, left: 'auto', top: 'auto' });
     P(h.breath, { right: 150, bottom: 16, width: 80, height: 80, left: 'auto', top: 'auto' });
     P(h.reload, { right: 40, bottom: 150, width: 62, height: 62, left: 'auto', top: 'auto' });
