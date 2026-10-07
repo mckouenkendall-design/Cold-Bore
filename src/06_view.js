@@ -399,7 +399,7 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
     if (type === 'mildot') {
       const dr = clamp(ppm * 0.11, 1.4, 4);
       for (let i = 1; i <= 12; i++) { const d = i * ppm; if (d > R * 0.95) break;
-        if (i <= 5) { ctx.beginPath(); ctx.arc(cx + d, cy, dr, 0, TAU); ctx.arc(cx - d, cy, dr, 0, TAU); ctx.arc(cx, cy - d, dr, 0, TAU); ctx.fill(); }
+        if (i <= 5) { ctx.beginPath(); ctx.arc(cx + d, cy, dr, 0, TAU); ctx.moveTo(cx - d + dr, cy); ctx.arc(cx - d, cy, dr, 0, TAU); ctx.moveTo(cx + dr, cy - d); ctx.arc(cx, cy - d, dr, 0, TAU); ctx.fill(); }
         ctx.beginPath(); ctx.arc(cx, cy + d, dr, 0, TAU); ctx.fill();
         if (ppm > 11) { L(-3, d - ppm / 2, 3, d - ppm / 2, 1); }
         if (i % 5 === 0 && ppm > 6) { font(clamp(ppm * 0.8, 8, 12)); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(String(i), cx + 8, cy + d); }
@@ -423,11 +423,11 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
         L(-h, d, h, d, thin);
         if (m <= Math.min(lim, 12)) { L(d, -h, d, h, thin); L(-d, -h, -d, h, thin); }
         if (m <= Math.min(lim, 6)) L(-h, -d, h, -d, thin);
-        if (whole && Math.round(m) % numEvery === 0 && ppm > 5.5) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(String(Math.round(m)), cx - h - 4, cy + d + 0.5); if (m <= 12 && Math.round(m) % 2 === 0) { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(String(Math.round(m)), cx + d, cy - h - 2); ctx.fillText(String(Math.round(m)), cx - d, cy - h - 2); } }
+        if (whole && Math.round(m) % numEvery === 0 && ppm > 9) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(String(Math.round(m)), cx - h - 4, cy + d + 0.5); if (m <= 12 && Math.round(m) % 2 === 0) { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(String(Math.round(m)), cx + d, cy - h - 2); ctx.fillText(String(Math.round(m)), cx - d, cy - h - 2); } }
       }
-      if (type === 'tree') {
-        const dr = clamp(ppm * 0.07, 1.1, 2.4);
-        for (let r = 1; r <= lim; r++) { const wmax = Math.min(1 + Math.floor(r * 0.6), 8); for (let c = 1; c <= wmax; c++) { ctx.beginPath(); ctx.arc(cx + c * ppm, cy + r * ppm, dr, 0, TAU); ctx.arc(cx - c * ppm, cy + r * ppm, dr, 0, TAU); ctx.fill(); if (ppm > 16 && c <= wmax) { ctx.beginPath(); ctx.arc(cx + (c - 0.5) * ppm, cy + r * ppm, dr * 0.7, 0, TAU); ctx.arc(cx - (c - 0.5) * ppm, cy + r * ppm, dr * 0.7, 0, TAU); ctx.fill(); } } }
+      if (type === 'tree' && ppm > 8.5) {
+        const dr = clamp(ppm * 0.07, 1.1, 2.4), rstep = ppm < 15 ? 2 : 1;
+        for (let r = rstep; r <= lim; r += rstep) { const wmax = Math.min(1 + Math.floor(r * 0.6), 8); for (let c = 1; c <= wmax; c++) { ctx.beginPath(); ctx.arc(cx + c * ppm, cy + r * ppm, dr, 0, TAU); ctx.arc(cx - c * ppm, cy + r * ppm, dr, 0, TAU); ctx.fill(); if (ppm > 16 && c <= wmax) { ctx.beginPath(); ctx.arc(cx + (c - 0.5) * ppm, cy + r * ppm, dr * 0.7, 0, TAU); ctx.arc(cx - (c - 0.5) * ppm, cy + r * ppm, dr * 0.7, 0, TAU); ctx.fill(); } } }
       }
     }
   }

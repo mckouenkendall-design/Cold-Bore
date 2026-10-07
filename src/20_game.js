@@ -48,7 +48,7 @@ Game.buildHud = function () {
   h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
   h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
-  h.sZero = mk('cell cell-zero', '<i>ZERO</i><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span>', h.strip);
+  h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
   h.sZoom = mk('cell', '<i>ZOOM</i><b>3.0x</b>', h.strip);
   h.msg = mk('h-msg');
   h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zk"></div></div><span class="zl">ZOOM</span>');
@@ -92,7 +92,7 @@ Game.updateHud = function (dt) {
   const G = Game, h = G.hud, sim = G.sim, sh = sim.sh, st = sim.st, V = G.view, A = Save.data.settings.assist;
   const set = (e, s) => { if (e._s !== s) { e._s = s; e.innerHTML = s; } };
   const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
-  set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + ' m' : 'sky') : 'by eye');
+  set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + (r.d >= 1000 ? 'm' : ' m') : 'sky') : 'by eye');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
@@ -103,7 +103,7 @@ Game.updateHud = function (dt) {
     hold = us + ws;
   } else if (V.hold && !V.hold.ok) hold = 'out of reach';
   set(h.sHold.lastChild, hold);
-  set(h.sZero.querySelector('b'), sh.zeroR + ' m');
+  set(h.sZero.querySelector('b'), st.scope.turret ? String(sh.zeroR) : sh.zeroR + ' m');
   set(h.sZoom.lastChild, fmt(sh.zoom, 1) + 'x');
   // zoom slider
   const zu = st.zoomMax > st.zoomMin ? (Math.log(sh.zoomT / st.zoomMin) / Math.log(st.zoomMax / st.zoomMin)) : 0;
@@ -158,7 +158,7 @@ Game.start = function (missionId, opts) {
   const h = G.hud;
   h.obj.innerHTML = '<b>' + esc(M.title) + '</b><span>' + esc(typeof M.objective === 'function' ? M.objective(Save.data.flags) : M.objective) + '</span>';
   h.msg.innerHTML = ''; h.fade.className = 'h-fade in';
-  h.sZero.classList.toggle('dial', !!st.scope.turret);
+  h.sZero.classList.toggle('dial', !!st.scope.turret); h.strip.classList.toggle('has-dial', !!st.scope.turret);
   h.zoom.style.display = st.zoomMax > st.zoomMin ? '' : 'none';
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);

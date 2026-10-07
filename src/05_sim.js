@@ -226,8 +226,9 @@ Sim.prototype.noiseAll = function (kind, dist) {
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
     if (sim.winAt) { // the job is already done by the time the bang arrives: people scatter, but it no longer matters
+      // Anyone who actually SAW it happen still counts as a witness; only people who merely heard the bang are let off.
       sim.heardAfter = true; const p0 = sim.stats.panics;
-      sim.actors.forEach((a) => { if (a.dead || a.gone) return; a.react = 99; sim.startle(a, 'shot'); a.react = 99; });
+      sim.actors.forEach((a) => { if (a.dead || a.gone || a.sawKill || (a.state !== 'calm' && a.state !== 'susp')) return; sim.startle(a, 'shot'); a.react = 99; });
       sim.stats.panics = p0; return;
     }
     sim.actors.forEach((a) => { if (a.dead || a.gone) return; sim.startle(a, 'shot'); });
@@ -479,7 +480,7 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
     if (!sim.canSee(o, a.x, a.y, a.zone)) return;
     (o.seen = o.seen || {})[a.id] = true; a.found = true;
     if (a.accident) { if (o.role === 'civ' || o.role === 'guard') sim.investigate(o, a.x, 7); else sim.suspect(o, 4); sim.ev.push({ k: 'gawk', id: o.id }); }
-    else { o.reactDelay = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw'); }); }
+    else { o.sawKill = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw'); }); }
   });
 };
 Sim.prototype.woundActor = function (a, part, bullet) {

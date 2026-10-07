@@ -41,10 +41,13 @@ body:not(.in-mission) #cv { visibility: hidden; }
 .h-strip .cell-hold { flex: 1.7 1 0; } .h-strip .cell-hold b { color: var(--amber); }
 .h-strip .warr { color: var(--amber); font-weight: 800; }
 .zbtn { display: none; }
-.cell-zero.dial { flex: 1.5 1 0; pointer-events: auto; }
-.cell-zero.dial .zbtn { display: grid; place-items: center; position: absolute; top: 3px; bottom: 3px; width: 26px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line2); font: 700 16px var(--mono); color: var(--amber); }
-.cell-zero.dial .zminus { right: 31px; } .cell-zero.dial .zplus { right: 3px; }
+.zrow { display: flex; align-items: center; gap: 4px; }
+.cell-zero.dial { flex: 2 1 0; pointer-events: auto; padding-bottom: 4px; }
+.cell-zero.dial .zrow b { flex: 1; text-align: center; }
+.cell-zero.dial .zbtn { display: grid; place-items: center; width: 26px; height: 22px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line2); font: 700 15px var(--mono); color: var(--amber); flex: none; }
 .cell-zero.dial .zbtn.down { background: var(--line2); }
+.h-strip.has-dial .cell:last-child { flex: .85 1 0; }
+.h-strip.has-dial .cell-hold { flex: 1.5 1 0; }
 body.landscape .h-strip { flex-wrap: wrap; } body.landscape .h-strip .cell { flex: 1 1 44%; }
 .h-msg { position: absolute; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
 .radio { background: rgba(14, 18, 24, .86); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 6px 10px; font-size: 13.5px; line-height: 1.3; transition: opacity .5s; animation: slide .25s ease-out; }
