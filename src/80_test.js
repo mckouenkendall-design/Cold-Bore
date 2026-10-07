@@ -51,7 +51,7 @@ Test.run = function (missionId, gunId, o) {
       if (k === 'fn') { c[1](sim, sim.A); cur = null; continue; }
       if (k === 'hold') { sim.holdBreath(true); cur = null; continue; }
       if (k === 'dial') { const steps = Math.round((c[1] - sim.sh.zeroR) / 25); for (let i = 0; i < Math.abs(steps); i++) sim.dial(sign(steps)); cur = null; continue; }
-      if (k === 'shoot' || k === 'shootObj' || k === 'shootAt') {
+      if (k === 'shoot' || k === 'shootObj' || k === 'shootAt' || k === 'shootPt') {
         if (c._fired) { // wait for the round to land (unless told not to)
           const b = c._bullet;
           if ((c[3] && c[3].nowait) || !b || !b.alive) {
@@ -73,6 +73,7 @@ Test.run = function (missionId, gunId, o) {
         } else if (k === 'shootObj') {
           const ob = objById(c[1]); if (!ob) { log.push('no object ' + c[1]); cur = null; continue; }
           pt = { x: ob.x, y: ob.y, z: ob.plane.z };
+        } else if (k === 'shootPt') { pt = c[1](sim, sim.A); if (!pt) { if (sim.t - c._t0 > 60) { log.push('shootPt never had a point'); cur = null; continue; } break; } if (pt.vx) lead = { vx: pt.vx, extra: st.action === 'charge' ? (c._charging ? Math.max(0, sim.sh.chargeT) : 0.85) : 0 };
         } else pt = { x: c[1], y: c[2], z: c[3].z || c[3] };
         aimAt(pt, lead);
         const sh = sim.sh;

@@ -157,7 +157,8 @@ View.prototype.draw = function (sim, dt, simDt) {
     const zone = a.room && S.rooms[a.room] ? a.room : a.zone;
     const lit = S.isLit(zone, a.x);
     const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08 };
-    if (pal.dark > 0.5 && !lit) { e2.ink = '#04060a'; e2.rim = nv ? 'rgba(190,255,200,0.9)' : 'rgba(110,130,165,0.2)'; }
+    if (pal.dark > 0.5 && !lit) { e2.ink = '#04060a'; e2.rim = nv ? 'rgba(190,255,200,0.9)' : 'rgba(120,140,175,0.24)'; e2.dark = true; e2.dim = nv ? 0.25 : 0.72; }
+    else if (pal.dark > 0.5) e2.dark = true;
     else if (nv) e2.rim = 'rgba(190,255,200,0.75)';
     return e2;
   };

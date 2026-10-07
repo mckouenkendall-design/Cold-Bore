@@ -533,13 +533,19 @@ K.thing = function (S, P, kind, x, y, o) {
     duck: { r: 0.26, mat: 'soft' }, bottle: { r: 0.2, mat: 'glass' }, valve: { r: 0.36, mat: 'metal' }, radio: { r: 0.36, mat: 'metal' },
     lock: { r: 0.28, mat: 'metal' }, tank: { r: 0.9, mat: 'metal' }, dish: { r: 0.7, mat: 'metal' }, alarmcar: { r: 0.0, mat: 'metal' },
     bulb: { r: 0.26, mat: 'glass' }, flare: { r: 0.36, mat: 'metal' }, horn: { r: 0.4, mat: 'metal' }, can: { r: 0.2, mat: 'metal' }, pot: { r: 0.3, mat: 'glass' }, rope: { r: 0.3, mat: 'soft' },
+    glint: { r: 0.35, mat: 'glass', breakable: true },
   };
   const d = defs[kind] || { r: 0.4, mat: 'metal' };
-  const ob = S.obj(Object.assign({ kind, plane: P, x, y, r: d.r, mat: d.mat, layer: 2, draw(ctx, env) { drawThing(ctx, env, S, ob); } }, o));
+  const ob = S.obj(Object.assign({ kind, plane: P, x, y, r: d.r, mat: d.mat, breakable: d.breakable, layer: 2, draw(ctx, env) { drawThing(ctx, env, S, ob); } }, o));
   return ob;
 };
 function drawThing(ctx, env, S, ob) {
   const P = ob.plane, x = ob.x, y = ob.y, k = ob.kind, live = ob.alive;
+  if (ob.drawFn) { ob.drawFn(ctx, env, S, ob); return; }
+  if (k === 'glint') { // a scope lens catching the light, now and then
+    if (!live) return; const u = (env.t * (ob.rate || 0.5) + (ob.phase || 0)) % 1; if (u > 0.16) return; const a = Math.sin((u / 0.16) * Math.PI), r = Math.max(0.5, env.px * 5) * a;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,255,255,' + a + ')'; ctx.lineWidth = Math.max(0.05, env.px * 1.2); ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.moveTo(x, y - r); ctx.lineTo(x, y + r); ctx.stroke(); circ(ctx, x, y, r * 0.3, 'rgba(255,255,255,' + a + ')'); ctx.restore(); return;
+  }
   if (k === 'barrel') {
     if (!live) { circ(ctx, x, y - 0.5, 0.9, 'rgba(10,10,12,0.5)'); return; }
     R4(ctx, x - 0.42, y - 0.62, 0.84, 1.24, S.tone(ob.col || '#c4372c', P)); R4(ctx, x - 0.42, y - 0.2, 0.84, 0.1, S.tone('#7d1f18', P)); R4(ctx, x - 0.42, y + 0.25, 0.84, 0.1, S.tone('#7d1f18', P));
@@ -603,6 +609,7 @@ const CARS = {
 };
 // Draw a vehicle centred on x, wheels on y. dir = 1 faces right.
 function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
+  if (CARS[kind].draw) { CARS[kind].draw(ctx, env, S, P, x, y, dir, colHex, st); return; }
   const c = CARS[kind], L = c.len, col = S.tone(colHex || '#30343c', P), dk = S.tone(darken(colHex || '#30343c', 0.3), P), gl = S.tone(S.pal.glass, P);
   ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
   if (c.train) {

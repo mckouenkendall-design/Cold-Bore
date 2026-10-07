@@ -46,7 +46,7 @@ Game.buildHud = function () {
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
   h.strip = mk('h-strip');
   h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
-  h.sWind = mk('cell', '<i>WIND</i><b>--</b>', h.strip);
+  h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span>', h.strip);
   h.sZoom = mk('cell', '<i>ZOOM</i><b>3.0x</b>', h.strip);
@@ -67,7 +67,7 @@ Game.placeHud = function () {
   if (G.mode === 'portrait') {
     const sb = V.cy + V.R; // bottom of the scope
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
-    P(h.pills, { left: 0, right: 0, top: V.cy - V.R - 4, width: 'auto' });
+    P(h.pills, { left: 0, right: 0, top: V.cy - V.R + 10, width: 'auto' });
     P(h.msg, { left: 12, right: 12, top: sb + 64, width: 'auto', bottom: 'auto' });
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
@@ -78,7 +78,7 @@ Game.placeHud = function () {
   } else {
     const side = Math.max(120, V.cx - V.R - 20);
     P(h.strip, { left: 10, top: 'auto', bottom: 10, width: Math.min(side - 4, 230), right: 'auto' });
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: 6 });
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: V.cy - V.R + 12 });
     P(h.msg, { right: 10, top: 56, width: Math.min(side - 4, 280), left: 'auto', bottom: 'auto' });
     P(h.zoom, { left: 18, top: Math.max(120, Hh * 0.2), height: Math.min(190, Hh * 0.42), bottom: 'auto', right: 'auto' });
     P(h.fire, { right: 22, bottom: 22, width: 112, height: 112, left: 'auto', top: 'auto' });
@@ -94,12 +94,12 @@ Game.updateHud = function (dt) {
   const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
   set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + ' m' : 'sky') : 'by eye');
   const w = sim.wind(), aw = Math.abs(w);
-  set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1) + ' m/s'));
+  set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
   if ((A !== 'veteran' || st.scope.smart) && V.hold && V.hold.ok && r && r.d) {
     const up = V.hold.up, rt = V.hold.right;
     const us = Math.abs(up) < 0.15 ? 'dead on' : (up > 0 ? '&uarr;' : '&darr;') + fmt(Math.abs(up), 1);
-    const ws = Math.abs(rt) < 0.15 ? '' : ' &nbsp;' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
+    const ws = Math.abs(rt) < 0.15 ? '' : ' ' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
     hold = us + ws;
   } else if (V.hold && !V.hold.ok) hold = 'out of reach';
   set(h.sHold.lastChild, hold);

@@ -37,7 +37,7 @@ body:not(.in-mission) #cv { visibility: hidden; }
 .h-btn.down { background: var(--line2); }
 .h-obj { flex: 1; min-width: 0; padding-top: 2px; }
 .h-obj b { display: block; font-family: var(--head); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; color: var(--amber); }
-.h-obj span { display: block; font-size: 13.5px; line-height: 1.25; color: var(--ink); opacity: .92; text-wrap: balance; }
+.h-obj span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; line-height: 1.22; color: var(--ink); opacity: .92; }
 .h-timer { font-family: var(--mono); font-size: 20px; font-weight: 700; padding: 6px 10px; border-radius: 8px; background: rgba(20, 26, 35, .8); border: 1px solid var(--line); flex: none; }
 .h-timer.low { color: var(--red); border-color: var(--red); animation: pulse .5s infinite alternate; }
 @keyframes pulse { to { opacity: .55; } }
@@ -47,11 +47,11 @@ body:not(.in-mission) #cv { visibility: hidden; }
 .pill-cover { background: rgba(95, 211, 138, .16); color: var(--green); border: 1px solid var(--green); }
 .pill-alarm { background: rgba(255, 74, 61, .18); color: var(--red); border: 1px solid var(--red); }
 .pill-alarm.show { animation: pulse .4s infinite alternate; }
-.h-strip { position: absolute; display: flex; gap: 6px; pointer-events: none; }
+.h-strip { position: absolute; display: flex; gap: 5px; pointer-events: none; }
 .h-strip .cell { flex: 1 1 0; min-width: 0; background: rgba(18, 24, 33, .82); border: 1px solid var(--line); border-radius: 9px; padding: 5px 7px 6px; display: flex; flex-direction: column; position: relative; }
 .h-strip .cell i { font-style: normal; font-family: var(--head); font-size: 9.5px; letter-spacing: .16em; color: var(--mute); white-space: nowrap; }
-.h-strip .cell b { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; }
-.h-strip .cell-hold { flex: 1.5 1 0; } .h-strip .cell-hold b { color: var(--amber); }
+.h-strip .cell b { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; letter-spacing: -.02em; }
+.h-strip .cell-hold { flex: 1.7 1 0; } .h-strip .cell-hold b { color: var(--amber); }
 .h-strip .warr { color: var(--amber); font-weight: 800; }
 .zbtn { display: none; }
 .cell-zero.dial { flex: 1.5 1 0; pointer-events: auto; }
@@ -833,7 +833,8 @@ function drawFigure(ctx, A, env) {
   const sc = J.scale, f = A.face || 1;
   const lw = FIG.lw * sc * (L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.85 : 1);
   const minw = env.px * 1.1;
-  const ink = env.ink, rim = env.rim;
+  const ink = env.ink, rim = env.rim, dim = env.dim || 0;
+  const D = (c) => (dim && typeof c === 'string' && c.charAt(0) === '#' ? mix(c, '#05070b', dim) : c);
   ctx.save();
   ctx.translate(A.x, A.y);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -855,7 +856,7 @@ function drawFigure(ctx, A, env) {
   }
   // carried on the back
   if (L.bag === 'backpack') {
-    ctx.fillStyle = L.bagCol || '#5d6b4a';
+    ctx.fillStyle = D(L.bagCol || '#5d6b4a');
     const bx = lerp(J.hip[0], J.neck[0], 0.62) - f * 0.17 * sc, by = lerp(J.hip[1], J.neck[1], 0.62);
     ctx.beginPath(); ctx.ellipse(bx, by, 0.13 * sc, 0.22 * sc, 0, 0, TAU); ctx.fill();
   }
@@ -865,14 +866,14 @@ function drawFigure(ctx, A, env) {
 
   // clothing over the torso
   if (L.dress) {
-    ctx.fillStyle = L.dress;
+    ctx.fillStyle = D(L.dress);
     ctx.beginPath();
     ctx.moveTo(J.neck[0] - 0.1 * sc, J.neck[1] - 0.08 * sc); ctx.lineTo(J.neck[0] + 0.1 * sc, J.neck[1] - 0.08 * sc);
     ctx.lineTo(J.hip[0] + 0.3 * sc, J.hip[1] - 0.38 * sc); ctx.lineTo(J.hip[0] - 0.3 * sc, J.hip[1] - 0.38 * sc);
     ctx.closePath(); ctx.fill();
   }
   if (L.coat) {
-    ctx.strokeStyle = L.coat; ctx.lineWidth = Math.max(lw * 2.5, minw * 2); ctx.lineCap = 'butt';
+    ctx.strokeStyle = D(L.coat); ctx.lineWidth = Math.max(lw * 2.5, minw * 2); ctx.lineCap = 'butt';
     ctx.beginPath();
     ctx.moveTo(lerp(J.hip[0], J.neck[0], 0.94), lerp(J.hip[1], J.neck[1], 0.94));
     const lowx = J.hip[0] - (J.neck[0] - J.hip[0]) * (L.long ? 0.55 : 0.05), lowy = J.hip[1] - (J.neck[1] - J.hip[1]) * (L.long ? 0.55 : 0.05);
@@ -883,18 +884,18 @@ function drawFigure(ctx, A, env) {
     seg(ctx, J.sh, J.elL); seg(ctx, J.elL, [lerp(J.elL[0], J.haL[0], 0.7), lerp(J.elL[1], J.haL[1], 0.7)]); ctx.stroke();
   }
   if (L.vest) {
-    ctx.strokeStyle = L.vest; ctx.lineWidth = Math.max(lw * 2.4, minw * 2); ctx.lineCap = 'butt';
+    ctx.strokeStyle = D(L.vest); ctx.lineWidth = Math.max(lw * 2.4, minw * 2); ctx.lineCap = 'butt';
     ctx.beginPath();
     ctx.moveTo(lerp(J.hip[0], J.neck[0], 0.92), lerp(J.hip[1], J.neck[1], 0.92));
     ctx.lineTo(lerp(J.hip[0], J.neck[0], 0.3), lerp(J.hip[1], J.neck[1], 0.3)); ctx.stroke();
     if (L.vestStripe) {
-      ctx.strokeStyle = L.vestStripe; ctx.lineWidth = Math.max(lw * 0.5, minw * 0.6);
+      ctx.strokeStyle = D(L.vestStripe); ctx.lineWidth = Math.max(lw * 0.5, minw * 0.6);
       ctx.beginPath(); ctx.moveTo(J.neck[0] - 0.1 * sc, lerp(J.hip[1], J.neck[1], 0.6)); ctx.lineTo(J.neck[0] + 0.1 * sc, lerp(J.hip[1], J.neck[1], 0.6)); ctx.stroke();
     }
     ctx.lineCap = 'round';
   }
   if (L.tie) {
-    ctx.fillStyle = L.tie;
+    ctx.fillStyle = D(L.tie);
     const tx = J.neck[0] + f * 0.03 * sc, ty = J.neck[1] - 0.03 * sc;
     ctx.beginPath();
     ctx.moveTo(tx - 0.035 * sc, ty); ctx.lineTo(tx + 0.035 * sc, ty);
@@ -902,7 +903,7 @@ function drawFigure(ctx, A, env) {
     ctx.closePath(); ctx.fill();
   }
   if (L.scarf) {
-    ctx.strokeStyle = L.scarf; ctx.lineWidth = Math.max(lw * 1.5, minw * 1.3);
+    ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(lw * 1.5, minw * 1.3);
     ctx.beginPath(); ctx.moveTo(J.neck[0] - 0.08 * sc, J.neck[1] + 0.02); ctx.lineTo(J.neck[0] + 0.08 * sc, J.neck[1] + 0.02);
     ctx.moveTo(J.neck[0] - f * 0.06 * sc, J.neck[1]); ctx.lineTo(J.neck[0] - f * 0.2 * sc, J.neck[1] - 0.3 * sc); ctx.stroke();
   }
@@ -912,50 +913,50 @@ function drawFigure(ctx, A, env) {
   ctx.fillStyle = ink;
   ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
   if (L.hair === 'long') {
-    ctx.fillStyle = L.hairCol || '#6b4a2b';
+    ctx.fillStyle = D(L.hairCol || '#6b4a2b');
     ctx.beginPath(); ctx.arc(hx - f * 0.03 * sc, hy + 0.01, hr * 1.12, f > 0 ? Math.PI * 0.35 : -Math.PI * 0.45, f > 0 ? Math.PI * 1.45 : Math.PI * 0.65); ctx.lineTo(hx - f * 0.16 * sc, hy - 0.32 * sc); ctx.closePath(); ctx.fill();
   } else if (L.hair === 'bun') {
-    ctx.fillStyle = L.hairCol || '#3a2a20';
+    ctx.fillStyle = D(L.hairCol || '#3a2a20');
     ctx.beginPath(); ctx.arc(hx - f * 0.13 * sc, hy + 0.14 * sc, 0.08 * sc, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(hx, hy + 0.02, hr * 1.06, 0.15, Math.PI - 0.15); ctx.fill();
   } else if (L.hair === 'mohawk') {
-    ctx.fillStyle = L.hairCol || '#e0413a';
+    ctx.fillStyle = D(L.hairCol || '#e0413a');
     ctx.beginPath(); ctx.ellipse(hx, hy + hr * 0.95, hr * 0.85, hr * 0.42, 0, 0, TAU); ctx.fill();
   } else if (L.hair === 'short') {
-    ctx.fillStyle = L.hairCol || '#7a5a3a';
+    ctx.fillStyle = D(L.hairCol || '#7a5a3a');
     ctx.beginPath(); ctx.arc(hx, hy + 0.015, hr * 1.05, 0.25, Math.PI - 0.25); ctx.closePath(); ctx.fill();
   } else if (L.hair === 'white') {
-    ctx.fillStyle = '#e8e8e2';
+    ctx.fillStyle = D('#e8e8e2');
     ctx.beginPath(); ctx.arc(hx - f * 0.02, hy + 0.015, hr * 1.05, 0.1, Math.PI - 0.1); ctx.closePath(); ctx.fill();
   }
   if (L.beard) {
-    ctx.fillStyle = L.beard === true ? '#8a8f96' : L.beard;
+    ctx.fillStyle = D(L.beard === true ? '#8a8f96' : L.beard);
     ctx.beginPath(); ctx.arc(hx + f * 0.03 * sc, hy - 0.03 * sc, hr * 0.98, f > 0 ? -1.9 : -2.9, f > 0 ? -0.2 : -1.2); ctx.closePath(); ctx.fill();
   }
   if (L.glasses) {
-    ctx.strokeStyle = L.glasses === 'shades' ? '#f2f4f7' : '#cfd6de'; ctx.lineWidth = Math.max(0.022 * sc, minw * 0.7);
+    ctx.strokeStyle = D(L.glasses === 'shades' ? '#f2f4f7' : '#cfd6de'); ctx.lineWidth = Math.max(0.022 * sc, minw * 0.7);
     ctx.beginPath();
     if (L.glasses === 'shades') { ctx.moveTo(hx - f * 0.02 * sc, hy + 0.03 * sc); ctx.lineTo(hx + f * 0.17 * sc, hy + 0.03 * sc); ctx.lineWidth = Math.max(0.05 * sc, minw); }
     else { ctx.arc(hx + f * 0.1 * sc, hy + 0.02 * sc, 0.045 * sc, 0, TAU); ctx.moveTo(hx + f * 0.05 * sc, hy + 0.02 * sc); ctx.lineTo(hx - f * 0.12 * sc, hy + 0.04 * sc); }
     ctx.stroke();
   }
   if (L.mask) {
-    ctx.fillStyle = L.mask; ctx.beginPath(); ctx.arc(hx, hy, hr * 1.02, Math.PI + 0.25, TAU - 0.25); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = D(L.mask); ctx.beginPath(); ctx.arc(hx, hy, hr * 1.02, Math.PI + 0.25, TAU - 0.25); ctx.closePath(); ctx.fill();
   }
   if (L.phones) {
-    ctx.strokeStyle = L.phones; ctx.lineWidth = Math.max(0.04 * sc, minw);
+    ctx.strokeStyle = D(L.phones); ctx.lineWidth = Math.max(0.04 * sc, minw);
     ctx.beginPath(); ctx.arc(hx, hy, hr * 1.12, 0.3, Math.PI - 0.3); ctx.stroke();
-    ctx.fillStyle = L.phones; ctx.beginPath(); ctx.arc(hx - f * 0.02, hy, 0.07 * sc, 0, TAU); ctx.fill();
+    ctx.fillStyle = D(L.phones); ctx.beginPath(); ctx.arc(hx - f * 0.02, hy, 0.07 * sc, 0, TAU); ctx.fill();
   }
   // hats
   const hat = L.hat, hc = L.hatCol || '#2a2d33';
   if (hat) {
-    ctx.fillStyle = hc; ctx.strokeStyle = hc;
+    ctx.fillStyle = D(hc); ctx.strokeStyle = D(hc);
     const top = hy + hr * 0.62;
     if (hat === 'fedora') {
       ctx.lineWidth = Math.max(0.045 * sc, minw); ctx.beginPath(); ctx.moveTo(hx - 0.3 * sc, top); ctx.lineTo(hx + 0.3 * sc, top); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(hx - 0.17 * sc, top); ctx.lineTo(hx - 0.15 * sc, top + 0.17 * sc); ctx.quadraticCurveTo(hx, top + 0.21 * sc, hx + 0.15 * sc, top + 0.17 * sc); ctx.lineTo(hx + 0.17 * sc, top); ctx.closePath(); ctx.fill();
-      if (L.hatBand) { ctx.fillStyle = L.hatBand; ctx.fillRect(hx - 0.168 * sc, top + 0.015 * sc, 0.336 * sc, 0.045 * sc); }
+      if (L.hatBand) { ctx.fillStyle = D(L.hatBand); ctx.fillRect(hx - 0.168 * sc, top + 0.015 * sc, 0.336 * sc, 0.045 * sc); }
     } else if (hat === 'cap') {
       ctx.beginPath(); ctx.arc(hx, top - 0.03 * sc, hr * 1.04, 0, Math.PI); ctx.closePath(); ctx.fill();
       ctx.lineWidth = Math.max(0.045 * sc, minw); ctx.beginPath(); ctx.moveTo(hx, top - 0.02 * sc); ctx.lineTo(hx + f * 0.3 * sc, top - 0.04 * sc); ctx.stroke();
@@ -968,7 +969,7 @@ function drawFigure(ctx, A, env) {
     } else if (hat === 'tophat') {
       ctx.lineWidth = Math.max(0.045 * sc, minw); ctx.beginPath(); ctx.moveTo(hx - 0.26 * sc, top); ctx.lineTo(hx + 0.26 * sc, top); ctx.stroke();
       ctx.fillRect(hx - 0.15 * sc, top, 0.3 * sc, 0.3 * sc);
-      if (L.hatBand) { ctx.fillStyle = L.hatBand; ctx.fillRect(hx - 0.15 * sc, top + 0.02 * sc, 0.3 * sc, 0.05 * sc); }
+      if (L.hatBand) { ctx.fillStyle = D(L.hatBand); ctx.fillRect(hx - 0.15 * sc, top + 0.02 * sc, 0.3 * sc, 0.05 * sc); }
     } else if (hat === 'beret') {
       ctx.beginPath(); ctx.ellipse(hx - f * 0.04 * sc, top + 0.02 * sc, 0.21 * sc, 0.08 * sc, -f * 0.2, 0, TAU); ctx.fill();
     } else if (hat === 'hood') {
@@ -980,7 +981,7 @@ function drawFigure(ctx, A, env) {
     } else if (hat === 'sun') {
       ctx.lineWidth = Math.max(0.04 * sc, minw); ctx.beginPath(); ctx.moveTo(hx - 0.38 * sc, top - 0.02 * sc); ctx.lineTo(hx + 0.38 * sc, top - 0.02 * sc); ctx.stroke();
       ctx.beginPath(); ctx.arc(hx, top - 0.02 * sc, hr * 0.95, 0, Math.PI); ctx.closePath(); ctx.fill();
-      if (L.hatBand) { ctx.fillStyle = L.hatBand; ctx.fillRect(hx - 0.155 * sc, top - 0.01 * sc, 0.31 * sc, 0.04 * sc); }
+      if (L.hatBand) { ctx.fillStyle = D(L.hatBand); ctx.fillRect(hx - 0.155 * sc, top - 0.01 * sc, 0.31 * sc, 0.04 * sc); }
     } else if (hat === 'helmet') {
       ctx.beginPath(); ctx.arc(hx, hy + 0.02 * sc, hr * 1.16, -0.15, Math.PI + 0.15); ctx.closePath(); ctx.fill();
     }
@@ -989,69 +990,74 @@ function drawFigure(ctx, A, env) {
   // things in the hands
   const hand = J.haR, bag = L.bag;
   if (bag === 'case') {
-    ctx.fillStyle = L.bagCol || '#7b5a36';
+    ctx.fillStyle = D(L.bagCol || '#7b5a36');
     ctx.fillRect(hand[0] - 0.2 * sc, hand[1] - 0.3 * sc, 0.4 * sc, 0.26 * sc);
-    ctx.strokeStyle = L.bagCol || '#7b5a36'; ctx.lineWidth = Math.max(0.025, minw * 0.7);
+    ctx.strokeStyle = D(L.bagCol || '#7b5a36'); ctx.lineWidth = Math.max(0.025, minw * 0.7);
     ctx.beginPath(); ctx.moveTo(hand[0] - 0.06, hand[1] - 0.04); ctx.lineTo(hand[0] - 0.06, hand[1] + 0.01); ctx.lineTo(hand[0] + 0.06, hand[1] + 0.01); ctx.lineTo(hand[0] + 0.06, hand[1] - 0.04); ctx.stroke();
   } else if (bag === 'duffel') {
-    ctx.fillStyle = L.bagCol || '#3f4a5c';
+    ctx.fillStyle = D(L.bagCol || '#3f4a5c');
     ctx.beginPath(); ctx.ellipse(hand[0], hand[1] - 0.2 * sc, 0.34 * sc, 0.16 * sc, 0, 0, TAU); ctx.fill();
   } else if (bag === 'shopping') {
-    ctx.fillStyle = L.bagCol || '#e9e2d0';
+    ctx.fillStyle = D(L.bagCol || '#e9e2d0');
     ctx.beginPath(); ctx.moveTo(hand[0] - 0.13, hand[1] - 0.05); ctx.lineTo(hand[0] + 0.13, hand[1] - 0.05); ctx.lineTo(hand[0] + 0.16, hand[1] - 0.4); ctx.lineTo(hand[0] - 0.16, hand[1] - 0.4); ctx.closePath(); ctx.fill();
   } else if (bag === 'umbrella') {
     const ux = J.haR[0], uy = J.haR[1];
-    ctx.strokeStyle = '#22252b'; ctx.lineWidth = Math.max(0.03, minw * 0.8);
+    ctx.strokeStyle = D('#22252b'); ctx.lineWidth = Math.max(0.03, minw * 0.8);
     ctx.beginPath(); ctx.moveTo(ux, uy - 0.05); ctx.lineTo(ux, 2.25 * sc); ctx.stroke();
-    ctx.fillStyle = L.bagCol || '#c0392b';
+    ctx.fillStyle = D(L.bagCol || '#c0392b');
     ctx.beginPath(); ctx.arc(ux, 2.2 * sc, 0.62 * sc, 0, Math.PI); ctx.closePath(); ctx.fill();
   } else if (bag === 'cane') {
-    ctx.strokeStyle = L.bagCol || '#d8d2c4'; ctx.lineWidth = Math.max(0.035, minw * 0.8);
+    ctx.strokeStyle = D(L.bagCol || '#d8d2c4'); ctx.lineWidth = Math.max(0.035, minw * 0.8);
     ctx.beginPath(); ctx.moveTo(hand[0], hand[1] + 0.03); ctx.lineTo(hand[0] + f * 0.12, 0.02); ctx.stroke();
   } else if (bag === 'clip') {
-    ctx.fillStyle = L.bagCol || '#e7e2d4';
+    ctx.fillStyle = D(L.bagCol || '#e7e2d4');
     ctx.fillRect(J.haL[0] - 0.1, J.haL[1] - 0.05, 0.2, 0.28);
   } else if (bag === 'cup') {
-    ctx.fillStyle = L.bagCol || '#f1ede2';
+    ctx.fillStyle = D(L.bagCol || '#f1ede2');
     ctx.fillRect(hand[0] - 0.04, hand[1] - 0.02, 0.08, 0.13);
   } else if (bag === 'box') {
-    ctx.fillStyle = L.bagCol || '#b08a52';
+    ctx.fillStyle = D(L.bagCol || '#b08a52');
     const mx = (J.haL[0] + J.haR[0]) / 2, my = (J.haL[1] + J.haR[1]) / 2;
     ctx.fillRect(mx - 0.24, my - 0.08, 0.48, 0.36);
   } else if (bag === 'paper') {
-    ctx.fillStyle = '#e9e6dc';
+    ctx.fillStyle = D('#e9e6dc');
     const mx = (J.haL[0] + J.haR[0]) / 2, my = (J.haL[1] + J.haR[1]) / 2;
     ctx.fillRect(mx - 0.2, my - 0.04, 0.4, 0.3);
   } else if (bag === 'flowers') {
-    ctx.fillStyle = '#4c9a56'; ctx.fillRect(hand[0] - 0.03, hand[1], 0.06, 0.25);
-    ctx.fillStyle = L.bagCol || '#e85d75'; ctx.beginPath(); ctx.arc(hand[0], hand[1] + 0.3, 0.13, 0, TAU); ctx.fill();
+    ctx.fillStyle = D('#4c9a56'); ctx.fillRect(hand[0] - 0.03, hand[1], 0.06, 0.25);
+    ctx.fillStyle = D(L.bagCol || '#e85d75'); ctx.beginPath(); ctx.arc(hand[0], hand[1] + 0.3, 0.13, 0, TAU); ctx.fill();
   } else if (bag === 'guitar') {
-    ctx.fillStyle = L.bagCol || '#1d2026';
+    ctx.fillStyle = D(L.bagCol || '#1d2026');
     ctx.save(); ctx.translate(lerp(J.hip[0], J.neck[0], 0.5) - f * 0.16, lerp(J.hip[1], J.neck[1], 0.6)); ctx.rotate(f * 0.25);
     ctx.fillRect(-0.09, -0.1, 0.18, 0.95); ctx.beginPath(); ctx.ellipse(0, -0.25, 0.2, 0.28, 0, 0, TAU); ctx.fill(); ctx.restore();
   } else if (bag === 'balloon') {
-    ctx.strokeStyle = '#d7dbe0'; ctx.lineWidth = Math.max(0.012, minw * 0.5);
+    ctx.strokeStyle = D('#d7dbe0'); ctx.lineWidth = Math.max(0.012, minw * 0.5);
     const sway = Math.sin((A.t || 0) * 1.3) * 0.12;
     ctx.beginPath(); ctx.moveTo(hand[0], hand[1]); ctx.lineTo(hand[0] + sway, 2.75); ctx.stroke();
-    ctx.fillStyle = L.bagCol || '#e0413a'; ctx.beginPath(); ctx.ellipse(hand[0] + sway, 2.98, 0.2, 0.25, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = D(L.bagCol || '#e0413a'); ctx.beginPath(); ctx.ellipse(hand[0] + sway, 2.98, 0.2, 0.25, 0, 0, TAU); ctx.fill();
   }
   if (L.gun === 'rifle' || A.anim === 'guard' || A.anim === 'aimrifle') {
     if (!A.dead) {
-      ctx.strokeStyle = '#0b0c0f'; ctx.lineWidth = Math.max(0.05, minw);
+      ctx.strokeStyle = D('#0b0c0f'); ctx.lineWidth = Math.max(0.05, minw);
       const a = J.haR, b2 = J.haL;
       const dx = b2[0] - a[0], dy = b2[1] - a[1], l = Math.hypot(dx, dy) || 1;
       ctx.beginPath(); ctx.moveTo(a[0] - (dx / l) * 0.28, a[1] - (dy / l) * 0.28); ctx.lineTo(b2[0] + (dx / l) * 0.42, b2[1] + (dy / l) * 0.42); ctx.stroke();
       if (rim) { ctx.strokeStyle = rim; ctx.lineWidth = Math.max(0.012, env.px * 0.6); ctx.beginPath(); ctx.moveTo(a[0] - (dx / l) * 0.28, a[1] - (dy / l) * 0.28 + 0.035); ctx.lineTo(b2[0] + (dx / l) * 0.42, b2[1] + (dy / l) * 0.42 + 0.035); ctx.stroke(); }
     }
   } else if (A.anim === 'aim' && !A.dead) {
-    ctx.fillStyle = '#0b0c0f';
+    ctx.fillStyle = D('#0b0c0f');
     ctx.fillRect(Math.min(hand[0], hand[0] + f * 0.2), hand[1] - 0.01, 0.2, 0.07);
     ctx.fillRect(hand[0] - 0.03, hand[1] - 0.1, 0.06, 0.1);
   } else if (A.anim === 'look' && !A.dead) {
-    ctx.fillStyle = '#0b0c0f'; ctx.fillRect(hx + (f > 0 ? 0.1 : -0.3) * sc, hy - 0.04, 0.2 * sc, 0.1 * sc);
+    ctx.fillStyle = D('#0b0c0f'); ctx.fillRect(hx + (f > 0 ? 0.1 : -0.3) * sc, hy - 0.04, 0.2 * sc, 0.1 * sc);
   } else if (A.anim === 'sweep' && !A.dead) {
-    ctx.strokeStyle = '#b58d55'; ctx.lineWidth = Math.max(0.03, minw * 0.8);
+    ctx.strokeStyle = D('#b58d55'); ctx.lineWidth = Math.max(0.03, minw * 0.8);
     ctx.beginPath(); ctx.moveTo(J.haR[0] - f * 0.1, J.haR[1] + 0.3); ctx.lineTo(J.haL[0] + f * 0.35, 0.05); ctx.stroke();
+  }
+  // small lights that give people away at night: a phone screen, a cigarette end
+  if (!A.dead && env.dark) {
+    if (A.anim === 'phone' || A.anim === 'sitphone') { ctx.fillStyle = '#cfe6ff'; ctx.fillRect(J.haR[0] - 0.035, J.haR[1] - 0.02, 0.07, 0.13); ctx.globalAlpha = 0.14; ctx.beginPath(); ctx.arc(J.haR[0], J.haR[1] + 0.04, 0.3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (A.anim === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.06, J.haR[1], 0.04 + 0.015 * Math.sin((A.t || 0) * 5), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.06, J.haR[1], 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
   }
   // cigarette smoke
   if ((A.anim === 'smoke') && !A.dead) {
@@ -1606,13 +1612,19 @@ K.thing = function (S, P, kind, x, y, o) {
     duck: { r: 0.26, mat: 'soft' }, bottle: { r: 0.2, mat: 'glass' }, valve: { r: 0.36, mat: 'metal' }, radio: { r: 0.36, mat: 'metal' },
     lock: { r: 0.28, mat: 'metal' }, tank: { r: 0.9, mat: 'metal' }, dish: { r: 0.7, mat: 'metal' }, alarmcar: { r: 0.0, mat: 'metal' },
     bulb: { r: 0.26, mat: 'glass' }, flare: { r: 0.36, mat: 'metal' }, horn: { r: 0.4, mat: 'metal' }, can: { r: 0.2, mat: 'metal' }, pot: { r: 0.3, mat: 'glass' }, rope: { r: 0.3, mat: 'soft' },
+    glint: { r: 0.35, mat: 'glass', breakable: true },
   };
   const d = defs[kind] || { r: 0.4, mat: 'metal' };
-  const ob = S.obj(Object.assign({ kind, plane: P, x, y, r: d.r, mat: d.mat, layer: 2, draw(ctx, env) { drawThing(ctx, env, S, ob); } }, o));
+  const ob = S.obj(Object.assign({ kind, plane: P, x, y, r: d.r, mat: d.mat, breakable: d.breakable, layer: 2, draw(ctx, env) { drawThing(ctx, env, S, ob); } }, o));
   return ob;
 };
 function drawThing(ctx, env, S, ob) {
   const P = ob.plane, x = ob.x, y = ob.y, k = ob.kind, live = ob.alive;
+  if (ob.drawFn) { ob.drawFn(ctx, env, S, ob); return; }
+  if (k === 'glint') { // a scope lens catching the light, now and then
+    if (!live) return; const u = (env.t * (ob.rate || 0.5) + (ob.phase || 0)) % 1; if (u > 0.16) return; const a = Math.sin((u / 0.16) * Math.PI), r = Math.max(0.5, env.px * 5) * a;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,255,255,' + a + ')'; ctx.lineWidth = Math.max(0.05, env.px * 1.2); ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.moveTo(x, y - r); ctx.lineTo(x, y + r); ctx.stroke(); circ(ctx, x, y, r * 0.3, 'rgba(255,255,255,' + a + ')'); ctx.restore(); return;
+  }
   if (k === 'barrel') {
     if (!live) { circ(ctx, x, y - 0.5, 0.9, 'rgba(10,10,12,0.5)'); return; }
     R4(ctx, x - 0.42, y - 0.62, 0.84, 1.24, S.tone(ob.col || '#c4372c', P)); R4(ctx, x - 0.42, y - 0.2, 0.84, 0.1, S.tone('#7d1f18', P)); R4(ctx, x - 0.42, y + 0.25, 0.84, 0.1, S.tone('#7d1f18', P));
@@ -1676,6 +1688,7 @@ const CARS = {
 };
 // Draw a vehicle centred on x, wheels on y. dir = 1 faces right.
 function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
+  if (CARS[kind].draw) { CARS[kind].draw(ctx, env, S, P, x, y, dir, colHex, st); return; }
   const c = CARS[kind], L = c.len, col = S.tone(colHex || '#30343c', P), dk = S.tone(darken(colHex || '#30343c', 0.3), P), gl = S.tone(S.pal.glass, P);
   ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
   if (c.train) {
@@ -1890,7 +1903,7 @@ Sim.prototype.emit = function (name) { this.emitted[name] = this.t; this.ev.push
 Sim.prototype.did = function (name) { return this.emitted[name] !== undefined; };
 Sim.prototype.msg = function (who, text, dur) { const m = { who, text, t: this.t, dur: dur || Math.max(4, text.length * 0.07) }; this.msgs.push(m); this.ev.push({ k: 'msg', who, text, dur: m.dur }); };
 Sim.prototype.after = function (sec, fn) { this.timers.push({ t: this.t + sec, fn }); };
-Sim.prototype.cover = function (sec, name) { this.coverUntil = Math.max(this.coverUntil, this.t + sec); this.coverName = name || 'noise'; this.ev.push({ k: 'cover', name: this.coverName, dur: sec }); };
+Sim.prototype.cover = function (sec, name) { this.coverUntil = Math.max(this.coverUntil, this.t + sec); this.coverName = name || 'noise'; if (name === 'thunder') this.flashT = this.t; this.ev.push({ k: 'cover', name: this.coverName, dur: sec }); };
 Sim.prototype.covered = function () { return this.t < this.coverUntil; };
 Sim.prototype.wind = function (t) {
   t = t === undefined ? this.t : t;
@@ -2114,6 +2127,7 @@ Sim.prototype.raiseAlarm = function (by, delay) {
   sim.alarmPending = true;
   sim.after(delay || 0, () => {
     if (sim.alarmT !== null) return;
+    if (sim.winAt && (by === 'explosion' || by === 'shot' || by === 'vehicle')) { sim.alarmPending = false; sim.lateAlarm = by; return; }
     sim.alarmT = sim.t; sim.alarmBy = by;
     sim.ev.push({ k: 'alarm', by });
     sim.emit('alarm');
@@ -2135,7 +2149,7 @@ Sim.prototype.canSee = function (o, x, y, zone) {
   else if (Math.abs(y - o.y) > 3.5) return false;
   const dx = x - o.x, adx = Math.abs(dx);
   const lit = S.isLit(zone, x);
-  const range = lit ? (o.role === 'guard' || o.state === 'susp' ? 32 : 24) * (o.eyes || 1) : 4;
+  const range = lit ? (o.role === 'guard' || o.state === 'susp' ? 32 : 24) * (o.eyes || 1) * (S.seeMul || 1) : 4;
   if (adx > range) return false;
   if (adx > 2.6 && sign(dx) !== o.face && o.state !== 'susp') return false;
   for (let i = 0; i < sim.steam.length; i++) { const s = sim.steam[i]; if (s.until > sim.t && s.x > Math.min(o.x, x) - 1 && s.x < Math.max(o.x, x) + 1) return false; }
@@ -2181,6 +2195,7 @@ Sim.prototype.stepActor = function (a, dt) {
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
   if (a.inVeh) { const v = a.inVeh, c = v.def; a.x = v.x + v.dir * c.seats[a.seat] * c.len; a.y = v.y + (c.body + c.h) / 2 - 1.2; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
     a.susp -= dt; a.anim = 'stand'; a.face = Math.sin(a.t * 3.4 + a.seed) > 0 ? 1 : -1;
@@ -2260,9 +2275,10 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
-  a.goal = null; a.threat = null; a.state = 'dead';
-  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident };
-  sim.kills.push(k);
+  const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
+  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
+    moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
+  sim.kills.push(k); a.goal = null;
   if (how === 'shot') { sim.stats.hits++; if (part === 'head') sim.stats.heads++; sim.stats.longest = Math.max(sim.stats.longest, k.range); }
   if (a.accident) sim.stats.accident++;
   sim.ev.push({ k: 'kill', id: a.id, part, how, x: a.x, y: a.y, plane: a.plane, role: a.role });
@@ -2274,6 +2290,7 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
     if (R.protect.indexOf(a.id) >= 0 || a.role === 'hostage' || a.role === 'vip') sim.fail('protect', a.failText || 'You killed the person you were there to protect.');
     else if (a.role === 'civ' && R.civFail) sim.fail('civ', a.failText || 'You shot a bystander. The contract is void.');
     else if (R.spare && R.spare.indexOf(a.id) >= 0) sim.fail('spare', a.failText || 'That one was not to be touched.');
+    else if (R.noKills && R.kill.indexOf(a.id) < 0) sim.fail('nokill', R.noKillsText || 'Nobody was supposed to die on this one.');
     else if (a.role === 'guard' && R.noGuards) sim.fail('guard', R.noGuardsText || 'The guards were off limits.');
     else if (R.accidentOnly && R.kill.indexOf(a.id) >= 0 && !a.accident) sim.fail('messy', R.accidentText || 'It had to look like an accident. A bullet hole does not.');
   } else if (R.protect.indexOf(a.id) >= 0 || a.role === 'hostage' || a.role === 'vip') {
@@ -2303,6 +2320,7 @@ Sim.prototype.woundActor = function (a, part, bullet) {
 Sim.prototype.stepVehicle = function (v, dt) {
   const sim = this;
   if (v.gone) return;
+  if (v.yFn) v.y = v.yFn(v.x);
   if (v.goal !== null) {
     const dx = v.goal - v.x; v.dir = sign(dx) || v.dir;
     const want = v.flatTire ? 0 : v.maxV;
@@ -2325,7 +2343,7 @@ Sim.prototype.stepVehicle = function (v, dt) {
     else if (op[0] === 'emit') sim.emit(op[1]);
     else if (op[0] === 'gone') { v.gone = true; sim.emit('gone:' + v.id); v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) sim.leave(a); }); return; }
     else if (op[0] === 'brake') { v.goal = v.x + v.dir * Math.max(2, v.v * 0.9); v.maxV = 0; v.flatTire = true; return; }
-    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, Object.assign({ x: v.x + (op[2] || 0), y: v.y, plane: v.plane, zone: op[3] || 'street' })); v.seats[a.seat] = null; } }
+    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, { x: v.x + (op[2] || 0), y: op[5] === undefined ? v.y : op[5], plane: op[4] || v.plane, zone: op[3] || 'street', room: null, behind: false }); v.seats[a.seat] = null; } }
     else if (op[0] === 'call') op[1](sim, v);
     else if (op[0] === 'loop') v.pc = op[1] || 0;
   }
@@ -2461,6 +2479,7 @@ Sim.prototype.scareVehicle = function (v) {
   const sim = this;
   if (v.scared) return; v.scared = true;
   sim.after(0.35, () => {
+    if (sim.winAt) return;
     let any = false; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) any = true; });
     if (!any) return;
     const drv = sim.byId[v.seats[0]];
@@ -2510,6 +2529,7 @@ Sim.prototype.hitObject = function (ob, b, bx, by) {
   } else if (k === 'radio' || k === 'dish') { if (ob.alive) { ob.alive = false; sim.radioDown = true; sim.ev.push({ k: 'spark', x: ob.x, y: ob.y, plane: P }); }
   } else if (k === 'lock') { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'clank', x: ob.x, y: ob.y, plane: P }); }
   } else if (k === 'flare') { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'flare', x: ob.x, y: ob.y, plane: P }); sim.actors.forEach((a) => { if (!a.dead && !a.gone && !a.room && Math.abs(a.x - ob.x) < (ob.lure || 30) && (a.state === 'calm')) { a.state = 'susp'; a.susp = 0.1; a.distractUntil = sim.t + 7; a.distractX = ob.x; } }); }
+  } else if (ob.breakable) { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'spark', x: ob.x, y: ob.y, plane: P }); }
   } else { sim.impact(b, bx, by, P, ob.mat || 'metal', { quiet: true }); }
   if (ob.alive === false || k === 'bell' || k === 'horn') sim.emit('obj:' + ob.id);
   if (ob.onHit) ob.onHit(sim, ob);
@@ -2850,7 +2870,8 @@ View.prototype.draw = function (sim, dt, simDt) {
     const zone = a.room && S.rooms[a.room] ? a.room : a.zone;
     const lit = S.isLit(zone, a.x);
     const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08 };
-    if (pal.dark > 0.5 && !lit) { e2.ink = '#04060a'; e2.rim = nv ? 'rgba(190,255,200,0.9)' : 'rgba(110,130,165,0.2)'; }
+    if (pal.dark > 0.5 && !lit) { e2.ink = '#04060a'; e2.rim = nv ? 'rgba(190,255,200,0.9)' : 'rgba(120,140,175,0.24)'; e2.dark = true; e2.dim = nv ? 0.25 : 0.72; }
+    else if (pal.dark > 0.5) e2.dark = true;
     else if (nv) e2.rim = 'rgba(190,255,200,0.75)';
     return e2;
   };
@@ -3220,6 +3241,21 @@ K.stall = function (S, P, x, col, o) {
   P.solid(x - 1.8, y, 3.6, 0.95, 'wood');
 };
 
+// An elevated railway running across the view. Street level shows underneath.
+K.viaduct = function (S, P, y, o) {
+  o = o || {}; const steel = S.tone(o.col || '#3c4250', P), dark = S.tone('#20242c', P), x0 = o.x0 || -200, x1 = o.x1 || 200, base = o.base || 0;
+  const pillars = o.pillars || [-42, -14, 14, 42];
+  P.add({ x0, x1, layer: 0, draw(ctx, env) {
+    for (let i = 0; i < pillars.length; i++) { const px = pillars[i]; R4(ctx, px - 0.6, base, 1.2, y - base, steel); R4(ctx, px - 1.5, y - 1.2, 3, 1.2, steel); R4(ctx, px - 1.0, base, 2, 0.5, dark); }
+    R4(ctx, x0, y, x1 - x0, 1.3, steel); R4(ctx, x0, y + 1.3, x1 - x0, 0.25, dark);
+    if (env.s > 1.5) { ctx.fillStyle = dark; const a = Math.floor(env.x0 / 2.5) * 2.5; for (let x = a; x < env.x1; x += 2.5) ctx.fillRect(x, y + 0.15, 0.22, 1.0); }
+  } });
+  P.add({ x0, x1, layer: 2, draw(ctx, env) { ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.07, env.px * 0.8); ctx.beginPath(); ctx.moveTo(x0, y + 2.5); ctx.lineTo(x1, y + 2.5); const a = Math.floor(env.x0 / 3) * 3; for (let x = a; x < env.x1; x += 3) { ctx.moveTo(x, y + 1.5); ctx.lineTo(x, y + 2.5); } ctx.stroke(); } });
+  pillars.forEach((px) => P.solid(px - 0.6, base, 1.2, y - base, 'hard'));
+  P.solid(x0, y, x1 - x0, 1.5, 'hard');
+  return { y: y + 1.55, P };
+};
+
 // ---- a city street: a row of tenements facing the shooter -------------------
 SCN.street = function (o) {
   o = o || {};
@@ -3246,12 +3282,13 @@ SCN.street = function (o) {
   const PS = S.plane(z, 'street');
   K.ground(S, PS, { col: mix(S.pal.ground, '#000000', 0.08), edge: '#c9ccd0' });
   H.PS = PS; H.lamps = [];
-  (o.lamps || [-27, -9, 9, 27]).forEach((lx, i) => H.lamps.push(K.lamp(S, PS, lx, 5.4, 'street', { id: 'lamp' + (i + 1) })));
+  (o.lamps || [-27, -9, 9, 27]).forEach((lx, i) => H.lamps.push(K.lamp(S, PS, lx, 5.4, 'street', { id: 'lamp' + (i + 1), reach: o.lampReach })));
   const PR = S.plane(z - 7, 'road');
   K.ground(S, PR, { col: S.pal.road, stripes: 2.2, noEdge: true });
   H.PR = PR;
-  (o.cars || [['sedan', -30, 1, '#7a2e2e'], ['van', 18, -1, '#d9dde2'], ['sedan', 33, 1, '#2f4a6b']]).forEach((c) => K.parked(S, PR, c[0], c[1], c[2], c[3], { y: 0 }));
+  (o.cars || [['sedan', -30, 1, '#7a2e2e'], ['van', 18, -1, '#d9dde2'], ['sedan', 34, 1, '#2f4a6b']]).forEach((c) => K.parked(S, PR, c[0], c[1], c[2], c[3], { y: 0 }));
   // something close by for depth: a flag on a nearer roof and a run of cable
+  if (o.el) { const PE = S.plane(z - 22, 'el'); H.el = K.viaduct(S, PE, o.el === true ? 9.5 : o.el, { pillars: o.elPillars }); H.PE = PE; }
   if (o.flag !== false) { const PF = S.plane(z * 0.62, 'near'); K.flag(S, PF, o.flagX === undefined ? -19 : o.flagX, 2, 8, o.flagCol || '#c0392b'); K.box(S, PF, (o.flagX === undefined ? -19 : o.flagX) - 9, -6, 13, 8, '#3a3f49', { band: 0.5 }); H.PF = PF; }
   H.street = (xx, extra) => Object.assign({ plane: PS, x: xx, y: 0, zone: 'street', behind: false, room: null }, extra || {});
   H.inWin = (B, f, c, dx, extra) => { const op = B.win(f, c); return Object.assign({ plane: B.P, x: B.winX(c) + (dx || 0), y: B.floorY(f), room: op.room, zone: op.room, behind: true }, extra || {}); };
@@ -3669,7 +3706,7 @@ Sfx.onEvent = function (e, sim) {
     case 'flare': Sfx.noise({ at: back(sim.S.refZ), type: 'bandpass', f: 2600, q: 0.6, dur: 5, att: 0.1, gain: 0.05 }); break;
     case 'cover': {
       const n = e.name;
-      if (n === 'thunder') { sim.flashT = sim.t; X.thunder(0.35); }
+      if (n === 'thunder') X.thunder(0.35);
       else if (n === 'train') X.train(e.dur + 1.5);
       else if (n === 'fireworks') X.fireworks(e.dur);
       else if (n === 'jackhammer' || n === 'drill') X.rattle(e.dur);
@@ -4101,7 +4138,7 @@ Game.buildHud = function () {
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
   h.strip = mk('h-strip');
   h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
-  h.sWind = mk('cell', '<i>WIND</i><b>--</b>', h.strip);
+  h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span>', h.strip);
   h.sZoom = mk('cell', '<i>ZOOM</i><b>3.0x</b>', h.strip);
@@ -4122,7 +4159,7 @@ Game.placeHud = function () {
   if (G.mode === 'portrait') {
     const sb = V.cy + V.R; // bottom of the scope
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
-    P(h.pills, { left: 0, right: 0, top: V.cy - V.R - 4, width: 'auto' });
+    P(h.pills, { left: 0, right: 0, top: V.cy - V.R + 10, width: 'auto' });
     P(h.msg, { left: 12, right: 12, top: sb + 64, width: 'auto', bottom: 'auto' });
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
@@ -4133,7 +4170,7 @@ Game.placeHud = function () {
   } else {
     const side = Math.max(120, V.cx - V.R - 20);
     P(h.strip, { left: 10, top: 'auto', bottom: 10, width: Math.min(side - 4, 230), right: 'auto' });
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: 6 });
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: V.cy - V.R + 12 });
     P(h.msg, { right: 10, top: 56, width: Math.min(side - 4, 280), left: 'auto', bottom: 'auto' });
     P(h.zoom, { left: 18, top: Math.max(120, Hh * 0.2), height: Math.min(190, Hh * 0.42), bottom: 'auto', right: 'auto' });
     P(h.fire, { right: 22, bottom: 22, width: 112, height: 112, left: 'auto', top: 'auto' });
@@ -4149,12 +4186,12 @@ Game.updateHud = function (dt) {
   const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
   set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + ' m' : 'sky') : 'by eye');
   const w = sim.wind(), aw = Math.abs(w);
-  set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1) + ' m/s'));
+  set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
   if ((A !== 'veteran' || st.scope.smart) && V.hold && V.hold.ok && r && r.d) {
     const up = V.hold.up, rt = V.hold.right;
     const us = Math.abs(up) < 0.15 ? 'dead on' : (up > 0 ? '&uarr;' : '&darr;') + fmt(Math.abs(up), 1);
-    const ws = Math.abs(rt) < 0.15 ? '' : ' &nbsp;' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
+    const ws = Math.abs(rt) < 0.15 ? '' : ' ' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
     hold = us + ws;
   } else if (V.hold && !V.hold.ok) hold = 'out of reach';
   set(h.sHold.lastChild, hold);
@@ -4423,6 +4460,16 @@ function say(at, who, text, dur) { return { at, do(sim) { sim.msg(who, text, dur
 function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', text, dur || 10); } }; }
 function onEv(ev, fn, delay) { return { on: ev, delay: delay || 0, do: fn }; }
 
+// A train that crosses on the elevated line every so often and drowns out
+// gunfire while it passes. Returns { vehicle, triggers }.
+function elTrain(H, o) {
+  o = o || {};
+  const period = o.period || 30, first = o.first === undefined ? 10 : o.first, speed = o.speed || 17;
+  const veh = { id: 'eltrain', kind: 'train', plane: H.PE, x: -160, y: H.el.y, dir: 1, col: o.col || '#56606e', routine: [] };
+  const trig = { at: first, every: period, do(sim) { const v = sim.byId.eltrain; v.x = -150; v.gone = false; v.routine = [['drive', 150, speed]]; v.pc = 0; v.goal = null; v.wait = 0; sim.after(2.2, () => sim.cover(o.cover || 9, 'train')); } };
+  return { veh, trig };
+}
+
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
   if (M.range && st.eff < M.range) return 'Not enough reach: this job is at ' + M.range + ' m.';
@@ -4442,28 +4489,265 @@ CB.MISSIONS = MISSIONS;
 // ===== 31_missions_ch1.js =====
 // ---------------------------------------------------------------------------
 // Chapter 1: COLD START. Port Calder, the Brickworks district.
+// The Calloway crew's street business, taken apart one job at a time.
 // ---------------------------------------------------------------------------
 mission({
   id: 'c1m1', ch: 1, title: 'Rent Day', range: 160,
   objective: 'Find the collector with the red hat band. One shot.',
-  brief: 'Welcome back to work, Kestrel. Easy one to start. A collector for the Calloway crew works Brickworks every Friday, taking "rent" from shopkeepers who never agreed to a landlord. Tonight is his last round. He wears a hat with a red band and never lets go of his case. Wait until he is alone under a street lamp or nobody is looking his way. Do not hit anyone else.',
+  brief: 'Welcome back to work, Kestrel. An easy one to start. A collector for the Calloway crew walks Brickworks every Friday, taking "rent" from shopkeepers who never agreed to a landlord. Tonight is his last round. He wears a hat with a red band and never lets go of his case. Take him when nobody is looking his way. Hit anyone else and the contract is void.',
   intel: ['Grey coat, dark hat with a RED band, brown case.', 'He stops for a cigarette outside the deli.', 'Range about 160 m. No wind to speak of.'],
   wind: { v: 0.4, gust: 0.4 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Tannery roof', desc: 'Straight across the street. Clear view.', eye: [0, 16, 0] }],
   look: [10, 3],
-  setup(K2) { return SCN.street({ z: 155, time: 'dusk', seed: 3 }); },
+  setup() { const H = SCN.street({ z: 155, time: 'dusk', seed: 3 }); K.thing(H.S, H.PB, 'duck', H.b2.x + 4.2, H.b2.roofY + 1.15); return H; },
   cast(H) {
     return [
       Object.assign(H.street(44), { id: 't', role: 'target', face: -1, look: { hat: 'fedora', hatCol: '#22252b', hatBand: COL.red, coat: COL.grey, long: true, bag: 'case' },
-        routine: [['walk', 14], ['wait', 9, 'smoke'], ['walk', -8], ['wait', 5, 'phone'], ['walk', -30], ['wait', 3], ['walk', -48], ['gone']] }),
+        routine: [['walk', 14], ['wait', 9, 'smoke'], ['walk', -8], ['wait', 5, 'phone'], ['walk', -30], ['wait', 3], ['walk', -48], ['gone']], escapeText: 'He finished his round and went home. He will be more careful next Friday.' }),
       Object.assign(H.street(-12), { id: 'c1', role: 'civ', look: { hat: 'fedora', hatCol: '#5a4634', coat: COL.tan, bag: 'paper' }, anim: 'stand', routine: [['wait', 14, 'stand'], ['walk', -46], ['gone']] }),
       Object.assign(H.street(25), { id: 'c2', role: 'civ', look: { hair: 'long', dress: COL.wine, bag: 'shopping' }, face: -1, routine: [['wait', 4, 'phone'], ['walk', 46], ['gone']] }),
     ];
   },
-  triggers(H) { return [hint(1, 'Drag to move the scope. Slide ZOOM up to look closer. Find the man with the red hat band.'), hint(13, 'The crosshair drifts as you breathe. Tap HOLD BREATH to steady it, then FIRE.')]; },
+  triggers() { return [
+    hint(1, 'Drag anywhere to move the scope. Slide ZOOM up to look closer. Find the man with the red hat band.'),
+    hint(13, 'The crosshair drifts as you breathe. Tap HOLD BREATH to steady it for a few seconds, then FIRE.'),
+    say(24, 'Marlow', 'If someone sees him fall, you lose the clean rating. Pick a moment when he is alone.'),
+  ]; },
   challenge: { id: 'head', text: 'Finish it with a headshot', test: (sim) => sim.kills.some((k) => k.id === 't' && k.part === 'head') },
   solve: [['wait', 18], ['shoot', 't', 'head']],
   reward: { cr: 500, xp: 150 },
+});
+
+mission({
+  id: 'c1m2', ch: 1, title: 'Lights Out', range: 160,
+  objective: 'The bagman in the blue cap. Take him where the lookouts cannot see.',
+  brief: 'The collector\'s money went to a bagman who walks it across Brickworks after dark. Blue cap, green duffel. Two Calloway lookouts stand under the street lamps at either end, and a man who drops in the light will be seen. The dark stretches between the lamps are a different story. If your rifle is quiet, you can also make your own dark.',
+  intel: ['Blue cap, green duffel bag.', 'Lookouts under the first and last lamp. They see about 30 m, but only into the light.', 'He stops for a smoke in the dark between lamps.'],
+  wind: { v: -0.6, gust: 0.5 }, par: 2, rules: { kill: ['t'] },
+  vantages: [{ name: 'Tannery roof', desc: 'Straight across the street.', eye: [0, 16, 0] }],
+  look: [14, 3],
+  setup() {
+    const H = SCN.street({ z: 152, time: 'night', seed: 5, lamps: [-24, 0, 24], lampReach: 7, cars: [['sedan', -35, 1, '#3a3f49'], ['van', 36, -1, '#6b6f76']] });
+    K.thing(H.S, H.PS, 'duck', -39.2, 0.25);
+    return H;
+  },
+  cast(H) {
+    return [
+      Object.assign(H.street(47), { id: 't', role: 'target', face: -1, look: { hat: 'cap', hatCol: '#3f6fb0', bag: 'duffel', bagCol: '#5d7a4a', coat: '#39404a' },
+        routine: [['walk', 12.5], ['wait', 8, 'smoke'], ['walk', 1.5], ['wait', 7, 'phone'], ['walk', -12], ['wait', 7, 'smoke'], ['walk', -47], ['gone']], escapeText: 'The money made it across. The Calloways will not use that route again.' }),
+      Object.assign(H.street(-25.5), { id: 'g1', role: 'guard', face: 1, anim: 'arms', look: { hat: 'beanie', coat: '#3a2f2a', build: 'big' }, routine: [['wait', 999, 'arms', 1]] }),
+      Object.assign(H.street(27.5), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { hat: 'beanie', hatCol: '#5a2a2a', coat: '#2a333a' }, routine: [['wait', 999, 'arms', -1]] }),
+      Object.assign(H.street(-46), { id: 'c1', role: 'civ', look: { hair: 'short', bag: 'duffel', bagCol: '#8a5a3a', coat: COL.tan }, routine: stroll(47), speed: 1.15 }),
+    ];
+  },
+  triggers() { return [
+    hint(1.5, 'At night a body in lamp light is seen from far away. In the dark between lamps it is not. Wait for him to stop in the dark.'),
+    say(20, 'Marlow', 'A quiet rifle could put a lamp out first. A loud one would wake the street.'),
+  ]; },
+  challenge: { id: 'lamp', text: 'Shoot out a lamp first, then take him without an alarm', test: (sim, res) => res.clean && sim.S.objects.some((o) => o.kind === 'lamp' && !o.alive) },
+  solve: [['until', (s) => s.byId.t.anim === 'smoke' && s.byId.t.goal === null && s.byId.t.x > 10], ['wait', 1], ['shoot', 't', 'torso']],
+  reward: { cr: 600, xp: 170 },
+});
+
+mission({
+  id: 'c1m3', ch: 1, title: 'Thunder', range: 160,
+  objective: 'Two men: yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
+  brief: 'The Calloways moved their dice game and posted two spotters to watch for trouble. One on the roof in a yellow raincoat, one at the laundry door under a red umbrella. If either hears a shot, the game scatters and we start again. There is a storm over the harbour. Thunder is loud, and it is yours to use: fire inside it and nobody hears a thing.',
+  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.'],
+  wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },
+  vantages: [{ name: 'Tannery roof', desc: 'Straight across. Wet, but level.', eye: [0, 18, 0] }],
+  look: [-10, 8],
+  setup() { const H = SCN.street({ z: 150, time: 'night', weather: 'rain', seed: 8 }); K.thing(H.S, H.PB, 'duck', H.b5.winX(2), H.b5.floorY(4) + 1.15, { }); return H; },
+  cast(H) {
+    return [
+      Object.assign(H.onRoof(H.b3, -3), { id: 't1', role: 'target', look: { coat: '#d8b52a', long: true, hat: 'hood', hatCol: '#d8b52a' }, anim: 'look',
+        routine: [['wait', 6, 'look', -1], ['walk', 6], ['wait', 6, 'look', 1], ['walk', -4], ['loop']], escapeText: 'The roof spotter ducked out of sight and the game scattered.' }),
+      Object.assign(H.street(-16), { id: 't2', role: 'target', face: 1, look: { bag: 'umbrella', bagCol: COL.red, coat: '#2f3640' }, routine: [['wait', 999, 'smoke', 1]], escapeText: 'The street spotter ran and the game scattered.' }),
+    ];
+  },
+  triggers(H) {
+    let n = 0;
+    return [
+      { at: 5, every: 11, do(sim) { sim.cover(2.7, 'thunder'); } },
+      { at: 2, every: 13, do(sim) { if (sim.alarmT !== null) return; const R = sim.rng, dir = n % 2 ? 1 : -1; sim.addActor(Object.assign(H.street(dir > 0 ? -47 : 47), { id: 'u' + (n++), role: 'civ', look: Object.assign(rndLook(R), { bag: 'umbrella', bagCol: R.pick([COL.blue, COL.black, COL.green, COL.purple, COL.cream]) }), routine: stroll(dir > 0 ? 47 : -47), speed: R.r(0.95, 1.2) })); } },
+      hint(1.5, 'An unsuppressed shot is heard by everyone. When lightning flashes, the thunder that follows covers your shot. Fire while NOISE COVER is lit.'),
+    ];
+  },
+  challenge: { id: 'roll', text: 'Both spotters inside three seconds', test: (sim) => { const a = sim.kills.find((k) => k.id === 't1'), b = sim.kills.find((k) => k.id === 't2'); return !!a && !!b && Math.abs(a.t - b.t) <= 3; } },
+  solve(H, st) {
+    const lead = st.action === 'charge' ? 1.9 : 1.2;
+    const cov = (s) => st.quiet || (s.covered() && s.coverUntil - s.t > lead);
+    const clear = (s) => !s.actors.some((a) => a.role === 'civ' && !a.gone && !a.dead && Math.abs(a.x - s.byId.t2.x) < 28);
+    return [['until', cov], ['shoot', 't1', 'torso'], ['wait', 0.5], ['until', (s) => cov(s) && clear(s)], ['shoot', 't2', 'torso']];
+  },
+  reward: { cr: 750, xp: 190 },
+});
+
+mission({
+  id: 'c1m4', ch: 1, title: 'Piano Movers', range: 150,
+  objective: 'The landlord in the white suit. It has to look like an accident.',
+  brief: 'Emil Voss owns half of Brickworks and rents the other half from the Calloways. He burned a building for the insurance with a family still inside it. The client wants him gone, and wants no questions. No bullet holes. He is having a piano hoisted into his new office today, and he likes to stand underneath and shout at the men. Hooks fail all the time.',
+  intel: ['White suit, straw hat, cane.', 'Shoot the yellow hook block above the piano. It takes over a second to fall.', 'The movers are innocent. If one is underneath, wait.', 'The road crew\'s jackhammer will cover a loud shot.'],
+  wind: { v: 1.0, gust: 0.8 }, par: 1,
+  rules: { kill: ['t'], accidentOnly: true, accidentText: 'A man in a white suit with a bullet in him is a murder inquiry. It had to look like an accident.' },
+  vantages: [{ name: 'Print works roof', desc: 'Across the street, a little above the hoist.', eye: [0, 17, 0] }],
+  look: [0, 9],
+  setup() {
+    const H = SCN.street({ z: 140, time: 'day', seed: 11, cars: [['truck', -27, 1, '#c9482b'], ['sedan', 33, -1, '#3f5a48']] });
+    K.box(H.S, H.PB, -2, H.b3.roofY + 0.9, 4, 0.55, '#2a2e36', { solid: false });
+    H.hook = K.hang(H.S, H.PS, 0, 12.5, 'piano', { id: 'hook', top: H.b3.roofY + 1.2, floor: 0 });
+    K.thing(H.S, H.PR, 'duck', -27, 3.25);
+    return H;
+  },
+  cast(H) {
+    return [
+      Object.assign(H.street(6.5), { id: 't', role: 'target', face: -1, look: { coat: COL.cream, long: true, hat: 'sun', hatCol: '#efe6cf', hatBand: '#22252b', bag: 'cane' },
+        routine: [['wait', 5, 'talk', -1], ['walk', 0.4], ['wait', 4.6, 'point', -1], ['walk', 6.5], ['wait', 1, 'stand', -1], ['loop']] }),
+      Object.assign(H.street(-5), { id: 'm1', role: 'civ', face: 1, look: { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' }, routine: [['wait', 999, 'work', 1]] }),
+      Object.assign(H.street(-12), { id: 'm2', role: 'civ', face: 1, look: { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2', build: 'big' },
+        routine: [['wait', 4, 'work'], ['walk', -0.8], ['wait', 3, 'look', 1], ['walk', -12], ['loop']] }),
+      Object.assign(H.street(10.5), { id: 'c1', role: 'civ', face: -1, look: { hat: 'hardhat', hatCol: '#ece8dc', bag: 'clip', coat: COL.navy }, routine: [['wait', 999, 'stand', -1]] }),
+      Object.assign(H.street(25), { id: 'c2', role: 'civ', face: 1, look: { hat: 'hardhat', hatCol: '#e07b2a', vest: '#e2b33c', phones: '#c8372d' }, routine: [['wait', 999, 'work', 1]] }),
+    ];
+  },
+  triggers() { return [
+    { at: 3, every: 12, do(sim) { sim.cover(8, 'jackhammer'); } },
+    hint(1.5, 'Some things in the scene can be shot to make something else happen. Wait until only the man in white is under the piano, then shoot the yellow hook block.'),
+  ]; },
+  challenge: { id: 'nobreath', text: 'Hit the hook without holding your breath', test: (sim) => !sim.stats.breathUsed },
+  solve(H, st) {
+    const need = st.action === 'charge' ? 3.4 : 2.5;
+    return [['until', (s) => { const t = s.byId.t, m = s.byId.m2; return t.goal === null && Math.abs(t.x - 0.4) < 0.3 && t.wait > need && Math.abs(m.x) > 6 && (st.quiet || (s.covered() && s.coverUntil - s.t > need - 1)); }], ['shootObj', 'hook']];
+  },
+  reward: { cr: 800, xp: 200 },
+});
+
+mission({
+  id: 'c1m5', ch: 1, title: 'The 9:15', range: 170, needs: { glass: true },
+  objective: 'White hat, dark glasses, back seat. The car stops once and not for long.',
+  brief: 'The Calloway lawyer never walks anywhere. Every evening at a quarter past nine his car pulls up outside the deli for a few seconds while a runner passes an envelope through the window. That is the only time he is ever still. He sits in the back. White hat, dark glasses. The driver is hired help; leave him if you can. When the car pulls away the chance is gone.',
+  intel: ['Target is in the BACK seat. The driver is in front.', 'The car stops for about eight seconds.', 'Window glass nudges a bullet slightly off line. Aim for the middle of the head.', 'A flat tyre would also stop a car.'],
+  wind: { v: -1.2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
+  vantages: [{ name: 'Tannery roof', desc: 'Looking down into the car windows.', eye: [0, 15, 0] }],
+  look: [-6, 2],
+  setup() { const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] }); K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42); return H; },
+  cast(H) {
+    return [
+      { id: 'drv', role: 'guard', look: { hat: 'peaked', hatCol: '#1d2026' } },
+      { id: 't', role: 'target', look: { hat: 'fedora', hatCol: '#ece8dc', hatBand: '#22252b', glasses: 'shades' }, escapeText: 'The car pulled away with him in it. Same time tomorrow, then.' },
+      Object.assign(H.street(2), { id: 'c1', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#7a2438', bag: 'paper' }, routine: [['waitFor', 'parked'], ['walk', 0], ['wait', 6, 'talk', -1], ['walk', 47], ['gone']] }),
+      Object.assign(H.street(-30), { id: 'c2', role: 'civ', look: { hair: 'bun', dress: COL.teal, bag: 'shopping' }, routine: stroll(47), speed: 0.9 }),
+    ];
+  },
+  vehicles(H) {
+    return [{ id: 'car', kind: 'sedan', plane: H.PR, x: -78, y: 0, dir: 1, col: '#101216', seats: ['drv', 't'],
+      routine: [['wait', 4], ['drive', -5, 9], ['emit', 'parked'], ['wait', 8.5], ['emit', 'leaving'], ['drive', 95, 10], ['gone']] }];
+  },
+  triggers(H) { return [
+    hint(1.5, 'A car is coming from the left. It will stop outside the deli. The man you want is in the back seat.'),
+    onEv('leaving', (sim) => sim.msg('Marlow', 'He is moving. Lead him or let him go.')),
+    { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead) return; a.inVeh = null; a.hidden = false; sim.place(a, { plane: H.PS, x: sim.byId.car.x - 1.5, y: 0, zone: 'street', room: null, behind: false }); a.anim = a.idle = 'stand'; a.state = 'flee'; a.routine = [['run', -50], ['gone']]; a.pc = 0; sim.raiseAlarm('target', 0.3); } },
+  ]; },
+  challenge: { id: 'moving', text: 'Hit him while the car is moving', test: (sim) => sim.kills.some((k) => k.id === 't' && k.moving) },
+  solve: [['until', (s) => s.did('parked')], ['wait', 0.7], ['shoot', 't', 'head']],
+  reward: { cr: 900, xp: 220 },
+});
+
+mission({
+  id: 'c1m6', ch: 1, title: 'The Counting House', range: 160,
+  objective: 'The bookkeeper in the green eyeshade, third floor. His guard must not raise the alarm.',
+  brief: 'Every dollar the Calloways take in Brickworks is counted in one room, by one man, who keeps the only honest set of books in the city. Third floor of the grey building, the lit room. He wears a green eyeshade and never leaves his desk for long. There is a guard in the room with him who steps out to the balcony to smoke. A guard who is outside cannot see what happens inside. You have a choice of where to set up.',
+  intel: ['Bookkeeper: GREEN eyeshade, glasses, sits at the middle window (it is open).', 'The guard smokes on the balcony for about ten seconds at a time.', 'Tannery roof: close, but a billboard hides the balcony.', 'Water tower: sees everything, but it is 80 m further and catches the wind.'],
+  wind: { v: 2.4, gust: 1.2 }, par: 1, rules: { kill: ['t'] },
+  vantages: [
+    { name: 'Tannery roof', desc: '150 m. Steady and close. A billboard blocks your view of the balcony.', eye: [0, 16, 0], windMul: 0.5, tag: 'Easier shot' },
+    { name: 'Water tower', desc: '235 m. Clear view of the room and the balcony. Exposed to the crosswind.', eye: [-60, 24, -80], windMul: 1.5, tag: 'Harder shot, more options' },
+  ],
+  look: [1, 11],
+  setup() {
+    const row = [
+      { w: 17, floors: 5, wall: '#8a5444', tank: 0.7 },
+      { w: 15, floors: 4, wall: '#a0876e', shop: { sign: 'LAUNDRY', awning: '#3b6ea5' }, antenna: 0.3 },
+      { w: 19, floors: 6, wall: '#6d727c', hut: 0.15, door: 2, spans: { 3: [[1, 3, 'count', true]] }, wins: { '3,1': { blind: 0 }, '3,2': { blind: 0, open: true }, '3,3': { blind: 0 }, '3,4': { lit: false, blind: 0, door: true, sill: 0.1, h: 2.3 }, '3,0': { lit: false } } },
+      { w: 14, floors: 4, wall: '#94614c', shop: { sign: 'DELI', awning: '#b33a3a', door: true } },
+      { w: 16, floors: 5, wall: '#7c6a5a', tank: 0.3 },
+    ];
+    const H = SCN.street({ z: 150, time: 'night', seed: 17, row });
+    H.bal = K.balcony(H.S, H.PB, H.b3, 3, 4);
+    K.box(H.S, H.PF, -2, -6, 13, 8, '#343a44', { band: 0.5 });
+    K.billboard(H.S, H.PF, 3.2, 11.2, 4.8, 3.9, 'CALDER|COLA', { base: 2, col: '#e9dcc0', textCol: '#b3312b' });
+    K.thing(H.S, H.PF, 'duck', 5.6, 15.4);
+    H.room = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: 'b3:count', zone: 'b3:count', behind: true });
+    H.out = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: null, zone: H.bal.zone, behind: false });
+    return H;
+  },
+  cast(H) {
+    const B = H.b3;
+    return [
+      Object.assign(H.room(B.winX(2)), { id: 't', role: 'target', face: -1, anim: 'type', look: { hat: 'cap', hatCol: '#2f9a55', glasses: true },
+        routine: [['wait', 15, 'type', -1], ['walk', B.winX(1)], ['wait', 4, 'work', -1], ['walk', B.winX(2)], ['loop']], escapeText: 'The bookkeeper went under the desk and the books went into the furnace.' }),
+      Object.assign(H.room(B.winX(3) - 0.5), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { coat: '#3a2f2a', build: 'big', hat: 'beanie' },
+        routine: [['walk', B.winX(1) - 0.8], ['wait', 3, 'guard', 1], ['walk', B.winX(3)], ['wait', 2, 'guard', -1], ['walk', B.winX(3) + 1.4], ['to', H.out(B.winX(4) - 1.0)], ['walk', B.winX(4) + 0.3], ['wait', 10.5, 'smoke', 1], ['walk', B.winX(4) - 1.0], ['to', H.room(B.winX(3) + 1.4)], ['loop']] }),
+      Object.assign(H.inWin(H.b2, 2, 1), { id: 'c1', role: 'civ', anim: 'phone', look: { hair: 'long', dress: COL.wine }, routine: [['wait', 999, 'phone']] }),
+      Object.assign(H.inWin(H.b5, 3, 2), { id: 'c2', role: 'civ', anim: 'drink', look: { hair: 'short', coat: COL.olive }, routine: pace(H.b5.winX(2) - 1.2, H.b5.winX(2) + 0.4, 6, 5, 'drink') }),
+      Object.assign(H.street(-45), { id: 'c3', role: 'civ', look: { hat: 'beanie', bag: 'backpack' }, routine: stroll(47) }),
+    ];
+  },
+  onAlarm(sim) { sim.msg('Marlow', 'They are burning the books. That was the job.'); },
+  triggers() { return [
+    hint(1.5, 'The guard and the bookkeeper share a room. Wait until the guard steps out to the balcony, then take the bookkeeper through the open middle window.'),
+  ]; },
+  challenge: { id: 'both', text: 'Guard and bookkeeper, with no alarm (try the water tower)', test: (sim, res) => res.clean && sim.kills.some((k) => k.id === 'g') },
+  solve: [['until', (s) => s.byId.g.zone !== 'b3:count' && s.byId.g.anim === 'smoke' && s.byId.t.anim === 'type' && s.byId.t.goal === null], ['wait', 0.6], ['shoot', 't', 'head']],
+  reward: { cr: 1000, xp: 240 },
+});
+
+mission({
+  id: 'c1m7', ch: 1, title: 'Dutch', range: 168,
+  objective: 'Dutch Pell: the big bald man with the red scarf. Do not touch the detective.',
+  brief: 'This is the one the chapter was for. Dutch Pell runs the street for the Calloways and has for twenty years. Tonight he meets a bent police sergeant under the elevated line to pay him. He comes with a bodyguard and he never stands in the light for long without one. But he takes his private calls in private. One more thing. A detective named Varga is watching the meeting from a parked car at the right-hand end of the street. She is honest, which is rare, and she is not part of this. If she is harmed, we are finished.',
+  intel: ['Dutch: very big, bald, grey beard, long black coat, RED scarf.', 'He will step away into the dark to take a phone call. His phone lights his face.', 'The sergeant in the police cap is NOT a target.', 'Trains on the elevated line cover a loud shot.', 'Detective Varga is in the parked car on the right. Leave her alone.'],
+  wind: { v: 1.8, gust: 1.5 }, par: 1, rules: { kill: ['dutch'], protect: ['varga'] },
+  vantages: [{ name: 'Signal box roof', desc: 'Level with the tracks, looking under the elevated line.', eye: [0, 15, 0] }],
+  look: [2, 3],
+  setup() {
+    const H = SCN.street({ z: 165, time: 'night', seed: 21, lamps: [-24, 0, 26], lampReach: 7, cars: [], el: 9.5,
+      row: [{ w: 17, floors: 5, wall: '#7d4a40' }, { w: 15, floors: 4, wall: '#8f7a66', shop: { sign: 'BILLIARDS', awning: '#2f6b4a', lit: true } }, { w: 19, floors: 6, wall: '#5f646e', door: 2 }, { w: 14, floors: 4, wall: '#86584a', shop: { sign: 'PAWN', awning: '#8a6a2a', door: true, lit: false } }, { w: 16, floors: 5, wall: '#6f6052' }] });
+    K.neon(H.S, H.PB, H.b2.x + 7.5, H.b2.floorY(1) + 0.9, 'OPEN LATE', '#ff5a8a', 0.8);
+    K.thing(H.S, H.PE, 'duck', -14, H.el.y + 1.2);
+    return H;
+  },
+  cast(H) {
+    return [
+      { id: 'drv', role: 'guard', look: { hat: 'cap' } },
+      { id: 'dutch', role: 'target', look: { build: 'big', beard: '#9a9fa6', coat: '#15171b', long: true, scarf: COL.red, h: 1.08 },
+        routine: [['walk', 2.2], ['wait', 11, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -9.5], ['emit', 'dutch_in'], ['veh', 'suv', 1]], escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
+      { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big' },
+        routine: [['walk', -0.8], ['wait', 12, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -11.5], ['veh', 'suv', 2]] },
+      Object.assign(H.street(3.8), { id: 'sgt', role: 'civ', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, failText: 'You shot a police sergeant. Every officer in Port Calder is now looking for you.',
+        routine: [['waitFor', 'arrived'], ['wait', 21.5, 'talk', -1], ['walk', -47], ['gone']] }),
+      Object.assign(H.street(27.5), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#39404a' }, routine: [['wait', 999, 'arms', -1]] }),
+      { id: 'varga', role: 'vip', look: { hair: 'bun', hairCol: '#2a2019', glasses: true }, failText: 'You shot Detective Varga. The Ledger has cut you loose.' },
+    ];
+  },
+  vehicles(H) {
+    const t = elTrain(H, { first: 12, period: 25 });
+    H._train = t;
+    return [
+      { id: 'suv', kind: 'suv', plane: H.PR, x: -80, y: 0, dir: 1, col: '#0e0f12', seats: ['drv', 'dutch', 'g1'],
+        routine: [['wait', 5], ['drive', -12, 9], ['emit', 'arrived'], ['wait', 1.2], ['out', 'dutch', 3, 'street', H.PS, 0], ['out', 'g1', 1, 'street', H.PS, 0], ['waitFor', 'dutch_in'], ['wait', 1.6], ['drive', 95, 11], ['gone']] },
+      { id: 'vcar', kind: 'sedan', plane: H.PR, x: 35, y: 0, dir: -1, col: '#3a3f49', seats: ['varga'], routine: [] },
+      t.veh,
+    ];
+  },
+  triggers(H) { return [
+    H._train.trig,
+    say(2, 'Marlow', 'Car coming from the left. Wait for him. Let him get comfortable.'),
+    onEv('arrived', (sim) => sim.msg('Marlow', 'That is Pell. Red scarf. The man in the police cap is the sergeant. Not him.'), 3),
+  ]; },
+  challenge: { id: 'darkhead', text: 'A headshot in the dark, and nobody the wiser', test: (sim, res) => res.clean && sim.kills.some((k) => k.id === 'dutch' && k.part === 'head' && !k.lit) },
+  solve: [['until', (s) => s.byId.dutch.anim === 'phone' && s.byId.dutch.goal === null && !s.byId.dutch.inVeh], ['wait', 1.5], ['shoot', 'dutch', 'torso']],
+  reward: { cr: 1400, xp: 320 },
 });
 
 
@@ -4529,7 +4813,7 @@ Test.run = function (missionId, gunId, o) {
       if (k === 'fn') { c[1](sim, sim.A); cur = null; continue; }
       if (k === 'hold') { sim.holdBreath(true); cur = null; continue; }
       if (k === 'dial') { const steps = Math.round((c[1] - sim.sh.zeroR) / 25); for (let i = 0; i < Math.abs(steps); i++) sim.dial(sign(steps)); cur = null; continue; }
-      if (k === 'shoot' || k === 'shootObj' || k === 'shootAt') {
+      if (k === 'shoot' || k === 'shootObj' || k === 'shootAt' || k === 'shootPt') {
         if (c._fired) { // wait for the round to land (unless told not to)
           const b = c._bullet;
           if ((c[3] && c[3].nowait) || !b || !b.alive) {
@@ -4551,6 +4835,7 @@ Test.run = function (missionId, gunId, o) {
         } else if (k === 'shootObj') {
           const ob = objById(c[1]); if (!ob) { log.push('no object ' + c[1]); cur = null; continue; }
           pt = { x: ob.x, y: ob.y, z: ob.plane.z };
+        } else if (k === 'shootPt') { pt = c[1](sim, sim.A); if (!pt) { if (sim.t - c._t0 > 60) { log.push('shootPt never had a point'); cur = null; continue; } break; } if (pt.vx) lead = { vx: pt.vx, extra: st.action === 'charge' ? (c._charging ? Math.max(0, sim.sh.chargeT) : 0.85) : 0 };
         } else pt = { x: c[1], y: c[2], z: c[3].z || c[3] };
         aimAt(pt, lead);
         const sh = sim.sh;

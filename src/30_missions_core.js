@@ -47,6 +47,16 @@ function say(at, who, text, dur) { return { at, do(sim) { sim.msg(who, text, dur
 function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', text, dur || 10); } }; }
 function onEv(ev, fn, delay) { return { on: ev, delay: delay || 0, do: fn }; }
 
+// A train that crosses on the elevated line every so often and drowns out
+// gunfire while it passes. Returns { vehicle, triggers }.
+function elTrain(H, o) {
+  o = o || {};
+  const period = o.period || 30, first = o.first === undefined ? 10 : o.first, speed = o.speed || 17;
+  const veh = { id: 'eltrain', kind: 'train', plane: H.PE, x: -160, y: H.el.y, dir: 1, col: o.col || '#56606e', routine: [] };
+  const trig = { at: first, every: period, do(sim) { const v = sim.byId.eltrain; v.x = -150; v.gone = false; v.routine = [['drive', 150, speed]]; v.pc = 0; v.goal = null; v.wait = 0; sim.after(2.2, () => sim.cover(o.cover || 9, 'train')); } };
+  return { veh, trig };
+}
+
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
   if (M.range && st.eff < M.range) return 'Not enough reach: this job is at ' + M.range + ' m.';

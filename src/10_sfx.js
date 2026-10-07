@@ -346,7 +346,7 @@ Sfx.onEvent = function (e, sim) {
     case 'flare': Sfx.noise({ at: back(sim.S.refZ), type: 'bandpass', f: 2600, q: 0.6, dur: 5, att: 0.1, gain: 0.05 }); break;
     case 'cover': {
       const n = e.name;
-      if (n === 'thunder') { sim.flashT = sim.t; X.thunder(0.35); }
+      if (n === 'thunder') X.thunder(0.35);
       else if (n === 'train') X.train(e.dur + 1.5);
       else if (n === 'fireworks') X.fireworks(e.dur);
       else if (n === 'jackhammer' || n === 'drill') X.rattle(e.dur);

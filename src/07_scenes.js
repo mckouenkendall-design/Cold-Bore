@@ -57,6 +57,21 @@ K.stall = function (S, P, x, col, o) {
   P.solid(x - 1.8, y, 3.6, 0.95, 'wood');
 };
 
+// An elevated railway running across the view. Street level shows underneath.
+K.viaduct = function (S, P, y, o) {
+  o = o || {}; const steel = S.tone(o.col || '#3c4250', P), dark = S.tone('#20242c', P), x0 = o.x0 || -200, x1 = o.x1 || 200, base = o.base || 0;
+  const pillars = o.pillars || [-42, -14, 14, 42];
+  P.add({ x0, x1, layer: 0, draw(ctx, env) {
+    for (let i = 0; i < pillars.length; i++) { const px = pillars[i]; R4(ctx, px - 0.6, base, 1.2, y - base, steel); R4(ctx, px - 1.5, y - 1.2, 3, 1.2, steel); R4(ctx, px - 1.0, base, 2, 0.5, dark); }
+    R4(ctx, x0, y, x1 - x0, 1.3, steel); R4(ctx, x0, y + 1.3, x1 - x0, 0.25, dark);
+    if (env.s > 1.5) { ctx.fillStyle = dark; const a = Math.floor(env.x0 / 2.5) * 2.5; for (let x = a; x < env.x1; x += 2.5) ctx.fillRect(x, y + 0.15, 0.22, 1.0); }
+  } });
+  P.add({ x0, x1, layer: 2, draw(ctx, env) { ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.07, env.px * 0.8); ctx.beginPath(); ctx.moveTo(x0, y + 2.5); ctx.lineTo(x1, y + 2.5); const a = Math.floor(env.x0 / 3) * 3; for (let x = a; x < env.x1; x += 3) { ctx.moveTo(x, y + 1.5); ctx.lineTo(x, y + 2.5); } ctx.stroke(); } });
+  pillars.forEach((px) => P.solid(px - 0.6, base, 1.2, y - base, 'hard'));
+  P.solid(x0, y, x1 - x0, 1.5, 'hard');
+  return { y: y + 1.55, P };
+};
+
 // ---- a city street: a row of tenements facing the shooter -------------------
 SCN.street = function (o) {
   o = o || {};
@@ -83,12 +98,13 @@ SCN.street = function (o) {
   const PS = S.plane(z, 'street');
   K.ground(S, PS, { col: mix(S.pal.ground, '#000000', 0.08), edge: '#c9ccd0' });
   H.PS = PS; H.lamps = [];
-  (o.lamps || [-27, -9, 9, 27]).forEach((lx, i) => H.lamps.push(K.lamp(S, PS, lx, 5.4, 'street', { id: 'lamp' + (i + 1) })));
+  (o.lamps || [-27, -9, 9, 27]).forEach((lx, i) => H.lamps.push(K.lamp(S, PS, lx, 5.4, 'street', { id: 'lamp' + (i + 1), reach: o.lampReach })));
   const PR = S.plane(z - 7, 'road');
   K.ground(S, PR, { col: S.pal.road, stripes: 2.2, noEdge: true });
   H.PR = PR;
-  (o.cars || [['sedan', -30, 1, '#7a2e2e'], ['van', 18, -1, '#d9dde2'], ['sedan', 33, 1, '#2f4a6b']]).forEach((c) => K.parked(S, PR, c[0], c[1], c[2], c[3], { y: 0 }));
+  (o.cars || [['sedan', -30, 1, '#7a2e2e'], ['van', 18, -1, '#d9dde2'], ['sedan', 34, 1, '#2f4a6b']]).forEach((c) => K.parked(S, PR, c[0], c[1], c[2], c[3], { y: 0 }));
   // something close by for depth: a flag on a nearer roof and a run of cable
+  if (o.el) { const PE = S.plane(z - 22, 'el'); H.el = K.viaduct(S, PE, o.el === true ? 9.5 : o.el, { pillars: o.elPillars }); H.PE = PE; }
   if (o.flag !== false) { const PF = S.plane(z * 0.62, 'near'); K.flag(S, PF, o.flagX === undefined ? -19 : o.flagX, 2, 8, o.flagCol || '#c0392b'); K.box(S, PF, (o.flagX === undefined ? -19 : o.flagX) - 9, -6, 13, 8, '#3a3f49', { band: 0.5 }); H.PF = PF; }
   H.street = (xx, extra) => Object.assign({ plane: PS, x: xx, y: 0, zone: 'street', behind: false, room: null }, extra || {});
   H.inWin = (B, f, c, dx, extra) => { const op = B.win(f, c); return Object.assign({ plane: B.P, x: B.winX(c) + (dx || 0), y: B.floorY(f), room: op.room, zone: op.room, behind: true }, extra || {}); };

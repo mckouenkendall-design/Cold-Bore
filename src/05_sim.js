@@ -79,7 +79,7 @@ Sim.prototype.emit = function (name) { this.emitted[name] = this.t; this.ev.push
 Sim.prototype.did = function (name) { return this.emitted[name] !== undefined; };
 Sim.prototype.msg = function (who, text, dur) { const m = { who, text, t: this.t, dur: dur || Math.max(4, text.length * 0.07) }; this.msgs.push(m); this.ev.push({ k: 'msg', who, text, dur: m.dur }); };
 Sim.prototype.after = function (sec, fn) { this.timers.push({ t: this.t + sec, fn }); };
-Sim.prototype.cover = function (sec, name) { this.coverUntil = Math.max(this.coverUntil, this.t + sec); this.coverName = name || 'noise'; this.ev.push({ k: 'cover', name: this.coverName, dur: sec }); };
+Sim.prototype.cover = function (sec, name) { this.coverUntil = Math.max(this.coverUntil, this.t + sec); this.coverName = name || 'noise'; if (name === 'thunder') this.flashT = this.t; this.ev.push({ k: 'cover', name: this.coverName, dur: sec }); };
 Sim.prototype.covered = function () { return this.t < this.coverUntil; };
 Sim.prototype.wind = function (t) {
   t = t === undefined ? this.t : t;
@@ -303,6 +303,7 @@ Sim.prototype.raiseAlarm = function (by, delay) {
   sim.alarmPending = true;
   sim.after(delay || 0, () => {
     if (sim.alarmT !== null) return;
+    if (sim.winAt && (by === 'explosion' || by === 'shot' || by === 'vehicle')) { sim.alarmPending = false; sim.lateAlarm = by; return; }
     sim.alarmT = sim.t; sim.alarmBy = by;
     sim.ev.push({ k: 'alarm', by });
     sim.emit('alarm');
@@ -324,7 +325,7 @@ Sim.prototype.canSee = function (o, x, y, zone) {
   else if (Math.abs(y - o.y) > 3.5) return false;
   const dx = x - o.x, adx = Math.abs(dx);
   const lit = S.isLit(zone, x);
-  const range = lit ? (o.role === 'guard' || o.state === 'susp' ? 32 : 24) * (o.eyes || 1) : 4;
+  const range = lit ? (o.role === 'guard' || o.state === 'susp' ? 32 : 24) * (o.eyes || 1) * (S.seeMul || 1) : 4;
   if (adx > range) return false;
   if (adx > 2.6 && sign(dx) !== o.face && o.state !== 'susp') return false;
   for (let i = 0; i < sim.steam.length; i++) { const s = sim.steam[i]; if (s.until > sim.t && s.x > Math.min(o.x, x) - 1 && s.x < Math.max(o.x, x) + 1) return false; }
@@ -370,6 +371,7 @@ Sim.prototype.stepActor = function (a, dt) {
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
   if (a.inVeh) { const v = a.inVeh, c = v.def; a.x = v.x + v.dir * c.seats[a.seat] * c.len; a.y = v.y + (c.body + c.h) / 2 - 1.2; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
     a.susp -= dt; a.anim = 'stand'; a.face = Math.sin(a.t * 3.4 + a.seed) > 0 ? 1 : -1;
@@ -449,9 +451,10 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
-  a.goal = null; a.threat = null; a.state = 'dead';
-  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident };
-  sim.kills.push(k);
+  const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
+  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
+    moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
+  sim.kills.push(k); a.goal = null;
   if (how === 'shot') { sim.stats.hits++; if (part === 'head') sim.stats.heads++; sim.stats.longest = Math.max(sim.stats.longest, k.range); }
   if (a.accident) sim.stats.accident++;
   sim.ev.push({ k: 'kill', id: a.id, part, how, x: a.x, y: a.y, plane: a.plane, role: a.role });
@@ -463,6 +466,7 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
     if (R.protect.indexOf(a.id) >= 0 || a.role === 'hostage' || a.role === 'vip') sim.fail('protect', a.failText || 'You killed the person you were there to protect.');
     else if (a.role === 'civ' && R.civFail) sim.fail('civ', a.failText || 'You shot a bystander. The contract is void.');
     else if (R.spare && R.spare.indexOf(a.id) >= 0) sim.fail('spare', a.failText || 'That one was not to be touched.');
+    else if (R.noKills && R.kill.indexOf(a.id) < 0) sim.fail('nokill', R.noKillsText || 'Nobody was supposed to die on this one.');
     else if (a.role === 'guard' && R.noGuards) sim.fail('guard', R.noGuardsText || 'The guards were off limits.');
     else if (R.accidentOnly && R.kill.indexOf(a.id) >= 0 && !a.accident) sim.fail('messy', R.accidentText || 'It had to look like an accident. A bullet hole does not.');
   } else if (R.protect.indexOf(a.id) >= 0 || a.role === 'hostage' || a.role === 'vip') {
@@ -492,6 +496,7 @@ Sim.prototype.woundActor = function (a, part, bullet) {
 Sim.prototype.stepVehicle = function (v, dt) {
   const sim = this;
   if (v.gone) return;
+  if (v.yFn) v.y = v.yFn(v.x);
   if (v.goal !== null) {
     const dx = v.goal - v.x; v.dir = sign(dx) || v.dir;
     const want = v.flatTire ? 0 : v.maxV;
@@ -514,7 +519,7 @@ Sim.prototype.stepVehicle = function (v, dt) {
     else if (op[0] === 'emit') sim.emit(op[1]);
     else if (op[0] === 'gone') { v.gone = true; sim.emit('gone:' + v.id); v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) sim.leave(a); }); return; }
     else if (op[0] === 'brake') { v.goal = v.x + v.dir * Math.max(2, v.v * 0.9); v.maxV = 0; v.flatTire = true; return; }
-    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, Object.assign({ x: v.x + (op[2] || 0), y: v.y, plane: v.plane, zone: op[3] || 'street' })); v.seats[a.seat] = null; } }
+    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, { x: v.x + (op[2] || 0), y: op[5] === undefined ? v.y : op[5], plane: op[4] || v.plane, zone: op[3] || 'street', room: null, behind: false }); v.seats[a.seat] = null; } }
     else if (op[0] === 'call') op[1](sim, v);
     else if (op[0] === 'loop') v.pc = op[1] || 0;
   }
@@ -650,6 +655,7 @@ Sim.prototype.scareVehicle = function (v) {
   const sim = this;
   if (v.scared) return; v.scared = true;
   sim.after(0.35, () => {
+    if (sim.winAt) return;
     let any = false; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) any = true; });
     if (!any) return;
     const drv = sim.byId[v.seats[0]];
@@ -699,6 +705,7 @@ Sim.prototype.hitObject = function (ob, b, bx, by) {
   } else if (k === 'radio' || k === 'dish') { if (ob.alive) { ob.alive = false; sim.radioDown = true; sim.ev.push({ k: 'spark', x: ob.x, y: ob.y, plane: P }); }
   } else if (k === 'lock') { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'clank', x: ob.x, y: ob.y, plane: P }); }
   } else if (k === 'flare') { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'flare', x: ob.x, y: ob.y, plane: P }); sim.actors.forEach((a) => { if (!a.dead && !a.gone && !a.room && Math.abs(a.x - ob.x) < (ob.lure || 30) && (a.state === 'calm')) { a.state = 'susp'; a.susp = 0.1; a.distractUntil = sim.t + 7; a.distractX = ob.x; } }); }
+  } else if (ob.breakable) { if (ob.alive) { ob.alive = false; sim.ev.push({ k: 'spark', x: ob.x, y: ob.y, plane: P }); }
   } else { sim.impact(b, bx, by, P, ob.mat || 'metal', { quiet: true }); }
   if (ob.alive === false || k === 'bell' || k === 'horn') sim.emit('obj:' + ob.id);
   if (ob.onHit) ob.onHit(sim, ob);
