@@ -6,7 +6,10 @@ right moment, take one shot.
 
 - 41 missions in 6 chapters, with an original story and five choices that
   change what happens later
-- 16 rifles that really shoot differently, 11 scopes, 30 parts, 40 skins
+- 16 rifles that really shoot differently, 11 scopes, 30 parts, 94 skins
+- A kill camera on the shot that finishes a contract: the bullet is followed from
+  the muzzle to the target, then an X-ray of what it hits
+- Made for a phone held sideways; the scope picture fills the screen
 - Real bullet flight: travel time, drop and wind, with scope markings that are
   true to scale
 - Everything is earned by playing. No ads, no purchases, no accounts
@@ -19,7 +22,7 @@ Open `index.html`, or play it at https://mckouenkendall-design.github.io/Cold-Bo
 the browser's "Add to Home Screen" to run it full screen. Progress is saved in
 the browser on that device.
 
-Phone: drag anywhere to aim, zoom slider on the left (or pinch), HOLD BREATH,
+Hold the phone sideways. Phone: drag anywhere to aim, zoom slider on the left (or pinch), HOLD BREATH,
 FIRE, RELOAD. Computer: mouse to aim, wheel to zoom, left click to fire, Shift
 to hold breath, R to reload, Q and E for the zero dial, Esc for the notebook.
 
@@ -48,13 +51,17 @@ That joins every `src/*.js` (in filename order) and `src/style.css` into
 | `src/09_save.js`, `src/39_progress.js` | saving, rewards, caches |
 | `src/10_sfx.js` | all sound, generated live |
 | `src/11_gunart.js` | rifle artwork and skins |
+| `src/12_partart.js` | pictures of every part and the view through every scope |
 | `src/20_game.js` | the game loop, the in-mission display, the controls |
+| `src/21_killcam.js` | the kill camera |
+| `src/22_oracle.js` | runs a copy of the mission ahead to know where a shot will land |
 | `src/3*_missions_*.js`, `src/38_story.js` | the campaign |
 | `src/4*_ui*.js` | menus |
 | `src/80_test.js` | the test bot (never runs during normal play) |
 
 `docs/MISSIONS.md` explains how missions and scenes are written.
 `docs/STORY.md` is the story outline.
+`docs/ART.md` is the art guide: what may and may not change when drawing.
 
 ## Tests
 
@@ -66,6 +73,10 @@ node test/smoke.js aria 200     # every mission through the real loop with drawi
 node test/touch.js              # first mission played end to end with touch input
 node test/desktop.js            # mouse and keyboard
 node test/sheet.js 3            # picture sheet of a chapter, saved in shots/
+node test/fingerprint.js        # proves art changes did not change any mission
+node test/ui_wide.js            # every menu screen on a sideways phone
+node test/cine2.js c1m1 fenwick t torso   # films the kill camera
+ORACLE=1 node test/matrix.js all 1        # also checks every shot prediction
 ```
 
 Sound cannot be checked by a script. It was written carefully and has not been
