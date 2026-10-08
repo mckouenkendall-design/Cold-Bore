@@ -14,18 +14,23 @@ View.prototype.layout = function (W, H, dpr, mode) {
   this.W = W; this.H = H; this.dpr = dpr;
   this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(H * dpr);
   this.cv.style.width = W + 'px'; this.cv.style.height = H + 'px';
+  this.round = true;
   if (mode === 'portrait') {
     this.R = Math.max(118, Math.min(W * 0.5 - 4, (H - 58 - (H < 720 ? 300 : 336)) / 2));
     this.cx = W / 2; this.cy = 58 + this.R;
   } else if (mode === 'attract') {
     this.R = Math.min(W * 0.5 - 14, H * 0.27); this.cx = W / 2; this.cy = H * 0.3;
   } else if (mode === 'plain') { // fills the whole canvas, no scope furniture (used for thumbnails)
-    this.R = Math.hypot(W, H) / 2 + 6; this.cx = W / 2; this.cy = H / 2;
+    this.R = Math.hypot(W, H) / 2 + 6; this.cx = W / 2; this.cy = H / 2; this.round = false;
   } else {
-    this.R = Math.min(H * 0.5 - 10, W * 0.5 - 150);
-    this.R = Math.max(this.R, Math.min(H, W) * 0.36);
-    this.cx = W / 2; this.cy = H / 2;
+    // "wide": the picture fills the whole screen. R is still the half-height, so the
+    // magnification is the same as the round scope, you simply see more to each side.
+    // RR is the big scope ring, taller than the screen, whose dark edge closes in at the sides.
+    mode = 'wide';
+    this.R = H / 2; this.cx = W / 2; this.cy = H / 2; this.round = false;
   }
+  this.hw = this.round ? this.R : W / 2; this.hh = this.round ? this.R : H / 2;
+  this.RR = mode === 'wide' ? Math.max(H * 0.62, Math.min(H * 0.9, W * 0.5 - 36)) : this.R;
   this.mode = mode;
 };
 View.prototype.ppm = function (zoom) { return (this.R * 2) / (FOV_AT_1X / zoom); };
@@ -81,19 +86,24 @@ View.prototype.onEvent = function (e, sim) {
   }
 };
 
+// The camera for the normal scope view: the shooter's eye, where the rifle points, and the zoom.
+View.prototype.camFromSim = function (sim) {
+  const e = sim.eye(), aim = sim.aimNow();
+  return { cx: this.cx + this.jx, cy: this.cy + this.jy, hw: this.hw, hh: this.hh, ex: e.x, ey: e.y, ez: e.z, ax: aim.x, ay: aim.y, ppm: this.ppm(sim.sh.zoom) };
+};
+// World point to screen, through whichever camera drew the last frame.
 View.prototype.project = function (sim, x, y, z) {
-  const sh = sim.sh, e = sim.eye(), aim = sim.aimNow(), ppm = this.ppm(sh.zoom), d = Math.max(0.5, z - e.z);
-  return [this.cx + (((x - e.x) / d) * 1000 - aim.x) * ppm + this.jx, this.cy - (((y - e.y) / d) * 1000 - aim.y) * ppm + this.jy, (ppm * 1000) / d];
+  const c = this.cam || this.camFromSim(sim), d = Math.max(0.5, z - c.ez);
+  return [c.cx + (((x - c.ex) / d) * 1000 - c.ax) * c.ppm, c.cy - (((y - c.ey) / d) * 1000 - c.ay) * c.ppm, (c.ppm * 1000) / d];
 };
 
 View.prototype.draw = function (sim, dt, simDt) {
-  const V = this, ctx = V.ctx, dpr = V.dpr, S = sim.S, sh = sim.sh, st = sim.st, pal = S.pal;
+  const V = this, ctx = V.ctx, dpr = V.dpr, sh = sim.sh;
   V.rt += dt;
-  const aim = sim.aimNow(), eye = sim.eye(), ppm = V.ppm(sh.zoom), R = V.R;
   // tiny mechanical shake after a shot
   V.shake *= Math.exp(-dt * 9); V.flash *= Math.exp(-dt * 16); V.blackout *= Math.exp(-dt * 7); V.hitMark *= Math.exp(-dt * 3.2);
   V.jx = (Math.random() - 0.5) * V.shake * 9; V.jy = (Math.random() - 0.5) * V.shake * 9;
-  const cx = V.cx + V.jx, cy = V.cy + V.jy;
+  const cam = V.cam = V.camFromSim(sim), R = V.RR;
   // eye-box shadow follows how fast the rifle is moving
   const vx = sh.recvx * 0.02 + (sh.ax - (V.pax === undefined ? sh.ax : V.pax)) / Math.max(dt, 0.001) * 0.004 + sh.offx * 0.05;
   const vy = sh.recvy * 0.02 + (sh.ay - (V.pay === undefined ? sh.ay : V.pay)) / Math.max(dt, 0.001) * 0.004 + sh.offy * 0.05;
@@ -104,19 +114,45 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, V.W, V.H);
   ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.clip();
+  ctx.beginPath(); if (V.round) ctx.arc(cam.cx, cam.cy, V.R, 0, TAU); else ctx.rect(0, 0, V.W, V.H); ctx.clip();
+  V.drawWorld(sim, cam, dt, simDt);
+  V.drawLens(sim, cam);
+  ctx.restore();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (V.mode === 'plain' || !V.round) return;
+  // ---- scope body ----
+  const RB = V.R;
+  const ring = ctx.createRadialGradient(V.cx, V.cy, RB, V.cx, V.cy, RB + 16);
+  ring.addColorStop(0, '#000'); ring.addColorStop(0.25, '#1c2026'); ring.addColorStop(0.55, '#0c0e11'); ring.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.strokeStyle = ring; ctx.lineWidth = 32; ctx.beginPath(); ctx.arc(V.cx, V.cy, RB + 15, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = 'rgba(120,135,150,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(V.cx, V.cy, RB + 3.5, Math.PI * 1.1, Math.PI * 1.75); ctx.stroke();
+};
 
+// Everything out in the world, as seen by a camera:
+//   cam = { cx, cy, hw, hh,  centre and half-size of the picture on screen (CSS px)
+//           ex, ey, ez,      where the eye is (metres)
+//           ax, ay,          where it is looking (mils off the straight-ahead line)
+//           ppm }            screen pixels per mil (the magnification)
+// The scope uses the shooter's eye; the bullet camera moves the eye down range.
+// o: { near }  planes closer to the eye than this many metres are skipped.
+View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
+  o = o || {};
+  const V = this, ctx = V.ctx, dpr = V.dpr, S = sim.S, st = sim.st, pal = S.pal;
+  V.cam = cam;
+  const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
+  const aim = { x: cam.ax, y: cam.ay }, eye = { x: cam.ex, y: cam.ey, z: cam.ez };
+  const farStop = sim.farStop || 1e9;
   // ---- sky ----
   const hor = cy + aim.y * ppm - ((0 - eye.y) / 4000) * 1000 * ppm * 0; // horizon line (angle 0)
   const g = ctx.createLinearGradient(0, hor - 230 * ppm, 0, hor);
   g.addColorStop(0, pal.skyTop); g.addColorStop(1, pal.skyBot);
-  ctx.fillStyle = g; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+  ctx.fillStyle = g; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   if (pal.star > 0) {
     ctx.fillStyle = '#ffffff';
     const stars = S.sky.stars;
     for (let i = 0; i < stars.length; i++) {
       const sx = cx + (stars[i][0] - aim.x * 0.98) * ppm * 0.6, sy = cy - (stars[i][1] - aim.y * 0.98) * ppm * 0.6;
-      if (Math.abs(sx - cx) > R || Math.abs(sy - cy) > R) continue;
+      if (Math.abs(sx - cx) > hw || Math.abs(sy - cy) > hh) continue;
       ctx.globalAlpha = pal.star * (0.35 + 0.65 * stars[i][3]) * (0.8 + 0.2 * Math.sin(V.rt * 2 + i));
       ctx.fillRect(sx, sy, stars[i][2] * 1.3, stars[i][2] * 1.3);
     }
@@ -124,7 +160,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   }
   { // sun or moon
     const sx = cx + (S.sky.sun[0] - aim.x) * ppm, sy = cy - (S.sky.sun[1] - aim.y) * ppm, sr = (pal.dark > 0.5 ? 4.5 : 7) * ppm;
-    if (S.weather !== 'rain' && S.time !== 'overcast' && sx > cx - R - sr * 4 && sx < cx + R + sr * 4) {
+    if (S.weather !== 'rain' && S.time !== 'overcast' && sx > cx - hw - sr * 4 && sx < cx + hw + sr * 4) {
       const gg = ctx.createRadialGradient(sx, sy, sr * 0.2, sx, sy, sr * 4);
       gg.addColorStop(0, rgba(pal.sun, 0.55)); gg.addColorStop(1, rgba(pal.sun, 0));
       ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(sx, sy, sr * 4, 0, TAU); ctx.fill();
@@ -137,7 +173,7 @@ View.prototype.draw = function (sim, dt, simDt) {
     const c = S.sky.clouds[i];
     const drift = ((sim.t * 0.25 * (1 + c.s) * sign(sim.windBase || 1) + c.x + 300) % 600) - 300;
     const px = cx + (drift - aim.x) * ppm, py = cy - (c.y - aim.y) * ppm;
-    if (px < cx - R - c.w * ppm || px > cx + R + c.w * ppm || py < cy - R - 40 * ppm || py > cy + R + 40 * ppm) continue;
+    if (px < cx - hw - c.w * ppm || px > cx + hw + c.w * ppm || py < cy - hh - 40 * ppm || py > cy + hh + 40 * ppm) continue;
     ctx.globalAlpha = S.weather === 'clear' ? 0.75 : 0.9;
     for (let j = 0; j < c.n; j++) { ctx.beginPath(); ctx.ellipse(px + ((j / (c.n - 1)) - 0.5) * c.w * ppm * 0.8, py - Math.sin(j * 2.3 + c.s * 9) * c.h * ppm * 0.25, c.w * ppm * 0.26, c.h * ppm * (0.45 + 0.25 * Math.sin(j * 1.7 + c.s * 5)), 0, 0, TAU); ctx.fill(); }
   }
@@ -157,23 +193,29 @@ View.prototype.draw = function (sim, dt, simDt) {
     c2.fillStyle = col; c2.fillText(str, curTx + curS * x, curTy - curS * y);
     c2.restore();
   };
+  // How a person is lit. Light falls off smoothly with distance from a lamp, and it is
+  // eased over time, so somebody walking out of a pool of light fades rather than snaps.
+  const night = pal.dark > 0.5;
   const figEnv = (a) => {
     const zone = a.room && S.rooms[a.room] ? a.room : a.zone;
-    const lit = S.isLit(zone, a.x);
-    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08 };
-    if (pal.dark > 0.5 && !lit) { e2.ink = '#04060a'; e2.rim = nv ? 'rgba(190,255,200,0.9)' : 'rgba(120,140,175,0.24)'; e2.dark = true; e2.dim = nv ? 0.25 : 0.72; }
-    else if (pal.dark > 0.5) e2.dark = true;
-    else if (nv) e2.rim = 'rgba(190,255,200,0.75)';
+    const LA = S.lightAt(zone, a.x);
+    if (a._lt === undefined || a._ltS !== S) { a._lt = LA.l; a._ltS = S; } else a._lt += (LA.l - a._lt) * Math.min(1, dt * 6);
+    const lt = a._lt, k = 1 - lt;
+    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08, light: lt, lampDx: LA.dx, lampH: LA.h, lampCol: LA.col || pal.lit, night, nv, t: env.t, pal, haze: 0 };
+    if (night) {
+      e2.dark = true; e2.dim = (nv ? 0.25 : 0.72) * k; e2.ink = mix(pal.ink, '#04060a', k);
+      e2.rim = nv ? 'rgba(190,255,200,' + lerp(0.75, 0.9, k).toFixed(2) + ')' : 'rgba(' + Math.round(lerp(170, 120, k)) + ',' + Math.round(lerp(190, 140, k)) + ',' + Math.round(lerp(225, 175, k)) + ',' + lerp(0.42, 0.24, k).toFixed(2) + ')';
+    } else if (nv) e2.rim = 'rgba(190,255,200,0.75)';
     return e2;
   };
   for (let pi = 0; pi < planes.length; pi++) {
     const P = planes[pi], d = P.z - eye.z;
-    if (d <= 2) continue;
+    if (d <= (o.near || 2)) continue;
     const s = (ppm * 1000) / d, tx = cx - s * eye.x - ppm * aim.x, ty = cy + s * eye.y + ppm * aim.y;
     curS = s; curTx = tx; curTy = ty;
     ctx.setTransform(dpr * s, 0, 0, -dpr * s, dpr * tx, dpr * ty);
-    env.s = s; env.px = 1 / s; env.x0 = (cx - R - tx) / s; env.x1 = (cx + R - tx) / s;
-    env.y0 = (ty - (cy + R)) / s; env.y1 = (ty - (cy - R)) / s;
+    env.s = s; env.px = 1 / s; env.x0 = (cx - hw - tx) / s; env.x1 = (cx + hw - tx) / s;
+    env.y0 = (ty - (cy + hh)) / s; env.y1 = (ty - (cy - hh)) / s;
     const items = P.items;
     for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.layer !== 0 || it.x1 < env.x0 || it.x0 > env.x1) continue; it.draw(ctx, env); }
     // people inside rooms, seen through the windows
@@ -251,7 +293,7 @@ View.prototype.draw = function (sim, dt, simDt) {
     if (f.vx !== undefined) { f.x += f.vx * simDt; f.y += f.vy * simDt; if (f.k !== 'puff') f.vy -= 9.8 * simDt; else { f.vx *= 0.97; f.vy *= 0.97; f.x += sim.wind() * 0.15 * simDt; } }
     if (f.floor !== undefined && f.y < f.floor) { f.y = f.floor; f.vy = 0; f.vx = 0; f.vr = 0; }
     const p = V.project(sim, f.x, f.y, f.z), s = p[2];
-    if (Math.abs(p[0] - cx) > R * 1.2 || Math.abs(p[1] - cy) > R * 1.2) continue;
+    if (Math.abs(p[0] - cx) > hw * 1.2 || Math.abs(p[1] - cy) > hh * 1.2) continue;
     if (f.k === 'puff') { ctx.globalAlpha = (1 - u) * 0.55; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(1, (f.r + f.grow * u * f.r * 2) * s), 0, TAU); ctx.fill(); }
     else if (f.k === 'spark') { ctx.globalAlpha = 1 - u; ctx.strokeStyle = f.col; ctx.lineWidth = Math.max(1, 0.03 * s); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[0] - f.vx * 0.03 * s, p[1] + f.vy * 0.03 * s); ctx.stroke(); }
     else if (f.k === 'drop') { ctx.globalAlpha = 1 - u * u; ctx.fillStyle = f.col; ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(0.8, f.r * s), 0, TAU); ctx.fill(); }
@@ -274,17 +316,17 @@ View.prototype.draw = function (sim, dt, simDt) {
     let prev = null;
     const n = tr.length, startI = Math.max(1, n - 90);
     for (let j = startI; j < n; j++) {
-      const q = tr[j]; if (q[2] - eye.z < 12) continue;
+      const q = tr[j]; if (q[2] - eye.z < 12) continue; if (q[2] > farStop) break;
       const p = V.project(sim, q[0], q[1], q[2]);
       if (prev) {
-        const u = (j - startI) / (n - startI);
+        const u = ((j - startI) / (n - startI)) * clamp((farStop - q[2]) / 30, 0, 1);
         if (st.tracer) { ctx.strokeStyle = 'rgba(255,120,60,' + (0.85 * u * fade) + ')'; ctx.lineWidth = 2.2; }
         else { ctx.strokeStyle = 'rgba(255,255,255,' + (0.3 * u * fade) + ')'; ctx.lineWidth = 1 + 2.4 * (1 - u); }
         ctx.beginPath(); ctx.moveTo(prev[0], prev[1]); ctx.lineTo(p[0], p[1]); ctx.stroke();
       }
       prev = p;
     }
-    if (b.alive && prev) {
+    if (b.alive && prev && b.z <= farStop) {
       const hp = V.project(sim, b.x, b.y, b.z);
       ctx.fillStyle = st.tracer ? '#ffb07a' : 'rgba(255,255,255,0.9)';
       ctx.beginPath(); ctx.arc(hp[0], hp[1], st.tracer ? 2.6 : 1.5, 0, TAU); ctx.fill();
@@ -293,42 +335,90 @@ View.prototype.draw = function (sim, dt, simDt) {
   }
 
   // ---- weather in front of everything ----
-  if (S.weather === 'rain' || S.weather === 'storm') {
-    ctx.strokeStyle = 'rgba(200,215,235,0.34)'; ctx.lineWidth = 1;
-    const slant = clamp(sim.wind() * 0.07, -0.6, 0.6), n = S.weather === 'storm' ? 110 : 70;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const sp = 900 + (i % 5) * 160, len = 14 + (i % 4) * 7;
-      const x = cx - R + (((i * 97.3 + V.rt * sp * slant * 0.9) % (R * 2)) + R * 2) % (R * 2), y = cy - R + ((i * 53.7 + V.rt * sp) % (R * 2));
-      ctx.moveTo(x, y); ctx.lineTo(x + slant * len, y + len);
-    }
-    ctx.stroke();
-  } else if (S.weather === 'snow') {
+  if (S.weather === 'rain' || S.weather === 'storm') V.drawRain(sim, cam, S.weather === 'storm');
+  else if (S.weather === 'snow') {
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    for (let i = 0; i < 80; i++) {
+    const n = Math.round(80 * clamp((hw * hh) / 36000, 0.7, 3));
+    for (let i = 0; i < n; i++) {
       const sp = 40 + (i % 5) * 22;
-      const x = cx - R + (((i * 97.3 + V.rt * (sim.wind() * 14 + Math.sin(V.rt + i) * 6)) % (R * 2)) + R * 2) % (R * 2), y = cy - R + ((i * 53.7 + V.rt * sp) % (R * 2));
+      const x = cx - hw + (((i * 97.3 + V.rt * (sim.wind() * 14 + Math.sin(V.rt + i) * 6)) % (hw * 2)) + hw * 2) % (hw * 2), y = cy - hh + ((i * 53.7 + V.rt * sp) % (hh * 2));
       ctx.beginPath(); ctx.arc(x, y, 1 + (i % 3) * 0.7, 0, TAU); ctx.fill();
     }
   }
-  if (S.weather === 'fog') { ctx.fillStyle = rgba(pal.fog, 0.22); ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
+  if (S.weather === 'fog') { ctx.fillStyle = rgba(pal.fog, 0.22); ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
   // lightning flash
-  if (sim.flashT && sim.t - sim.flashT < 0.35) { ctx.fillStyle = 'rgba(235,240,255,' + (0.55 * (1 - (sim.t - sim.flashT) / 0.35) * (Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3)) + ')'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
+  if (sim.flashT && sim.t - sim.flashT < 0.35) { ctx.fillStyle = 'rgba(235,240,255,' + (0.55 * (1 - (sim.t - sim.flashT) / 0.35) * (Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3)) + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
 
+};
+
+// Rain. Three depths of streaks, every drop with its own speed, length, brightness and
+// lean, falling in uneven sheets that thicken and thin with the gusts, plus small splashes
+// where it lands on the ground nearest the target.
+View.prototype.drawRain = function (sim, cam, storm) {
+  const V = this, ctx = V.ctx, cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, W2 = hw * 2, H2 = hh * 2;
+  if (!V.rain) { const R = makeRng(4421); V.rain = []; for (let i = 0; i < 260; i++) V.rain.push({ x: R.f(), y: R.f(), d: R.f(), sp: R.r(0.75, 1.3), len: R.r(0.6, 1.5), a: R.r(0.35, 1), lean: R.r(-0.05, 0.05), g: R.f() }); }
+  const t = V.rt, wind = sim.wind(), slant = clamp(wind * 0.07, -0.6, 0.6);
+  // how hard it is coming down right now: slow swells, with the odd lull
+  const swell = 0.62 + 0.38 * vnoise(t * 0.23, 77) + 0.2 * vnoise(t * 0.9, 12);
+  const area = clamp((W2 * H2) / 150000, 0.5, 3.2);
+  const n = Math.min(V.rain.length, Math.round((storm ? 74 : 44) * area * clamp(swell, 0.35, 1.25)));
+  ctx.lineCap = 'round';
+  for (let layer = 0; layer < 3; layer++) {
+    const far = layer === 0, near = layer === 2;
+    ctx.strokeStyle = far ? 'rgba(190,205,228,0.16)' : near ? 'rgba(222,232,246,0.34)' : 'rgba(205,218,238,0.24)';
+    ctx.lineWidth = far ? 0.8 : near ? 1.5 : 1.05;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const r = V.rain[i], L = r.d < 0.5 ? 0 : r.d < 0.86 ? 1 : 2; if (L !== layer) continue;
+      // a sheet of rain passes: each drop sits out part of the time
+      if (vnoise(t * 0.6 + r.g * 40, 5 + (i % 7)) < -0.25 + r.g * 0.3) continue;
+      const sp = (far ? 520 : near ? 1500 : 900) * r.sp, len = (far ? 9 : near ? 34 : 18) * r.len, sl = slant + r.lean + (near ? slant * 0.25 : 0);
+      const span = H2 + len + 20, tt = r.y * span + t * sp, cyc = Math.floor(tt / span), yy = (tt - cyc * span) - len - 10;
+      const hsh = Math.sin(i * 91.7 + cyc * 47.3) * 43758.5453, lane = hsh - Math.floor(hsh); // a fresh place to fall every time round
+      const xx = (((lane * W2 + sl * yy) % W2) + W2) % W2;
+      ctx.moveTo(cx - hw + xx, cy - hh + yy); ctx.lineTo(cx - hw + xx + sl * len, cy - hh + yy + len);
+    }
+    ctx.stroke();
+  }
+  // splashes on the ground the target stands on
+  const S = sim.S, planes = S.planes; let P = null, best = 1e9;
+  for (let i = 0; i < planes.length; i++) { const q = planes[i]; if (q.groundY === undefined || q.groundFn || q.groundMat === 'water') continue; const dd = Math.abs(q.z - S.refZ); if (dd < best) { best = dd; P = q; } }
+  if (P && P.z - cam.ez > 4) {
+    const d = P.z - cam.ez, s = (cam.ppm * 1000) / d, gy = cam.cy + s * cam.ey + cam.ppm * cam.ay - s * P.groundY, tx = cam.cx - s * cam.ex - cam.ppm * cam.ax;
+    if (gy > cy - hh - 4 && gy < cy + hh + 30 && s > 2.2) {
+      ctx.strokeStyle = 'rgba(215,228,245,0.5)'; ctx.lineWidth = Math.max(0.8, Math.min(1.6, s * 0.03));
+      ctx.beginPath();
+      const k = Math.round((storm ? 34 : 20) * clamp(swell, 0.35, 1.2) * clamp(W2 / 420, 0.6, 2.4));
+      for (let i = 0; i < k; i++) {
+        const ph = t * (2.6 + (i % 5) * 0.37) + i * 1.7, c = Math.floor(ph), u = ph - c; if (u > 0.55) continue;
+        const h1 = Math.sin((i * 127.1 + c * 311.7)) * 43758.5453, rx = h1 - Math.floor(h1), h2 = Math.sin((i * 269.5 + c * 183.3)) * 43758.5453, ry = h2 - Math.floor(h2);
+        const px = cx - hw + rx * W2, py = gy + ry * Math.min(26, s * 0.9), r = (1.5 + u * 5) * clamp(s / 12, 0.5, 1.6), up = (1 - u / 0.55);
+        ctx.moveTo(px - r, py); ctx.lineTo(px - r * 0.45, py - r * 0.75 * up); ctx.moveTo(px + r, py); ctx.lineTo(px + r * 0.45, py - r * 0.75 * up);
+        if (u < 0.2) { ctx.moveTo(px, py - 1); ctx.lineTo(px, py - 1 - r * 1.1); }
+      }
+      ctx.stroke();
+    }
+  }
+};
+
+// The glass: night vision, flash, the dark edge of the scope, the reticle.
+View.prototype.drawLens = function (sim, cam) {
+  const V = this, ctx = V.ctx, st = sim.st, pal = sim.S.pal, nv = !!st.scope.nv;
+  const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm, R = V.RR;
   // ---- the lens itself ----
   if (nv) {
     // amplify what little light there is (bright lamps blow out, as they do in a real tube), then tint it green
-    if (pal.dark > 0.3) { ctx.globalCompositeOperation = 'color-dodge'; ctx.fillStyle = '#c4c4c4'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
-    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(26,34,28,0.9)'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
-    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#5dff86'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    if (pal.dark > 0.3) { ctx.globalCompositeOperation = 'color-dodge'; ctx.fillStyle = '#c4c4c4'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(26,34,28,0.9)'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#5dff86'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - R + ((V.rt * 40) % 3); y < cy + R; y += 3) ctx.fillRect(cx - R, y, R * 2, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - hh + ((V.rt * 40) % 3); y < cy + hh; y += 3) ctx.fillRect(cx - hw, y, hw * 2, 1);
   }
-  if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,244,214,' + V.flash * 0.5 + ')'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
+  if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,244,214,' + V.flash * 0.5 + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
   // soft dark edge
   let vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,0.28)'); vg.addColorStop(1, 'rgba(0,0,0,0.92)');
-  ctx.fillStyle = vg; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,0.28)'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
+  ctx.fillStyle = vg; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   // thin colour fringe, like real glass
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
@@ -341,18 +431,11 @@ View.prototype.draw = function (sim, dt, simDt) {
     const ox = V.shadowX, oy = V.shadowY - V.blackout * R * 0.22;
     const sg = ctx.createRadialGradient(cx - ox, cy - oy, R * 0.78, cx - ox, cy - oy, R * 1.02);
     sg.addColorStop(0, 'rgba(0,0,0,0)'); sg.addColorStop(1, 'rgba(0,0,0,1)');
-    ctx.fillStyle = sg; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    ctx.fillStyle = sg; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   }
-  if (V.blackout > 0.03) { ctx.fillStyle = 'rgba(0,0,0,' + V.blackout * 0.35 + ')'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2); }
+  if (V.blackout > 0.03) { ctx.fillStyle = 'rgba(0,0,0,' + V.blackout * 0.35 + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
   ctx.restore();
 
-  // ---- scope body ----
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (V.mode === 'plain') return;
-  const ring = ctx.createRadialGradient(V.cx, V.cy, R, V.cx, V.cy, R + 16);
-  ring.addColorStop(0, '#000'); ring.addColorStop(0.25, '#1c2026'); ring.addColorStop(0.55, '#0c0e11'); ring.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.strokeStyle = ring; ctx.lineWidth = 32; ctx.beginPath(); ctx.arc(V.cx, V.cy, R + 15, 0, TAU); ctx.stroke();
-  ctx.strokeStyle = 'rgba(120,135,150,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(V.cx, V.cy, R + 3.5, Math.PI * 1.1, Math.PI * 1.75); ctx.stroke();
 };
 
 // What the BDC and PSO marks should read for this rifle (cached).
@@ -367,7 +450,7 @@ View.prototype.bdcMarks = function (sim) {
 };
 
 View.prototype.drawReticle = function (sim, cx, cy, ppm) {
-  const V = this, ctx = V.ctx, st = sim.st, R = V.R, type = st.scope.ret;
+  const V = this, ctx = V.ctx, st = sim.st, R = V.RR || V.R, Rv = Math.min(R, V.hh || R), type = st.scope.ret;
   const nvc = st.scope.nv;
   const col = nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)';
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'butt';
@@ -375,23 +458,23 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const thin = clamp(ppm * 0.035, 0.9, 1.6);
   const font = (px) => { ctx.font = '600 ' + px + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; };
   if (type === 'duplex') {
-    const gapR = R * 0.2;
+    const gapR = Rv * 0.2;
     L(-R, 0, -gapR, 0, 4); L(gapR, 0, R, 0, 4); L(0, gapR, 0, R, 4); L(0, -R, 0, -gapR, 4);
     L(-gapR, 0, -3, 0, 1.1); L(3, 0, gapR, 0, 1.1); L(0, 3, 0, gapR, 1.1); L(0, -gapR, 0, -3, 1.1);
     ctx.beginPath(); ctx.arc(cx, cy, 1, 0, TAU); ctx.fill();
   } else if (type === 'post') {
-    L(-R, 0, -R * 0.16, 0, 5.5); L(R * 0.16, 0, R, 0, 5.5);
+    L(-R, 0, -Rv * 0.16, 0, 5.5); L(Rv * 0.16, 0, R, 0, 5.5);
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 5, cy + 16); ctx.lineTo(cx + 5, cy + R); ctx.lineTo(cx - 5, cy + R); ctx.lineTo(cx - 5, cy + 16); ctx.closePath(); ctx.fill();
   } else if (type === 'pso') {
     // range ladder (bottom left), chevrons for holdover, mil hashes for wind
     const chev = (y, sz, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(cx - sz, cy + y + sz); ctx.lineTo(cx, cy + y); ctx.lineTo(cx + sz, cy + y + sz); ctx.stroke(); };
     chev(0, Math.max(5, ppm * 0.7), 1.5);
     const marks = V.bdcMarks(sim); font(clamp(ppm * 0.9, 8, 12)); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    marks.forEach((m) => { const y = m.mil * ppm; if (y > R * 0.93) return; chev(y, Math.max(3.5, ppm * 0.45), 1.2); if (ppm > 7) ctx.fillText(m.label, cx + Math.max(8, ppm * 1.1), cy + y + 3); });
+    marks.forEach((m) => { const y = m.mil * ppm; if (y > Rv * 0.93) return; chev(y, Math.max(3.5, ppm * 0.45), 1.2); if (ppm > 7) ctx.fillText(m.label, cx + Math.max(8, ppm * 1.1), cy + y + 3); });
     for (let i = 1; i <= 10; i++) { const x = i * ppm; if (x > R * 0.9) break; const h = i % 5 === 0 ? 6 : 3.5; L(x, -h, x, h, 1.1); L(-x, -h, -x, h, 1.1); }
     // stadiametric ladder: stand a 1.8 m figure on the base line
     const bx = -10 * ppm, byy = 9 * ppm;
-    if (Math.hypot(bx * 0.6, byy) < R * 0.95) {
+    if (Math.hypot(bx * 0.6, byy) < Rv * 0.95) {
       L(-10.4 * ppm, byy, -1.6 * ppm, byy, 1.1);
       ctx.lineWidth = 1.1; ctx.beginPath();
       for (let r = 200; r <= 1000; r += 25) { const x = cx + (-10 + (r - 200) / 100) * ppm, y = cy + byy - (1800 / r) * ppm; if (r === 200) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
@@ -415,9 +498,9 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
       if (post < R) { L(-R, 0, -post, 0, 3.5); L(post, 0, R, 0, 3.5); L(0, -R, 0, -post, 3.5); }
     } else if (type === 'bdc') {
       const marks = V.bdcMarks(sim); font(clamp(ppm * 0.9, 9, 13)); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      marks.forEach((m) => { const y = m.mil * ppm; if (y > R * 0.93) return; const w = clamp(ppm * 1.2, 7, 22) * (m.r % 200 === 0 || m.r < 200 ? 1 : 0.65); L(-w, y, w, y, 1.4); ctx.beginPath(); ctx.arc(cx, cy + y, 1.6, 0, TAU); ctx.fill(); if (ppm > 5) ctx.fillText(m.label, cx + w + 5, cy + y + 0.5); });
+      marks.forEach((m) => { const y = m.mil * ppm; if (y > Rv * 0.93) return; const w = clamp(ppm * 1.2, 7, 22) * (m.r % 200 === 0 || m.r < 200 ? 1 : 0.65); L(-w, y, w, y, 1.4); ctx.beginPath(); ctx.arc(cx, cy + y, 1.6, 0, TAU); ctx.fill(); if (ppm > 5) ctx.fillText(m.label, cx + w + 5, cy + y + 0.5); });
       for (let i = 1; i <= 8; i++) { const x = i * ppm; if (x > R * 0.9) break; L(x, -3.5, x, 3.5, 1); L(-x, -3.5, -x, 3.5, 1); }
-      L(-R, 0, -R * 0.55, 0, 3.5); L(R * 0.55, 0, R, 0, 3.5); L(0, -R, 0, -R * 0.55, 3.5);
+      L(-R, 0, -Rv * 0.55, 0, 3.5); L(Rv * 0.55, 0, R, 0, 3.5); L(0, -R, 0, -Rv * 0.55, 3.5);
     } else {
       // milhash / tree / fine
       const step = type === 'fine' && ppm > 28 ? 0.2 : ppm > 9 ? 0.5 : 1;
@@ -442,8 +525,8 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const info = V.rangeInfo;
   if ((st.scope.lrf || st.scope.smart) && info) {
     ctx.fillStyle = nvc ? 'rgba(220,255,225,0.95)' : 'rgba(255,170,60,0.95)';
-    ctx.font = '700 ' + clamp(R * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - R * 0.72);
+    ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
   }
   const showPip = (st.scope.smart || V.assist === 'full') && V.hold && V.hold.ok;
   if (showPip) {

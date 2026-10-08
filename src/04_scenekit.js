@@ -63,6 +63,27 @@ function makeScene(o) {
     for (let i = 0; i < l.length; i++) if (l[i].alive && l[i].on !== false && (x === undefined || Math.abs(l[i].x - x) <= (l[i].reach || 9))) return true;
     return false;
   };
+  // How brightly a spot is lit, from 0 (dark) to 1 (full light), for drawing. It falls away
+  // smoothly from each lamp instead of switching at the edge, and is about 0.2 at the point
+  // where isLit() above flips, so what you see agrees with what the guards can see.
+  // Returns a shared object: { l, dx (which side the lamp is on, in metres), h, col }.
+  const _la = { l: 1, dx: 0, h: 5, col: null };
+  S.lightAt = (zone, x) => {
+    _la.dx = 0; _la.h = 5; _la.col = null;
+    if (S.darkZones[zone]) { _la.l = 0; return _la; }
+    if (S.rooms[zone]) { _la.l = (S.rooms[zone].lit || pal.dark < 0.5) ? 1 : 0; return _la; }
+    if (pal.dark < 0.5) { _la.l = 1; return _la; }
+    const l = S.zoneLamps[zone];
+    if (!l) { _la.l = S.litZones[zone] ? 1 : 0; return _la; }
+    let best = 0;
+    for (let i = 0; i < l.length; i++) {
+      const lp = l[i]; if (!lp.alive || lp.on === false) continue;
+      if (x === undefined) { best = 1; break; }
+      const r = lp.reach || 9, d = Math.abs(lp.x - x), v = 1 - smooth((d - r * 0.3) / r);
+      if (v > best) { best = v; _la.dx = lp.x - x; _la.h = lp.y; _la.col = lp.col || null; }
+    }
+    _la.l = best; return _la;
+  };
   // sky dressing
   const R = S.rng;
   if (pal.star > 0) for (let i = 0; i < 150; i++) S.sky.stars.push([R.r(-260, 260), R.r(-20, 240), R.r(0.4, 1.4), R.f()]);

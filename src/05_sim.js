@@ -51,6 +51,13 @@ function Sim(M, st, vantageIdx, opts) {
   sim.triggers = (M.triggers ? M.triggers(built, sim.flags) : []).map((t) => Object.assign({ done: false }, t));
   S.objects.forEach((o) => { if (o.kind === 'cctv') o.seenT = 0; });
   if (M.start) M.start(sim, built);
+  // A round that misses everything is only followed (and drawn) a little way past the
+  // deepest thing in the scene that matters. Beyond that it is out of sight.
+  let fz = S.refZ;
+  S.planes.forEach((P) => { if (P.solids.length || P.openings.length) fz = Math.max(fz, P.z); });
+  sim.actors.forEach((a) => { if (a.plane) fz = Math.max(fz, a.plane.z); });
+  S.objects.forEach((o) => { if (o.plane) fz = Math.max(fz, o.plane.z); });
+  sim.farStop = fz + 45;
 }
 
 Sim.prototype.addActor = function (d) {
@@ -62,7 +69,7 @@ Sim.prototype.addActor = function (d) {
   }, d);
   if (d.at) Object.assign(a, d.at);
   a.look = Object.assign({}, d.look || {});
-  a.idle = a.anim;
+  a.idle = a.anim; a.animCur = a.anim; a.animFrom = null; a.animAt = -9; a.faceS = a.face;
   a.routine = (d.routine || []).slice();
   sim.actors.push(a); sim.byId[a.id] = a;
   return a;
@@ -366,7 +373,14 @@ Sim.prototype.place = function (a, p) {
   if (p.room === undefined && p.plane) { a.room = null; }
   if (p.behind === undefined && p.plane) a.behind = !!p.room;
 };
+// One person, one step. The wrapper notes when the pose or the facing changes so the
+// figure can ease from one to the other instead of snapping (see actorJoints).
 Sim.prototype.stepActor = function (a, dt) {
+  this.stepActorCore(a, dt);
+  if (a.anim !== a.animCur) { a.animFrom = a.animCur; a.animCur = a.anim; a.animAt = a.t; }
+  if (!a.dead) a.faceS = approach(a.faceS === undefined ? a.face : a.faceS, a.face, dt * 9);
+};
+Sim.prototype.stepActorCore = function (a, dt) {
   const sim = this;
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }

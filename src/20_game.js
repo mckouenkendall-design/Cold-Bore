@@ -2,9 +2,11 @@
 // The game loop, the in-mission display, and the controls.
 // ---------------------------------------------------------------------------
 const Game = CB.Game = {
-  state: 'menu', sim: null, view: null, mission: null, last: 0, scale: 1, slowUntil: 0, touch: false, mode: 'portrait',
+  state: 'menu', sim: null, view: null, mission: null, last: 0, scale: 1, touch: false, mode: 'portrait',
   aimPtr: null, pinch: null, keys: {}, locked: false, paused: false, endShown: false, hud: {},
+  acc: 0, cine: false, slowT: 0, oracle: null, safe: { l: 0, r: 0, t: 0, b: 0 },
 };
+const SIM_STEP = 1 / 120; // the world always moves in steps of this size, which is what makes a shot predictable
 
 Game.init = function () {
   const G = Game;
@@ -25,9 +27,12 @@ Game.resize = function () {
   const G = Game, W = window.innerWidth, H = window.innerHeight;
   if (!G.resK) G.resK = 1;
   G.W = W; G.H = H;
-  G.mode = H >= W * 1.05 ? 'portrait' : 'landscape';
+  G.mode = H >= W * 1.05 ? 'portrait' : 'wide';
   document.body.classList.toggle('portrait', G.mode === 'portrait');
   document.body.classList.toggle('landscape', G.mode !== 'portrait');
+  // how far the notch, the camera island and the home bar push in from each edge
+  const cs = getComputedStyle(document.documentElement), px = (k) => parseFloat(cs.getPropertyValue(k)) || 0;
+  G.safe = { l: px('--sal'), r: px('--sar'), t: px('--sat'), b: px('--sab') };
   const dpr = Math.max(0.75, Math.min(window.devicePixelRatio || 1, Save.data && Save.data.settings.lowRes ? 1.25 : 2) * G.resK);
   G.view.layout(W, H, dpr, G.mode);
   G.placeHud();
@@ -86,21 +91,20 @@ Game.placeHud = function () {
       P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
     }
   } else {
+    // Sideways: the picture is the whole screen. Read-outs sit along the bottom between the
+    // thumbs, zoom under the left thumb, fire under the right, messages top right.
     document.body.classList.remove('short');
-    const side = Math.max(120, V.cx - V.R - 20);
-    if (G.touch) { // phone held sideways: read-outs top left, zoom under them, thumbs bottom right
-      P(h.strip, { left: 10, top: 62, bottom: 'auto', width: Math.min(side - 4, 220), right: 'auto' });
-      P(h.zoom, { left: 18, top: 236, height: Math.max(90, Hh - 236 - 18), bottom: 'auto', right: 'auto' });
-    } else {
-      P(h.strip, { left: 10, top: 'auto', bottom: 10, width: Math.min(side - 4, 230), right: 'auto' });
-      P(h.zoom, { left: 18, top: Math.max(120, Hh * 0.2), height: Math.min(190, Hh * 0.42), bottom: 'auto', right: 'auto' });
-    }
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: V.cy - V.R + 12 });
-    P(h.msg, { right: 10, top: 56, width: Math.min(side - 4, 280), left: 'auto', bottom: 'auto' });
-    P(h.fire, { right: 22, bottom: 22, width: 112, height: 112, left: 'auto', top: 'auto' });
-    P(h.breath, { right: 150, bottom: 16, width: 80, height: 80, left: 'auto', top: 'auto' });
-    P(h.reload, { right: 40, bottom: 150, width: 62, height: 62, left: 'auto', top: 'auto' });
-    P(h.ammo, { right: 116, bottom: 160, left: 'auto', top: 'auto' });
+    const sf = G.safe, L = sf.l, Rt = sf.r, B = Math.min(sf.b, 14), small = Hh < 430;
+    const fire = small ? 104 : 118, br = small ? 76 : 84, rl = small ? 56 : 62;
+    P(h.fire, { right: Rt + 16, bottom: B + 16, width: fire, height: fire, left: 'auto', top: 'auto' });
+    P(h.breath, { right: Rt + 16 + fire + 14, bottom: B + 12, width: br, height: br, left: 'auto', top: 'auto' });
+    P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
+    P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
+    P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
+    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
+    P(h.strip, { left: sl, top: 'auto', bottom: B + (G.touch ? 8 : 30), width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: 50 });
+    P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
   }
 };
 
@@ -167,7 +171,12 @@ Game.start = function (missionId, opts) {
   const cfg = opts.cfg || (Save.data.guns[gunId] && Save.data.guns[gunId].cfg) || defaultConfig(gunId);
   const st = buildStats(gunId, cfg);
   G.mission = M; G.lastStart = { missionId, opts: Object.assign({}, opts, { gun: gunId, cfg }) };
-  G.sim = new Sim(M, st, opts.vantage || 0, { flags: Save.data.flags, shotSeed: opts.shotSeed });
+  const simOpts = { flags: Save.data.flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed };
+  G.sim = new Sim(M, st, opts.vantage || 0, simOpts);
+  // a shadow copy of the mission that can be run ahead to see where a shot will land
+  G.oracle = null;
+  if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
+  G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.rangeInfo = null; G.view.bdcCache = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false;
   document.body.classList.add('in-mission');
@@ -186,7 +195,8 @@ Game.start = function (missionId, opts) {
 };
 Game.stop = function () {
   const G = Game;
-  G.state = 'menu'; G.sim = null; document.body.classList.remove('in-mission');
+  G.state = 'menu'; G.sim = null; G.oracle = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine');
+  if (CB.KillCam && CB.KillCam.active) CB.KillCam.stop();
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
   if (G.wake) { try { G.wake.release(); } catch (e) { /* fine */ } G.wake = null; }
@@ -194,6 +204,7 @@ Game.stop = function () {
 Game.pause = function (on) {
   const G = Game;
   if (G.state !== 'mission' || !G.sim || G.sim.state !== 'play') return;
+  if (on && G.cine) { if (CB.KillCam.skip) CB.KillCam.skip(); return; } // never open the notebook over the kill camera
   G.paused = on;
   if (on) { if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock(); UI.notebook(G.sim); Sfx.duck(true); }
   else { UI.closeOverlay(); Sfx.duck(false); }
@@ -210,40 +221,73 @@ Game.loop = function (ts) {
   // if the phone is struggling, quietly draw at a lower resolution rather than stutter
   G.slowN = (G.slowN || 0) * 0.98 + (dt > 0.03 ? 1 : 0); G.frames = (G.frames || 0) + 1;
   if (G.slowN > 30 && G.frames > 120 && G.resK > 0.55 && !Game.noAutoPause) { G.resK *= 0.8; G.slowN = 0; G.frames = 0; G.resize(); }
-  // slow motion while a long shot is in the air
-  let want = 1;
-  if (Save.data.settings.slowmo) {
-    const flying = sim.bullets.find((b) => b.alive);
-    if (flying && (sim.S.refZ - sim.eye0.z) / sim.st.v0 > 0.42 && sim.t - flying.t0 > 0.12) want = 0.34;
-    if (sim.t < G.slowUntil) want = Math.min(want, 0.3);
-    if (sim.winAt && sim.t < sim.winAt - 1.6) want = Math.min(want, 0.45);
+  const KC = CB.KillCam;
+  // ---- the kill camera has the picture: it sets the pace, the world follows ----
+  if (G.cine && KC && KC.active) {
+    const until = KC.advance(dt); let guard = 0;
+    while (sim.state === 'play' && sim.t + SIM_STEP <= until + 1e-9 && guard++ < 60) sim.step(SIM_STEP);
+    G.pumpEvents();
+    if (G.state !== 'mission' || !G.sim) return;
+    KC.draw(dt);
+    Sfx.tick(sim, dt, clamp(KC.rate === undefined ? 0.2 : KC.rate, 0.05, 1));
+    if (KC.done) { KC.stop(); G.cine = false; document.body.classList.remove('cine'); G.scale = 0.22; G.slowT = 0.9; G.view.pax = undefined; }
+    return;
   }
-  G.scale += (want - G.scale) * Math.min(1, dt * (want < G.scale ? 14 : 5));
-  const sdt = dt * G.scale;
+  // A brief slow motion as the last target drops (used when the kill camera did not run).
+  if (G.slowT > 0) G.slowT -= dt;
+  const want = G.slowT > 0 ? 0.3 : 1;
+  G.scale += (want - G.scale) * Math.min(1, dt * (want < G.scale ? 14 : 3.2));
+  if (Math.abs(G.scale - 1) < 0.01 && want === 1) G.scale = 1;
   if (sim.state === 'play') {
     // keyboard nudging for fine aim on a computer
     const k = G.keys, nud = (k.ArrowRight ? 1 : 0) - (k.ArrowLeft ? 1 : 0), nudY = (k.ArrowUp ? 1 : 0) - (k.ArrowDown ? 1 : 0);
     if (nud || nudY) sim.moveAim(nud * dt * 60 / sim.sh.zoom, nudY * dt * 60 / sim.sh.zoom);
-    let left = sdt; while (left > 1e-5) { const s = Math.min(left, 1 / 120); sim.step(s); left -= s; }
-  }
-  // hand events to the picture and the sound
-  if (sim.ev.length) {
-    const evs = sim.ev; sim.ev = [];
-    for (let i = 0; i < evs.length; i++) {
-      const e = evs[i];
-      G.view.onEvent(e, sim); Sfx.onEvent(e, sim);
-      if (e.k === 'msg') G.pushMsg(e.who, e.text, e.dur);
-      else if (e.k === 'kill' && e.how === 'shot' && Save.data.settings.slowmo) G.slowUntil = sim.t + 0.5;
-      else if (e.k === 'alarm') G.banner('ALARM RAISED', 'bad');
-      else if (e.k === 'duck') G.banner('RUBBER DUCK FOUND', 'good');
-      else if (e.k === 'nobreath') G.hud.breath.classList.add('shake'), setTimeout(() => G.hud.breath.classList.remove('shake'), 300);
-      else if (e.k === 'end') G.finish();
+    G.acc = Math.min(G.acc + dt * G.scale, 0.1);
+    while (G.acc >= SIM_STEP && sim.state === 'play') {
+      sim.step(SIM_STEP); G.acc -= SIM_STEP;
+      if (G.oracle && G.oracle.last) { // a round has just left the barrel and we know how it ends
+        const pr = G.oracle.last; G.oracle.last = null;
+        if (G.startCine(pr)) break;
+      }
     }
+    if (G.oracle) G.oracle.catchUp(2.5);
   }
+  G.pumpEvents();
+  if (G.state !== 'mission' || !G.sim) return;
+  if (G.cine) { KC.draw(0); return; }
   G.view.updateReadout(sim, dt);
-  G.view.draw(sim, dt, sdt);
+  G.view.draw(sim, dt, dt * G.scale);
   G.updateHud(dt);
   Sfx.tick(sim, dt, G.scale);
+};
+// hand what happened in the world to the picture and the sound
+Game.pumpEvents = function () {
+  const G = Game, sim = G.sim;
+  if (!sim.ev.length) return;
+  const evs = sim.ev; sim.ev = [];
+  for (let i = 0; i < evs.length; i++) {
+    const e = evs[i];
+    G.view.onEvent(e, sim); Sfx.onEvent(e, sim);
+    if (CB.KillCam && CB.KillCam.active && CB.KillCam.onEvent) CB.KillCam.onEvent(e, sim);
+    if (e.k === 'msg') G.pushMsg(e.who, e.text, e.dur);
+    else if (e.k === 'winning' && !G.cine && sim.kills.length && sim.kills[sim.kills.length - 1].how === 'shot' && sim.t - sim.kills[sim.kills.length - 1].t < 0.1) G.slowT = 0.75;
+    else if (e.k === 'alarm') G.banner('ALARM RAISED', 'bad');
+    else if (e.k === 'duck') G.banner('RUBBER DUCK FOUND', 'good');
+    else if (e.k === 'nobreath') G.hud.breath.classList.add('shake'), setTimeout(() => G.hud.breath.classList.remove('shake'), 300);
+    else if (e.k === 'end') G.finish();
+  }
+};
+// Start the kill camera for a shot the oracle says will finish the contract with a hit on a person.
+Game.startCine = function (pr) {
+  const G = Game, sim = G.sim, KC = CB.KillCam, set = Save.data.settings;
+  if (!pr || !KC || !set.killcam || !pr.win || !pr.kills.length || G.cine) return false;
+  const k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], b = sim.bullets[pr.i];
+  if (!a || !b) return false;
+  let ok = false;
+  try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
+  if (!ok) return false;
+  G.cine = true; G.acc = 0; document.body.classList.add('cine');
+  return true;
 };
 Game.finish = function () {
   const G = Game, sim = G.sim;
@@ -256,14 +300,14 @@ Game.finish = function () {
 
 // ---- controls ---------------------------------------------------------------------------
 Game.aimDelta = function (dxPx, dyPx, speed) {
-  const G = Game, sim = G.sim; if (!sim || sim.state !== 'play' || G.paused) return;
+  const G = Game, sim = G.sim; if (!sim || sim.state !== 'play' || G.paused || G.cine) return;
   const ppm = G.view.ppm(sim.sh.zoom), sens = Save.data.settings.sens;
   // slow finger = fine control, fast finger = cover ground
   const acc = clamp(0.5 + speed / 700, 0.5, 1.7);
   const inv = Save.data.settings.invert ? -1 : 1;
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
-Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
+Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -275,6 +319,7 @@ Game.bindInput = function () {
   stage.addEventListener('pointerdown', (e) => {
     if (G.state !== 'mission' || G.paused) return;
     Sfx.unlock();
+    if (G.cine) { if (CB.KillCam && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (onCtl(e.target)) return;
     if (e.pointerType === 'mouse') {
       if (e.button === 0) { if (!G.locked && stage.requestPointerLock && !G.touch) { try { stage.requestPointerLock(); } catch (er) { /* fine */ } G.mouseAim = true; if (G.clickArms) { G.clickArms = false; return; } } G.fire(); }
@@ -327,6 +372,7 @@ Game.bindInput = function () {
     if (G.state !== 'mission') return;
     if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') { G.pause(!G.paused); e.preventDefault(); return; }
     if (G.paused || !G.sim) return;
+    if (G.cine) { if ((e.key === ' ' || e.key === 'Enter') && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }

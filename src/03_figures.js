@@ -127,6 +127,7 @@ function figPose(anim, t, ph, A) {
   return p;
 }
 
+const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
 // Rotate a set of joints about a pivot (used for falling over).
 function figRotate(J, ang, px, py) {
   const cs = Math.cos(ang), sn = Math.sin(ang);
@@ -161,9 +162,18 @@ function actorJoints(A) {
       for (const k in J) J[k][1] = Math.max(J[k][1], 0.045);
     }
   } else {
-    J = figJoints(figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A));
+    const p = figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A);
+    // ease out of the previous pose over a quarter of a second
+    if (A.animFrom && A.animAt !== undefined) {
+      const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
+      if (u >= 0 && u < 1) { const q = figPose(A.animFrom, A.t || 0, A.ph || 0, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+    }
+    J = figJoints(p);
   }
-  const sc = (A.look && A.look.h) || 1, f = A.face || 1;
+  // turning round: the figure narrows through the turn rather than flipping in one frame
+  let f = A.face || 1;
+  if (!A.dead && A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
+  const sc = (A.look && A.look.h) || 1;
   for (const k in J) { J[k][0] *= f * sc; J[k][1] *= sc; }
   J.scale = sc;
   return J;

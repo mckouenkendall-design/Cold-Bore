@@ -23,8 +23,12 @@ Test.run = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed });
+  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed };
+  const sim = new Sim(M, st, o.vantage || 0, simOpts);
   const log = [];
+  // optional: run the shot oracle alongside and check that what it foretold is what happened
+  const orc = o.oracle ? new Oracle(M, st, o.vantage || 0, simOpts).attach(sim) : null, preds = [];
+  const step = (d) => { sim.step(d); if (orc) { if (orc.last) { preds.push(orc.last); orc.last = null; } orc.catchUp(1e6); } };
   let script = typeof M.solve === 'function' ? M.solve(sim.A, st, flags, sim) : M.solve;
   if (o.script) script = o.script;
   script = (script || []).map((c) => c.slice());
@@ -87,15 +91,25 @@ Test.run = function (missionId, gunId, o) {
     }
     // a charging rifle fires on its own; keep the aim solved until it does
     if (cur && cur._charging && !cur._fired) {
-      const n = sim.bullets.length; sim.step(dt);
+      const n = sim.bullets.length; step(dt);
       if (sim.bullets.length > n) { cur._fired = true; cur._bullet = sim.bullets[n]; }
       sim.ev.length = 0; continue;
     }
-    sim.step(dt);
+    step(dt);
     sim.ev.length = 0;
   }
   const res = sim.result || { win: false, fail: { code: 'timeout', text: 'test ran out of time' }, stars: 0 };
-  return { res: o.raw ? res : undefined, ok: !!res.win, stars: res.stars, clean: res.clean, precise: res.precise, challenge: res.challenge, fail: res.fail ? res.fail.code + ': ' + res.fail.text : null, t: +sim.t.toFixed(1), shots: sim.stats.shots, log, outcome: res.outcome ? res.outcome.id : null, alarmBy: sim.alarmBy || null };
+  let orcOut;
+  if (orc) {
+    const told = [], real = sim.kills.filter((k) => k.how === 'shot').map((k) => k.id + ':' + k.part + '@' + k.t.toFixed(3));
+    preds.forEach((p) => p.kills.forEach((k) => told.push(k.id + ':' + k.part + '@' + k.t.toFixed(3))));
+    // the oracle times a hit inside its step; the simulation stamps the end of the step. Compare who and where, and time to one step.
+    const strip = (a) => a.map((x) => x.split('@')[0]).join(' ');
+    const tOk = told.length === real.length && told.every((x, i) => Math.abs(+x.split('@')[1] - +real[i].split('@')[1]) <= dt * 1.5);
+    const winTold = preds.some((p) => p.win), lastShotWin = !!res.win && real.length > 0 && sim.kills[sim.kills.length - 1].how === 'shot';
+    orcOut = { shots: sim.stats.shots, preds: preds.length, missed: orc.misses, same: strip(told) === strip(real) && tOk, told: strip(told), real: strip(real), winTold, win: !!res.win, lastShotWin };
+  }
+  return { oracle: orcOut, res: o.raw ? res : undefined, ok: !!res.win, stars: res.stars, clean: res.clean, precise: res.precise, challenge: res.challenge, fail: res.fail ? res.fail.code + ': ' + res.fail.text : null, t: +sim.t.toFixed(1), shots: sim.stats.shots, log, outcome: res.outcome ? res.outcome.id : null, alarmBy: sim.alarmBy || null };
 };
 
 // Every mission with every rifle it allows, and every shooting position.
@@ -111,7 +125,8 @@ Test.matrix = function (o) {
         const nv = (M.vantages || [0]).length;
         for (let v = 0; v < nv; v++) {
           if (v > 0 && g.id !== (o.vantageGun || 'halden') && g.id !== 'fenwick') continue;
-          const r = Test.run(M.id, g.id, { vantage: v, flags, seed: o.seed });
+          const r = Test.run(M.id, g.id, { vantage: v, flags, seed: o.seed, oracle: o.oracle });
+          if (r.oracle) { out.orc = out.orc || { runs: 0, bad: [], unseen: 0, cine: 0 }; out.orc.runs++; out.orc.unseen += r.oracle.missed; if (r.oracle.winTold) out.orc.cine++; if (!r.oracle.same) out.orc.bad.push({ m: M.id, gun: g.id, v, told: r.oracle.told, real: r.oracle.real }); }
           if (r.skipped) { if (v === 0 && pm.skipped.indexOf(g.id) < 0) pm.skipped.push(g.id); out.skipped++; continue; }
           out.runs++;
           if (r.ok) { pm.ok++; if (pm.guns.indexOf(g.id) < 0) pm.guns.push(g.id); if (r.stars < 3 && !M.loudOk) out.notClean.push({ m: M.id, gun: g.id, v, stars: r.stars, clean: r.clean, precise: r.precise, shots: r.shots, alarmBy: r.alarmBy }); }

@@ -13,12 +13,13 @@ const path = require('path');
   await page.waitForTimeout(400);
   let bad = 0;
   for (const seed of seeds) {
-    const out = await page.evaluate(({ only, seed }) => CB.Test.matrix({ only, seed }), { only, seed });
+    const out = await page.evaluate(({ only, seed, oracle }) => CB.Test.matrix({ only, seed, oracle }), { only, seed, oracle: !!process.env.ORACLE });
     console.log('seed', seed, 'runs', out.runs, 'fails', out.fails.length, 'skipped combos', out.skipped);
     for (const id in out.perMission) { const p = out.perMission[id]; console.log('  ' + id.padEnd(8) + ' ok ' + String(p.ok).padStart(3) + '  fail ' + String(p.fail).padStart(2) + '  guns ' + p.guns.length + (p.skipped.length ? '  (not allowed: ' + p.skipped.join(',') + ')' : '')); }
     out.fails.forEach((f) => console.log('  FAIL', f.m, f.gun, 'v' + f.v, JSON.stringify(f.flags), f.fail, '|', f.log.join('; '), '| t=' + f.t));
     if (process.env.CLEAN) out.notClean.forEach((f) => console.log('  under 3 stars', JSON.stringify(f)));
     else console.log('  runs that won but under 3 stars:', out.notClean.length);
+    if (out.orc) { console.log('  oracle: runs', out.orc.runs, ' wrong', out.orc.bad.length, ' shots it could not foresee', out.orc.unseen, ' runs where it would start the kill camera', out.orc.cine); out.orc.bad.slice(0, 25).forEach((b) => console.log('   WRONG', JSON.stringify(b))); bad += out.orc.bad.length; }
     bad += out.fails.length;
   }
   if (errs.length) { console.log(errs.join('\n')); bad++; }

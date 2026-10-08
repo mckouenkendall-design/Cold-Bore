@@ -5,7 +5,7 @@
   --head: "Avenir Next Condensed", "DIN Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
   --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
-  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
   color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -49,7 +49,14 @@ body:not(.in-mission) #cv { visibility: hidden; }
 .cell-zero.dial .zbtn.down { background: var(--line2); }
 .h-strip.has-dial .cell:last-child { flex: .85 1 0; }
 .h-strip.has-dial .cell-hold { flex: 1.5 1 0; }
-body.landscape .h-strip { flex-wrap: wrap; } body.landscape .h-strip .cell { flex: 1 1 44%; }
+/* sideways: the picture fills the screen, so everything floating over it needs its own backing */
+body.landscape .h-top { padding-left: calc(8px + var(--sal)); padding-right: calc(10px + var(--sar)); padding-bottom: 22px; background: linear-gradient(rgba(0, 0, 0, .62), rgba(0, 0, 0, 0)); }
+body.landscape .h-obj { max-width: 56%; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
+body.landscape .h-obj span { -webkit-line-clamp: 1; }
+body.landscape .h-strip .cell { background: rgba(10, 14, 20, .72); padding: 3px 7px 4px; }
+body.landscape .h-fire, body.landscape .h-breath, body.landscape .h-reload { opacity: .92; }
+body.landscape .h-ammo { text-shadow: 0 1px 3px #000; }
+body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !important; transition: opacity .15s; }
 .h-msg { position: absolute; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
 .radio { background: rgba(14, 18, 24, .86); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 6px 10px; font-size: 13.5px; line-height: 1.3; transition: opacity .5s; animation: slide .25s ease-out; }
 .radio b { font-family: var(--head); letter-spacing: .14em; font-size: 10.5px; color: var(--amber); display: block; text-transform: uppercase; }

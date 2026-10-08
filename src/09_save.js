@@ -12,7 +12,7 @@ Save.fresh = function () {
     guns: { fenwick: { cfg: defaultConfig('fenwick') } },
     parts: {}, scopes: { hunter: 1 }, skins: { factory: 1 }, skinSeen: {}, caches: [], scrap: 0,
     missions: {}, flags: {}, seen: {}, ducks: {},
-    settings: { sens: 0.6, assist: 'notes', slowmo: true, music: 0.55, sfx: 0.9, invert: false, lowRes: false },
+    settings: { sens: 0.6, assist: 'notes', killcam: true, gore: true, music: 0.55, sfx: 0.9, invert: false, lowRes: false },
     stats: { shots: 0, kills: 0, heads: 0, longest: 0, plays: 0, wins: 0, cachesOpened: 0 },
     created: Date.now(),
   };
