@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// The kill camera (placeholder version: a plain chase camera behind the round).
+// The kill camera. A short film of the shot that finishes a contract.
 //
 // Contract with the game loop (src/20_game.js):
 //   KillCam.start(o)      begin. o = { sim, view, gunId, cfg, bullet, path, t0, tHit, hit,
@@ -7,54 +7,1402 @@
 //   KillCam.advance(dt)   dt = real seconds since last frame. Returns the simulation time
 //                         the world should have reached. The game steps the world up to it.
 //   KillCam.draw(dt)      paint the whole frame onto the game canvas.
+//   KillCam.onEvent(e)    world events, as they happen.
 //   KillCam.skip()        the player tapped: finish quickly.
 //   KillCam.stop()        tidy up.
 //   KillCam.active, KillCam.done, KillCam.rate (how fast time is passing, for the sound)
+//
+// The film has five stages, each with its own picture:
+//   0  THE RIFLE    the player's rifle side on, the flash, the round leaving the muzzle.
+//   1  THE FLIGHT   a camera riding just behind the round through the real scene.
+//   2  THE SWING    the camera lets go of the round and swings round the target until it
+//                   looks across the line of fire. The scene fades into "X-ray space".
+//   3  THE X-RAY    the round goes through the body. Bones and organs on its line break.
+//   4  THE HOLD     a beat on the result, then a flash back to the scope.
+//
+// Two kinds of space are used. "World" is the game's own: x across, y up, z down range,
+// in metres. "X-ray space" is the same axes but measured from the target's feet, so the
+// body always stands at the origin however the target was moving.
 // ---------------------------------------------------------------------------
 const KillCam = CB.KillCam = { active: false, done: false, rate: 0.2 };
 
+const kcTune = {
+  beat: 0.95,        // seconds spent at the rifle
+  flightMin: 1.3,    // seconds of flight for a 100 m shot
+  flightMax: 2.1,    // seconds of flight for a 900 m shot
+  swing: 1.3,        // seconds for the camera to come round to side on
+  hold: 0.85,        // seconds holding on the result
+  out: 0.34,         // seconds of flash back to the scope
+  swingFrom: 2.6,    // metres from the target at which the camera lets go of the round
+  standOff: 0.55,    // metres short of the skin at which the swing ends
+  crawl: 0.5,        // metres per second the round is shown moving through the body
+  bulletScale: 2.1,  // the round is drawn this many times life size so its shape can be read
+  deg: Math.PI / 180,
+};
+// bullet diameters in millimetres, by the rifle's calibre
+const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
+const kcPalDefault = { skyTop: '#22234f', skyBot: '#ef8a55', ink: '#0e1016', rim: 'rgba(255,225,205,0.45)', dark: 0.35, star: 0 };
+// a standing figure, used only if the game cannot give us the target's pose
+const kcStand = { hip: [0, 0.86], neck: [0, 1.42], head: [0, 1.62], sh: [0, 1.37], knL: [0.02, 0.42], ftL: [0.03, 0], knR: [-0.02, 0.42], ftR: [-0.03, 0], elL: [0.02, 1.08], haL: [0.05, 0.8], elR: [-0.02, 1.08], haR: [-0.04, 0.8], scale: 1, f: 1 };
+// half-widths of the eight pairs of ribs, lowest first (metres on a figure of normal height)
+const kcRibW = [0.108, 0.121, 0.13, 0.135, 0.134, 0.127, 0.113, 0.092];
+// The organs, in the trunk's own axes: a = toward the person's left, b = up from the hip as a
+// share of the hip-to-neck length, c = forward. ra, rb, rc are half-sizes in metres.
+const kcOrgans = [
+  { id: 'lungR', a: -0.066, b: 0.7, c: 0, ra: 0.046, rb: 0.118, rc: 0.062, col: '#c9727b', hi: '#e7a6aa', label: 'LUNG', pri: 6 },
+  { id: 'lungL', a: 0.066, b: 0.7, c: 0, ra: 0.046, rb: 0.118, rc: 0.062, col: '#c9727b', hi: '#e7a6aa', label: 'LUNG', pri: 6 },
+  { id: 'liver', a: -0.042, b: 0.415, c: 0.02, ra: 0.08, rb: 0.044, rc: 0.06, col: '#74302a', hi: '#9d4c3f', label: 'LIVER', pri: 7 },
+  { id: 'stomach', a: 0.056, b: 0.4, c: 0.03, ra: 0.047, rb: 0.04, rc: 0.04, col: '#bd7d63', hi: '#dfab90', label: 'STOMACH', pri: 5 },
+  { id: 'kidR', a: -0.058, b: 0.31, c: -0.045, ra: 0.021, rb: 0.034, rc: 0.02, col: '#7f3032', hi: '#a84a48', label: 'KIDNEY', pri: 5 },
+  { id: 'kidL', a: 0.058, b: 0.31, c: -0.045, ra: 0.021, rb: 0.034, rc: 0.02, col: '#7f3032', hi: '#a84a48', label: 'KIDNEY', pri: 5 },
+  { id: 'heart', a: 0.03, b: 0.655, c: 0.04, ra: 0.055, rb: 0.062, rc: 0.045, col: '#b01c28', hi: '#ea5257', label: 'HEART', pri: 10 },
+];
+// the round's outline: pairs of (distance along it, 0 at the base and 1 at the tip; radius, 1 = full calibre)
+const kcProf = [0, 0.8, 0.05, 0.93, 0.11, 1, 0.3, 1, 0.335, 0.93, 0.37, 1, 0.52, 0.98, 0.64, 0.87, 0.75, 0.69, 0.85, 0.47, 0.93, 0.25, 1, 0.04];
+// scratch space, so the drawing code does not make thousands of little arrays every frame
+const kcQ = [0, 0, 0, 0], kcQ2 = [0, 0, 0, 0], kcE = [0, 0, 0], kcV1 = [0, 0, 0], kcV2 = [0, 0, 0], kcV3 = [0, 0, 0], kcL0 = [0, 0, 0], kcL1 = [0, 0, 0];
+const kcBx = new Float32Array(16), kcBy = new Float32Array(16), kcBr = new Float32Array(16), kcBs = new Float32Array(16);
+
+// ---- the 3D camera ----------------------------------------------------------------
+// A camera is a place (x, y, z), a direction (yaw: turned right from straight down range,
+// pitch: tipped down), a lens (f: pixels on screen for one metre seen from one metre away)
+// and the spot on screen its centre line lands on (px, py).
+function kcCamAim(c) { // work out the camera's own right, up and forward directions
+  const cy = Math.cos(c.yaw), sy = Math.sin(c.yaw), cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  c.rx = cy; c.rz = -sy;
+  c.fx = sy * cp; c.fy = -sp; c.fz = cy * cp;
+  c.ux = sp * sy; c.uy = cp; c.uz = sp * cy;
+  return c;
+}
+function kcLook(c, tx, ty, tz) { // point the camera at a place
+  const dx = tx - c.x, dy = ty - c.y, dz = tz - c.z;
+  c.yaw = Math.atan2(dx, dz); c.pitch = Math.atan2(-dy, Math.hypot(dx, dz));
+  return kcCamAim(c);
+}
+// A point in space to a point on screen. out = [screen x, screen y, pixels per metre there, distance].
+// Things further away are divided by a bigger distance, which is all perspective is.
+function kcProj(c, x, y, z, out) {
+  const dx = x - c.x, dy = y - c.y, dz = z - c.z;
+  const d = dx * c.fx + dy * c.fy + dz * c.fz;
+  out[3] = d;
+  if (d < 0.03) return false; // behind the lens
+  const s = c.f / d;
+  out[0] = c.px + (dx * c.rx + dz * c.rz) * s;
+  out[1] = c.py - (dx * c.ux + dy * c.uy + dz * c.uz) * s;
+  out[2] = s;
+  return true;
+}
+// The game's scenery is a stack of flat layers and can only be drawn by a camera that looks
+// straight down range and slides its picture sideways to aim. This builds that kind of camera
+// so that one chosen point (ax, ay, az) lands on the same screen spot, at the same size, as it
+// does in the 3D camera. With no yaw or pitch the two cameras agree everywhere.
+function kcLayerCam(V, c, ax, ay, az) {
+  const d = Math.max(0.3, az - c.z), cx = V.W / 2, cy = V.H / 2;
+  let ppm = c.f / 1000, sx = c.px + (c.f * (ax - c.x)) / d, sy = c.py - (c.f * (ay - c.y)) / d;
+  if ((c.yaw || c.pitch) && kcProj(c, ax, ay, az, kcQ)) { ppm = (kcQ[2] * d) / 1000; sx = kcQ[0]; sy = kcQ[1]; }
+  return { cx, cy, hw: V.W / 2, hh: V.H / 2, ex: c.x, ey: c.y, ez: c.z, ax: ((ax - c.x) / d) * 1000 - (sx - cx) / ppm, ay: ((ay - c.y) / d) * 1000 + (sy - cy) / ppm, ppm };
+}
+// The outline of a tilted disc or of an egg shape is always an ellipse on screen. Given the
+// shape's axes as arrows in space (a, b and optionally cc), add up how each arrow looks on
+// screen; the long and short directions of that sum are the ellipse. Adds it to the current path.
+function kcEll(ctx, c, x, y, z, a, b, cc) {
+  if (!kcProj(c, x, y, z, kcQ)) return false;
+  const s = kcQ[2];
+  const ax = (a[0] * c.rx + a[2] * c.rz) * s, ay = -(a[0] * c.ux + a[1] * c.uy + a[2] * c.uz) * s;
+  const bx = (b[0] * c.rx + b[2] * c.rz) * s, by = -(b[0] * c.ux + b[1] * c.uy + b[2] * c.uz) * s;
+  let m11 = ax * ax + bx * bx, m12 = ax * ay + bx * by, m22 = ay * ay + by * by;
+  if (cc) { const qx = (cc[0] * c.rx + cc[2] * c.rz) * s, qy = -(cc[0] * c.ux + cc[1] * c.uy + cc[2] * c.uz) * s; m11 += qx * qx; m12 += qx * qy; m22 += qy * qy; }
+  const h = (m11 + m22) / 2, d = Math.sqrt(Math.max(0, ((m11 - m22) * (m11 - m22)) / 4 + m12 * m12));
+  kcE[0] = Math.sqrt(Math.max(0.06, h + d)); kcE[1] = Math.sqrt(Math.max(0.06, h - d)); kcE[2] = 0.5 * Math.atan2(2 * m12, m11 - m22);
+  ctx.moveTo(kcQ[0] + Math.cos(kcE[2]) * kcE[0], kcQ[1] + Math.sin(kcE[2]) * kcE[0]);
+  ctx.ellipse(kcQ[0], kcQ[1], kcE[0], kcE[1], kcE[2], 0, TAU);
+  return true;
+}
+const kcSet = (o, x, y, z) => { o[0] = x; o[1] = y; o[2] = z; return o; };
+const kcMul = (o, v, k) => { o[0] = v[0] * k; o[1] = v[1] * k; o[2] = v[2] * k; return o; };
+// A point given in a body part's own axes: a toward the person's left, b up, c forward.
+function kcLoc(fr, a, b, c, out) {
+  out[0] = fr.o[0] + fr.U[0] * b + fr.F[0] * c; out[1] = fr.o[1] + fr.U[1] * b + fr.F[1] * c; out[2] = fr.o[2] + fr.S[2] * a;
+  return out;
+}
+// Add a run of such points to the current path. pts = [a, b, c, a, b, c, ...] in metres times k.
+// Returns the picture scale at the last point (for line widths), or 0 if it cannot be drawn.
+function kcRun(ctx, c, fr, pts, k, flipA, close) {
+  let s = 0;
+  for (let i = 0; i < pts.length; i += 3) {
+    kcLoc(fr, pts[i] * k * flipA, pts[i + 1] * k, pts[i + 2] * k, kcL0);
+    if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return 0;
+    if (i === 0) ctx.moveTo(kcQ[0], kcQ[1]); else ctx.lineTo(kcQ[0], kcQ[1]);
+    s = kcQ[2];
+  }
+  if (close) ctx.closePath();
+  return s;
+}
+function kcDistSeg(px, py, a, b) { // how far a point is from a line between two joints
+  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? clamp(((px - a[0]) * dx + (py - a[1]) * dy) / l2, 0, 1) : 0;
+  return Math.hypot(px - (a[0] + dx * t), py - (a[1] + dy * t));
+}
+const kcHash = (n) => { const x = Math.sin(n * 127.1 + 11.7) * 43758.5453; return x - Math.floor(x); };
+// sound: only ever through the game's two building blocks, and never allowed to break the film
+function kcNoise(p) { try { const X = CB.Sfx; if (X && X.ok && X.noise) X.noise(p); } catch (e) { /* sound is optional */ } }
+function kcTone(p) { try { const X = CB.Sfx; if (X && X.ok && X.tone) X.tone(p); } catch (e) { /* sound is optional */ } }
+
+// ---- starting, stopping --------------------------------------------------------------
 KillCam.start = function (o) {
   const K = KillCam;
-  K.o = o; K.t = 0; K.active = true; K.done = false; K.skipped = false;
-  K.flight = Math.max(0.02, o.tHit - o.t0);
-  K.dur = clamp(1.5 + K.flight * 1.5, 1.8, 3.4); K.after = 1.2;
-  K.simT = o.t0;
+  if (!o || !o.sim || !o.view || !o.view.ctx || !o.hit || !isFinite(o.tHit)) return false;
+  if (o.actor && o.actor.dead) return false;            // the round has already landed: nothing left to film
+  const h = o.hit, step = o.step > 0 ? o.step : 1 / 120, st = o.sim.st || {};
+  if (!(o.tHit > o.sim.t - step * 0.2)) return false;
+  K.o = o; K.step = step; K.T = 0; K.stage = 0;
+  // the round's direction and speed as it arrives
+  let v = Math.hypot(h.vx || 0, h.vy || 0, h.vz || 0);
+  if (!(v > 20) || !(h.vz > 10)) { K.dir = [0, 0, 1]; v = v > 20 ? v : 600; } else K.dir = [h.vx / v, h.vy / v, h.vz / v];
+  K.v = v; K.sonic = v > 343;
+  // the flight, trimmed to end exactly at the hit
+  const t0 = isFinite(o.t0) ? o.t0 : o.sim.t, path = [];
+  (o.path || []).forEach((p) => { if (p && isFinite(p[0]) && isFinite(p[1]) && isFinite(p[2]) && isFinite(p[3]) && p[3] < h.z - 0.01 && (!path.length || p[3] > path[path.length - 1][3] + 1e-4)) path.push(p); });
+  if (!path.length) { const back = Math.max(8, v * Math.max(0.02, o.tHit - t0)); path.push([t0, h.x - K.dir[0] * back, h.y - K.dir[1] * back, h.z - K.dir[2] * back]); }
+  path.push([o.tHit, h.x, h.y, h.z]);
+  K.path = path; K.pi = 1;
+  K.dist = Math.max(1, h.z - path[0][3]);
+  K.dS = Math.min(kcTune.swingFrom, K.dist * 0.3);       // how far out the camera lets go of the round
+  K.zA = path[0][3] + Math.min(1.3, K.dist * 0.08);      // where the chase picks the round up
+  K.zS = h.z - K.dS * K.dir[2];
+  // the timeline, in real seconds
+  const far = clamp((K.dist - 100) / 800, 0, 1);
+  K.Tf = lerp(kcTune.flightMin, kcTune.flightMax, far) * clamp(K.dist / 100, 0.45, 1);
+  K.Ta = kcTune.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + kcTune.swing;
+  // the round itself
+  const mm = kcCalMm[st.cal] || 7.8;
+  K.rad = (mm / 2000) * kcTune.bulletScale; K.len = K.rad * 2 * (st.cal === 'crail' ? 5.4 : 4.1);
+  K.steel = st.cal === 'crail'; K.quiet = !!st.quiet; K.action = st.action || 'bolt';
+  K.through = typeof st.pen === 'number' ? st.pen >= 1.2 : null; // heavy rounds carry on out the far side
+  // which side the camera swings to: the side the target is facing, so we end up looking at their front
+  const a = o.actor;
+  K.side = a && (a.face || 1) < 0 ? -1 : 1;
+  K.look = Object.assign({}, (a && a.look) || {});       // the game knocks the hat off at the kill; keep our own copy
+  K.gore = o.gore !== false;
+  // book-keeping
+  K.ret = Math.min(o.sim.t, o.tHit - step * 0.25); K.prevRet = K.ret; K.simDt = 0;
+  K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
+  K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.cap = null; K.mush = 0; K.spin = 0;
+  K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.gunLay = null; K.snd = {}; K.err = null;
+  K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
+  K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
+  K.active = true; K.done = false; K.skipped = false; K.rate = 0.12;
   return true;
 };
-KillCam.stop = function () { KillCam.active = false; KillCam.o = null; };
+KillCam.stop = function () { const K = KillCam; K.active = false; K.o = null; K.parts = []; K.fig = null; K.plan = null; };
 KillCam.skip = function () { KillCam.skipped = true; };
-KillCam.pos = function (t) { // where the round is at simulation time t, from the predicted flight
-  const p = KillCam.o.path, h = KillCam.o.hit;
-  if (t >= h.t) return [h.x, h.y, h.z];
-  for (let i = 1; i < p.length; i++) if (p[i][0] >= t) { const a = p[i - 1], b = p[i], u = clamp((t - a[0]) / Math.max(1e-6, b[0] - a[0]), 0, 1); const q = [lerp(a[1], b[1], u), lerp(a[2], b[2], u), lerp(a[3], b[3], u)]; if (q[2] > h.z) return [h.x, h.y, h.z]; return q; }
-  return [h.x, h.y, h.z];
+KillCam.onEvent = function (e) {
+  const K = KillCam, o = K.o;
+  if (!o || !e) return;
+  if (e.k === 'kill' && o.hit && e.id === o.hit.id) { K.killSeen = true; if (K.through === null) K.through = !!(o.bullet && o.bullet.alive); }
 };
+// where the round is when it has got to distance z down range (the flight is a list of samples)
+function kcPathAtZ(K, z, out) {
+  const p = K.path; let i = K.pi || 1;
+  while (i < p.length - 1 && p[i][3] < z) i++;
+  while (i > 1 && p[i - 1][3] > z) i--;
+  K.pi = i;
+  const a = p[i - 1], b = p[i], u = clamp((z - a[3]) / Math.max(1e-6, b[3] - a[3]), 0, 1);
+  out[0] = lerp(a[1], b[1], u); out[1] = lerp(a[2], b[2], u); out[2] = lerp(a[3], b[3], u); out[3] = lerp(a[0], b[0], u);
+  return out;
+}
+
+// ---- time ---------------------------------------------------------------------------
 KillCam.advance = function (dt) {
   const K = KillCam, o = K.o;
-  if (K.skipped) { K.done = true; return Math.max(K.simT, o.tHit + o.step * 2); }
-  K.t += dt;
-  if (K.t < K.dur) {
-    const u = K.t / K.dur, e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-    K.simT = o.t0 + (o.tHit - o.step * 0.5 - o.t0) * e; K.rate = 0.3;
+  if (!o) { K.done = true; return K.ret || 0; }
+  try { return kcAdvance(K, o, clamp(+dt || 0, 0, 0.05)); } catch (e) { K.err = e; K.skipped = true; return kcEnd(K, o); }
+};
+// Finish now. The game can only move the world on by half a second each frame, so after a very
+// early skip of a long shot we keep asking for a few frames until the round has really landed.
+function kcEnd(K, o) {
+  K.ret = Math.max(K.ret, o.tHit + K.step * 2.5); K.skipN++; K.rate = 0.25;
+  if (o.sim.t >= o.tHit + K.step * 0.5 || o.sim.state !== 'play' || K.skipN > 12 || K.hitT !== null) K.done = true;
+  return K.ret;
+}
+function kcAdvance(K, o, dt) {
+  if (K.skipped) return kcEnd(K, o);
+  K.T += dt; K.spin += dt * 9;
+  const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
+  K.prevRet = K.ret;
+  if (T < K.Ta) {
+    // ---- 0: at the rifle. Time is all but stopped.
+    K.stage = 0; K.rate = 0.12; K.speedK = 0;
+  } else if (T < K.Tb) {
+    // ---- 1: the flight. Distance covered follows a curve that starts slowly, runs fast in the
+    // middle and arrives slowly: a cubic that leaves with slope k0 and lands with slope k1.
+    if (K.stage < 1) { K.stage = 1; kcNoise({ type: 'bandpass', f: 150, f1: 640, sweep: K.Tf * 0.6, q: 0.9, dur: K.Tf * 0.9, att: K.Tf * 0.5, gain: 0.06, brown: true }); }
+    const u = (T - K.Ta) / K.Tf, D = Math.max(0.5, K.zS - K.zA);
+    const k0 = clamp((7 * K.Tf) / D, 0, 0.8), k1 = clamp((kcSwingV0(K) * K.Tf) / D, 0, 0.8);
+    const g = (u * u * u - 2 * u * u + u) * k0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * k1;
+    const gv = (3 * u * u - 4 * u + 1) * k0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * k1;
+    kcPathAtZ(K, lerp(K.zA, K.zS, clamp(g, 0, 1)), K.bp);
+    K.speedK = clamp(gv / 1.5, 0, 1); K.fu = u;
+    K.rate = clamp(0.2 + 0.85 * K.speedK, 0.2, 1);
+    K.ret = Math.max(K.ret, Math.min(K.bp[3], cap));
   } else {
-    K.simT = Math.max(K.simT, o.tHit + o.step) + dt * 0.08; K.rate = 0.08;
-    if (K.t > K.dur + K.after) K.done = true;
+    // ---- 2 to 4: the round is on its last straight few metres. s is how far its tip is past
+    // the middle of the body, in metres (negative while it is still on its way).
+    if (K.stage < 2) kcBeginSwing(K, o);
+    const pl = K.plan;
+    if (K.hitT === null) {
+      if (T < K.Tc) {
+        // the swing: the round eases down from the flight's last speed
+        const u = (T - K.Tb) / kcTune.swing, D = Math.max(0.05, K.dS - pl.sFrom);
+        K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / kcTune.swing;
+        K.rate = lerp(0.2, 0.1, u);
+        if (!K.snd.h1 && u > 0.12) { K.snd.h1 = 1; kcBeat(0.1); }
+        if (!K.snd.h2 && u > 0.7) { K.snd.h2 = 1; kcBeat(0.12); }
+      } else {
+        K.stage = 3;
+        K.spd = lerp(1.0, kcTune.crawl * 1.15, smooth((K.s + pl.sFrom) / Math.max(0.05, pl.sFrom + pl.sIn)));
+        K.s += K.spd * dt; K.rate = 0.1;
+      }
+      K.ret = Math.max(K.ret, Math.min(o.tHit + K.s / K.v, cap));
+      if (K.s >= pl.sIn - 1e-4) {
+        // the tip touches the skin: this is the frame the world is allowed to make the kill
+        K.hitT = T; K.stage = 3; K.s = Math.max(K.s, pl.sIn);
+        K.ret = Math.max(K.ret, o.tHit + K.step * 1.002);
+      }
+    } else {
+      // inside the body: a slow crawl that all but stops as the round reaches the main thing it hits
+      let sp = kcTune.crawl * (1 - 0.74 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.034, 2)));
+      if (K.through !== false) { if (K.s > pl.sOut) sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 15); }
+      else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
+      K.spd = sp; K.s += sp * dt;
+      const since = T - K.hitT;
+      if (K.holdT0 === null && ((K.through !== false && K.s > pl.sOut + 0.3) || K.stopped || since > 2.5)) {
+        K.holdT0 = T; K.stage = 4;
+        kcTone({ at: 0.18, f: 55, dur: 1.3, att: 0.05, gain: 0.07, verb: 0.4 }); kcTone({ at: 0.18, f: 110, dur: 0.9, att: 0.05, gain: 0.018, verb: 0.4 });
+      }
+      if (K.holdT0 !== null && K.outT0 === null && T - K.holdT0 > kcTune.hold) K.outT0 = T;
+      if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; try { o.view.flash = Math.max(o.view.flash || 0, 1); } catch (e) { /* the scope picture is not ours to break */ } }
+      // let the world creep on, so the body starts to drop as the game says it does
+      K.rate = K.outT0 !== null ? 0.3 : K.holdT0 !== null ? 0.16 : 0.22;
+      K.ret += dt * (K.outT0 !== null ? 0.22 : K.holdT0 !== null ? 0.12 : 0.03);
+    }
+    // things on the round's line break as its tip reaches them
+    for (let i = 0; i < pl.evs.length; i++) { const ev = pl.evs[i]; if (!ev.done && K.s >= ev.s && (ev.kind === 'skin0' || K.hitT !== null)) { ev.done = true; kcFire(K, ev); } }
+    kcStepParts(K, dt * (K.holdT0 !== null ? 0.3 : 0.15));
   }
-  return K.simT;
-};
+  K.simDt = Math.max(0, K.ret - K.prevRet);
+  return K.ret;
+}
+// the speed the round is shown at as the swing begins (metres per second), so the flight can land on it
+function kcSwingV0(K) { return (1.28 * Math.max(0.2, K.dS - kcTune.standOff - 0.2)) / kcTune.swing; }
+function kcBeat(g) { kcTone({ f: 62, f1: 40, dur: 0.09, gain: g }); kcTone({ at: 0.16, f: 54, f1: 36, dur: 0.11, gain: g * 0.7 }); }
+
+// ---- the plan: what the round will meet, worked out from where it goes in ----------------
+// Called as the swing begins, when the target is within a few thousandths of a second of the
+// pose it will be hit in.
+function kcBeginSwing(K, o) {
+  K.stage = 2;
+  kcPathAtZ(K, K.zS, K.bp); // the round, exactly where the flight was to end
+  const fig = kcBuildFig(K), h = o.hit, sc = fig.sc, fs = fig.fs, bw = fig.bw, J = fig.J;
+  const lx = h.x - (isFinite(h.ax) ? h.ax : h.x), ly = h.y - (isFinite(h.ay) ? h.ay : h.y - 1); // the hit, measured from the target's feet
+  const evs = [], pl = K.plan = { part: h.part === 'head' ? 'head' : 'torso', evs, fs };
+  const add = (s, kind, ref, label, pri) => evs.push({ s, kind, ref: ref || kind, label: label || '', pri: pri || 0, done: false });
+  if (pl.part === 'head') {
+    // u0 = how far up the head from its middle, c0 = how far toward the face
+    const hd = fig.hd, hr = fig.hr, rx = lx - hd.o[0], ry = ly - hd.o[1];
+    let u0 = rx * hd.U[0] + ry * hd.U[1], c0 = rx * hd.F[0] + ry * hd.F[1];
+    const rr = Math.hypot(u0, c0), mx = hr * 0.8; if (rr > mx) { u0 *= mx / rr; c0 *= mx / rr; }
+    pl.u0 = u0; pl.c0 = c0; pl.H = [hd.o[0] + hd.U[0] * u0 + hd.F[0] * c0, hd.o[1] + hd.U[1] * u0 + hd.F[1] * c0, 0];
+    // the round crosses a ball from side to side: how much ball is on its line is a chord, sqrt(r*r - d*d)
+    const rs = 0.142 * sc, uc = u0 - 0.018 * sc, skin = Math.sqrt(Math.max(0.0036 * sc * sc, hr * hr - u0 * u0 - c0 * c0));
+    add(-skin, 'skin0'); add(skin, 'skin1');
+    if (uc * uc + c0 * c0 < rs * rs * 0.9 && u0 > -0.075 * sc) {
+      const ch = Math.sqrt(Math.max(0.0009 * sc * sc, rs * rs - uc * uc - c0 * c0)), ub = (u0 - 0.02 * sc) / (0.085 * sc), cb = c0 / (0.115 * sc);
+      add(-ch, 'bone', 'skullIn', 'SKULL', 4); add(ch, 'bone', 'skullOut');
+      if (K.gore && ub * ub + cb * cb < 1) add(-0.105 * sc * Math.sqrt(1 - ub * ub - cb * cb) * 0.45, 'organ', 'brain', 'BRAIN', 9);
+      pl.chord = ch;
+    } else {
+      add(-0.095 * sc, 'bone', 'jawIn', 'JAW', 4); add(0.095 * sc, 'bone', 'jawOut');
+      if (c0 < 0.012 * sc) add(-0.01 * sc, 'spine', 'spineC', 'SPINE', 9);
+    }
+  } else {
+    // b0 = how far up the trunk from the hip, c0 = how far in front of the spine line
+    const t = fig.tor, rx = lx - t.o[0], ry = ly - t.o[1];
+    const b0 = clamp(rx * t.U[0] + ry * t.U[1], -0.05 * sc, t.L * 1.03), c0 = clamp(rx * t.F[0] + ry * t.F[1], -0.085 * sc, 0.085 * sc);
+    pl.b0 = b0; pl.c0 = c0; pl.H = [t.o[0] + t.U[0] * b0 + t.F[0] * c0, t.o[1] + t.U[1] * b0 + t.F[1] * c0, 0];
+    const tt = b0 / t.L, hw = lerp(fig.wh, fig.wt, clamp(tt, 0, 1)) + (K.look.coat ? 0.09 : 0.07) * sc;
+    let sIn = -hw, sOut = hw;
+    // an arm hanging across the line is gone through first (near side) or last (far side)
+    const arm = (sh, el, ha) => (kcDistSeg(lx, ly, sh, el) < 0.05 * sc ? 'U' : kcDistSeg(lx, ly, el, ha) < 0.05 * sc ? 'F' : '');
+    const near = fs > 0 ? 'R' : 'L', farS = fs > 0 ? 'L' : 'R';
+    const aIn = arm(J.sh, J['el' + near], J['ha' + near]), aOut = arm(J.sh, J['el' + farS], J['ha' + farS]);
+    if (aIn) { add(-fig.za, 'bone', 'arm' + near + aIn, 'ARM', 1); sIn = Math.min(sIn, -fig.za - 0.055 * sc); }
+    if (aOut) { add(fig.za, 'bone', 'arm' + farS + aOut); sOut = Math.max(sOut, fig.za + 0.055 * sc); }
+    add(sIn, 'skin0'); add(sOut, 'skin1');
+    if (tt > 0.44 && tt < 0.9) {
+      // the rib cage: its wall is met going in and coming out
+      const ri = clamp((tt - 0.47) / 0.058, 0, 7), i0 = Math.floor(ri), rw = lerp(kcRibW[i0], kcRibW[Math.min(7, i0 + 1)], ri - i0) * sc * bw;
+      add(-rw, 'bone', 'ribIn', 'RIBS', 2); add(rw, 'bone', 'ribOut');
+      pl.ribAl = Math.acos(clamp(-(c0 + 0.012 * sc) / (0.085 * sc), -0.95, 0.95)); // where round the rib the line crosses
+    } else if (tt >= 0.9) { add(-fig.ws * 0.9, 'bone', 'shIn', 'SHOULDER', 3); add(fig.ws * 0.9, 'bone', 'shOut'); }
+    else if (tt < 0.2) { add(-0.105 * sc * bw, 'bone', 'pelvIn', 'PELVIS', 3); add(0.105 * sc * bw, 'bone', 'pelvOut'); }
+    // the spine runs just behind the middle line
+    if (Math.abs(c0 + 0.032 * sc) < 0.03 * sc && tt > 0.02) add(-0.012 * sc, 'spine', 'spine', 'SPINE', 9);
+    if (K.gore) {
+      for (let i = 0; i < kcOrgans.length; i++) {
+        // (the test is generous front to back: from side on nobody can see how far forward the round is,
+        // and a round that looks as if it went through the heart must be seen to go through the heart)
+        const g = kcOrgans[i], eb = (b0 - g.b * t.L) / (g.rb * sc), ec = (c0 - g.c * sc) / (g.rc * sc * 1.6), e2 = eb * eb + ec * ec;
+        if (e2 < 1) add(g.a * sc * bw * fs - g.ra * sc * bw * Math.sqrt(1 - e2) * 0.45, 'organ', g.id, g.label, g.pri);
+      }
+      if (tt > 0.05 && tt < 0.3 && c0 > -0.05 * sc) add(-0.05 * sc, 'organ', 'gut', 'GUT', 3);
+    }
+  }
+  evs.sort((p, q) => p.s - q.s);
+  pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
+  pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
+  pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
+  // the caption goes to the most important thing the round actually reaches
+  let key = null;
+  for (let i = 0; i < evs.length; i++) { const e = evs[i]; if (e.pri > 0 && (K.through !== false || e.s <= pl.sStop) && (!key || e.pri > key.pri)) key = e; }
+  pl.key = key; pl.sKey = key ? key.s + 0.012 : 0;
+  pl.samples = []; for (let s = pl.sIn; s <= pl.sOut + 1e-6; s += 0.024) pl.samples.push(s, -1); // the wound track: (place, when the tip passed)
+  // ---- the camera's path for the swing, in X-ray space, starting from where the chase camera ended
+  const V = o.view, W = V.W, H = V.H, vis = H * 0.85, Hx = pl.H, g = kcRig(K, W, H, 1), f = g.f;
+  const bz = K.dS + K.len; // the round's base is this far short of the hit
+  const cx = Hx[0] - K.dir[0] * bz + g.lat, cy = Hx[1] - K.dir[1] * bz + g.up, cz = Hx[2] - K.dir[2] * bz - g.back;
+  const vx = cx - Hx[0], vy = cy - Hx[1], vz = cz - Hx[2], R0 = Math.hypot(vx, vy, vz);
+  const top = K.look.bag === 'umbrella' ? Math.max(J.head[1] + fig.hr, 2.55 * sc) : J.head[1] + fig.hr + (K.look.hat ? 0.24 : 0.04) * sc, low = Math.min(J.ftL[1], J.ftR[1], J.hip[1]);
+  const mid = [J.hip[0] * 0.5, Math.max(top - 0.78 * sc, (top + low) / 2), 0];
+  K.sw = { f, R0, phi0: Math.atan2(K.side * vx, -vz), el0: Math.asin(clamp(vy / R0, -0.9, 0.9)), H: Hx.slice(), mid, focus: [Hx[0], Hx[1] + 0.02, 0],
+    sW: W, sH: H, R1: f / Math.min(W / 1.5, vis / 1.62), R2: f / Math.min(W / 0.86, vis / 0.6), phx: g.sx, phy: g.sy,
+    px0: g.sx - (f * (Hx[0] - cx)) / (Hx[2] - cz), py0: g.sy + (f * (Hx[1] - cy)) / (Hx[2] - cz), // where the chase camera's centre line was on screen
+    // where the X-ray origin sits in the world: first as the flight has it, then pinned to the live target
+    ox: K.bp[0] - (Hx[0] - K.dir[0] * K.dS), oy: K.bp[1] - (Hx[1] - K.dir[1] * K.dS), oz: h.z };
+  kcTone({ f: 70, f1: 230, dur: kcTune.swing + 0.4, att: kcTune.swing, gain: 0.03, lp: 900 });
+}
+
+// One thing on the round's line gives way.
+function kcFire(K, ev) {
+  const pl = K.plan, R = K.rng, d = K.dir, H = pl.H;
+  const at = [H[0] + d[0] * ev.s, H[1] + d[1] * ev.s, H[2] + d[2] * ev.s];
+  K.dmg[ev.ref] = K.T;
+  if (pl.key === ev) K.cap = { text: ev.label, t0: K.T, s: ev.s };
+  // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
+  if (ev.kind === 'skin0') {
+    if (K.gore) { kcSpray(K, 0, 18, at, -1, 0.9, 0.3, 1.7, 0.003, 0.0065, 0.4); kcSpray(K, 1, K.through === false ? 12 : 6, at, -1, 0.5, 0.8, 2.8, 0.003, 0.008, 2.5); kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 }); }
+    else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
+  } else if (ev.kind === 'bone' || ev.kind === 'spine') {
+    K.mush = Math.min(1, K.mush + (ev.kind === 'spine' ? 0.3 : 0.22));
+    kcSpray(K, 2, ev.kind === 'spine' ? 11 : 7, at, 1, 0.75, 0.4, 2.6, 0.01, 0.026, K.through === false ? 0.22 : 2);
+    if (K.gore) kcSpray(K, 1, 5, at, 1, 0.7, 0.2, 1.3, 0.003, 0.007, 0.13);
+    kcNoise({ type: 'bandpass', f: 1500, q: 1.6, dur: 0.03, gain: 0.11 }); kcTone({ type: 'square', f: 520, f1: 180, dur: 0.035, gain: 0.03, lp: 2000 });
+    if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * 1.5 + K.side * 0.5, vy: 0.9, vz: d[2] * 1.7, rot: 0, vr: 5 };
+  } else if (ev.kind === 'organ') {
+    K.mush = Math.min(1, K.mush + 0.12);
+    kcSpray(K, 1, ev.ref === 'heart' ? 22 : 13, at, 1, 0.9, 0.2, 1.6, 0.003, 0.009, 0.15);
+    if (ev.ref === 'brain') kcSpray(K, 3, 8, at, 1, 0.8, 0.3, 1.5, 0.005, 0.011, 0.16);
+    kcNoise({ type: 'bandpass', f: 520, f1: 220, q: 1.2, dur: 0.12, att: 0.01, gain: 0.07 });
+  } else if (ev.kind === 'skin1') {
+    if (K.gore) {
+      kcSpray(K, 1, 70, at, 1, 0.36, 1.2, 9, 0.0025, 0.012, 3); kcSpray(K, 0, 22, at, 1, 0.6, 0.4, 2.4, 0.003, 0.007, 0.5);
+      if (pl.part === 'head') kcSpray(K, 3, 10, at, 1, 0.4, 1, 5, 0.005, 0.012, 3);
+      // a few strings of drops that stretch out as they fly
+      for (let j = 0; j < 4; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
+      if (kcHash(H[0] * 31 + H[1] * 17) < 0.7) for (let i = 0; i < 3; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * 9, sd: R.f() * 9 });
+      kcNoise({ type: 'bandpass', f: 900, f1: 400, q: 0.8, dur: 0.2, att: 0.01, gain: 0.04 });
+    } else kcSpray(K, 4, 10, at, 1, 0.7, 0.3, 1.6, 0.004, 0.008, 0.4);
+    if (K.hat && !K.hat.fly) K.hat.fly = K.T;
+  }
+}
+// Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust.
+// way: +1 along the round's travel, -1 back toward the shooter. spread: 0 a jet, 1 nearly a ball.
+// sp0..sp1 speeds in metres per second, r0..r1 sizes in metres, life in seconds of the spray's own time.
+function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life) {
+  if (K.parts.length > 330) return;
+  const R = K.rng, d = K.dir;
+  for (let i = 0; i < n; i++) {
+    let rx = R.f() * 2 - 1, ry = R.f() * 2 - 1, rz = R.f() * 2 - 1; const rl = Math.hypot(rx, ry, rz) || 1;
+    rx = d[0] * way + (rx / rl) * spread + K.side * 0.12; ry = d[1] * way + (ry / rl) * spread + 0.12; rz = d[2] * way + (rz / rl) * spread;
+    const l = Math.hypot(rx, ry, rz) || 1, u = R.f(), v = R.f(), sp = lerp(sp0, sp1, u * u);
+    K.parts.push({ k: kind, x: at[0], y: at[1], z: at[2], vx: (rx / l) * sp, vy: (ry / l) * sp, vz: (rz / l) * sp, r: lerp(r0, r1, v * v), age: 0, life: life * (0.7 + 0.6 * R.f()), rot: R.f() * 6, vr: (R.f() - 0.5) * 30, stuck: false });
+  }
+}
+function kcStepParts(K, dt) { // dt here is already slowed: the spray flies in slow motion
+  const ps = K.parts;
+  for (let i = ps.length - 1; i >= 0; i--) {
+    const p = ps[i]; p.age += dt;
+    if (p.age > p.life) { ps.splice(i, 1); continue; }
+    if (p.stuck) continue;
+    const drag = p.k === 0 || p.k === 4 ? 3.2 : 0.5, g = p.k === 0 || p.k === 4 ? 1.2 : 9.8;
+    p.vx -= p.vx * drag * dt; p.vy -= (p.vy * drag + g) * dt; p.vz -= p.vz * drag * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.rot += p.vr * dt;
+    if (p.y < 0.004) { p.y = 0.004; p.stuck = true; p.life = p.age + 3; } // landed: a mark on the floor
+  }
+  if (K.plate) { const q = K.plate; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.rot += q.vr * dt; }
+}
+
+// ---- the picture ------------------------------------------------------------------------
 KillCam.draw = function (dt) {
-  const K = KillCam, o = K.o, V = o.view, ctx = V.ctx, sim = o.sim, h = o.hit;
-  const u = clamp(K.t / K.dur, 0, 1), b = K.pos(K.simT);
-  const back = lerp(1.2, 5, smooth(u * 3)), ez = Math.min(b[2] - back, h.z - 3.2), ex = b[0] + (h.x - b[0]) * 0, ey = b[1] + 0.25;
-  const d = Math.max(1, h.z - ez);
-  const scopePpm = V.ppm(sim.sh.zoom), widePpm = V.hh / 260;
-  const ppm = Math.exp(lerp(Math.log(scopePpm), Math.log(widePpm), smooth(u * 2.2)));
-  const cam = { cx: V.W / 2, cy: V.H / 2, hw: V.W / 2, hh: V.H / 2, ex, ey, ez, ax: ((h.x - ex) / d) * 1000, ay: ((h.y - ey) / d) * 1000, ppm };
+  const K = KillCam, o = K.o;
+  if (!o || !o.view || !o.view.ctx) return;
+  const V = o.view, ctx = V.ctx, W = V.W, H = V.H;
   ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, V.W, V.H);
-  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, V.W, V.H); ctx.clip();
-  V.drawWorld(sim, cam, dt, dt * K.rate, { near: 0.6 });
-  ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
-  if (K.simT < h.t) { const p = V.project(sim, b[0], b[1], b[2]); ctx.fillStyle = '#ffd98a'; ctx.beginPath(); ctx.ellipse(p[0], p[1], Math.max(2, 0.05 * p[2]), Math.max(1.5, 0.02 * p[2]), 0, 0, TAU); ctx.fill(); }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  try {
+    if (K.skipped || K.err) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(255,246,224,0.55)'; ctx.fillRect(0, 0, W, H); }
+    else if (K.stage === 0) kcDrawBeat(K, V, ctx);
+    else if (K.stage === 1) kcDrawFlight(K, V, ctx, dt || 0);
+    else kcDrawXray(K, V, ctx, dt || 0);
+  } catch (e) { K.err = e; K.skipped = true; if (window.console && console.error) console.error(e); }
   ctx.restore();
+  ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  try { kcOverlay(K, V, ctx); } catch (e) { /* the frame is already drawn */ }
+  ctx.globalAlpha = 1;
 };
+const kcPal = (o) => { const p = o && o.sim && o.sim.S && o.sim.S.pal; return p && p.skyTop && p.skyBot && p.ink ? p : kcPalDefault; };
+const kcBars = (W, H) => Math.round(H * (W >= H ? 0.075 : 0.065)); // height of the black bars top and bottom
+
+// Bars, dark corners, the skip hint, and the flashes that join the stages.
+function kcOverlay(K, V, ctx) {
+  const W = V.W, H = V.H, T = K.T, lb = kcBars(W, H) * smooth(T / 0.25);
+  // the whip from the rifle to the flight: a pale smear that clears
+  const wf = T >= K.Ta ? 1 - (T - K.Ta) / 0.24 : (T - (K.Ta - 0.1)) / 0.1;
+  if (wf > 0 && wf <= 1 && !K.skipped) { ctx.fillStyle = 'rgba(255,244,222,' + (0.6 * wf * wf).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.hypot(W, H) * 0.56);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.62)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  // drops on the lens
+  for (let i = 0; i < K.lens.length; i++) {
+    const d = K.lens[i], age = T - d.t0; if (age < 0) continue;
+    // a splash on the glass: a flattened blot with a few flecks round it, too close to be in
+    // focus, that slowly starts to run
+    const k = Math.min(1.4, Math.max(W, H) / 760), r = d.r * 1.3 * k * (0.5 + 0.5 * smooth(age / 0.1)), x = d.x * W, y = d.y * H, run = Math.min(r * 2.6, age * age * 14 * k);
+    ctx.globalAlpha = 0.5; ctx.fillStyle = '#6e0a10';
+    ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.86, d.sd, 0, TAU); ctx.fill();
+    ctx.beginPath(); for (let j = 0; j < 4; j++) { const an = d.sd * 3 + j * 1.7, rr = r * (1.25 + 0.5 * kcHash(j + d.sd)); ctx.moveTo(x + Math.cos(an) * rr + r * 0.16, y + Math.sin(an) * rr); ctx.arc(x + Math.cos(an) * rr, y + Math.sin(an) * rr, r * 0.16 * (0.6 + kcHash(j * 3 + d.sd)), 0, TAU); } ctx.fill();
+    if (run > 1) { ctx.lineCap = 'round'; ctx.strokeStyle = '#6e0a10'; ctx.lineWidth = r * 0.34; ctx.beginPath(); ctx.moveTo(x + r * 0.2, y + r * 0.5); ctx.lineTo(x + r * 0.24, y + r * 0.6 + run); ctx.stroke(); }
+    ctx.globalAlpha = 0.32; ctx.fillStyle = '#c4202a'; ctx.beginPath(); ctx.ellipse(x - r * 0.08, y - r * 0.06, r * 0.72, r * 0.6, d.sd, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.28; ctx.strokeStyle = '#ffd9d2'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r * 0.78, 3.6, 4.6); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  if (K.outT0 !== null) { const a = clamp((T - K.outT0) / kcTune.out, 0, 1); ctx.fillStyle = 'rgba(255,246,224,' + (0.9 * a * a).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, lb); ctx.fillRect(0, H - lb, W, lb);
+  const ha = 0.6 * smooth(T / 0.4) * (1 - smooth((T - 3) / 0.6));
+  if (ha > 0.01 && !K.skipped) {
+    const G = CB.Game || {}, sf = G.safe || {};
+    ctx.globalAlpha = ha; ctx.fillStyle = '#e8ecf1'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.font = '700 ' + (W < 500 ? 10 : 11) + 'px "Avenir Next Condensed","DIN Condensed","Roboto Condensed","Arial Narrow",sans-serif';
+    ctx.fillText(G.touch ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP', W - 14 - (sf.r || 0), H - Math.max(lb / 2, 10 + Math.min(sf.b || 0, 14)));
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---- stage 0: at the rifle ---------------------------------------------------------------
+// Where the rifle sits and how big it is drawn. Sizes are worked out in "rifle units", the
+// units the rifle artwork is drawn in (a rifle is about 130 of them long).
+function kcGunLayout(o, W, H) {
+  const wide = W >= H, bw = W * (wide ? 0.86 : 0.94), bh = wide ? H * 0.56 : H * 0.3;
+  let x0 = -38, x1 = 92, by = -3.4;
+  try { if (typeof gunShapes === 'function') { const G = gunShapes(o.gunId, o.cfg); if (G && isFinite(G.x0) && isFinite(G.x1) && G.x1 > G.x0) { x0 = G.x0; x1 = G.x1; if (G.art && G.art.type === 'rail') by = -4.6; } } } catch (e) { /* use the guess */ }
+  const top = -15, bot = o.cfg && o.cfg.support === 'sp_tripod' ? 28 : 17, span = x1 - x0;
+  const sc = Math.min(bw / span, bh / (bot - top)) * 0.96;
+  const gcx = W * 0.5, gcy = H * 0.5;
+  return { W, H, bw, bh, sc, gcx, gcy, span, mx: gcx + (span / 2 - 1) * sc, my: gcy + (by - (top + bot) / 2) * sc, floor: gcy + (bot - 0.5 - (top + bot) / 2) * sc };
+}
+function kcDrawBeat(K, V, ctx) {
+  const o = K.o, W = V.W, H = V.H, T = K.T, pal = kcPal(o), dpr = V.dpr, wide = W >= H;
+  if (!K.gunLay || K.gunLay.W !== W || K.gunLay.H !== H) K.gunLay = kcGunLayout(o, W, H);
+  const L = K.gunLay, sc = L.sc;
+  // the camera pushes in on the muzzle, then whips away after the round
+  const e = easeOut((T - 0.1) / 0.7), z = lerp(1, wide ? 1.42 : 2.3, e), wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
+  const Mx = lerp(L.mx, W * (wide ? 0.56 : 0.5), e) - W * 1.5 * wh * wh * wh, My = lerp(L.my, H * 0.5, e);
+  const k = sc * z; // screen pixels per rifle unit
+  // sky behind, a low wall under the rifle
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, mix(pal.skyTop, '#000000', 0.5)); g.addColorStop(1, mix(pal.skyBot, '#000000', 0.4));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (pal.star > 0.2) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 46; i++) { ctx.globalAlpha = pal.star * (0.2 + 0.5 * kcHash(i * 3.1)); ctx.fillRect(kcHash(i) * W - wh * W * 0.3, kcHash(i + 60) * H * 0.6, 1.3, 1.3); } ctx.globalAlpha = 1; }
+  const fy = My + (L.floor - L.my) * z;
+  ctx.fillStyle = mix(pal.ink, pal.skyBot, 0.1); ctx.fillRect(0, fy, W, H - fy);
+  ctx.fillStyle = rgba(mix(pal.skyBot, '#ffffff', 0.3), 0.3); ctx.fillRect(0, fy, W, 1.5);
+  // recoil: in this near-frozen moment the rifle has only begun to come back
+  const rc = easeOut((T - 0.03) / 0.6) * 1.5, mxs = Mx - rc * k, mys = My - rc * 0.12 * k;
+  const t1 = T - 0.03, loud = !K.quiet, rail = K.steel;
+  const grow = easeOut(t1 / 0.16), fade = t1 > 0 ? 1 - smooth((t1 - 0.2) / 0.5) : 0;
+  // gas behind the rifle first, so the muzzle stays crisp in front of it
+  if (t1 > 0) {
+    const e2 = easeOut(T / 0.95);
+    ctx.fillStyle = loud ? '#e9e0cd' : '#c9ced3';
+    for (let i = 0; i < 22; i++) { // a cone of small puffs, thick near the bore and thinning as it spreads
+      const al = kcHash(i + 9), dist = (1 + 24 * e2) * (0.15 + 0.85 * al), off = (kcHash(i + 5) - 0.5) * (1.2 + dist * 0.55), r = k * (0.6 + (loud ? 2.6 : 1.6) * e2 * (0.5 + al)) * (0.7 + 0.6 * kcHash(i + 2));
+      ctx.globalAlpha = (loud ? 0.13 : 0.1) * (1 - 0.55 * e2) * (1.2 - al);
+      ctx.beginPath(); ctx.arc(mxs + dist * k, mys + off * k, r, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // the rifle, in the player's own skin
+  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (Mx - L.mx * z), dpr * (My - L.my * z));
+  ctx.translate(-rc * sc, -rc * 0.12 * sc);
+  try { const r = drawGun(ctx, o.gunId, o.cfg, L.gcx, L.gcy, L.bw, L.bh, { time: 1.2 + T * 0.3 }); if (r && r.scale > 0 && Math.abs(r.scale - L.sc) > L.sc * 0.02) { const q = r.scale / L.sc; L.sc = r.scale; L.mx = L.gcx + (L.mx - L.gcx) * q; L.my = L.gcy + (L.my - L.gcy) * q; L.floor = L.gcy + (L.floor - L.gcy) * q; } } catch (er) { /* no rifle art: the flash and the round still play */ }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // the flash
+  if (t1 > 0 && fade > 0.01) {
+    const hot = rail ? [150, 235, 255] : [255, 196, 96], R1 = k * (loud ? 10 : 3.2) * grow;
+    if (loud) {
+      // spikes: one long tongue forward and shorter ones fanned around it
+      const sp = [0, 20, 0.5, 10, -0.55, 11, 1.1, 7, -1.2, 6.5, 1.95, 4.5, -2.0, 4];
+      ctx.fillStyle = 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.8 * fade).toFixed(3) + ')';
+      ctx.beginPath();
+      for (let i = 0; i < sp.length; i += 2) {
+        const an = sp[i] + 0.06 * Math.sin(T * 50 + i), len = sp[i + 1] * k * grow * (0.85 + 0.15 * Math.sin(T * 37 + i * 2)), wd = len * 0.13 + k * 0.5;
+        const ca = Math.cos(an), sa = Math.sin(an);
+        ctx.moveTo(mxs, mys); ctx.lineTo(mxs + ca * len * 0.35 - sa * wd, mys + sa * len * 0.35 + ca * wd); ctx.lineTo(mxs + ca * len, mys + sa * len); ctx.lineTo(mxs + ca * len * 0.35 + sa * wd, mys + sa * len * 0.35 - ca * wd); ctx.closePath();
+      }
+      ctx.fill();
+    }
+    const fg = ctx.createRadialGradient(mxs + R1 * 0.2, mys, 0, mxs + R1 * 0.2, mys, R1);
+    fg.addColorStop(0, 'rgba(255,253,240,' + fade.toFixed(3) + ')'); fg.addColorStop(0.35, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.75 * fade).toFixed(3) + ')'); fg.addColorStop(1, 'rgba(' + hot[0] + ',' + Math.round(hot[1] * 0.6) + ',' + Math.round(hot[2] * 0.5) + ',0)');
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(mxs + R1 * 0.2, mys, R1, 0, TAU); ctx.fill();
+    if (loud) { // the flash lights everything near it
+      ctx.globalCompositeOperation = 'lighter';
+      const lg = ctx.createRadialGradient(mxs, mys, 0, mxs, mys, k * 70);
+      lg.addColorStop(0, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.3 * fade).toFixed(3) + ')'); lg.addColorStop(1, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',0)');
+      ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  // the shock ring, a thin hoop seen edge on, moving out ahead of the muzzle
+  const e3 = easeOut((T - 0.05) / 0.75);
+  if (T > 0.05 && e3 < 0.99) {
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.5 * (1 - e3)).toFixed(3) + ')'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(mxs + k * (2 + 15 * e3), mys, k * (0.5 + 3.4 * e3), k * (2 + (loud ? 15 : 8) * e3), 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.22 * (1 - e3)).toFixed(3) + ')';
+    ctx.beginPath(); ctx.ellipse(mxs + k * (1 + 8 * e3), mys, k * (0.3 + 1.8 * e3), k * (1.5 + (loud ? 9 : 5) * e3), 0, 0, TAU); ctx.stroke();
+  }
+  // the round, coming out of the bore. It is the same 3D round as in the rest of the film, seen
+  // through a long lens from the side: a camera 1000 rifle units away looking square across the barrel.
+  const tip = T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
+  const bc = kcCamAim({ x: 1000, y: 0, z: 0, yaw: -Math.PI / 2, pitch: 0, f: 1000 * k, px: mxs, py: mys });
+  ctx.save(); ctx.beginPath(); ctx.rect(mxs, 0, W * 3, H); ctx.clip();
+  const bo = { len: 6.4, rad: 0.78, spin: K.spin * 2.2, mush: 0, steel: rail, hot: 0.5 * fade };
+  if (K.sonic && tip > 4) kcWake(ctx, bc, 0, 0, tip, 0, 0, 1, { len: 6.4, rad: 0.78, a: 0.8 * smooth((tip - 4) / 8), t: T });
+  kcBullet(ctx, bc, 0, 0, tip, 0, 0, 1, bo);
+  ctx.restore();
+  // a spent case, from rifles that throw one out by themselves
+  if (K.action === 'semi' && T > 0.42) {
+    const u = (T - 0.42) / 0.6, cxs = mxs - Math.min(L.span * 0.66 * k, mxs * 0.6) - u * 5 * k, cys = mys - (4 + 13 * u - 7 * u * u) * k;
+    ctx.save(); ctx.translate(cxs, cys); ctx.rotate(-0.6 - u * 5); ctx.fillStyle = '#c9a24a'; ctx.fillRect(-1.7 * k, -0.5 * k, 3.4 * k, k); ctx.fillStyle = '#8a6a26'; ctx.fillRect(-1.7 * k, -0.5 * k, 0.5 * k, k); ctx.restore();
+  }
+  // streaks as the camera whips after the round
+  if (wh > 0) {
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.35 * wh).toFixed(3) + ')'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i < 26; i++) { const y = kcHash(i + 3) * H, x = kcHash(i + 40) * W; ctx.moveTo(x, y); ctx.lineTo(x + W * 0.5 * wh, y); }
+    ctx.stroke();
+  }
+}
+
+// ---- stage 1: the flight -------------------------------------------------------------------
+// The chase camera, in world space. It sits a hand's width behind the round, a little above,
+// and drifts out to one side so the round is seen three-quarter. The lens starts long, opens
+// wide in the fast middle and closes a little for the arrival. The camera never turns: like
+// the scope, it looks straight down range and slides its picture to frame things, which is
+// the only way the layered scenery can be drawn. Up close that stretches the round a little
+// toward the vanishing point, as a very wide lens would.
+function kcRig(K, W, H, u) {
+  // How the chase camera sits for a given point in the flight (u from 0 to 1). On a wide
+  // screen it goes out to the side, on a tall one mostly above, so the round is seen
+  // three-quarter from behind with the target ahead of it.
+  const wide = clamp((W / H - 0.6) / 0.9, 0, 1), fw = 0.55 * Math.max(W, H);
+  const f = fw * (1 + 1.0 * (1 - smooth(u / 0.35)) + 0.55 * smooth((u - 0.6) / 0.4));
+  const back = (0.2 * f) / fw, drift = 0.25 + 0.75 * smooth(u * 2.2) - 0.45 * smooth((u - 0.55) / 0.45), dv = 0.5 + 0.5 * drift;
+  return { f, back, lat: K.side * lerp(0.45, 1, wide) * drift * back, up: lerp(0.62, 0.26, wide) * dv * back,
+    sx: W / 2 + K.side * lerp(0.2, 0.3, wide) * W * drift, sy: H / 2 - lerp(0.13, 0.05, wide) * H * dv };
+}
+function kcFlightCam(K, V) {
+  const W = V.W, H = V.H, c = K.cam, h = K.o.hit, d = K.dir, g = kcRig(K, W, H, clamp(K.fu || 0, 0, 1));
+  c.x = K.bp[0] - d[0] * K.len + g.lat; c.y = K.bp[1] - d[1] * K.len + g.up; c.z = K.bp[2] - d[2] * K.len - g.back;
+  c.yaw = 0; c.pitch = 0; c.f = g.f; kcCamAim(c);
+  // slide the picture so the place the round will land sits where we want it on screen
+  const dd = Math.max(0.5, h.z - c.z), sh = K.speedK * 1.6;
+  c.px = g.sx - (g.f * (h.x - c.x)) / dd + (kcHash(K.T * 91) - 0.5) * sh;
+  c.py = g.sy + (g.f * (h.y - c.y)) / dd + (kcHash(K.T * 57 + 3) - 0.5) * sh;
+}
+function kcDrawFlight(K, V, ctx, dt) {
+  const o = K.o, W = V.W, H = V.H, c = K.cam, h = o.hit, d = K.dir;
+  kcFlightCam(K, V);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  // Layers closer than a couple of metres are left out: at this speed they would only be a
+  // one-frame smear filling the screen, and with so wide a lens they are the costliest to draw.
+  V.drawWorld(o.sim, kcLayerCam(V, c, h.x, h.y, h.z), dt, K.simDt, { near: 2 + 6 * K.speedK });
+  ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  // speed lines, streaming out from the point the round is flying at
+  const sk = K.speedK;
+  if (sk > 0.04 && kcProj(c, h.x, h.y, h.z, kcQ)) {
+    K.streak += dt * (0.5 + 2.6 * sk);
+    const vx = kcQ[0], vy = kcQ[1], Rm = Math.hypot(W, H) * 0.6;
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,' + (0.2 * sk).toFixed(3) + ')'; ctx.lineWidth = 1.3; ctx.beginPath();
+    for (let i = 0; i < 44; i++) {
+      const an = kcHash(i) * TAU, r = (kcHash(i + 77) + K.streak * (0.5 + kcHash(i + 9))) % 1, r0 = 30 + r * r * Rm, r1 = r0 + (8 + 150 * r) * sk;
+      ctx.moveTo(vx + Math.cos(an) * r0, vy + Math.sin(an) * r0); ctx.lineTo(vx + Math.cos(an) * r1, vy + Math.sin(an) * r1);
+    }
+    ctx.stroke();
+  }
+  const bo = { len: K.len, rad: K.rad, spin: K.spin * 2.2, mush: 0, steel: K.steel, hot: 0.25 };
+  kcWake(ctx, c, K.bp[0], K.bp[1], K.bp[2], d[0], d[1], d[2], { len: K.len, rad: K.rad, a: K.sonic ? 1 : 0.4, t: K.T, cone: K.sonic });
+  kcBullet(ctx, c, K.bp[0], K.bp[1], K.bp[2], d[0], d[1], d[2], bo);
+}
+
+// ---- the round ------------------------------------------------------------------------------
+// Drawn as a real solid: a row of rings along its length, each put through the camera, joined
+// into an outline. (tx, ty, tz) is the tip, (dx, dy, dz) the way it points.
+// o: { len, rad, spin, mush (0..1 how flattened the nose is), steel, hot, tilt }
+function kcBullet(ctx, c, tx, ty, tz, dx, dy, dz, o) {
+  const n = kcProf.length / 2, len = o.len, rad = o.rad, m = o.mush || 0;
+  // a little wobble about its own middle (and a real tumble once it is inside the body)
+  let e1x = dz, e1z = -dx, l = Math.hypot(e1x, e1z); if (l < 1e-4) { e1x = 1; e1z = 0; l = 1; } e1x /= l; e1z /= l;
+  let e2x = dy * e1z, e2y = dz * e1x - dx * e1z, e2z = -dy * e1x;
+  const wob = 0.035, tl = o.tilt || 0, wx = wob * Math.cos(o.spin * 0.31), wy = wob * Math.sin(o.spin * 0.31) + tl;
+  const mx = tx - dx * len * 0.55, my = ty - dy * len * 0.55, mz = tz - dz * len * 0.55;
+  dx += e1x * wx + e2x * wy; dy += e2y * wy; dz += e1z * wx + e2z * wy; l = Math.hypot(dx, dy, dz) || 1; dx /= l; dy /= l; dz /= l;
+  e1x = dz; e1z = -dx; l = Math.hypot(e1x, e1z) || 1; e1x /= l; e1z /= l; e2x = dy * e1z; e2y = dz * e1x - dx * e1z; e2z = -dy * e1x;
+  const bx0 = mx - dx * len * 0.45, by0 = my - dy * len * 0.45, bz0 = mz - dz * len * 0.45; // the base
+  for (let i = 0; i < n; i++) {
+    let u = kcProf[i * 2], r = kcProf[i * 2 + 1];
+    if (m > 0) { const fr = clamp((u - 0.5) / 0.5, 0, 1); r += m * (0.78 * Math.sin(Math.PI * Math.pow(fr, 1.6)) + 0.55 * Math.pow(fr, 6)); u -= m * 0.2 * fr * fr; } // the nose spreads and shortens
+    if (!kcProj(c, bx0 + dx * len * u, by0 + dy * len * u, bz0 + dz * len * u, kcQ)) return false;
+    kcBx[i] = kcQ[0]; kcBy[i] = kcQ[1]; kcBs[i] = kcQ[2]; kcBr[i] = r * rad * kcQ[2];
+  }
+  // which way the round's length runs on screen, and the direction square to it
+  let ax = kcBx[n - 1] - kcBx[0], ay = kcBy[n - 1] - kcBy[0]; const la = Math.hypot(ax, ay);
+  if (la < 0.3) { ax = 1; ay = 0; } else { ax /= la; ay /= la; }
+  let nx = -ay, ny = ax; if (ny > 0) { nx = -nx; ny = -ny; } // keep "n" pointing up the screen so the highlight sits on top
+  // how squarely we are looking down its length: 1 = from dead ahead, -1 = from dead behind
+  const vx = c.x - mx, vy = c.y - my, vz = c.z - mz, vl = Math.hypot(vx, vy, vz) || 1, cosg = (dx * vx + dy * vy + dz * vz) / vl, flat = Math.abs(cosg), ang = Math.atan2(ay, ax);
+  const R = kcBr[3], gx = kcBx[3], gy = kcBy[3];
+  const grad = ctx.createLinearGradient(gx + nx * R, gy + ny * R, gx - nx * R, gy - ny * R);
+  if (o.steel) { grad.addColorStop(0, '#7d8894'); grad.addColorStop(0.22, '#f4f8fb'); grad.addColorStop(0.5, '#aab6c2'); grad.addColorStop(0.85, '#56606b'); grad.addColorStop(1, '#2c333b'); }
+  else { grad.addColorStop(0, '#8f4d23'); grad.addColorStop(0.2, '#ffdca6'); grad.addColorStop(0.46, '#cf7c3d'); grad.addColorStop(0.82, '#74391a'); grad.addColorStop(1, '#3d1c0b'); }
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) { const x = kcBx[i] + nx * kcBr[i], y = kcBy[i] + ny * kcBr[i]; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+  for (let i = n - 1; i >= 0; i--) ctx.lineTo(kcBx[i] - nx * kcBr[i], kcBy[i] - ny * kcBr[i]);
+  ctx.closePath();
+  ctx.fillStyle = grad; ctx.strokeStyle = 'rgba(18,9,4,0.6)'; ctx.lineWidth = Math.max(0.7, R * 0.06);
+  ctx.fill(); ctx.stroke();
+  // seen from nearly end on the outline shrinks to nothing: the fattest ring fills it in
+  if (flat > 0.2) { ctx.beginPath(); ctx.ellipse(kcBx[2], kcBy[2], Math.max(0.4, kcBr[2] * flat), kcBr[2], ang, 0, TAU); ctx.fill(); if (flat > 0.6) ctx.stroke(); }
+  // rifling marks: six shallow grooves that wind round the body, and turn as it spins
+  const s3 = kcBs[3] * rad, a1x = (e1x * c.rx + e1z * c.rz) * s3, a1y = -(e1x * c.ux + e1z * c.uz) * s3, a2x = (e2x * c.rx + e2z * c.rz) * s3, a2y = -(e2x * c.ux + e2y * c.uy + e2z * c.uz) * s3;
+  ctx.strokeStyle = o.steel ? 'rgba(30,40,52,0.45)' : 'rgba(58,24,8,0.5)'; ctx.lineWidth = Math.max(0.6, R * 0.09); ctx.beginPath();
+  for (let g = 0; g < 6; g++) {
+    let pen = false;
+    for (let i = 2; i <= 7; i++) {
+      const an = o.spin + (g * TAU) / 6 + kcProf[i * 2] * 1.7, ca = Math.cos(an), sa = Math.sin(an);
+      const facing = (e1x * ca + e2x * sa) * vx + e2y * sa * vy + (e1z * ca + e2z * sa) * vz; // is this bit of the surface on our side?
+      if (facing <= 0) { pen = false; continue; }
+      const k = (kcProf[i * 2 + 1] * kcBs[i]) / kcBs[3] * 0.97, x = kcBx[i] + (a1x * ca + a2x * sa) * k, y = kcBy[i] + (a1y * ca + a2y * sa) * k;
+      if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      pen = true;
+    }
+  }
+  ctx.stroke();
+  // the crimp groove round its waist
+  ctx.strokeStyle = 'rgba(30,12,4,0.5)'; ctx.lineWidth = Math.max(0.6, R * 0.08);
+  ctx.beginPath(); ctx.ellipse(kcBx[4], kcBy[4], Math.max(0.3, kcBr[4] * flat), kcBr[4], ang, 0, TAU); ctx.stroke();
+  if (cosg < -0.04) { // from behind: the flat base, with its lead core showing
+    ctx.fillStyle = o.steel ? '#4b545e' : '#7a4a22'; ctx.beginPath(); ctx.ellipse(kcBx[0], kcBy[0], Math.max(0.4, kcBr[0] * flat), kcBr[0], ang, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = o.steel ? '#2c333b' : '#5a5d65'; ctx.beginPath(); ctx.ellipse(kcBx[0], kcBy[0], Math.max(0.3, kcBr[0] * flat * 0.58), kcBr[0] * 0.58, ang, 0, TAU); ctx.fill();
+  }
+  if (o.hot > 0.02) { // still hot from the barrel
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,130,50,' + (0.3 * o.hot).toFixed(3) + ')';
+    ctx.beginPath(); for (let i = 0; i < n; i++) { const x = kcBx[i] + nx * kcBr[i], y = kcBy[i] + ny * kcBr[i]; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(kcBx[i] - nx * kcBr[i], kcBy[i] - ny * kcBr[i]);
+    ctx.fill(); ctx.globalCompositeOperation = 'source-over';
+  }
+  return true;
+}
+// The air behind the round: a faint cone of shock rings (only when it is faster than sound)
+// and a wavering thread of disturbed air.
+function kcWake(ctx, c, tx, ty, tz, dx, dy, dz, o) {
+  let e1x = dz, e1z = -dx, l = Math.hypot(e1x, e1z); if (l < 1e-4) { e1x = 1; e1z = 0; l = 1; } e1x /= l; e1z /= l;
+  const e2x = dy * e1z, e2y = dz * e1x - dx * e1z, e2z = -dy * e1x, a = o.a || 1;
+  if (o.cone !== false) {
+    const have = kcProj(c, tx, ty, tz, kcQ2), tsx = kcQ2[0], tsy = kcQ2[1];
+    for (let i = 1; i <= 3; i++) {
+      // a ring of radius r at distance d behind the tip. r grows with d: that slope is the Mach angle.
+      const d = o.len * (0.25 + 0.42 * i * i), r = o.rad * 0.7 + d * 0.4;
+      kcSet(kcV1, e1x * r, 0, e1z * r); kcSet(kcV2, e2x * r, e2y * r, e2z * r);
+      ctx.beginPath();
+      if (!kcEll(ctx, c, tx - dx * d, ty - dy * d, tz - dz * d, kcV1, kcV2)) continue;
+      ctx.strokeStyle = 'rgba(255,255,255,' + ((0.22 * a) / i).toFixed(3) + ')'; ctx.lineWidth = 1.1; ctx.stroke();
+      if (i === 3 && have) {
+        const ex = Math.cos(kcE[2]) * kcE[0], ey = Math.sin(kcE[2]) * kcE[0];
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.12 * a).toFixed(3) + ')'; ctx.beginPath(); ctx.moveTo(tsx, tsy); ctx.lineTo(kcQ[0] + ex, kcQ[1] + ey); ctx.moveTo(tsx, tsy); ctx.lineTo(kcQ[0] - ex, kcQ[1] - ey); ctx.stroke();
+      }
+    }
+  }
+  // the thread of stirred air: a few thin lines that waver and fade
+  ctx.lineCap = 'round';
+  for (let k = 0; k < 3; k++) {
+    let px = 0, py = 0, ok = false;
+    for (let j = 0; j <= 9; j++) {
+      const d = o.len * (1.0 + j * 1.25), w = (o.len / 0.065) * (j * 0.0028 * Math.sin(o.t * 24 + j * 1.3 + k * 2.1) + (k - 1) * 0.004 * Math.min(1, j / 3));
+      const good = kcProj(c, tx - dx * d + e1x * w, ty - dy * d + w * 0.7, tz - dz * d + e1z * w, kcQ);
+      if (good && ok) { ctx.strokeStyle = 'rgba(255,255,255,' + (0.2 * a * (1 - j / 10)).toFixed(3) + ')'; ctx.lineWidth = clamp(o.rad * kcQ[2] * 0.22, 0.8, 2.6); ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(kcQ[0], kcQ[1]); ctx.stroke(); }
+      px = kcQ[0]; py = kcQ[1]; ok = good;
+      if (!good) break;
+    }
+  }
+}
+
+// ---- stages 2 to 4: the swing, the X-ray, the hold --------------------------------------------
+// The camera circles the target. phi is how far round it has come (0 = behind the round,
+// a quarter turn = looking square across the line of fire), R how far away it is, el how high.
+function kcOrbitCam(K, V) {
+  const W = V.W, H = V.H, sw = K.sw, c = K.cam, T = K.T, deg = kcTune.deg;
+  if (sw.sW !== W || sw.sH !== H) { // the phone was turned: frame the shots again for the new shape
+    const vis = H * 0.85, kx = W / sw.sW, ky = H / sw.sH;
+    sw.R1 = sw.f / Math.min(W / 1.5, vis / 1.62); sw.R2 = sw.f / Math.min(W / 0.86, vis / 0.6);
+    sw.phx *= kx; sw.phy *= ky; sw.px0 *= kx; sw.py0 *= ky; sw.sW = W; sw.sH = H;
+  }
+  const u = clamp((T - K.Tb) / kcTune.swing, 0, 1), e = smooth(u), tau = Math.max(0, T - K.Tc), push = smooth(tau / 0.9);
+  const hold = K.holdT0 !== null ? smooth((T - K.holdT0) / (kcTune.hold + kcTune.out)) : 0;
+  const phi = lerp(sw.phi0, 80 * deg, e) + (9 * (1 - Math.exp(-tau * 2.2)) + 2.2 * tau) * deg;
+  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2, push) * (1 + 0.28 * hold), el = lerp(sw.el0, 0.11, e);
+  const k1 = smooth(u * 1.2), px = lerp(lerp(sw.H[0], sw.mid[0], k1), sw.focus[0], push), py = lerp(lerp(sw.H[1], sw.mid[1], k1), sw.focus[1], push) - 0.1 * hold, pz = 0;
+  c.x = px + R * K.side * Math.sin(phi) * Math.cos(el); c.y = py + R * Math.sin(el); c.z = pz - R * Math.cos(phi) * Math.cos(el);
+  c.f = sw.f;
+  // The chase camera looked straight down range with its picture slid sideways. Over the first
+  // third of the swing that turns into a camera that really looks at the target.
+  kcLook(c, px, py, pz);
+  const w = smooth(u / 0.3), k2 = smooth(u * 1.3);
+  c.yaw *= w; c.pitch *= w; kcCamAim(c);
+  c.px = lerp(sw.px0, lerp(sw.phx, W / 2, k2), w); c.py = lerp(sw.py0, lerp(sw.phy, H / 2, k2), w);
+  return u;
+}
+function kcDrawXray(K, V, ctx, dt) {
+  const o = K.o, sim = o.sim, W = V.W, H = V.H, c = K.cam, T = K.T, pl = K.plan, sw = K.sw, pal = kcPal(o), d = K.dir;
+  const u = kcOrbitCam(K, V), voidA = smooth((u - 0.1) / 0.48), figA = smooth((u - 0.01) / 0.11);
+  const fig = kcBuildFig(K);
+  if (voidA < 0.995) {
+    // The real scene, still there for the first part of the swing. Its camera is our 3D camera
+    // moved into world space and matched on the target, so the scene slides and parts as we go round.
+    const a = o.actor, w = smooth(u / 0.3);
+    const ox = lerp(sw.ox, a && isFinite(a.x) ? a.x : sw.ox, w), oy = lerp(sw.oy, a && isFinite(a.y) ? a.y : sw.oy, w);
+    const wc = { x: c.x + ox, y: c.y + oy, z: c.z + sw.oz, yaw: c.yaw, pitch: c.pitch, f: c.f, px: c.px, py: c.py, rx: c.rx, rz: c.rz, fx: c.fx, fy: c.fy, fz: c.fz, ux: c.ux, uy: c.uy, uz: c.uz };
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    // Once the solid figure is fully there, the flat one underneath is left out of the scene's
+    // picture (only for the length of this one drawing call: nothing in the world changes).
+    const hide = a && figA > 0.99 && !a.hidden && !a.inVeh;
+    if (hide) a.hidden = true;
+    try { V.drawWorld(sim, kcLayerCam(V, wc, ox, oy + sw.mid[1], sw.oz), dt, K.simDt, { near: 0.6 }); } finally { if (hide) a.hidden = false; }
+    ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+  if (voidA > 0.004) {
+    // X-ray space: a dark room lit with the colours of the place we just left
+    ctx.globalAlpha = voidA;
+    const gc = K.gore ? mix('#1b2130', pal.skyBot, 0.2 + 0.12 * (1 - (pal.dark || 0))) : '#16283a', ge = K.gore ? mix('#030407', pal.skyTop, 0.1) : '#03070c';
+    let gx = W / 2, gy = H / 2; if (kcProj(c, 0, sw.mid[1], 0, kcQ)) { gx = kcQ[0]; gy = kcQ[1]; }
+    const bg = ctx.createRadialGradient(gx, gy, 0, gx, gy, Math.max(W, H) * 0.72);
+    bg.addColorStop(0, gc); bg.addColorStop(0.55, mix(gc, ge, 0.7)); bg.addColorStop(1, ge);
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    kcFloor(ctx, K, c, pal, voidA);
+    ctx.globalAlpha = 1;
+  }
+  // how far the skin has turned to glass
+  const xr = smooth((T - (K.Tc - 0.5)) / 0.55), infl = smooth((u - 0.12) / 0.5);
+  kcShell(ctx, K, c, fig, figA, xr, infl, pal);
+  if (xr > 0.01) kcInnards(ctx, K, c, fig, figA * xr);
+  if (K.hitT !== null) kcTrack(ctx, K, c, fig);
+  // the round, while any of it is still to be seen
+  const tipx = pl.H[0] + d[0] * K.s, tipy = pl.H[1] + d[1] * K.s, tipz = pl.H[2] + d[2] * K.s;
+  const inside = K.hitT !== null ? clamp((K.s - pl.sIn) / 0.25, 0, 1) : 0;
+  const bo = { len: K.len, rad: K.rad, spin: K.spin * (K.hitT !== null ? 0.5 : 2.2), mush: K.mush * 0.9, steel: K.steel || !K.gore, hot: 0.2 * (1 - inside), tilt: (K.through === false ? 0.42 : 0.2) * inside * Math.sin(inside * 2.1) };
+  if (K.hitT === null) kcWake(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], { len: K.len, rad: K.rad, a: (K.sonic ? 0.9 : 0.35) * (1 - 0.5 * u), t: T, cone: K.sonic });
+  kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
+  kcDrawParts(ctx, K, c);
+  kcCaption(ctx, K, c, V);
+}
+// The floor of X-ray space: faint rings and spokes round the target's feet, and a soft shadow.
+function kcFloor(ctx, K, c, pal, a) {
+  const col = K.gore ? mix(pal.skyBot, '#ffffff', 0.35) : '#bfe0ff', rings = [0.6, 1.2, 1.9, 2.8, 4];
+  ctx.lineWidth = 1; ctx.strokeStyle = rgba(col, 0.11); ctx.beginPath();
+  for (let r = 0; r < rings.length; r++) {
+    let pen = false;
+    for (let i = 0; i <= 32; i++) { const an = (i / 32) * TAU, ok = kcProj(c, Math.cos(an) * rings[r], 0, Math.sin(an) * rings[r], kcQ); if (!ok) { pen = false; continue; } if (pen) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); pen = true; }
+  }
+  for (let i = 0; i < 12; i++) { const an = (i / 12) * TAU + 0.26; if (kcProj(c, Math.cos(an) * 0.6, 0, Math.sin(an) * 0.6, kcQ) && kcProj(c, Math.cos(an) * 4, 0, Math.sin(an) * 4, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.beginPath();
+  const J = K.fig ? K.fig.J : kcStand;
+  if (kcEll(ctx, c, (J.ftL[0] + J.ftR[0] + J.hip[0]) / 3, 0, 0, kcSet(kcV1, 0.46, 0, 0), kcSet(kcV2, 0, 0, 0.4))) ctx.fill();
+}
+
+// ---- the target as a 3D figure ----------------------------------------------------------------
+// The game's people are flat: a set of joints seen from the side. Here each joint is given a
+// depth as well. The body stays in its own flat plane (z = 0); the left arm and leg go to one
+// side of it and the right to the other, shoulders 36 cm apart and hips 23.
+function kcBuildFig(K) {
+  const o = K.o, a = o.actor; let J = null;
+  try {
+    if (a) {
+      let src = a;
+      // The world moves in steps while the film crawls, so a falling body would jerk. Read the
+      // pose through a stand-in that reports a smoothly growing time since death.
+      if (a.dead && K.hitT !== null && isFinite(a.deathAtT)) { src = Object.create(a); src.deadT = clamp(K.ret - a.deathAtT, a.deadT || 0, (a.deadT || 0) + K.step); }
+      J = actorJoints(src);
+    }
+  } catch (e) { J = null; }
+  if (!J || !J.hip || !J.neck || !J.head || !J.ftL || !J.haR || !isFinite(J.hip[1])) J = (K.fig && K.fig.J) || kcStand;
+  const sc = J.scale || 1, fs = (J.f || 1) < 0 ? -1 : 1, L = K.look || {};
+  const bw = L.build === 'big' ? 1.16 : L.build === 'thin' ? 0.9 : 1, lw = 0.085 * sc * (L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.85 : 1);
+  const ws = 0.18 * sc * bw, wh = 0.115 * sc * bw, wt = ws - 0.045 * sc, za = ws + 0.06 * sc, sh = J.sh || J.neck;
+  // a person facing right (+x) has their right side toward the shooter, so right is -z and left is +z
+  const P = {
+    hip: [J.hip[0], J.hip[1], 0], neck: [J.neck[0], J.neck[1], 0], head: [J.head[0], J.head[1], 0], sh: [sh[0], sh[1], 0],
+    shL: [sh[0], sh[1], fs * ws], shR: [sh[0], sh[1], -fs * ws], tsL: [sh[0], sh[1], fs * wt], tsR: [sh[0], sh[1], -fs * wt], elL: [J.elL[0], J.elL[1], fs * za], haL: [J.haL[0], J.haL[1], fs * za], elR: [J.elR[0], J.elR[1], -fs * za], haR: [J.haR[0], J.haR[1], -fs * za],
+    hpL: [J.hip[0], J.hip[1], fs * wh], hpR: [J.hip[0], J.hip[1], -fs * wh], knL: [J.knL[0], J.knL[1], fs * wh * 0.95], ftL: [J.ftL[0], J.ftL[1], fs * wh * 0.9], knR: [J.knR[0], J.knR[1], -fs * wh * 0.95], ftR: [J.ftR[0], J.ftR[1], -fs * wh * 0.9],
+  };
+  // the trunk's own axes: U up the spine, F out of the chest, S toward the person's left
+  let ux = J.neck[0] - J.hip[0], uy = J.neck[1] - J.hip[1]; const Ln = Math.hypot(ux, uy) || 0.56; ux /= Ln; uy /= Ln;
+  let vx = J.head[0] - J.neck[0], vy = J.head[1] - J.neck[1]; const hl = Math.hypot(vx, vy) || 0.2; vx /= hl; vy /= hl;
+  K.fig = { J, P, S: (K.fig && K.fig.S) || {}, sc, fs, bw, lw, ws, wh, wt, za, hr: 0.17 * sc, look: L,
+    tor: { o: P.hip, U: [ux, uy, 0], F: [uy * fs, -ux * fs, 0], S: [0, 0, fs], L: Ln },
+    hd: { o: P.head, U: [vx, vy, 0], F: [vy * fs, -vx * fs, 0], S: [0, 0, fs] } };
+  return K.fig;
+}
+// The outside of the figure, in the game's own look: dark ink limbs with a pale edge, the coat,
+// the hat. xr (0..1) turns it to glass. infl (0..1) lets the trunk fill out from the flat
+// stick it is in the scope to something with a chest.
+function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
+  if (alpha < 0.01) return;
+  const P = fig.P, S = fig.S, L = fig.look, sc = fig.sc, lw = fig.lw, hd = fig.hd, tor = fig.tor;
+  for (const k in P) { const q = S[k] || (S[k] = [0, 0, 0, 0]); if (!kcProj(c, P[k][0], P[k][1], P[k][2], q)) return; }
+  const dimK = 0.1 + 0.22 * (pal.dark || 0), D = (col) => (typeof col === 'string' && col.charAt(0) === '#' && (col.length === 7 || col.length === 4) ? mix(col, '#05070b', dimK) : '#3a3f48');
+  const glass = K.gore ? '#7f9cba' : '#9cc6ea';
+  const ink = mix(pal.ink, glass, xr * 0.85), aInk = lerp(1, 0.2, xr), aCl = lerp(1, 0.15, xr), rim = xr > 0.5 ? 'rgba(190,222,255,0.5)' : pal.rim;
+  const rl = lw / 2, rT = lerp(rl, 0.07 * sc, infl), pad = 0.024;
+  const wOf = (r, a, b) => Math.max(1, r * (S[a][2] + S[b][2]));
+  const two = (a, b) => { ctx.beginPath(); ctx.moveTo(S[a][0], S[a][1]); ctx.lineTo(S[b][0], S[b][1]); };
+  const three = (a, b, d) => { ctx.beginPath(); ctx.moveTo(S[a][0], S[a][1]); ctx.lineTo(S[b][0], S[b][1]); ctx.lineTo(S[d][0], S[d][1]); };
+  const quad = (a, b, d, e) => { ctx.beginPath(); ctx.moveTo(S[a][0], S[a][1]); ctx.lineTo(S[b][0], S[b][1]); ctx.lineTo(S[d][0], S[d][1]); ctx.lineTo(S[e][0], S[e][1]); ctx.closePath(); };
+  // the hem of a coat or the bottom of a vest: points below (or above) the hips on each side
+  const hemK = L.coat ? (L.long ? 0.55 : 0.05) : 0;
+  const low = (key, z, kk) => { const q = S[key] || (S[key] = [0, 0, 0, 0]); kcProj(c, P.hip[0] - tor.U[0] * tor.L * kk, P.hip[1] - tor.U[1] * tor.L * kk, z, q); };
+  low('lowL', P.hpL[2] * 1.05, hemK); low('lowR', P.hpR[2] * 1.05, hemK); low('vstL', P.hpL[2], -0.3); low('vstR', P.hpR[2], -0.3);
+  const hs = S.head[2], hr = fig.hr * hs, hx = S.head[0], hy = S.head[1];
+  const camF = hd.F[0] * (c.x - P.head[0]) + hd.F[1] * (c.y - P.head[1]); // above zero when we can see the face
+  const tilt = Math.atan2(hd.U[0] * c.rx, hd.U[0] * c.ux + hd.U[1] * c.uy); // how the head's "up" leans on screen
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // ---- pale outline under everything, so the figure reads against any background
+  ctx.globalAlpha = alpha * lerp(1, 0.9, xr); ctx.strokeStyle = rim; ctx.fillStyle = rim;
+  const rimLimb = (a, b, d) => { three(a, b, d); ctx.lineWidth = wOf(rl + pad, a, d); ctx.stroke(); };
+  rimLimb('hpL', 'knL', 'ftL'); rimLimb('hpR', 'knR', 'ftR'); rimLimb('shL', 'elL', 'haL'); rimLimb('shR', 'elR', 'haR');
+  quad('tsL', 'tsR', 'hpR', 'hpL'); ctx.lineWidth = wOf(rT + pad, 'sh', 'hip'); ctx.stroke();
+  two('sh', 'head'); ctx.lineWidth = wOf(rl + pad, 'sh', 'head'); ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx, hy, hr + Math.max(1, pad * hs), 0, TAU); ctx.fill();
+  // ---- the parts, far ones first
+  const parts = [];
+  const limb = (a, b, d, sleeve) => parts.push({ z: (S[a][3] + S[b][3] + S[d][3]) / 3, f() {
+    ctx.globalAlpha = alpha * aInk; ctx.strokeStyle = ink; three(a, b, d); ctx.lineWidth = wOf(rl, a, d); ctx.stroke();
+    if (sleeve) { // a sleeve, a shade darker than the coat and edged, so the arm reads against the body
+      const sw = wOf(rl * 1.35, a, b), cl = D(L.coat);
+      ctx.globalAlpha = alpha * aCl; ctx.beginPath(); ctx.moveTo(S[a][0], S[a][1]); ctx.lineTo(S[b][0], S[b][1]); ctx.lineTo(lerp(S[b][0], S[d][0], 0.7), lerp(S[b][1], S[d][1], 0.7));
+      ctx.strokeStyle = mix(cl, '#000000', 0.42); ctx.lineWidth = sw + 2.2; ctx.stroke();
+      ctx.strokeStyle = mix(cl, '#000000', 0.12); ctx.lineWidth = sw; ctx.stroke();
+    }
+  } });
+  limb('hpL', 'knL', 'ftL', false); limb('hpR', 'knR', 'ftR', false); limb('shL', 'elL', 'haL', !!L.coat); limb('shR', 'elR', 'haR', !!L.coat);
+  parts.push({ z: (S.sh[3] + S.hip[3]) / 2, f() {
+    ctx.globalAlpha = alpha * aInk; ctx.strokeStyle = ink; ctx.fillStyle = ink;
+    quad('tsL', 'tsR', 'hpR', 'hpL'); ctx.lineWidth = wOf(rT, 'sh', 'hip'); ctx.fill(); ctx.stroke();
+    two('sh', 'head'); ctx.lineWidth = wOf(rl, 'sh', 'head'); ctx.stroke();
+    ctx.globalAlpha = alpha * aCl;
+    if (L.dress) { // a skirt: a cone from the neck to below the hips
+      const cl = D(L.dress); ctx.fillStyle = cl;
+      if (kcProj(c, P.neck[0] - tor.U[0] * 0.08 * sc, P.neck[1] - tor.U[1] * 0.08 * sc, 0, kcQ) && kcProj(c, P.hip[0] - tor.U[0] * 0.38 * sc, P.hip[1] - tor.U[1] * 0.38 * sc, 0, kcQ2)) {
+        const wt = 0.12 * sc * kcQ[2], wb = 0.27 * sc * kcQ2[2]; let ax = kcQ2[0] - kcQ[0], ay = kcQ2[1] - kcQ[1]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+        ctx.beginPath(); ctx.moveTo(kcQ[0] - ay * wt, kcQ[1] + ax * wt); ctx.lineTo(kcQ[0] + ay * wt, kcQ[1] - ax * wt); ctx.lineTo(kcQ2[0] + ay * wb, kcQ2[1] - ax * wb); ctx.lineTo(kcQ2[0] - ay * wb, kcQ2[1] + ax * wb); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(kcQ2[0], kcQ2[1], wb, wb * 0.14, Math.atan2(ax, -ay), 0, TAU); ctx.fill();
+      }
+    }
+    if (L.coat) {
+      const cl = D(L.coat), cr = lerp(rl * 2.5, 0.092 * sc, infl); ctx.strokeStyle = cl; ctx.fillStyle = cl; quad('tsL', 'tsR', 'lowR', 'lowL'); ctx.lineWidth = wOf(cr, 'sh', 'hip'); ctx.fill(); ctx.stroke();
+      // the opening down the front, once we have come far enough round to see it
+      if (camF > 0.3 && kcProj(c, P.neck[0] + tor.F[0] * cr - tor.U[0] * 0.05 * sc, P.neck[1] + tor.F[1] * cr - tor.U[1] * 0.05 * sc, 0, kcQ) && kcProj(c, P.hip[0] + tor.F[0] * cr - tor.U[0] * tor.L * hemK, P.hip[1] + tor.F[1] * cr - tor.U[1] * tor.L * hemK - 0.09 * sc, 0, kcQ2)) {
+        ctx.strokeStyle = mix(cl, '#000000', 0.38); ctx.lineWidth = Math.max(1.2, 0.012 * sc * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
+      }
+    }
+    if (L.vest) { const cl = D(L.vest); ctx.strokeStyle = cl; ctx.fillStyle = cl; quad('tsL', 'tsR', 'vstR', 'vstL'); ctx.lineWidth = wOf(lerp(rl * 2.4, 0.088 * sc, infl), 'sh', 'hip'); ctx.fill(); ctx.stroke(); }
+    if (L.tie && camF > -0.2 && kcProj(c, P.neck[0] + tor.F[0] * (rT + 0.02), P.neck[1] + tor.F[1] * (rT + 0.02) - 0.04 * sc, 0, kcQ) && kcProj(c, P.neck[0] + tor.F[0] * (rT + 0.035) - tor.U[0] * 0.32 * sc, P.neck[1] + tor.F[1] * (rT + 0.035) - tor.U[1] * 0.32 * sc, 0, kcQ2)) {
+      ctx.strokeStyle = D(L.tie); ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(1.5, 0.06 * sc * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); ctx.lineCap = 'round';
+    }
+    if (L.scarf) { ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(2, 0.07 * sc * S.neck[2]); ctx.beginPath(); if (kcEll(ctx, c, P.neck[0], P.neck[1] + 0.01, 0, kcSet(kcV1, 0.085 * sc, 0, 0), kcSet(kcV2, 0, 0, 0.085 * sc))) ctx.stroke(); }
+  } });
+  // things carried
+  kcBag(ctx, K, c, fig, parts, alpha * aCl, D);
+  // the head, with whatever is on it
+  parts.push({ z: S.head[3] - 0.02, f() {
+    const hairFirst = camF >= 0, hc = L.hair, hcol = D(L.hair === 'white' ? '#e8e8e2' : L.hairCol || (hc === 'long' ? '#6b4a2b' : hc === 'bun' ? '#3a2a20' : hc === 'mohawk' ? '#e0413a' : '#7a5a3a'));
+    const hairBack = () => {
+      if (hc !== 'long' && hc !== 'bun') return;
+      ctx.globalAlpha = alpha * aCl; ctx.fillStyle = hcol; ctx.strokeStyle = hcol;
+      if (hc === 'long') {
+        if (kcProj(c, P.head[0] - hd.F[0] * 0.04 * sc, P.head[1] - hd.F[1] * 0.04 * sc + 0.015, 0, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 1.13, 0, TAU); ctx.fill(); }
+        if (kcProj(c, P.head[0] - hd.F[0] * 0.11 * sc, P.head[1] - hd.F[1] * 0.11 * sc, 0, kcQ) && kcProj(c, P.head[0] - hd.F[0] * 0.15 * sc - hd.U[0] * 0.3 * sc, P.head[1] - hd.F[1] * 0.15 * sc - hd.U[1] * 0.3 * sc, 0, kcQ2)) { ctx.lineWidth = 0.2 * sc * kcQ[2]; ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
+      } else if (kcProj(c, P.head[0] - hd.F[0] * 0.13 * sc + hd.U[0] * 0.14 * sc, P.head[1] - hd.F[1] * 0.13 * sc + hd.U[1] * 0.14 * sc, 0, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], 0.08 * sc * kcQ[2], 0, TAU); ctx.fill(); }
+    };
+    if (hairFirst) hairBack();
+    ctx.globalAlpha = alpha * aInk; ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
+    if (!hairFirst) hairBack();
+    ctx.globalAlpha = alpha * aCl;
+    ctx.save(); ctx.translate(hx, hy); ctx.rotate(tilt);
+    if (hc === 'short' || hc === 'white' || hc === 'bun' || hc === 'long') { ctx.fillStyle = hcol; ctx.beginPath(); ctx.arc(0, -hr * 0.06, hr * 1.05, Math.PI + 0.22, TAU - 0.22); ctx.closePath(); ctx.fill(); }
+    else if (hc === 'mohawk') { ctx.fillStyle = hcol; ctx.beginPath(); ctx.ellipse(0, -hr * 0.95, hr * (0.25 + 0.6 * Math.abs(c.rx * hd.F[0])), hr * 0.42, 0, 0, TAU); ctx.fill(); }
+    if (L.mask) { ctx.fillStyle = D(L.mask); ctx.beginPath(); ctx.arc(0, 0, hr * 1.02, 0.25, Math.PI - 0.25); ctx.closePath(); ctx.fill(); }
+    if (L.phones) { ctx.strokeStyle = D(L.phones); ctx.lineWidth = Math.max(1.5, 0.04 * sc * hs); ctx.beginPath(); ctx.arc(0, 0, hr * 1.12, Math.PI + 0.3, TAU - 0.3); ctx.stroke(); }
+    ctx.restore();
+    if (L.beard && kcProj(c, P.head[0] + hd.F[0] * 0.07 * sc - hd.U[0] * 0.08 * sc, P.head[1] + hd.F[1] * 0.07 * sc - hd.U[1] * 0.08 * sc, 0, kcQ)) { ctx.fillStyle = D(L.beard === true ? '#8a8f96' : L.beard); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 0.66, 0, TAU); ctx.fill(); }
+    if (L.glasses && camF > -0.25) {
+      const sh = L.glasses === 'shades'; ctx.strokeStyle = D(sh ? '#f2f4f7' : '#cfd6de'); ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = Math.max(1, (sh ? 0.05 : 0.024) * sc * hs);
+      const e0 = kcProj(c, P.head[0] + hd.F[0] * 0.165 * sc + hd.U[0] * 0.03 * sc, P.head[1] + hd.F[1] * 0.165 * sc + hd.U[1] * 0.03 * sc, 0.062 * sc, kcQ), e1 = kcProj(c, P.head[0] + hd.F[0] * 0.165 * sc + hd.U[0] * 0.03 * sc, P.head[1] + hd.F[1] * 0.165 * sc + hd.U[1] * 0.03 * sc, -0.062 * sc, kcQ2);
+      if (e0 && e1) {
+        if (sh) { ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
+        else { const rr = Math.max(1.2, 0.045 * sc * hs), sq = Math.max(0.25, Math.abs(c.rz)); ctx.beginPath(); ctx.ellipse(kcQ[0], kcQ[1], rr * sq, rr, 0, 0, TAU); ctx.moveTo(kcQ2[0] + rr * sq, kcQ2[1]); ctx.ellipse(kcQ2[0], kcQ2[1], rr * sq, rr, 0, 0, TAU); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
+      }
+    }
+  } });
+  parts.sort((p, q) => q.z - p.z);
+  for (let i = 0; i < parts.length; i++) parts[i].f();
+  kcHat(ctx, K, c, fig, alpha * aCl, D, tilt, ink);
+  // where the round went in and came out
+  if (K.hitT !== null && K.plan) {
+    const pl = K.plan, fr = pl.part === 'head' ? hd : tor, bb = pl.part === 'head' ? pl.u0 : pl.b0;
+    ctx.globalAlpha = alpha; ctx.fillStyle = K.gore ? '#5c060c' : '#0a1018';
+    for (let i = 0; i < 2; i++) {
+      if (i === 1 && K.dmg.skin1 === undefined) break;
+      kcLoc(fr, (i ? pl.sOut : pl.sIn) * fig.fs, bb, pl.c0, kcL0);
+      if (kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], Math.max(1.5, (i ? 0.02 : 0.012) * kcQ[2]), 0, TAU); ctx.fill(); }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+// A case, a bag, an umbrella: simple solids that turn with the camera.
+function kcBag(ctx, K, c, fig, parts, al, D) {
+  const L = fig.look, P = fig.P, S = fig.S, sc = fig.sc, bag = L.bag, tor = fig.tor;
+  if (!bag) return;
+  const blob = (x, y, z, a, b, d, col, zb) => parts.push({ z: zb, f() { ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); if (kcEll(ctx, c, x, y, z, a, b, d)) ctx.fill(); } });
+  // a box drawn as the outline of its eight corners (they are sorted round their middle)
+  const box = (x, y, z, hx, hy, hz, col, zb) => parts.push({ z: zb, f() {
+    const pts = []; let mx = 0, my = 0;
+    for (let i = 0; i < 8; i++) { if (!kcProj(c, x + (i & 1 ? hx : -hx), y + (i & 2 ? hy : -hy), z + (i & 4 ? hz : -hz), kcQ)) return; pts.push([kcQ[0], kcQ[1]]); mx += kcQ[0] / 8; my += kcQ[1] / 8; }
+    // gift wrapping: walk round the outside of the points
+    let st = 0; for (let i = 1; i < 8; i++) if (pts[i][0] < pts[st][0]) st = i;
+    ctx.globalAlpha = al; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(pts[st][0], pts[st][1]);
+    let cur = st, guard = 0;
+    do { let nx = (cur + 1) % 8; for (let i = 0; i < 8; i++) { const cr = (pts[nx][0] - pts[cur][0]) * (pts[i][1] - pts[cur][1]) - (pts[nx][1] - pts[cur][1]) * (pts[i][0] - pts[cur][0]); if (cr < 0) nx = i; } cur = nx; ctx.lineTo(pts[cur][0], pts[cur][1]); } while (cur !== st && guard++ < 9);
+    ctx.closePath(); ctx.fill();
+  } });
+  const h = P.haR, zh = S.haR ? S.haR[3] : 0;
+  if (bag === 'case') box(h[0], h[1] - 0.17 * sc, h[2], 0.2 * sc, 0.13 * sc, 0.055 * sc, D(L.bagCol || '#7b5a36'), zh - 0.05);
+  else if (bag === 'shopping') box(h[0], h[1] - 0.22, h[2], 0.15, 0.17, 0.06, D(L.bagCol || '#e9e2d0'), zh - 0.05);
+  else if (bag === 'duffel') blob(h[0], h[1] - 0.2 * sc, h[2], kcSet([0, 0, 0], 0.34 * sc, 0, 0), kcSet([0, 0, 0], 0, 0.16 * sc, 0), kcSet([0, 0, 0], 0, 0, 0.15 * sc), D(L.bagCol || '#3f4a5c'), zh - 0.05);
+  else if (bag === 'box' || bag === 'paper' || bag === 'clip') { const m = [(P.haL[0] + P.haR[0]) / 2, (P.haL[1] + P.haR[1]) / 2]; if (bag === 'box') box(m[0], m[1] + 0.1, 0, 0.24, 0.18, 0.2, D(L.bagCol || '#b08a52'), S.sh[3] - 0.3 * tor.F[0] * c.fx); else box(m[0], m[1] + 0.1, 0, 0.03, 0.15, 0.2, D(bag === 'paper' ? '#e9e6dc' : L.bagCol || '#e7e2d4'), S.sh[3] - 0.3 * tor.F[0] * c.fx); }
+  else if (bag === 'backpack') { const bx = lerp(P.hip[0], P.neck[0], 0.62) - tor.F[0] * 0.17 * sc, by = lerp(P.hip[1], P.neck[1], 0.62) - tor.F[1] * 0.17 * sc; blob(bx, by, 0, kcSet([0, 0, 0], tor.F[0] * 0.1 * sc, tor.F[1] * 0.1 * sc, 0), kcSet([0, 0, 0], tor.U[0] * 0.22 * sc, tor.U[1] * 0.22 * sc, 0), kcSet([0, 0, 0], 0, 0, 0.16 * sc), D(L.bagCol || '#5d6b4a'), (S.sh[3] + S.hip[3]) / 2 + 0.17 * tor.F[0] * c.fx); }
+  else if (bag === 'umbrella') parts.push({ z: zh - 0.3, f() {
+    if (!kcProj(c, h[0], h[1], h[2], kcQ) || !kcProj(c, h[0], 2.2 * sc, h[2], kcQ2)) return;
+    ctx.globalAlpha = al; ctx.strokeStyle = D('#22252b'); ctx.lineWidth = Math.max(1, 0.03 * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
+    const r = 0.62 * sc * kcQ2[2], x = kcQ2[0], y = kcQ2[1]; ctx.fillStyle = D(L.bagCol || '#c0392b');
+    ctx.beginPath(); ctx.arc(x, y, r, Math.PI, TAU); ctx.ellipse(x, y, r, r * Math.max(0.05, Math.abs(Math.sin(c.pitch))), 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+  } });
+  else if (bag === 'cane') parts.push({ z: zh, f() { if (kcProj(c, h[0], h[1], h[2], kcQ) && kcProj(c, h[0] + fig.fs * 0.12, 0.02, h[2], kcQ2)) { ctx.globalAlpha = al; ctx.strokeStyle = D(L.bagCol || '#d8d2c4'); ctx.lineWidth = Math.max(1, 0.035 * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); } } });
+}
+// Hats: a brim (a flat disc), a crown (a drum or a dome), sometimes a peak. After the hit the
+// hat comes off, as it does in the scope view.
+function kcHat(ctx, K, c, fig, al, D, tilt, ink) {
+  const L = fig.look, hat = L.hat; if (!hat) return;
+  const hd = fig.hd, P = fig.P, sc = fig.sc, hr0 = fig.hr;
+  if (!K.hat) K.hat = { fly: 0 };
+  if (K.hitT !== null && !K.hat.fly && hat !== 'hood' && (K.plan.part === 'head' || K.T - K.hitT > 0.5)) K.hat.fly = K.T;
+  // once loose it lifts off and turns, in the same slow time as the spray
+  let ox = 0, oy = 0, oz = 0, rot = 0;
+  if (K.hat.fly) { const t = (K.T - K.hat.fly) * 0.3, hp = K.plan.part === 'head' ? 1 : 0.45; ox = K.side * 0.25 * t * hp; oy = (2.6 * t - 4.9 * t * t) * hp; oz = K.dir[2] * 1.6 * t * hp; rot = t * 3.2 * hp * K.side; }
+  const bx = P.head[0] + hd.U[0] * hr0 * 0.62 + ox, by = P.head[1] + hd.U[1] * hr0 * 0.62 + oy, bz = oz;
+  if (!kcProj(c, bx, by, bz, kcQ)) return;
+  const x = kcQ[0], y = kcQ[1], s = kcQ[2] * sc, col = D(L.hatCol || '#2a2d33'), sq = Math.max(0.06, Math.abs(Math.sin(c.pitch)) + 0.04); // how open a flat ring looks from this height
+  const camF = hd.F[0] * c.rx; // which way "forward" points across the screen
+  ctx.save(); ctx.translate(x, y); ctx.rotate(tilt + rot); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.strokeStyle = col;
+  const brim = (r) => { ctx.beginPath(); ctx.ellipse(0, 0, r * s, Math.max(1.2, r * s * sq), 0, 0, TAU); ctx.fill(); };
+  const drum = (r, h, r2) => { ctx.beginPath(); ctx.moveTo(-r * s, 0); ctx.lineTo(-(r2 || r) * s, -h * s); ctx.ellipse(0, -h * s, (r2 || r) * s, (r2 || r) * s * sq, 0, Math.PI, TAU); ctx.lineTo(r * s, 0); ctx.ellipse(0, 0, r * s, r * s * sq, 0, 0, Math.PI); ctx.closePath(); ctx.fill(); };
+  const dome = (r, dy) => { ctx.beginPath(); ctx.arc(0, (dy || 0) * s, r * s, Math.PI, TAU); ctx.ellipse(0, (dy || 0) * s, r * s, r * s * sq, 0, 0, Math.PI); ctx.closePath(); ctx.fill(); };
+  const peak = (len, dy) => { ctx.lineWidth = Math.max(1.5, 0.045 * s); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, (dy || 0) * s); ctx.lineTo(camF * len * s, (dy || 0) * s + 0.02 * s); ctx.stroke(); };
+  const band = (r, y0, h) => { if (L.hatBand) { ctx.fillStyle = D(L.hatBand); ctx.fillRect(-r * s, -(y0 + h) * s, r * 2 * s, h * s); ctx.fillStyle = col; } };
+  if (hat === 'fedora') { brim(0.3); drum(0.17, 0.19, 0.15); band(0.166, 0.015, 0.05); }
+  else if (hat === 'tophat') { brim(0.26); drum(0.15, 0.3); band(0.15, 0.02, 0.05); }
+  else if (hat === 'sun') { brim(0.38); dome(0.16, 0); band(0.155, 0, 0.04); }
+  else if (hat === 'cap') { dome(0.177, 0.03); peak(0.3, 0.02); }
+  else if (hat === 'peaked') { drum(0.17, 0.1, 0.2); peak(0.27, 0.02); }
+  else if (hat === 'hardhat') { dome(0.187, 0.05); brim(0.23); }
+  else if (hat === 'beanie') { dome(0.184, 0.07); ctx.beginPath(); ctx.arc(0, -0.09 * s, 0.045 * s, 0, TAU); ctx.fill(); }
+  else if (hat === 'helmet') dome(0.197, 0.09);
+  else if (hat === 'beret') { ctx.beginPath(); ctx.ellipse(-camF * 0.04 * s, -0.02 * s, 0.21 * s, 0.08 * s, -camF * 0.2, 0, TAU); ctx.fill(); }
+  else if (hat === 'hood') { // a ball of cloth round the head, open at the face
+    const toCam = -(hd.F[0] * c.fx + hd.F[1] * c.fy);
+    ctx.beginPath(); ctx.arc(-camF * 0.03 * s, 0.105 * s, 0.204 * s, 0, TAU); ctx.fill();
+    if (toCam > -0.35) { ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(camF * 0.085 * s, 0.11 * s, 0.11 * s * (0.3 + 0.7 * Math.max(0, toCam)), 0.115 * s, 0, 0, TAU); ctx.fill(); }
+  }
+  ctx.restore(); ctx.globalAlpha = 1;
+}
+
+// ---- the inside --------------------------------------------------------------------------------
+// Skeleton and organs, each sorted by distance so nearer things cover farther ones and the
+// whole lot turns properly with the camera. With gore off only the skeleton is drawn, in one
+// cold colour.
+function kcInnards(ctx, K, c, fig, al) {
+  const tor = fig.tor, hd = fig.hd, P = fig.P, S = fig.S, sc = fig.sc, bw = fig.bw, fs = fig.fs, pl = K.plan, T = K.T, dmg = K.dmg, L = tor.L;
+  const bone = K.gore ? '#efe7d2' : '#d9ecfa', boneD = K.gore ? '#b9ad94' : '#8fb1cc', dark = K.gore ? '#1c0a0b' : '#06101a';
+  const items = [];
+  const age = (k) => (dmg[k] === undefined ? -1 : T - dmg[k]);
+  // how much further from us a point is for each metre along the trunk's side and front axes
+  const dA = tor.S[2] * c.fz, dC = tor.F[0] * c.fx + tor.F[1] * c.fy;
+  const zAt = (a, b, cc) => { kcLoc(tor, a, b, cc, kcL0); return (kcL0[0] - c.x) * c.fx + (kcL0[1] - c.y) * c.fy + (kcL0[2] - c.z) * c.fz; };
+  const z0 = zAt(0, L * 0.6, 0);
+  if (!kcProj(c, P.sh[0], P.sh[1], 0, kcQ)) return;
+  const ps = kcQ[2] * sc; // pixels per metre at the chest, times the figure's size
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // ---- ribs: each one a hoop from the spine round to the breastbone, cut into short pieces.
+  // Pieces on the far side of the chest are drawn dim and early, near ones bright and late.
+  const ribs = (wantNear) => {
+    const aIn = age('ribIn'), aOut = age('ribOut');
+    ctx.strokeStyle = wantNear ? bone : boneD; ctx.lineWidth = Math.max(1.2, 0.0125 * ps); ctx.globalAlpha = al * (wantNear ? 0.96 : 0.6);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const b = L * (0.47 + 0.058 * i), wa = kcRibW[i] * sc * bw, amax = (i === 0 ? 0.6 : i === 1 ? 0.78 : 0.96) * Math.PI;
+      const hitRow = pl.part === 'torso' && pl.ribAl !== undefined && Math.abs(b - pl.b0) < 0.036 * sc;
+      for (let sg = -1; sg <= 1; sg += 2) {
+        // the ribs on the side the round comes in at are the person's right if they face right
+        const brk = hitRow ? (sg === -fs ? aIn : aOut) : -1, bend = brk >= 0 ? 0.04 * sc * easeOut(brk / 0.25) : 0;
+        let pen = false;
+        for (let j = 0; j <= 9; j++) {
+          const an = (j / 9) * amax, sa = Math.sin(an), ca = Math.cos(an);
+          let a = sg * (0.012 * sc + wa * sa); const cc = -ca * (an < Math.PI / 2 ? 0.068 : 0.085) * sc - 0.012 * sc, bb = b - 0.045 * sc * Math.pow(Math.sin(an * 0.5), 2);
+          if (brk >= 0) { const da = Math.abs(an - pl.ribAl); if (da < 0.21) { pen = false; continue; } a += fs * bend * Math.max(0, 1 - da / 0.75); } // snapped: a gap, and the ends pushed the way the round went
+          const near = a * dA + cc * dC < 0;
+          kcLoc(tor, a, bb, cc, kcL0);
+          if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) { pen = false; continue; }
+          if (pen && near === wantNear) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]);
+          pen = true;
+        }
+      }
+    }
+    ctx.stroke();
+  };
+  items.push({ z: z0 + 0.09, f() { ribs(false); } }, { z: z0 - 0.09, f() { ribs(true); } });
+
+  // ---- spine: a stack of blocks from the pelvis to the skull
+  items.push({ z: zAt(0, L * 0.6, -0.06 * sc), f() {
+    const aS = age('spine'), aC = age('spineC'), n = 15, gap = (L * 0.99) / (n - 1);
+    const iB = aS >= 0 ? clamp(Math.round((pl.b0 - L * 0.03) / gap), 0, n - 1) : -1;
+    ctx.lineCap = 'butt'; ctx.globalAlpha = al;
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.strokeStyle = pass ? bone : boneD; ctx.lineWidth = Math.max(1, (pass ? 0.042 : 0.012) * ps); ctx.beginPath();
+      for (let i = 0; i < n + 3; i++) {
+        let b = L * 0.03 + i * gap, a = 0, cc = -0.032 * sc, fr = tor;
+        if (i >= n) { // neck bones: a short run from the top of the trunk into the head
+          const k = (i - n + 1) / 4; fr = null;
+          kcSet(kcL0, lerp(P.neck[0] - tor.F[0] * 0.03 * sc, P.head[0] - hd.U[0] * 0.1 * sc - hd.F[0] * 0.02 * sc, k), lerp(P.neck[1] - tor.F[1] * 0.03 * sc, P.head[1] - hd.U[1] * 0.1 * sc - hd.F[1] * 0.02 * sc, k), 0);
+          if (aC >= 0 && i === n + 1) continue;
+          if (aC >= 0) kcL0[2] += (i > n + 1 ? 0.014 : -0.008) * sc * easeOut(aC / 0.3);
+        } else {
+          if (i === iB) continue; // the one that was hit is gone: it is flying about as splinters
+          if (iB >= 0 && Math.abs(i - iB) === 1) a = fs * 0.012 * sc * easeOut(aS / 0.3) * (i > iB ? 1 : -0.6);
+          kcLoc(tor, a, b, cc, kcL0);
+        }
+        const ux = fr ? tor.U[0] : hd.U[0], uy = fr ? tor.U[1] : hd.U[1], hh = gap * 0.34;
+        if (pass) { if (kcProj(c, kcL0[0] - ux * hh, kcL0[1] - uy * hh, kcL0[2], kcQ) && kcProj(c, kcL0[0] + ux * hh, kcL0[1] + uy * hh, kcL0[2], kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+        else if (kcProj(c, kcL0[0], kcL0[1], kcL0[2] - 0.036 * sc, kcQ) && kcProj(c, kcL0[0], kcL0[1], kcL0[2] + 0.036 * sc, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } // the little wings each side
+      }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'round';
+  } });
+
+  // ---- breastbone, collar bones, shoulder blades
+  items.push({ z: zAt(0, L * 0.75, 0.085 * sc), f() {
+    ctx.globalAlpha = al; ctx.strokeStyle = bone; ctx.lineWidth = Math.max(1.5, 0.021 * ps);
+    ctx.beginPath(); kcRun(ctx, c, tor, [0, L * 0.6 / sc, 0.073, 0, L * 0.88 / sc, 0.068], sc, 1); ctx.stroke();
+    ctx.lineWidth = Math.max(1.2, 0.015 * ps); ctx.beginPath();
+    const bS = age(fs > 0 ? 'shIn' : 'shOut') >= 0, bS2 = age(fs > 0 ? 'shOut' : 'shIn') >= 0; // which collar bone the round broke (right is the near one if facing right)
+    for (let sg = -1; sg <= 1; sg += 2) {
+      const br = sg < 0 ? bS : bS2, w = fig.ws / sc;
+      if (br) { kcRun(ctx, c, tor, [0.02, L * 0.9 / sc, 0.066, w * 0.5, L * 0.935 / sc, 0.05], sc, sg); kcRun(ctx, c, tor, [w * 0.62, L * 0.9 / sc, 0.03, w, L * 0.93 / sc, 0.005], sc, sg); }
+      else kcRun(ctx, c, tor, [0.02, L * 0.9 / sc, 0.066, w * 0.55, L * 0.945 / sc, 0.045, w, L * 0.95 / sc, 0.005], sc, sg);
+    }
+    ctx.stroke();
+  } });
+  items.push({ z: zAt(0, L * 0.78, -0.09 * sc), f() {
+    ctx.globalAlpha = al * 0.7; ctx.strokeStyle = boneD; ctx.fillStyle = rgba(boneD, 0.22); ctx.lineWidth = Math.max(1, 0.014 * ps);
+    for (let sg = -1; sg <= 1; sg += 2) { ctx.beginPath(); kcRun(ctx, c, tor, [0.055, L * 0.9 / sc, -0.08, 0.15 * bw, L * 0.9 / sc, -0.06, 0.09, L * 0.6 / sc, -0.085], sc, sg, true); ctx.fill(); ctx.stroke(); }
+  } });
+
+  // ---- pelvis: two wings and the wedge of bone between them
+  items.push({ z: zAt(0, 0.04 * sc, 0), f() {
+    ctx.globalAlpha = al; ctx.strokeStyle = bone; ctx.fillStyle = rgba(bone, 0.16); ctx.lineWidth = Math.max(1.4, 0.017 * ps);
+    const wing = [0.03, 0.1, -0.045, 0.09, 0.125, -0.02, 0.125, 0.1, 0.02, 0.118, 0.04, 0.045, 0.085, -0.01, 0.05, 0.045, -0.055, 0.065, 0.012, -0.06, 0.07, 0.05, -0.075, 0.03, 0.07, -0.02, -0.01, 0.03, 0.03, -0.05];
+    for (let sg = -1; sg <= 1; sg += 2) {
+      const br = age(sg === -fs ? 'pelvIn' : 'pelvOut');
+      ctx.beginPath();
+      if (br >= 0) { const sh = 0.016 * easeOut(br / 0.3); kcRun(ctx, c, tor, wing.slice(0, 12), sc * bw, sg); kcRun(ctx, c, tor, wing.slice(12).map((v, i) => (i % 3 === 1 ? v - sh : i % 3 === 0 ? v + sh * 0.6 : v)), sc * bw, sg); ctx.stroke(); }
+      else { kcRun(ctx, c, tor, wing, sc * bw, sg, true); ctx.fill(); ctx.stroke(); }
+    }
+    ctx.beginPath(); kcRun(ctx, c, tor, [-0.03, 0.1, -0.05, 0.03, 0.1, -0.05, 0, -0.03, -0.06], sc, 1, true); ctx.fill(); ctx.stroke();
+  } });
+
+  // ---- arms and legs: one bone above the joint, two thin ones below, a knob at each joint
+  const limb = (a, b, d, wU, brU, brF) => items.push({ z: (S[a][3] + S[b][3] + S[d][3]) / 3 - 0.01, f() {
+    const s = (S[a][2] + S[b][2]) / 2 * sc, aU = age(brU), aF = age(brF);
+    ctx.globalAlpha = al; ctx.strokeStyle = bone; ctx.fillStyle = bone;
+    // a broken bone is drawn as two pieces knocked out of line
+    const piece = (p, q, br, w) => {
+      ctx.lineWidth = Math.max(1.3, w * s); ctx.beginPath();
+      if (br >= 0) { const k = 0.07 * s * easeOut(br / 0.25), mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2, dx = (q[1] - p[1]) / (Math.hypot(q[0] - p[0], q[1] - p[1]) || 1), dy = -(q[0] - p[0]) / (Math.hypot(q[0] - p[0], q[1] - p[1]) || 1);
+        ctx.moveTo(p[0], p[1]); ctx.lineTo(mx - (q[0] - p[0]) * 0.06 + dx * k, my - (q[1] - p[1]) * 0.06 + dy * k); ctx.moveTo(mx + (q[0] - p[0]) * 0.06 - dx * k * 0.6, my + (q[1] - p[1]) * 0.06 - dy * k * 0.6); ctx.lineTo(q[0], q[1]);
+      } else { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); }
+      ctx.stroke();
+    };
+    piece(S[a], S[b], aU, wU);
+    const ox = (S[d][1] - S[b][1]), oy = -(S[d][0] - S[b][0]), ol = Math.hypot(ox, oy) || 1, off = 0.009 * s;
+    piece([S[b][0] + (ox / ol) * off, S[b][1] + (oy / ol) * off], [S[d][0] + (ox / ol) * off, S[d][1] + (oy / ol) * off], aF, wU * 0.5);
+    piece([S[b][0] - (ox / ol) * off, S[b][1] - (oy / ol) * off], [S[d][0] - (ox / ol) * off, S[d][1] - (oy / ol) * off], aF, wU * 0.5);
+    ctx.beginPath(); ctx.arc(S[a][0], S[a][1], Math.max(1.5, wU * 0.8 * s), 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(S[b][0], S[b][1], Math.max(1.5, wU * 0.75 * s), 0, TAU); ctx.fill(); ctx.beginPath(); ctx.arc(S[d][0], S[d][1], Math.max(1.3, wU * 0.7 * s), 0, TAU); ctx.fill();
+  } });
+  limb('shL', 'elL', 'haL', 0.019, 'armLU', 'armLF'); limb('shR', 'elR', 'haR', 0.019, 'armRU', 'armRF');
+  limb('hpL', 'knL', 'ftL', 0.023, '', ''); limb('hpR', 'knR', 'ftR', 0.023, '', '');
+
+  // ---- organs: egg shapes that swell and tear when the round reaches them
+  if (K.gore) {
+    for (let i = 0; i < kcOrgans.length; i++) {
+      const g = kcOrgans[i];
+      items.push({ z: zAt(g.a * sc * bw, g.b * L, g.c * sc), f() {
+        const ag = age(g.id), beat = g.id === 'heart' && ag < 0 ? 0.05 * Math.pow(Math.max(0, Math.sin(T * 5.2)), 6) : 0;
+        const sw = ag >= 0 ? 0.3 * Math.exp(-ag * 3.2) * (0.6 + 0.4 * Math.cos(ag * 16)) - 0.07 * smooth(ag / 0.9) : beat, k = sc * (1 + sw);
+        kcLoc(tor, g.a * sc * bw, g.b * L, g.c * sc, kcL1);
+        kcSet(kcV1, 0, 0, tor.S[2] * g.ra * bw * k); kcMul(kcV2, tor.U, g.rb * k * (ag >= 0 && g.id.charAt(0) === 'l' ? 1 - 0.12 * smooth(ag / 1.2) : 1)); kcMul(kcV3, tor.F, g.rc * k);
+        ctx.globalAlpha = al; ctx.beginPath(); if (!kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2, kcV3)) return;
+        ctx.fillStyle = ag >= 0 ? mix(g.col, '#ff5a4a', 0.75 * Math.exp(-ag * 4)) : g.col; ctx.fill();
+        ctx.strokeStyle = 'rgba(40,6,10,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+        const cx = kcQ[0], cy = kcQ[1], ra = kcE[0], rb = kcE[1], an = kcE[2];
+        ctx.fillStyle = g.hi; ctx.globalAlpha = al * 0.55; ctx.beginPath(); ctx.ellipse(cx - rb * 0.22, cy - rb * 0.28, ra * 0.5, rb * 0.42, an, 0, TAU); ctx.fill();
+        if (g.id === 'heart') { ctx.globalAlpha = al; ctx.strokeStyle = g.col; ctx.lineWidth = Math.max(1.5, 0.018 * ps); ctx.beginPath(); kcRun(ctx, c, tor, [0.012, g.b * L / sc + 0.045, 0.03, 0.0, g.b * L / sc + 0.085, 0.02, -0.02, g.b * L / sc + 0.095, 0.0], sc, 1); ctx.stroke(); }
+        if (ag >= 0) { // the tear along the round's line
+          kcLoc(tor, g.a * sc * bw, pl.b0, pl.c0, kcL1); kcSet(kcV1, 0, 0, g.ra * sc * bw * 0.95 * easeOut(ag / 0.2)); kcMul(kcV2, tor.U, 0.016 * sc * (0.5 + easeOut(ag / 0.4)));
+          ctx.globalAlpha = al; ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill();
+        }
+      } });
+    }
+    // the gut: one long tube folded back and forth
+    items.push({ z: zAt(0, L * 0.18, 0.03 * sc), f() {
+      const ag = age('gut'), pts = [];
+      for (let i = 0; i <= 24; i++) { const r = Math.floor(i / 5), u = (i % 5) / 4; pts.push((r % 2 ? 1 - u : u) * 0.17 - 0.085 + (ag >= 0 ? 0.008 * Math.sin(i * 2.1) * easeOut(ag / 0.4) : 0), (L / sc) * (0.29 - r * 0.052) - (u === 0 || u === 1 ? 0.012 : 0), 0.03); }
+      ctx.globalAlpha = al; ctx.strokeStyle = '#8f5a4c'; ctx.lineWidth = Math.max(2, 0.036 * ps); ctx.beginPath(); kcRun(ctx, c, tor, pts, sc * bw, 1); ctx.stroke();
+      ctx.strokeStyle = ag >= 0 ? mix('#cf9580', '#ff5a4a', 0.6 * Math.exp(-ag * 4)) : '#cf9580'; ctx.lineWidth = Math.max(1.2, 0.024 * ps); ctx.stroke();
+      if (ag >= 0) { kcLoc(tor, 0, pl.b0, pl.c0, kcL1); kcSet(kcV1, 0, 0, 0.09 * sc * easeOut(ag / 0.25)); kcMul(kcV2, tor.U, 0.02 * sc); ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
+    } });
+  }
+  items.push({ z: S.head[3], f() { kcSkull(ctx, K, c, fig, al, bone, boneD, dark); } });
+  items.sort((p, q) => q.z - p.z);
+  for (let i = 0; i < items.length; i++) items[i].f();
+  ctx.globalAlpha = 1;
+}
+// The skull: a dome, eye sockets and a jaw, with the brain inside. A head shot cracks it along
+// lines that spread from where the round went in and came out, and knocks a plate off the far side.
+function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
+  const hd = fig.hd, sc = fig.sc, fs = fig.fs, pl = K.plan, T = K.T, dmg = K.dmg;
+  const age = (k) => (dmg[k] === undefined ? -1 : T - dmg[k]);
+  const cx3 = hd.o[0] + hd.U[0] * 0.018 * sc, cy3 = hd.o[1] + hd.U[1] * 0.018 * sc, rs = 0.142 * sc;
+  if (!kcProj(c, cx3, cy3, 0, kcQ)) return;
+  const x = kcQ[0], y = kcQ[1], s = kcQ[2], R = rs * s;
+  const camF = (hd.F[0] * (c.x - cx3) + hd.F[1] * (c.y - cy3)) / (Math.hypot(c.x - cx3, c.y - cy3, c.z) || 1); // 1 = looking straight at the face
+  const aIn = age('skullIn'), aOut = age('skullOut'), aBr = age('brain'), head = pl.part === 'head';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // the brain first, since the skull is drawn round it
+  if (K.gore) {
+    const sw = aBr >= 0 ? 0.26 * Math.exp(-aBr * 3) * (0.6 + 0.4 * Math.cos(aBr * 15)) : 0;
+    kcSet(kcV1, 0, 0, 0.105 * sc * (1 + sw * 1.6)); kcMul(kcV2, hd.U, 0.085 * sc * (1 - sw * 0.4)); kcMul(kcV3, hd.F, 0.115 * sc);
+    const bz = aBr >= 0 ? 0.012 * sc * smooth(aBr / 0.3) : 0; // pushed toward the way out
+    ctx.globalAlpha = al; ctx.beginPath();
+    if (kcEll(ctx, c, hd.o[0] + hd.U[0] * 0.03 * sc, hd.o[1] + hd.U[1] * 0.03 * sc, bz, kcV1, kcV2, kcV3)) {
+      ctx.fillStyle = aBr >= 0 ? mix('#d9979f', '#ff5a4a', 0.7 * Math.exp(-aBr * 4)) : '#d9979f'; ctx.fill();
+      const bx = kcQ[0], by = kcQ[1], ra = kcE[0], rb = kcE[1], an = kcE[2];
+      // the folds: a split down the middle and a few curls each side
+      ctx.strokeStyle = '#a8626f'; ctx.lineWidth = Math.max(1, 0.01 * s * sc);
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(an); ctx.beginPath();
+      const sq = Math.abs(camF) * 0.9 + 0.1; ctx.moveTo(0, -rb * 0.95); ctx.quadraticCurveTo(ra * 0.08 * sq, 0, 0, rb * 0.9);
+      for (let i = -1; i <= 1; i += 2) for (let j = 0; j < 3; j++) { const px = i * ra * (0.3 + 0.22 * j), py = rb * (-0.45 + 0.4 * j); ctx.moveTo(px - ra * 0.14, py); ctx.quadraticCurveTo(px, py - rb * 0.28, px + ra * 0.14, py + rb * 0.05); }
+      ctx.stroke(); ctx.restore();
+      ctx.fillStyle = '#f0bcc0'; ctx.globalAlpha = al * 0.45; ctx.beginPath(); ctx.ellipse(bx - rb * 0.2, by - rb * 0.32, ra * 0.42, rb * 0.3, an, 0, TAU); ctx.fill();
+      if (aBr >= 0) { kcLoc(hd, 0, pl.u0, pl.c0, kcL1); kcSet(kcV1, 0, 0, 0.1 * sc * easeOut(aBr / 0.2)); kcMul(kcV2, hd.U, 0.016 * sc * (0.5 + easeOut(aBr / 0.4))); ctx.globalAlpha = al; ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
+    }
+  }
+  // the dome
+  ctx.globalAlpha = al; ctx.fillStyle = rgba(bone, 0.2); ctx.strokeStyle = bone; ctx.lineWidth = Math.max(1.6, 0.014 * s * sc);
+  ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill(); ctx.stroke();
+  // face: sockets, nose, teeth. Only when we are on the face side; they narrow as it turns away.
+  const pt = (a, u, f, out) => { kcLoc(hd, a * sc, u * sc, f * sc, kcL0); return kcProj(c, kcL0[0], kcL0[1], kcL0[2], out); };
+  if (camF > 0.12) {
+    ctx.fillStyle = dark; ctx.globalAlpha = al * Math.min(1, camF * 2);
+    for (let sg = -1; sg <= 1; sg += 2) { ctx.beginPath(); kcLoc(hd, sg * 0.052 * sc, 0.012 * sc, 0.118 * sc, kcL1); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcSet(kcV1, 0, 0, 0.034 * sc), kcMul(kcV2, hd.U, 0.03 * sc))) ctx.fill(); }
+    if (pt(0, -0.035, 0.14, kcQ) && pt(0.016, -0.07, 0.132, kcQ2)) { ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); if (pt(-0.016, -0.07, 0.132, kcQ2)) ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.closePath(); ctx.fill(); }
+  }
+  // the jaw: a U of bone hinged below each ear
+  ctx.globalAlpha = al; ctx.strokeStyle = bone; ctx.lineWidth = Math.max(1.4, 0.016 * s * sc);
+  const jIn = age('jawIn'), jOut = age('jawOut'), jaw = [0.108, -0.045, 0.0, 0.1, -0.118, 0.015, 0.045, -0.165, 0.1, -0.045, -0.165, 0.1, -0.1, -0.118, 0.015, -0.108, -0.045, 0.0];
+  if (jIn >= 0 || jOut >= 0) { // broken: each half swings away on its own
+    for (let hf = 0; hf < 2; hf++) { const br = (hf === 0) === (fs < 0) ? jIn : jOut, k = br >= 0 ? easeOut(br / 0.3) : 0, part = jaw.slice(hf * 9, hf * 9 + 9).map((v, i) => (i % 3 === 1 ? v - 0.022 * k : i % 3 === 0 ? v + (hf ? -1 : 1) * 0.02 * k : v)); ctx.beginPath(); kcRun(ctx, c, hd, part, sc, 1); ctx.stroke(); }
+  } else { ctx.beginPath(); kcRun(ctx, c, hd, jaw, sc, 1); ctx.stroke(); }
+  if (camF > -0.3) { ctx.lineWidth = Math.max(1, 0.012 * s * sc); ctx.beginPath(); kcRun(ctx, c, hd, [0.05, -0.1, 0.112, 0, -0.105, 0.128, -0.05, -0.1, 0.112], sc, 1); ctx.stroke(); }
+  // ---- cracks. Each is a wandering line over the dome, kept as directions from the skull's
+  // middle (so it turns with the head) and drawn a little further every frame.
+  if (head && pl.chord && aIn >= 0) {
+    if (!pl.cracks) {
+      pl.cracks = [];
+      const R2 = makeRng(Math.round(pl.u0 * 9001 + pl.c0 * 7001) + 77), uc = (pl.u0 - 0.018 * sc) / rs, cc = pl.c0 / rs;
+      for (let e = 0; e < 2; e++) {
+        const a0 = (e ? 1 : -1) * Math.sqrt(Math.max(0.05, 1 - uc * uc - cc * cc)) * fs; // entry on the near side, exit on the far side
+        for (let k = 0; k < 9; k++) {
+          const th = (k / 9) * TAU + R2.f(), len = 5 + Math.floor(R2.f() * 6); let n = [a0, uc, cc], tu = Math.cos(th), tf = Math.sin(th); const line = [n[0], n[1], n[2]];
+          for (let j = 0; j < len; j++) { // each step turns sharply: bone breaks in straight runs and corners, not curves
+            tu += (R2.f() - 0.5) * 1.7; tf += (R2.f() - 0.5) * 1.7; const tl = Math.hypot(tu, tf) || 1; tu /= tl; tf /= tl;
+            const st = 0.09 + R2.f() * 0.09; n = [n[0] + (e ? -1 : 1) * fs * st * 0.5, n[1] + tu * st, n[2] + tf * st]; const l = Math.hypot(n[0], n[1], n[2]) || 1; n = [n[0] / l, n[1] / l, n[2] / l]; line.push(n[0], n[1], n[2]);
+          }
+          pl.cracks.push({ e, line });
+        }
+      }
+    }
+    for (let i = 0; i < pl.cracks.length; i++) {
+      const cr = pl.cracks[i], ag = cr.e ? aOut : aIn; if (ag < 0) continue;
+      const nseg = cr.line.length / 3 - 1, grow = clamp(ag / 0.5, 0, 1) * nseg;
+      ctx.lineJoin = 'miter'; ctx.lineCap = 'butt';
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = pass ? dark : rgba(bone, 0.5); ctx.lineWidth = pass ? Math.max(1.1, 0.0055 * s * sc) : Math.max(2.2, 0.013 * s * sc); ctx.beginPath();
+        let pen = false;
+        for (let j = 0; j <= Math.min(nseg, Math.ceil(grow)); j++) {
+          let a = cr.line[j * 3], u = cr.line[j * 3 + 1], f = cr.line[j * 3 + 2];
+          if (j > grow) { const k = grow - (j - 1); a = lerp(cr.line[j * 3 - 3], a, k); u = lerp(cr.line[j * 3 - 2], u, k); f = lerp(cr.line[j * 3 - 1], f, k); }
+          const wx = cx3 + (hd.U[0] * u + hd.F[0] * f) * rs, wy = cy3 + (hd.U[1] * u + hd.F[1] * f) * rs, wz = a * fs * rs;
+          const facing = (wx - cx3) * (c.x - cx3) + (wy - cy3) * (c.y - cy3) + wz * c.z > -0.02; // only the half of the dome turned toward us
+          if (!facing || !kcProj(c, wx, wy, wz, kcQ)) { pen = false; continue; }
+          if (pen) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); pen = true;
+        }
+        ctx.stroke();
+      }
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    }
+    // the plate: a piece of skull round the way out, punched loose and tumbling away
+    if (aOut >= 0 && K.plate) {
+      const q = K.plate, uc = (pl.u0 - 0.018 * sc), n = 7, hole = [], pr = 0.062 * sc;
+      for (let i = 0; i < n; i++) { const an = (i / n) * TAU, rr = pr * (0.8 + 0.4 * kcHash(i * 5.3 + pl.u0 * 50)); hole.push(uc + Math.cos(an) * rr, pl.c0 + Math.sin(an) * rr); }
+      const ez = pl.chord * 0.96;
+      ctx.fillStyle = dark; ctx.globalAlpha = al * 0.9; ctx.beginPath();
+      for (let i = 0; i < n; i++) { const wx = cx3 + hd.U[0] * hole[i * 2] + hd.F[0] * hole[i * 2 + 1], wy = cy3 + hd.U[1] * hole[i * 2] + hd.F[1] * hole[i * 2 + 1]; if (!kcProj(c, wx, wy, ez, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = bone; ctx.strokeStyle = boneD; ctx.lineWidth = 1; ctx.globalAlpha = al * clamp(1.6 - aOut * 0.5, 0, 1); ctx.beginPath();
+      const cr = Math.cos(q.rot), sr = Math.sin(q.rot);
+      for (let i = 0; i < n; i++) { const du = hole[i * 2] - uc, df = hole[i * 2 + 1] - pl.c0, ru = du * cr - df * sr * 0.5, rz = du * sr; const wx = cx3 + hd.U[0] * (uc + ru) + hd.F[0] * (pl.c0 + df) + q.x, wy = cy3 + hd.U[1] * (uc + ru) + hd.F[1] * (pl.c0 + df) + q.y; if (!kcProj(c, wx, wy, ez + q.z + rz, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+// The track the round leaves: a hollow that balloons open just behind it and falls shut again,
+// leaving a thin dark line. Its width at each point depends on how long ago the tip went by.
+function kcTrack(ctx, K, c, fig) {
+  const pl = K.plan, sm = pl.samples, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0, fs = fig.fs;
+  const lim = K.through === false ? pl.sStop : pl.sOut;
+  let n = 0;
+  for (let i = 0; i < sm.length; i += 2) { if (sm[i + 1] < 0 && K.s >= sm[i]) sm[i + 1] = T; if (sm[i + 1] >= 0 && sm[i] <= lim + 0.012) n++; }
+  if (n < 2) return;
+  const xs = [], ys = [], ws = [], wl = [];
+  for (let i = 0; i < n; i++) {
+    kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcL0);
+    if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
+    const x = (T - sm[i * 2 + 1]) / 0.16, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
+    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push(0.034 * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push(0.0065 * Math.min(1, ends * 1.6) * kcQ[2]);
+  }
+  let ax = xs[n - 1] - xs[0], ay = ys[n - 1] - ys[0]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+  const shape = (w, add) => { ctx.beginPath(); for (let i = 0; i < n; i++) { const x = xs[i] - ay * (w[i] + add), y = ys[i] + ax * (w[i] + add); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } for (let i = n - 1; i >= 0; i--) ctx.lineTo(xs[i] + ay * (w[i] + add), ys[i] - ax * (w[i] + add)); ctx.closePath(); };
+  ctx.lineJoin = 'round';
+  if (K.gore) { ctx.globalAlpha = 0.34; ctx.fillStyle = '#ff6a5c'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffb0a4'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.92; ctx.fillStyle = '#3a0408'; shape(wl, 0); ctx.fill(); }
+  else { ctx.globalAlpha = 0.2; ctx.fillStyle = '#e6f3ff'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#e6f3ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.88; ctx.fillStyle = '#06101a'; shape(wl, 0); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+// Blood, bone and dust in flight. Each bit is a point in space put through the camera; drops
+// are drawn stretched along the way they are moving.
+function kcDrawParts(ctx, K, c) {
+  const ps = K.parts; if (!ps.length) return;
+  ctx.lineCap = 'round';
+  const flat = Math.max(0.12, Math.abs(Math.sin(c.pitch)));
+  // mist and dust: soft dots that swell and thin
+  for (let pass = 0; pass < 5; pass += 4) {
+    ctx.fillStyle = pass === 0 ? '#a3141c' : '#cfe4f5';
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+      const u = p.age / p.life;
+      ctx.globalAlpha = 0.4 * (1 - u) * (1 - u * 0.5); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], Math.max(1, p.r * kcQ[2] * (1 + u * 2.4)), 0, TAU); ctx.fill();
+    }
+  }
+  // drops: a round head and a tail drawn back along the way it came. Tails and heads are
+  // filled as two separate shapes so that where they overlap they cannot cancel out.
+  for (let pass = 1; pass <= 3; pass += 2) {
+    ctx.fillStyle = pass === 1 ? '#b3151d' : '#dba0a6';
+    for (let shape = 0; shape < 2; shape++) {
+      ctx.globalAlpha = 0.95; ctx.beginPath();
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+        const s = kcQ[2], x = kcQ[0], y = kcQ[1], fade = clamp((p.life - p.age) / 0.05, 0, 1), r = Math.max(0.8, p.r * s) * (0.4 + 0.6 * fade);
+        if (p.stuck) { if (shape) { ctx.moveTo(x + r * 2.2, y); ctx.ellipse(x, y, r * 2.2, Math.max(0.6, r * 2.2 * flat), 0, 0, TAU); } continue; }
+        if (shape) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); continue; }
+        if (!kcProj(c, p.x - p.vx * 0.011, p.y - p.vy * 0.011, p.z - p.vz * 0.011, kcQ2)) continue;
+        let tx = kcQ2[0] - x, ty = kcQ2[1] - y; const tl = Math.hypot(tx, ty); if (tl < r * 0.7) continue;
+        const k = Math.min(1, (r * 6) / tl), nx = (-ty / tl) * r * 0.92, ny = (tx / tl) * r * 0.92; tx *= k; ty *= k;
+        ctx.moveTo(x + nx, y + ny); ctx.lineTo(x + tx, y + ty); ctx.lineTo(x - nx, y - ny); ctx.closePath();
+      }
+      ctx.fill();
+    }
+  }
+  // splinters of bone: short pale sticks, turning
+  ctx.strokeStyle = K.gore ? '#efe7d2' : '#d9ecfa';
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i]; if (p.k !== 2 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+    const s = kcQ[2], l = p.r * s * 0.5, cs = Math.cos(p.rot), sn = Math.sin(p.rot) * (p.stuck ? flat : 1);
+    ctx.globalAlpha = clamp((p.life - p.age) / 0.06, 0, 1); ctx.lineWidth = Math.max(1, p.r * s * 0.28); ctx.beginPath(); ctx.moveTo(kcQ[0] - cs * l, kcQ[1] - sn * l); ctx.lineTo(kcQ[0] + cs * l, kcQ[1] + sn * l); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+// A small label on the main thing the round broke, for a moment.
+function kcCaption(ctx, K, c, V) {
+  const cp = K.cap; if (!cp || !cp.text || !K.fig) return;
+  const pl = K.plan, age = K.T - cp.t0 - 0.12; if (age < 0 || age > 1.6) return;
+  const fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
+  kcLoc(fr, cp.s * K.fig.fs, pl.part === 'head' ? pl.u0 : pl.b0, pl.c0, kcL0);
+  if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
+  const a = smooth(age / 0.15) * (1 - smooth((age - 1.25) / 0.35)), x = kcQ[0], y = kcQ[1], up = -Math.min(V.H * 0.17, 64), run = Math.min(V.W * 0.07, 40) * easeOut(age / 0.25);
+  // it leans away from the side the spray goes
+  ctx.font = '700 ' + (V.W < 500 ? 12 : 13) + 'px "Avenir Next Condensed","DIN Condensed","Roboto Condensed","Arial Narrow",sans-serif';
+  ctx.textBaseline = 'bottom';
+  let tw = 0; for (let i = 0; i < cp.text.length; i++) tw += ctx.measureText(cp.text[i]).width + 1.6; // letters set a little apart
+  // it leans away from the side the spray goes, unless that would run it off the screen
+  let dirX = c.rz > 0 ? -1 : 1;
+  const reach = Math.abs(up) * 0.55 + Math.min(V.W * 0.07, 40) + tw + 12;
+  if (x + dirX * reach > V.W - 4 || x + dirX * reach < 4) dirX = -dirX;
+  const x1 = x + dirX * Math.abs(up) * 0.55, y1 = y + up, x2 = x1 + dirX * run;
+  ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x1, y1); ctx.lineTo(x2, y1); ctx.stroke();
+  ctx.fillRect(x - 2, y - 2, 4, 4);
+  let tx = dirX > 0 ? x1 + 3 : x1 - 3 - tw; ctx.textAlign = 'left';
+  for (let i = 0; i < cp.text.length; i++) { ctx.fillText(cp.text[i], tx, y1 - 3); tx += ctx.measureText(cp.text[i]).width + 1.6; }
+  ctx.globalAlpha = 1;
+}
