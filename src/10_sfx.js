@@ -251,7 +251,8 @@ Sfx.setMode = function (mode, amb) {
   else if (a.kind === 'snow') { X.bed({ type: 'bandpass', cut: 420, q: 3.2, gain: 0.07, lfo: 0.13, lfoCut: 160 }); X.bed({ brown: true, cut: 260, gain: 0.2, lfo: 0.09, lfoAmt: 0.1 }); }
   else { X.bed({ brown: true, cut: 300, gain: 0.14, lfo: 0.08, lfoAmt: 0.06 }); }
   X.windBed = X.bed({ type: 'bandpass', cut: 520, q: 1.6, gain: 0.0, lfo: 0.21, lfoCut: 180, tag: 'wind' });
-  if (a.rain) { X.bed({ type: 'highpass', cut: 1800, gain: 0.07 }); X.bed({ type: 'bandpass', cut: 500, q: 0.5, gain: 0.05 }); }
+  // rain: a soft wash that swells and fades, a low patter on the roofs, and (in tick) the single drops you can pick out
+  if (a.rain) { X.bed({ type: 'bandpass', cut: 5200, q: 0.5, gain: 0.024, lfo: 0.17, lfoAmt: 0.009 }); X.bed({ type: 'bandpass', cut: 2300, q: 0.8, gain: 0.014, lfo: 0.31, lfoAmt: 0.006 }); X.bed({ brown: true, cut: 520, gain: 0.07, lfo: 0.11, lfoAmt: 0.03 }); X.dripT = 0.2; }
 };
 Sfx.missionStart = function (sim) {
   const S = sim.S;
@@ -295,6 +296,17 @@ Sfx.tick = function (sim, dt, scale) {
   if (X.windBed) X.windBed.g.gain.setTargetAtTime(clamp(Math.abs(sim.wind()) * 0.012 + (sim.S.weather === 'snow' ? 0.03 : 0), 0, 0.14), ac.currentTime, 0.5);
   // heartbeat while holding breath
   if (sh.holding) { X.heartT -= dt; if (X.heartT <= 0) { const low = 1 - sh.breath / sim.st.breath; X.heart(0.5 + low * 0.7); X.heartT = 0.95 - low * 0.4; } } else X.heartT = 0.2;
+  // rain you can hear as drops: each one a tiny rising "plip", a few of them heavier plops
+  if (X.amb && X.amb.rain) {
+    X.dripT -= dt; let n = 0;
+    while (X.dripT <= 0 && n++ < 4) {
+      X.dripT += -Math.log(1 - Math.random() * 0.98) * 0.075; // about thirteen a second, unevenly
+      const r = Math.random(), at = Math.random() * 0.05;
+      if (r < 0.12) { const f = 330 + Math.random() * 260; Sfx.tone({ at, f, f1: f * 1.9, sweep: 0.05, dur: 0.07, att: 0.002, gain: 0.012 + Math.random() * 0.014, verb: 0.35 }); }
+      else if (r < 0.3) Sfx.noise({ at, type: 'bandpass', f: 2600 + Math.random() * 3200, q: 5, dur: 0.018, gain: 0.02 + Math.random() * 0.03 });
+      else { const f = 900 + Math.random() * 1900; Sfx.tone({ at, f, f1: f * (1.5 + Math.random() * 0.6), sweep: 0.022, dur: 0.03, att: 0.0015, gain: 0.004 + Math.random() * 0.011, verb: 0.25 }); }
+    }
+  }
   // occasional background life
   X.lifeT = (X.lifeT || 3) - dt;
   if (X.lifeT <= 0 && X.amb) {

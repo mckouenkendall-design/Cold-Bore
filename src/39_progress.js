@@ -10,7 +10,13 @@
   { id: 'harrow', name: 'Harrow Ridge', r: 4, ex: 'Finish the story', furn: { pat: 'camo', cols: ['#f4f7fa', '#d9e2ea', '#b7c4d0', '#ffffff'] }, metal: '#c8372d', acc: '#2a2e36', shimmer: '#ffffff' },
 ].forEach((s) => { SKINS.push(s); SKIN_BY_ID[s.id] = s; });
 
-const CACHE_ODDS = { field: [50, 30, 14, 5, 1], sealed: [18, 34, 30, 14, 4] };
+// Chance in a hundred of each rarity (Common to Legendary) per kind of cache.
+// Field and sealed caches are earned by playing. Any kind can also be bought with
+// credits earned in missions; the vault cache is only sold, and is how a full
+// collection gets finished. There is no real money anywhere in this game.
+const CACHE_ODDS = { field: [50, 30, 14, 5, 1], sealed: [14, 30, 32, 17, 7], vault: [0, 8, 32, 38, 22] };
+const CACHE_PRICE = { field: 1500, sealed: 4500, vault: 9000 };
+const CACHE_NAME = { field: 'Field cache', sealed: 'Sealed cache', vault: 'Vault cache' };
 const DUPE_CR = [120, 260, 650, 1600, 4200];
 const DUCK_MILESTONES = [5, 10, 20, 30];
 
@@ -110,6 +116,15 @@ Progress.openCache = function () {
   d.stats.cachesOpened++;
   Save.write();
   return { tier, skin, dupe, cr };
+};
+
+// Buy a cache with credits. Returns null if it worked, or a short reason if not.
+Progress.buyCache = function (tier) {
+  const d = Save.data, price = CACHE_PRICE[tier];
+  if (!price) return 'Unknown cache.';
+  if (d.credits < price) return 'Not enough credits.';
+  d.credits -= price; d.caches.push(tier); Save.write();
+  return null;
 };
 
 Progress.buy = function (kind, id) {

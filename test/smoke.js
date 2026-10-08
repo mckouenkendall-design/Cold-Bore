@@ -4,7 +4,9 @@ const path = require('path');
 (async () => {
   const gun = process.argv[2] || 'aria', frames = +(process.argv[3] || 480);
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  // WIDE=1 runs it as a phone held sideways (844 x 390), which is how the game is meant to be played
+  const wide = !!process.env.WIDE;
+  const ctx = await browser.newContext({ viewport: wide ? { width: 844, height: 390 } : { width: 390, height: 844 }, deviceScaleFactor: +(process.env.DPR || 1), hasTouch: true, isMobile: true });
   const page = await ctx.newPage();
   const errs = [];
   page.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 6).join('\n')));

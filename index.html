@@ -1068,7 +1068,7 @@ function actorJoints(A) {
   if (!A.dead && A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
   const sc = (A.look && A.look.h) || 1;
   for (const k in J) { J[k][0] *= f * sc; J[k][1] *= sc; }
-  J.scale = sc;
+  J.scale = sc; J.f = f; // f: which way the figure faces right now, between -1 and 1 while it is turning
   return J;
 }
 
@@ -2578,6 +2578,7 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
   const sim = this;
   if (a.dead) return;
   a.dead = true; a.deadT = 0; a.deathAtT = sim.t; a.deathPose = a.anim; a.deathAt = a.t; a.deathPh = a.ph; a.bubble = null;
+  a.deathHow = how; a.deathPart = part; a.deathDir = bullet ? (bullet.vx >= 0 ? 1 : -1) : 0; // for the artwork only
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
@@ -3220,7 +3221,7 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     const LA = S.lightAt(zone, a.x);
     if (a._lt === undefined || a._ltS !== S) { a._lt = LA.l; a._ltS = S; } else a._lt += (LA.l - a._lt) * Math.min(1, dt * 6);
     const lt = a._lt, k = 1 - lt;
-    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08, light: lt, lampDx: LA.dx, lampH: LA.h, lampCol: LA.col || pal.lit, night, nv, t: env.t, pal, haze: 0 };
+    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08, wind: env.wind, light: lt, lampDx: LA.dx, lampH: LA.h, lampCol: LA.col || pal.lit, night, nv, t: env.t, pal, haze: a.plane ? a.plane.haze : 0, gore: V.gore !== false, weather: S.weather };
     if (night) {
       e2.dark = true; e2.dim = (nv ? 0.25 : 0.72) * k; e2.ink = mix(pal.ink, '#04060a', k);
       e2.rim = nv ? 'rgba(190,255,200,' + lerp(0.75, 0.9, k).toFixed(2) + ')' : 'rgba(' + Math.round(lerp(170, 120, k)) + ',' + Math.round(lerp(190, 140, k)) + ',' + Math.round(lerp(225, 175, k)) + ',' + lerp(0.42, 0.24, k).toFixed(2) + ')';
@@ -7538,7 +7539,8 @@ Sfx.setMode = function (mode, amb) {
   else if (a.kind === 'snow') { X.bed({ type: 'bandpass', cut: 420, q: 3.2, gain: 0.07, lfo: 0.13, lfoCut: 160 }); X.bed({ brown: true, cut: 260, gain: 0.2, lfo: 0.09, lfoAmt: 0.1 }); }
   else { X.bed({ brown: true, cut: 300, gain: 0.14, lfo: 0.08, lfoAmt: 0.06 }); }
   X.windBed = X.bed({ type: 'bandpass', cut: 520, q: 1.6, gain: 0.0, lfo: 0.21, lfoCut: 180, tag: 'wind' });
-  if (a.rain) { X.bed({ type: 'highpass', cut: 1800, gain: 0.07 }); X.bed({ type: 'bandpass', cut: 500, q: 0.5, gain: 0.05 }); }
+  // rain: a soft wash that swells and fades, a low patter on the roofs, and (in tick) the single drops you can pick out
+  if (a.rain) { X.bed({ type: 'bandpass', cut: 5200, q: 0.5, gain: 0.024, lfo: 0.17, lfoAmt: 0.009 }); X.bed({ type: 'bandpass', cut: 2300, q: 0.8, gain: 0.014, lfo: 0.31, lfoAmt: 0.006 }); X.bed({ brown: true, cut: 520, gain: 0.07, lfo: 0.11, lfoAmt: 0.03 }); X.dripT = 0.2; }
 };
 Sfx.missionStart = function (sim) {
   const S = sim.S;
@@ -7582,6 +7584,17 @@ Sfx.tick = function (sim, dt, scale) {
   if (X.windBed) X.windBed.g.gain.setTargetAtTime(clamp(Math.abs(sim.wind()) * 0.012 + (sim.S.weather === 'snow' ? 0.03 : 0), 0, 0.14), ac.currentTime, 0.5);
   // heartbeat while holding breath
   if (sh.holding) { X.heartT -= dt; if (X.heartT <= 0) { const low = 1 - sh.breath / sim.st.breath; X.heart(0.5 + low * 0.7); X.heartT = 0.95 - low * 0.4; } } else X.heartT = 0.2;
+  // rain you can hear as drops: each one a tiny rising "plip", a few of them heavier plops
+  if (X.amb && X.amb.rain) {
+    X.dripT -= dt; let n = 0;
+    while (X.dripT <= 0 && n++ < 4) {
+      X.dripT += -Math.log(1 - Math.random() * 0.98) * 0.075; // about thirteen a second, unevenly
+      const r = Math.random(), at = Math.random() * 0.05;
+      if (r < 0.12) { const f = 330 + Math.random() * 260; Sfx.tone({ at, f, f1: f * 1.9, sweep: 0.05, dur: 0.07, att: 0.002, gain: 0.012 + Math.random() * 0.014, verb: 0.35 }); }
+      else if (r < 0.3) Sfx.noise({ at, type: 'bandpass', f: 2600 + Math.random() * 3200, q: 5, dur: 0.018, gain: 0.02 + Math.random() * 0.03 });
+      else { const f = 900 + Math.random() * 1900; Sfx.tone({ at, f, f1: f * (1.5 + Math.random() * 0.6), sweep: 0.022, dur: 0.03, att: 0.0015, gain: 0.004 + Math.random() * 0.011, verb: 0.25 }); }
+    }
+  }
   // occasional background life
   X.lifeT = (X.lifeT || 3) - dt;
   if (X.lifeT <= 0 && X.amb) {
@@ -10621,7 +10634,7 @@ Game.start = function (missionId, opts) {
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.rangeInfo = null; G.view.bdcCache = null;
-  G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false;
+  G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
   h.obj.innerHTML = '<b>' + esc(M.title) + '</b><span>' + esc(typeof M.objective === 'function' ? M.objective(Save.data.flags) : M.objective) + '</span>';
@@ -13969,7 +13982,13 @@ function epilogue(f) {
   { id: 'harrow', name: 'Harrow Ridge', r: 4, ex: 'Finish the story', furn: { pat: 'camo', cols: ['#f4f7fa', '#d9e2ea', '#b7c4d0', '#ffffff'] }, metal: '#c8372d', acc: '#2a2e36', shimmer: '#ffffff' },
 ].forEach((s) => { SKINS.push(s); SKIN_BY_ID[s.id] = s; });
 
-const CACHE_ODDS = { field: [50, 30, 14, 5, 1], sealed: [18, 34, 30, 14, 4] };
+// Chance in a hundred of each rarity (Common to Legendary) per kind of cache.
+// Field and sealed caches are earned by playing. Any kind can also be bought with
+// credits earned in missions; the vault cache is only sold, and is how a full
+// collection gets finished. There is no real money anywhere in this game.
+const CACHE_ODDS = { field: [50, 30, 14, 5, 1], sealed: [14, 30, 32, 17, 7], vault: [0, 8, 32, 38, 22] };
+const CACHE_PRICE = { field: 1500, sealed: 4500, vault: 9000 };
+const CACHE_NAME = { field: 'Field cache', sealed: 'Sealed cache', vault: 'Vault cache' };
 const DUPE_CR = [120, 260, 650, 1600, 4200];
 const DUCK_MILESTONES = [5, 10, 20, 30];
 
@@ -14069,6 +14088,15 @@ Progress.openCache = function () {
   d.stats.cachesOpened++;
   Save.write();
   return { tier, skin, dupe, cr };
+};
+
+// Buy a cache with credits. Returns null if it worked, or a short reason if not.
+Progress.buyCache = function (tier) {
+  const d = Save.data, price = CACHE_PRICE[tier];
+  if (!price) return 'Unknown cache.';
+  if (d.credits < price) return 'Not enough credits.';
+  d.credits -= price; d.caches.push(tier); Save.write();
+  return null;
 };
 
 Progress.buy = function (kind, id) {

@@ -175,7 +175,7 @@ function actorJoints(A) {
   if (!A.dead && A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
   const sc = (A.look && A.look.h) || 1;
   for (const k in J) { J[k][0] *= f * sc; J[k][1] *= sc; }
-  J.scale = sc;
+  J.scale = sc; J.f = f; // f: which way the figure faces right now, between -1 and 1 while it is turning
   return J;
 }
 

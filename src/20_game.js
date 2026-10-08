@@ -178,7 +178,7 @@ Game.start = function (missionId, opts) {
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.rangeInfo = null; G.view.bdcCache = null;
-  G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false;
+  G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
   h.obj.innerHTML = '<b>' + esc(M.title) + '</b><span>' + esc(typeof M.objective === 'function' ? M.objective(Save.data.flags) : M.objective) + '</span>';

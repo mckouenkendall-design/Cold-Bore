@@ -6,7 +6,7 @@ const path = require('path');
 (async () => {
   const [mid, gun = 'fenwick', spec = '5@t@6', vant = '0', w = '390', h = '844'] = process.argv.slice(2);
   const browser = await chromium.launch();
-  const mobile = +w < 700;
+  const mobile = +w < 700 || !!process.env.TOUCH;
   const ctx = await browser.newContext({ viewport: { width: +w, height: +h }, deviceScaleFactor: 2, hasTouch: mobile, isMobile: mobile });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('PAGEERROR', e.message, (e.stack || '').split('\n').slice(0, 4).join('\n')));

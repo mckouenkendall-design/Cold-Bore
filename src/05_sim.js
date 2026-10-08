@@ -463,6 +463,7 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
   const sim = this;
   if (a.dead) return;
   a.dead = true; a.deadT = 0; a.deathAtT = sim.t; a.deathPose = a.anim; a.deathAt = a.t; a.deathPh = a.ph; a.bubble = null;
+  a.deathHow = how; a.deathPart = part; a.deathDir = bullet ? (bullet.vx >= 0 ? 1 : -1) : 0; // for the artwork only
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
