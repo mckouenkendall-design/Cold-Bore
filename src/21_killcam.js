@@ -18,7 +18,9 @@
 //   2  THE SWING    the camera lets go of the round and swings round the target until it
 //                   looks across the line of fire. The scene fades into "X-ray space".
 //   3  THE X-RAY    the round goes through the body. Bones and organs on its line break.
-//   4  THE HOLD     a beat on the result, then a flash back to the scope.
+//   4  THE HOLD     the world speeds back up toward real time and the body is seen to fall
+//                   (the ragdoll, src/13_ragdoll.js); a moment after it lands, a flash back to
+//                   the scope, where the same body carries on from where the film left it.
 //
 // Two kinds of space are used. "World" is the game's own: x across, y up, z down range,
 // in metres. "X-ray space" is the same axes but measured from the target's feet, so the
@@ -31,7 +33,8 @@ const kcTune = {
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
   swing: 1.3,        // seconds for the camera to come round to side on
-  hold: 0.85,        // seconds holding on the result
+  hold: 0.85,        // seconds holding on the result, at least
+  holdMax: 3.0,      // and at most, waiting for the body to come down
   out: 0.34,         // seconds of flash back to the scope
   swingFrom: 2.6,    // metres from the target at which the camera lets go of the round
   standOff: 0.55,    // metres short of the skin at which the swing ends
@@ -122,9 +125,11 @@ const kcSet = (o, x, y, z) => { o[0] = x; o[1] = y; o[2] = z; return o; };
 const kcMul = (o, v, k) => { o[0] = v[0] * k; o[1] = v[1] * k; o[2] = v[2] * k; return o; };
 // A point given in a body part's own axes: a toward the person's left, b up, c forward.
 function kcLoc(fr, a, b, c, out) {
-  out[0] = fr.o[0] + fr.U[0] * b + fr.F[0] * c; out[1] = fr.o[1] + fr.U[1] * b + fr.F[1] * c; out[2] = fr.o[2] + fr.S[2] * a;
+  out[0] = fr.o[0] + fr.S[0] * a + fr.U[0] * b + fr.F[0] * c; out[1] = fr.o[1] + fr.S[1] * a + fr.U[1] * b + fr.F[1] * c; out[2] = fr.o[2] + fr.S[2] * a + fr.U[2] * b + fr.F[2] * c;
   return out;
 }
+// The same, put straight through the camera.
+function kcLocP(c, fr, a, b, cc, out) { kcLoc(fr, a, b, cc, kcL1); return kcProj(c, kcL1[0], kcL1[1], kcL1[2], out); }
 // Add a run of such points to the current path. pts = [a, b, c, a, b, c, ...] in metres times k.
 // Returns the picture scale at the last point (for line widths), or 0 if it cannot be drawn.
 function kcRun(ctx, c, fr, pts, k, flipA, close) {
@@ -145,8 +150,23 @@ function kcDistSeg(px, py, a, b) { // how far a point is from a line between two
 }
 const kcHash = (n) => { const x = Math.sin(n * 127.1 + 11.7) * 43758.5453; return x - Math.floor(x); };
 // sound: only ever through the game's two building blocks, and never allowed to break the film
-function kcNoise(p) { try { const X = CB.Sfx; if (X && X.ok && X.noise) X.noise(p); } catch (e) { /* sound is optional */ } }
-function kcTone(p) { try { const X = CB.Sfx; if (X && X.ok && X.tone) X.tone(p); } catch (e) { /* sound is optional */ } }
+// When the sound engine has kill camera sounds of its own (Sfx.kc), the film tells it each beat as
+// it happens on screen (kcSay) and makes none itself; until then it uses the two building blocks.
+const kcOwnSound = () => { const X = CB.Sfx; return !(X && X.kc); };
+function kcNoise(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.noise) X.noise(p); } catch (e) { /* sound is optional */ } }
+function kcTone(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.tone) X.tone(p); } catch (e) { /* sound is optional */ } }
+// One beat: 'fly', 'near', 'cover', 'enter', 'bone', 'exit', 'fall' or 'end'. Every beat carries the
+// film's speed (rate, 1 = real time), the part hit, the calibre, how hard the round hits (power,
+// 0 to 1) and whether gore is on, plus whatever the beat itself adds (mat, bone, size).
+function kcSay(K, stage, extra) {
+  try {
+    const X = CB.Sfx; if (!X || !X.kc) return;
+    const o = { rate: K.rate, part: K.part, cal: K.cal, power: K.power, gore: K.gore };
+    if (extra) for (const k in extra) o[k] = extra[k];
+    X.kc(stage, o);
+  } catch (e) { /* sound is optional */ }
+}
+function kcSayEnd(K) { if (K.snd && !K.snd.end) { K.snd.end = 1; kcSay(K, 'end'); } }
 
 // ---- starting, stopping --------------------------------------------------------------
 KillCam.start = function (o) {
@@ -178,7 +198,15 @@ KillCam.start = function (o) {
   const mm = kcCalMm[st.cal] || 7.8;
   K.rad = (mm / 2000) * kcTune.bulletScale; K.len = K.rad * 2 * (st.cal === 'crail' ? 5.4 : 4.1);
   K.steel = st.cal === 'crail'; K.quiet = !!st.quiet; K.action = st.action || 'bolt';
-  K.through = typeof st.pen === 'number' ? st.pen >= 1.2 : null; // heavy rounds carry on out the far side
+  // Does the round come out of the far side? The game decides whether it carries on (and may hit
+  // something else). The picture adds an exit wound where the calibre would plausibly make one (the
+  // same choice the body's wounds use), but such a round goes no further than just past the body.
+  const a0 = o.actor, aid = a0 ? a0.id : 'x', pen = typeof st.pen === 'number' ? st.pen : 0;
+  K.part = h.part === 'head' ? 'head' : 'torso'; K.cal = st.cal || 'c308'; K.power = rdPower(rdCal(K.cal).kg, v);
+  K.simThrough = typeof st.pen === 'number' ? st.pen >= 1.2 : null;
+  K.exit = rdExits(aid, K.part, K.cal, pen) || K.simThrough === true;
+  K.exitK = K.exit ? Math.max(0.2, rdExitSize(aid, K.part, K.cal, Math.max(pen, K.simThrough ? 1.2 : 0))) : 0;
+  K.through = K.exit; K.spent = K.exit && K.simThrough === false;
   // which side the camera swings to: the side the target is facing, so we end up looking at their front
   const a = o.actor;
   K.side = a && (a.face || 1) < 0 ? -1 : 1;
@@ -192,15 +220,17 @@ KillCam.start = function (o) {
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.gunLay = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
+  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.follow = null;
+  K.covers = kcCoverList(K, o, h, a0); K.wallB = kcWallList(K, o, h, a0);
   K.active = true; K.done = false; K.skipped = false; K.rate = 0.12;
   return true;
 };
-KillCam.stop = function () { const K = KillCam; K.active = false; K.o = null; K.parts = []; K.fig = null; K.plan = null; };
+KillCam.stop = function () { const K = KillCam; if (K.o) kcSayEnd(K); K.active = false; K.o = null; K.parts = []; K.wparts = []; K.fig = null; K.plan = null; };
 KillCam.skip = function () { KillCam.skipped = true; };
 KillCam.onEvent = function (e) {
   const K = KillCam, o = K.o;
   if (!o || !e) return;
-  if (e.k === 'kill' && o.hit && e.id === o.hit.id) { K.killSeen = true; if (K.through === null) K.through = !!(o.bullet && o.bullet.alive); }
+  if (e.k === 'kill' && o.hit && e.id === o.hit.id) { K.killSeen = true; if (K.simThrough === null) { K.simThrough = !!(o.bullet && o.bullet.alive); K.spent = K.exit && !K.simThrough; } }
 };
 // where the round is when it has got to distance z down range (the flight is a list of samples)
 function kcPathAtZ(K, z, out) {
@@ -223,7 +253,7 @@ KillCam.advance = function (dt) {
 // early skip of a long shot we keep asking for a few frames until the round has really landed.
 function kcEnd(K, o) {
   K.ret = Math.max(K.ret, o.tHit + K.step * 2.5); K.skipN++; K.rate = 0.25;
-  if (o.sim.t >= o.tHit + K.step * 0.5 || o.sim.state !== 'play' || K.skipN > 12 || K.hitT !== null) K.done = true;
+  if (o.sim.t >= o.tHit + K.step * 0.5 || o.sim.state !== 'play' || K.skipN > 12 || K.hitT !== null) { K.done = true; kcSayEnd(K); }
   return K.ret;
 }
 function kcAdvance(K, o, dt) {
@@ -231,6 +261,7 @@ function kcAdvance(K, o, dt) {
   K.T += dt; K.spin += dt * 9;
   const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
   K.prevRet = K.ret;
+  if (!K.snd.fly && T >= 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
   if (T < K.Ta) {
     // ---- 0: at the rifle. Time is all but stopped.
     K.stage = 0; K.rate = 0.12; K.speedK = 0;
@@ -246,6 +277,7 @@ function kcAdvance(K, o, dt) {
     K.speedK = clamp(gv / 1.5, 0, 1); K.fu = u;
     K.rate = clamp(0.2 + 0.85 * K.speedK, 0.2, 1);
     K.ret = Math.max(K.ret, Math.min(K.bp[3], cap));
+    kcFlightCovers(K); kcStepParts(K, dt * K.rate, K.wparts, true);
   } else {
     // ---- 2 to 4: the round is on its last straight few metres. s is how far its tip is past
     // the middle of the body, in metres (negative while it is still on its way).
@@ -265,6 +297,8 @@ function kcAdvance(K, o, dt) {
         K.s += K.spd * dt; K.rate = 0.1;
       }
       K.ret = Math.max(K.ret, Math.min(o.tHit + K.s / K.v, cap));
+      // half a second (on screen) before the round reaches the body
+      if (!K.snd.near) { const left = T < K.Tc ? K.Tc - T + 0.6 : (pl.sIn - K.s) / Math.max(0.3, K.spd); if (left <= 0.5) { K.snd.near = 1; kcSay(K, 'near'); } }
       if (K.s >= pl.sIn - 1e-4) {
         // the tip touches the skin: this is the frame the world is allowed to make the kill
         K.hitT = T; K.stage = 3; K.s = Math.max(K.s, pl.sIn);
@@ -273,23 +307,31 @@ function kcAdvance(K, o, dt) {
     } else {
       // inside the body: a slow crawl that all but stops as the round reaches the main thing it hits
       let sp = kcTune.crawl * (1 - 0.74 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.034, 2)));
-      if (K.through !== false) { if (K.s > pl.sOut) sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 15); }
-      else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
+      if (K.exit && !K.spent) { if (K.s > pl.sOut) sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 15); }
+      else if (K.spent) {
+        // out of the far side with nothing left: it tumbles a hand's width further and drops
+        if (K.s > pl.sOut) { if (K.spentT === undefined) K.spentT = T; sp = kcTune.crawl * 1.6 * clamp((pl.sSpent - K.s) / 0.12, 0, 1); }
+        if (pl.sSpent - K.s < 0.004) K.stopped = true;
+      } else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
       K.spd = sp; K.s += sp * dt;
-      const since = T - K.hitT;
-      if (K.holdT0 === null && ((K.through !== false && K.s > pl.sOut + 0.3) || K.stopped || since > 2.5)) {
+      const since = T - K.hitT, a = o.actor;
+      if (K.holdT0 === null && ((K.exit && !K.spent && K.s > pl.sOut + 0.3) || K.stopped || since > 2.5)) {
         K.holdT0 = T; K.stage = 4;
         kcTone({ at: 0.18, f: 55, dur: 1.3, att: 0.05, gain: 0.07, verb: 0.4 }); kcTone({ at: 0.18, f: 110, dur: 0.9, att: 0.05, gain: 0.018, verb: 0.4 });
       }
-      if (K.holdT0 !== null && K.outT0 === null && T - K.holdT0 > kcTune.hold) K.outT0 = T;
-      if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; try { o.view.flash = Math.max(o.view.flash || 0, 1); } catch (e) { /* the scope picture is not ours to break */ } }
-      // let the world creep on, so the body starts to drop as the game says it does
-      K.rate = K.outT0 !== null ? 0.3 : K.holdT0 !== null ? 0.16 : 0.22;
-      K.ret += dt * (K.outT0 !== null ? 0.22 : K.holdT0 !== null ? 0.12 : 0.03);
+      // the body hitting the ground, as the film shows it
+      if (K.hitT !== null && !K.snd.fall && a && a.dead && isFinite(a.deathAtT)) { const L = rdLanded(a, K.ret - a.deathAtT); if (L) { K.snd.fall = 1; K.landT = T; kcSay(K, 'fall', { mat: L.mat, speed: L.v }); } }
+      // The hold: the world speeds up toward real time so the fall is seen, and the film ends a
+      // moment after the body is down (or after a few seconds at most).
+      if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > kcTune.hold) || ht > kcTune.holdMax) K.outT0 = T; }
+      if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; kcSayEnd(K); try { o.view.flash = Math.max(o.view.flash || 0, 1); } catch (e) { /* the scope picture is not ours to break */ } }
+      const hr = K.holdT0 !== null ? lerp(0.12, 0.55, smooth((T - K.holdT0 - 0.2) / 0.8)) : 0;
+      K.rate = K.outT0 !== null ? Math.max(0.3, hr) : K.holdT0 !== null ? Math.max(0.16, hr) : 0.22;
+      K.ret += dt * (K.outT0 !== null ? Math.max(0.22, hr) : K.holdT0 !== null ? hr : 0.03);
     }
-    // things on the round's line break as its tip reaches them
-    for (let i = 0; i < pl.evs.length; i++) { const ev = pl.evs[i]; if (!ev.done && K.s >= ev.s && (ev.kind === 'skin0' || K.hitT !== null)) { ev.done = true; kcFire(K, ev); } }
-    kcStepParts(K, dt * (K.holdT0 !== null ? 0.3 : 0.15));
+    // things on the round's line break as its tip reaches them (cover before it reaches the body)
+    for (let i = 0; i < pl.evs.length; i++) { const ev = pl.evs[i]; if (!ev.done && K.s >= ev.s && (ev.kind === 'skin0' || ev.kind === 'cover' || K.hitT !== null)) { ev.done = true; kcFire(K, ev); } }
+    kcStepParts(K, dt * (K.holdT0 !== null ? Math.max(0.3, K.rate) : 0.15));
   }
   K.simDt = Math.max(0, K.ret - K.prevRet);
   return K.ret;
@@ -363,11 +405,16 @@ function kcBeginSwing(K, o) {
   pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
   pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
   pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
+  pl.sSpent = pl.sOut + 0.1 + 0.2 * K.exitK;             // one with nothing left after the far side stops here
   // the caption goes to the most important thing the round actually reaches
   let key = null;
   for (let i = 0; i < evs.length; i++) { const e = evs[i]; if (e.pri > 0 && (K.through !== false || e.s <= pl.sStop) && (!key || e.pri > key.pri)) key = e; }
   pl.key = key; pl.sKey = key ? key.s + 0.012 : 0;
   pl.samples = []; for (let s = pl.sIn; s <= pl.sOut + 1e-6; s += 0.024) pl.samples.push(s, -1); // the wound track: (place, when the tip passed)
+  // cover on the round's last few metres (anything further was passed in the flight), and the
+  // wall behind if the round really goes on into it
+  (K.covers || []).forEach((cv) => { if (cv.done) return; cv.flight = false; cv.s = cv.dz / Math.max(0.3, K.dir[2]); evs.push({ s: Math.max(cv.s, -K.dS + 0.01), kind: 'cover', ref: 'cover', label: '', pri: 0, done: false, cv }); });
+  if (K.wallB && K.wallB.hole && K.simThrough) evs.push({ s: K.wallB.dz / Math.max(0.3, K.dir[2]), kind: 'wall', ref: 'wall', label: '', pri: 0, done: false });
   // ---- the camera's path for the swing, in X-ray space, starting from where the chase camera ended
   const V = o.view, W = V.W, H = V.H, vis = H * 0.85, Hx = pl.H, g = kcRig(K, W, H, 1), f = g.f;
   const bz = K.dS + K.len; // the round's base is this far short of the hit
@@ -387,15 +434,19 @@ function kcBeginSwing(K, o) {
 function kcFire(K, ev) {
   const pl = K.plan, R = K.rng, d = K.dir, H = pl.H;
   const at = [H[0] + d[0] * ev.s, H[1] + d[1] * ev.s, H[2] + d[2] * ev.s];
+  if (ev.kind === 'cover') { kcCoverBurst(K, ev.cv, at, false); return; }
+  if (ev.kind === 'wall') { kcWallHit(K, at); return; }
   K.dmg[ev.ref] = K.T;
   if (pl.key === ev) K.cap = { text: ev.label, t0: K.T, s: ev.s };
   // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
   if (ev.kind === 'skin0') {
+    kcSay(K, 'enter');
     if (K.gore) { kcSpray(K, 0, 18, at, -1, 0.9, 0.3, 1.7, 0.003, 0.0065, 0.4); kcSpray(K, 1, K.through === false ? 12 : 6, at, -1, 0.5, 0.8, 2.8, 0.003, 0.008, 2.5); kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 }); }
     else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
   } else if (ev.kind === 'bone' || ev.kind === 'spine') {
     K.mush = Math.min(1, K.mush + (ev.kind === 'spine' ? 0.3 : 0.22));
-    kcSpray(K, 2, ev.kind === 'spine' ? 11 : 7, at, 1, 0.75, 0.4, 2.6, 0.01, 0.026, K.through === false ? 0.22 : 2);
+    const rf = ev.ref; kcSay(K, 'bone', { bone: ev.kind === 'spine' ? 'spine' : /^(skull|jaw)/.test(rf) ? 'skull' : /^rib/.test(rf) ? 'rib' : 'limb' });
+    kcSpray(K, 2, Math.round((ev.kind === 'spine' ? 11 : 7) * (0.6 + 0.9 * K.power)), at, 1, 0.75, 0.4, 2.6 + 2 * K.power, 0.01, 0.026, K.through === false ? 0.22 : 2);
     if (K.gore) kcSpray(K, 1, 5, at, 1, 0.7, 0.2, 1.3, 0.003, 0.007, 0.13);
     kcNoise({ type: 'bandpass', f: 1500, q: 1.6, dur: 0.03, gain: 0.11 }); kcTone({ type: 'square', f: 520, f1: 180, dur: 0.035, gain: 0.03, lp: 2000 });
     if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * 1.5 + K.side * 0.5, vy: 0.9, vz: d[2] * 1.7, rot: 0, vr: 5 };
@@ -405,11 +456,16 @@ function kcFire(K, ev) {
     if (ev.ref === 'brain') kcSpray(K, 3, 8, at, 1, 0.8, 0.3, 1.5, 0.005, 0.011, 0.16);
     kcNoise({ type: 'bandpass', f: 520, f1: 220, q: 1.2, dur: 0.12, att: 0.01, gain: 0.07 });
   } else if (ev.kind === 'skin1') {
+    // out of the far side: how much comes with it depends on the round (a magnum or a .50 makes a
+    // large exit and throws out blood, mist and bits of bone; a round with nothing left, less)
+    const ek = K.exitK * (K.spent ? 0.65 : 1);
+    kcSay(K, 'exit', { size: ek });
     if (K.gore) {
-      kcSpray(K, 1, 70, at, 1, 0.36, 1.2, 9, 0.0025, 0.012, 3); kcSpray(K, 0, 22, at, 1, 0.6, 0.4, 2.4, 0.003, 0.007, 0.5);
-      if (pl.part === 'head') kcSpray(K, 3, 10, at, 1, 0.4, 1, 5, 0.005, 0.012, 3);
+      kcSpray(K, 1, Math.round(35 + 90 * ek), at, 1, 0.34 + 0.12 * ek, 1, 5 + 7 * ek, 0.0025, 0.011 + 0.007 * ek, 3); kcSpray(K, 0, Math.round(14 + 34 * ek), at, 1, 0.6, 0.4, 2 + 2.4 * ek, 0.003, 0.007 + 0.007 * ek, 0.6);
+      if (pl.part === 'head') kcSpray(K, 3, Math.round(6 + 12 * ek), at, 1, 0.4, 1, 3 + 4 * ek, 0.005, 0.012, 3);
+      if (pl.part === 'head' || K.dmg.spine !== undefined || K.dmg.ribOut !== undefined) kcSpray(K, 2, Math.round(2 + 10 * ek), at, 1, 0.45, 1.2, 3 + 4 * ek, 0.008, 0.02, 2.5); // bone carried out with it
       // a few strings of drops that stretch out as they fly
-      for (let j = 0; j < 4; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
+      for (let j = 0, nj = 2 + Math.round(4 * ek); j < nj; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
       if (kcHash(H[0] * 31 + H[1] * 17) < 0.7) for (let i = 0; i < 3; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * 9, sd: R.f() * 9 });
       kcNoise({ type: 'bandpass', f: 900, f1: 400, q: 0.8, dur: 0.2, att: 0.01, gain: 0.04 });
     } else kcSpray(K, 4, 10, at, 1, 0.7, 0.3, 1.6, 0.004, 0.008, 0.4);
@@ -419,28 +475,149 @@ function kcFire(K, ev) {
 // Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust.
 // way: +1 along the round's travel, -1 back toward the shooter. spread: 0 a jet, 1 nearly a ball.
 // sp0..sp1 speeds in metres per second, r0..r1 sizes in metres, life in seconds of the spray's own time.
-function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life) {
-  if (K.parts.length > 330) return;
+function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
+  const L = list || K.parts;
+  if (L.length > 520) return;
   const R = K.rng, d = K.dir;
   for (let i = 0; i < n; i++) {
     let rx = R.f() * 2 - 1, ry = R.f() * 2 - 1, rz = R.f() * 2 - 1; const rl = Math.hypot(rx, ry, rz) || 1;
     rx = d[0] * way + (rx / rl) * spread + K.side * 0.12; ry = d[1] * way + (ry / rl) * spread + 0.12; rz = d[2] * way + (rz / rl) * spread;
     const l = Math.hypot(rx, ry, rz) || 1, u = R.f(), v = R.f(), sp = lerp(sp0, sp1, u * u);
-    K.parts.push({ k: kind, x: at[0], y: at[1], z: at[2], vx: (rx / l) * sp, vy: (ry / l) * sp, vz: (rz / l) * sp, r: lerp(r0, r1, v * v), age: 0, life: life * (0.7 + 0.6 * R.f()), rot: R.f() * 6, vr: (R.f() - 0.5) * 30, stuck: false });
+    L.push({ k: kind, x: at[0], y: at[1], z: at[2], vx: (rx / l) * sp, vy: (ry / l) * sp, vz: (rz / l) * sp, r: lerp(r0, r1, v * v), age: 0, life: life * (0.7 + 0.6 * R.f()), rot: R.f() * 6, vr: (R.f() - 0.5) * 30, stuck: false });
   }
 }
-function kcStepParts(K, dt) { // dt here is already slowed: the spray flies in slow motion
-  const ps = K.parts;
+// how the bits in the air slow down (drag) and fall (gravity), by kind: 0 mist, 1 drops, 2 bone,
+// 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster
+const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8];
+function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spray flies in slow motion
+  const ps = list || K.parts, wz = !world && K.wallB ? K.wallB.dz : 1e9;
   for (let i = ps.length - 1; i >= 0; i--) {
     const p = ps[i]; p.age += dt;
     if (p.age > p.life) { ps.splice(i, 1); continue; }
     if (p.stuck) continue;
-    const drag = p.k === 0 || p.k === 4 ? 3.2 : 0.5, g = p.k === 0 || p.k === 4 ? 1.2 : 9.8;
+    const drag = kcDrag[p.k] || 0.5, g = kcFall[p.k] || 9.8;
     p.vx -= p.vx * drag * dt; p.vy -= (p.vy * drag + g) * dt; p.vz -= p.vz * drag * dt;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.rot += p.vr * dt;
-    if (p.y < 0.004) { p.y = 0.004; p.stuck = true; p.life = p.age + 3; } // landed: a mark on the floor
+    if (!world && p.y < 0.004) { p.y = 0.004; p.stuck = true; p.life = p.age + 3; } // landed: a mark on the floor
+    else if (p.z >= wz && p.k !== 7) { p.z = wz; p.stuck = true; p.wall = true; p.life = p.age + (p.k === 1 || p.k === 0 ? 9 : 2); } // the wall behind: blood stays on it
   }
-  if (K.plate) { const q = K.plate; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.rot += q.vr * dt; }
+  if (!list && K.plate) { const q = K.plate; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.rot += q.vr * dt; }
+}
+
+// ---- cover, and the wall behind ------------------------------------------------------------
+// The things the round really went through on its way (the oracle saw them: see src/22_oracle.js),
+// as { dz: metres before the target along the line (negative), x, y: where (world), mat: 'glass',
+// 'wood', 'metal' or 'wall', flight: true when it is passed during the flight }. Glass and doors
+// in the same flat layer as the target (a window in front of somebody in a room, a car door) are
+// put just in front of them.
+function kcCoverList(K, o, h, a) {
+  const out = [], evs = h.cover || [];
+  for (let i = 0; i < evs.length; i++) {
+    const e = evs[i]; if (e.ground || e.k === 'vest' || e.k === 'tyre') continue;
+    let dz = e.z - h.z, mat;
+    if (dz > 0.01) continue;
+    if (e.k === 'glass') mat = 'glass';
+    else if (e.k === 'objhit') mat = 'metal';
+    else if (!e.small) continue; // only what the round went on through
+    else if (e.mat === 'wood') mat = 'wood';
+    else if (e.mat === 'thin') mat = kcThinMat(o.sim, e);
+    else if (e.mat === 'metal' || e.mat === 'hard') mat = 'metal';
+    else if (e.mat === 'wall') mat = 'wall';
+    else continue;
+    if (Math.abs(dz) < 0.01) dz = -(a && a.inVeh ? 0.32 : a && a.behind ? 0.9 : 0.45);
+    out.push({ dz, x: e.x, y: e.y, mat, flight: dz / Math.max(0.3, K.dir[2]) < -K.dS + 0.02, done: false });
+  }
+  // through the body of a car to somebody inside: nothing is recorded for the door, but it is there
+  if (a && a.inVeh && a.inVeh.def && !out.some((c) => c.dz > -0.5)) { const v = a.inVeh; if (h.y - v.y <= v.def.body + 0.02) out.push({ dz: -0.32, x: h.x, y: h.y, mat: 'metal', flight: false, done: false }); }
+  out.sort((p, q) => p.dz - q.dz);
+  return out;
+}
+// A thin solid is a board fence or a door, or the panel of a parked car (low and car length).
+function kcThinMat(sim, e) {
+  const S = sim && sim.S; if (!S) return 'wood';
+  for (let i = 0; i < S.planes.length; i++) { const P = S.planes[i]; if (Math.abs(P.z - e.z) > 0.01) continue; for (let j = 0; j < P.solids.length; j++) { const s = P.solids[j]; if (s.mat === 'thin' && e.x >= s.x && e.x <= s.x + s.w && e.y >= s.y && e.y <= s.y + s.h) return s.h <= 1.3 && s.w >= 3 && s.w <= 9 ? 'metal' : 'wood'; } }
+  return 'wood';
+}
+// The wall close behind: where the round really went on into it, or (for blood only) the surface
+// a few metres behind the body. { dz, x, y (world), mat, hole }.
+function kcWallList(K, o, h, a) {
+  const ev = h.after && h.after.length ? h.after[0] : null;
+  if (K.simThrough && ev && !ev.ground && (ev.k === 'impact' || ev.k === 'glass')) {
+    const dz = ev.z - h.z;
+    if (dz < 6) return { dz: Math.max(0.45, dz), x: ev.x, y: ev.y, mat: ev.k === 'glass' ? 'glass' : ev.mat === 'interior' ? 'interior' : ev.mat === 'wood' || ev.mat === 'thin' ? 'wood' : ev.mat === 'metal' || ev.mat === 'hard' ? 'metal' : 'wall', hole: true };
+  }
+  if (!a || a.inVeh || !K.exit) return null;
+  const vz = Math.max(1, h.vz || 800), w = rdWallBehind(o.sim, a, { hx: h.x - a.x, hy: h.y - a.y, v: [h.vx || 0, h.vy || 0, vz] });
+  if (!w || w.dz > 5) return null;
+  const dz = Math.max(0.45, w.dz);
+  return { dz, x: h.x + ((h.vx || 0) / vz) * dz, y: h.y + ((h.vy || 0) / vz) * dz, mat: w.mat === 'interior' ? 'interior' : w.mat === 'wood' || w.mat === 'thin' ? 'wood' : w.mat === 'metal' || w.mat === 'hard' ? 'metal' : 'wall', hole: false };
+}
+// During the flight: cover the round reaches is punched through out there in the real scene.
+function kcFlightCovers(K) {
+  const cs = K.covers; if (!cs || !cs.length) return;
+  const h = K.o.hit;
+  for (let i = 0; i < cs.length; i++) { const cv = cs[i]; if (cv.flight && !cv.done && K.bp[2] >= h.z + cv.dz) kcCoverBurst(K, cv, [cv.x, cv.y, h.z + cv.dz], true); }
+}
+// The round punching through cover: glass shatters into shards, wood into splinters, metal throws
+// sparks, a wall bursts into dust and chips. Most of it goes on the way the round was going.
+function kcCoverBurst(K, cv, at, world) {
+  if (!cv || cv.done) return;
+  cv.done = true; cv.t0 = K.T; cv.hx = at[0]; cv.hy = at[1];
+  const L = world ? K.wparts : K.parts, m = cv.mat, sp = (kind, n, way, spread, s0, s1, r0, r1, life) => kcSpray(K, kind, n, at, way, spread, s0, s1, r0, r1, life, L);
+  if (m === 'glass') { sp(5, 28, 1, 0.55, 0.8, 4.5, 0.01, 0.035, 2.2); sp(5, 9, -1, 0.7, 0.3, 1.6, 0.008, 0.02, 1.6); sp(4, 6, 1, 0.8, 0.2, 0.8, 0.01, 0.02, 0.5); }
+  else if (m === 'wood') { sp(6, 20, 1, 0.5, 0.8, 4, 0.012, 0.04, 2.2); sp(6, 7, -1, 0.6, 0.4, 1.5, 0.01, 0.03, 1.8); sp(4, 10, 1, 0.8, 0.2, 1.0, 0.012, 0.03, 0.6); }
+  else if (m === 'metal') { sp(7, 24, 1, 0.7, 2, 7, 0.004, 0.008, 0.5); sp(7, 10, -1, 0.8, 1, 4, 0.004, 0.008, 0.4); sp(4, 5, 1, 0.8, 0.2, 0.6, 0.01, 0.02, 0.5); }
+  else { sp(4, 22, 1, 0.8, 0.3, 1.6, 0.015, 0.04, 0.9); sp(8, 16, 1, 0.6, 0.8, 3.5, 0.008, 0.025, 2); sp(4, 10, -1, 0.8, 0.3, 1.4, 0.015, 0.04, 0.8); }
+  kcSay(K, 'cover', { mat: m });
+}
+// The round going on into the wall behind the body: a puff of dust and chips back out of the hole.
+function kcWallHit(K, at) {
+  const W = K.wallB; if (!W || W.holeT !== undefined) return;
+  W.holeT = K.T; W.hz = at[2];
+  kcSpray(K, 4, 16, at, -1, 0.8, 0.3, 1.5, 0.015, 0.04, 0.9); kcSpray(K, W.mat === 'glass' ? 5 : W.mat === 'wood' ? 6 : W.mat === 'metal' ? 7 : 8, 12, at, -1, 0.6, 0.8, 3, 0.008, 0.022, 1.8);
+  kcSay(K, 'cover', { mat: W.mat === 'interior' ? 'wall' : W.mat, behind: true });
+}
+// Cover and the wall behind, in X-ray space: panes square to the round's line, with the hole the
+// round made (and on the wall, whatever blood reached it, drawn with the other bits).
+function kcDrawPanes(ctx, K, c, al) {
+  const h = K.o.hit, ox = isFinite(h.ax) ? h.ax : h.x, oy = isFinite(h.ay) ? h.ay : h.y - 1, d = K.dir, pl = K.plan;
+  const pane = (cx, cy, z, w, ht, mat, broken, hx, hy) => {
+    const y0 = Math.max(0, cy - ht / 2), y1 = y0 + ht, x0 = cx - w / 2, x1 = cx + w / 2;
+    ctx.beginPath();
+    if (!kcProj(c, x0, y0, z, kcQ)) return; ctx.moveTo(kcQ[0], kcQ[1]);
+    if (!kcProj(c, x1, y0, z, kcQ)) return; ctx.lineTo(kcQ[0], kcQ[1]);
+    if (!kcProj(c, x1, y1, z, kcQ)) return; ctx.lineTo(kcQ[0], kcQ[1]);
+    if (!kcProj(c, x0, y1, z, kcQ)) return; ctx.lineTo(kcQ[0], kcQ[1]); ctx.closePath();
+    const col = mat === 'glass' ? '#b9dcff' : mat === 'wood' ? '#7a5634' : mat === 'metal' ? '#8d96a0' : mat === 'interior' ? '#55525e' : '#8b7e72';
+    ctx.globalAlpha = al * (mat === 'glass' ? 0.12 : 0.4); ctx.fillStyle = col; ctx.fill();
+    ctx.globalAlpha = al * 0.55; ctx.strokeStyle = mix(col, '#ffffff', 0.35); ctx.lineWidth = 1; ctx.stroke();
+    // the grain of it: boards, courses of brick, a panel's fold
+    ctx.globalAlpha = al * 0.22; ctx.beginPath();
+    if (mat === 'wood') for (let x = x0 + 0.15; x < x1; x += 0.15) { if (kcProj(c, x, y0, z, kcQ) && kcProj(c, x, y1, z, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+    else if (mat === 'wall' || mat === 'interior') for (let y = y0 + 0.25; y < y1; y += 0.25) { if (kcProj(c, x0, y, z, kcQ) && kcProj(c, x1, y, z, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+    else if (mat === 'metal') { const y = lerp(y0, y1, 0.62); if (kcProj(c, x0, y, z, kcQ) && kcProj(c, x1, y, z, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+    ctx.stroke();
+    if (broken === undefined) return;
+    // the hole, and for glass the cracks running out from it
+    const age = K.T - broken, r = mat === 'glass' ? 0.035 : mat === 'wall' || mat === 'interior' ? 0.045 : 0.02;
+    ctx.globalAlpha = al * 0.9; ctx.fillStyle = mat === 'metal' ? '#20252b' : '#100c0a'; ctx.beginPath();
+    if (kcEll(ctx, c, hx, hy, z, kcSet(kcV1, r, 0, 0), kcSet(kcV2, 0, r, 0))) ctx.fill();
+    if (mat === 'glass') {
+      ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#e8f4ff'; ctx.beginPath(); const g = smooth(age / 0.15);
+      for (let i = 0; i < 9; i++) { const an = i * 0.7 + kcHash(i + hx * 7) * 0.5, l = (0.12 + 0.3 * kcHash(i * 3 + hy)) * g; if (kcProj(c, hx, hy, z, kcQ) && kcProj(c, hx + Math.cos(an) * l, hy + Math.sin(an) * l, z, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+      ctx.stroke();
+    }
+  };
+  const cs = K.covers || [];
+  for (let i = 0; i < cs.length; i++) {
+    const cv = cs[i]; if (cv.flight) continue;
+    const z = cv.dz, cx = cv.x - ox, cy = cv.y - oy, m = cv.mat;
+    const w = m === 'glass' ? 1.0 : m === 'wood' ? 0.9 : m === 'metal' ? 1.3 : 1.7, ht = m === 'glass' ? 0.9 : m === 'wood' ? 1.4 : m === 'metal' ? 0.6 : 1.7;
+    pane(cx, m === 'metal' ? cy - 0.12 : cy, z, w, ht, m, cv.done ? cv.t0 : undefined, cx, cy);
+  }
+  const W = K.wallB;
+  if (W) { const cx = W.x - ox, cy = W.y - oy; pane(cx, Math.max(1.25, cy), W.dz, 2.8, 2.5, W.mat, W.holeT, cx + (pl ? d[0] * 0 : 0), cy); }
+  ctx.globalAlpha = 1;
 }
 
 // ---- the picture ------------------------------------------------------------------------
@@ -474,18 +651,19 @@ function kcOverlay(K, V, ctx) {
   const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.hypot(W, H) * 0.56);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.62)');
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-  // drops on the lens
-  for (let i = 0; i < K.lens.length; i++) {
+  // drops on the lens (they are wiped away as the camera draws back to watch the body fall)
+  const lensA = K.holdT0 !== null ? 1 - smooth((T - K.holdT0 - 0.5) / 0.6) : 1;
+  for (let i = 0; i < K.lens.length && lensA > 0.01; i++) {
     const d = K.lens[i], age = T - d.t0; if (age < 0) continue;
     // a splash on the glass: a flattened blot with a few flecks round it, too close to be in
     // focus, that slowly starts to run
     const k = Math.min(1.4, Math.max(W, H) / 760), r = d.r * 1.3 * k * (0.5 + 0.5 * smooth(age / 0.1)), x = d.x * W, y = d.y * H, run = Math.min(r * 2.6, age * age * 14 * k);
-    ctx.globalAlpha = 0.5; ctx.fillStyle = '#6e0a10';
+    ctx.globalAlpha = 0.5 * lensA; ctx.fillStyle = '#6e0a10';
     ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.86, d.sd, 0, TAU); ctx.fill();
     ctx.beginPath(); for (let j = 0; j < 4; j++) { const an = d.sd * 3 + j * 1.7, rr = r * (1.25 + 0.5 * kcHash(j + d.sd)); ctx.moveTo(x + Math.cos(an) * rr + r * 0.16, y + Math.sin(an) * rr); ctx.arc(x + Math.cos(an) * rr, y + Math.sin(an) * rr, r * 0.16 * (0.6 + kcHash(j * 3 + d.sd)), 0, TAU); } ctx.fill();
     if (run > 1) { ctx.lineCap = 'round'; ctx.strokeStyle = '#6e0a10'; ctx.lineWidth = r * 0.34; ctx.beginPath(); ctx.moveTo(x + r * 0.2, y + r * 0.5); ctx.lineTo(x + r * 0.24, y + r * 0.6 + run); ctx.stroke(); }
-    ctx.globalAlpha = 0.32; ctx.fillStyle = '#c4202a'; ctx.beginPath(); ctx.ellipse(x - r * 0.08, y - r * 0.06, r * 0.72, r * 0.6, d.sd, 0, TAU); ctx.fill();
-    ctx.globalAlpha = 0.28; ctx.strokeStyle = '#ffd9d2'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r * 0.78, 3.6, 4.6); ctx.stroke();
+    ctx.globalAlpha = 0.32 * lensA; ctx.fillStyle = '#c4202a'; ctx.beginPath(); ctx.ellipse(x - r * 0.08, y - r * 0.06, r * 0.72, r * 0.6, d.sd, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.28 * lensA; ctx.strokeStyle = '#ffd9d2'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r * 0.78, 3.6, 4.6); ctx.stroke();
   }
   ctx.globalAlpha = 1;
   if (K.outT0 !== null) { const a = clamp((T - K.outT0) / kcTune.out, 0, 1); ctx.fillStyle = 'rgba(255,246,224,' + (0.9 * a * a).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
@@ -652,6 +830,7 @@ function kcDrawFlight(K, V, ctx, dt) {
   const bo = { len: K.len, rad: K.rad, spin: K.spin * 2.2, mush: 0, steel: K.steel, hot: 0.25 };
   kcWake(ctx, c, K.bp[0], K.bp[1], K.bp[2], d[0], d[1], d[2], { len: K.len, rad: K.rad, a: K.sonic ? 1 : 0.4, t: K.T, cone: K.sonic });
   kcBullet(ctx, c, K.bp[0], K.bp[1], K.bp[2], d[0], d[1], d[2], bo);
+  if (K.wparts.length) kcDrawParts(ctx, K, c, K.wparts); // glass, splinters or sparks from cover the round went through on the way
 }
 
 // ---- the round ------------------------------------------------------------------------------
@@ -768,10 +947,14 @@ function kcOrbitCam(K, V) {
     sw.phx *= kx; sw.phy *= ky; sw.px0 *= kx; sw.py0 *= ky; sw.sW = W; sw.sH = H;
   }
   const u = clamp((T - K.Tb) / kcTune.swing, 0, 1), e = smooth(u), tau = Math.max(0, T - K.Tc), push = smooth(tau / 0.9);
-  const hold = K.holdT0 !== null ? smooth((T - K.holdT0) / (kcTune.hold + kcTune.out)) : 0;
-  const phi = lerp(sw.phi0, 80 * deg, e) + (9 * (1 - Math.exp(-tau * 2.2)) + 2.2 * tau) * deg;
-  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2, push) * (1 + 0.28 * hold), el = lerp(sw.el0, 0.11, e);
-  const k1 = smooth(u * 1.2), px = lerp(lerp(sw.H[0], sw.mid[0], k1), sw.focus[0], push), py = lerp(lerp(sw.H[1], sw.mid[1], k1), sw.focus[1], push) - 0.1 * hold, pz = 0;
+  // in the hold the camera draws back, comes round toward the shooter's side a little (so a wall
+  // behind is seen, not edge on) and follows the body down
+  const hold = K.holdT0 !== null ? smooth((T - K.holdT0 - 0.15) / 1.1) : 0, fl = K.follow;
+  const phi = lerp(lerp(sw.phi0, 80 * deg, e) + (9 * (1 - Math.exp(-tau * 2.2)) + 2.2 * tau) * deg, (K.wallB ? 52 : 70) * deg, hold);
+  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2, push) * (1 + 0.85 * hold), el = lerp(lerp(sw.el0, 0.11, e), 0.22, hold);
+  const k1 = smooth(u * 1.2);
+  let px = lerp(lerp(sw.H[0], sw.mid[0], k1), sw.focus[0], push), py = lerp(lerp(sw.H[1], sw.mid[1], k1), sw.focus[1], push), pz = 0;
+  if (fl && hold > 0) { px = lerp(px, fl[0], hold); py = lerp(py, fl[1], hold); pz = lerp(pz, fl[2], hold); }
   c.x = px + R * K.side * Math.sin(phi) * Math.cos(el); c.y = py + R * Math.sin(el); c.z = pz - R * Math.cos(phi) * Math.cos(el);
   c.f = sw.f;
   // The chase camera looked straight down range with its picture slid sideways. Over the first
@@ -786,6 +969,8 @@ function kcDrawXray(K, V, ctx, dt) {
   const o = K.o, sim = o.sim, W = V.W, H = V.H, c = K.cam, T = K.T, pl = K.plan, sw = K.sw, pal = kcPal(o), d = K.dir;
   const u = kcOrbitCam(K, V), voidA = smooth((u - 0.1) / 0.48), figA = smooth((u - 0.01) / 0.11);
   const fig = kcBuildFig(K);
+  // the middle of the body, for the camera to follow as it falls (a little below, so the floor shows)
+  { const P = fig.P, fx = (P.hip[0] + P.neck[0]) / 2, fy = Math.max(0.2, (P.hip[1] + P.neck[1]) / 2 - 0.1), fz = (P.hip[2] + P.neck[2]) / 2; if (!K.follow) K.follow = [fx, fy, fz]; else { const k = Math.min(1, (dt || 0) * 6); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
   if (voidA < 0.995) {
     // The real scene, still there for the first part of the swing. Its camera is our 3D camera
     // moved into world space and matched on the target, so the scene slides and parts as we go round.
@@ -809,6 +994,7 @@ function kcDrawXray(K, V, ctx, dt) {
     bg.addColorStop(0, gc); bg.addColorStop(0.55, mix(gc, ge, 0.7)); bg.addColorStop(1, ge);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     kcFloor(ctx, K, c, pal, voidA);
+    kcDrawPanes(ctx, K, c, voidA);
     ctx.globalAlpha = 1;
   }
   // how far the skin has turned to glass
@@ -817,9 +1003,12 @@ function kcDrawXray(K, V, ctx, dt) {
   if (xr > 0.01) kcInnards(ctx, K, c, fig, figA * xr);
   if (K.hitT !== null) kcTrack(ctx, K, c, fig);
   // the round, while any of it is still to be seen
-  const tipx = pl.H[0] + d[0] * K.s, tipy = pl.H[1] + d[1] * K.s, tipz = pl.H[2] + d[2] * K.s;
+  const tipx = pl.H[0] + d[0] * K.s, tipz = pl.H[2] + d[2] * K.s;
+  let tipy = pl.H[1] + d[1] * K.s, tum = 0;
+  // a round with nothing left after the far side drops, turning over, to the floor
+  if (K.spent && K.spentT !== undefined) { const ft = T - K.spentT; tipy = Math.max(K.rad, tipy - 1.6 * ft * ft); tum = Math.sin(Math.min(ft, 1.2) * 3) * 1.4; }
   const inside = K.hitT !== null ? clamp((K.s - pl.sIn) / 0.25, 0, 1) : 0;
-  const bo = { len: K.len, rad: K.rad, spin: K.spin * (K.hitT !== null ? 0.5 : 2.2), mush: K.mush * 0.9, steel: K.steel || !K.gore, hot: 0.2 * (1 - inside), tilt: (K.through === false ? 0.42 : 0.2) * inside * Math.sin(inside * 2.1) };
+  const bo = { len: K.len, rad: K.rad, spin: K.spin * (K.hitT !== null ? 0.5 : 2.2), mush: K.mush * 0.9, steel: K.steel || !K.gore, hot: 0.2 * (1 - inside), tilt: (K.through === false ? 0.42 : 0.2) * inside * Math.sin(inside * 2.1) + tum };
   if (K.hitT === null) kcWake(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], { len: K.len, rad: K.rad, a: (K.sonic ? 0.9 : 0.35) * (1 - 0.5 * u), t: T, cone: K.sonic });
   kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   kcDrawParts(ctx, K, c);
@@ -842,8 +1031,10 @@ function kcFloor(ctx, K, c, pal, a) {
 
 // ---- the target as a 3D figure ----------------------------------------------------------------
 // The game's people are flat: a set of joints seen from the side. Here each joint is given a
-// depth as well. The body stays in its own flat plane (z = 0); the left arm and leg go to one
-// side of it and the right to the other, shoulders 36 cm apart and hips 23.
+// depth as well: the left arm and leg go to one side of the body and the right to the other,
+// shoulders 36 cm apart and hips 23. Once the person is dead the ragdoll (src/13_ragdoll.js)
+// already has every point in 3D, pushed by the round and turning as it falls, and the figure
+// is built straight from those, so this picture and the scope's always show the same fall.
 function kcBuildFig(K) {
   const o = K.o, a = o.actor; let J = null;
   try {
@@ -858,21 +1049,43 @@ function kcBuildFig(K) {
   if (!J || !J.hip || !J.neck || !J.head || !J.ftL || !J.haR || !isFinite(J.hip[1])) J = (K.fig && K.fig.J) || kcStand;
   const sc = J.scale || 1, fs = (J.f || 1) < 0 ? -1 : 1, L = K.look || {};
   const bw = L.build === 'big' ? 1.16 : L.build === 'thin' ? 0.9 : 1, lw = 0.085 * sc * (L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.85 : 1);
-  const ws = 0.18 * sc * bw, wh = 0.115 * sc * bw, wt = ws - 0.045 * sc, za = ws + 0.06 * sc, sh = J.sh || J.neck;
-  // a person facing right (+x) has their right side toward the shooter, so right is -z and left is +z
-  const P = {
-    hip: [J.hip[0], J.hip[1], 0], neck: [J.neck[0], J.neck[1], 0], head: [J.head[0], J.head[1], 0], sh: [sh[0], sh[1], 0],
-    shL: [sh[0], sh[1], fs * ws], shR: [sh[0], sh[1], -fs * ws], tsL: [sh[0], sh[1], fs * wt], tsR: [sh[0], sh[1], -fs * wt], elL: [J.elL[0], J.elL[1], fs * za], haL: [J.haL[0], J.haL[1], fs * za], elR: [J.elR[0], J.elR[1], -fs * za], haR: [J.haR[0], J.haR[1], -fs * za],
-    hpL: [J.hip[0], J.hip[1], fs * wh], hpR: [J.hip[0], J.hip[1], -fs * wh], knL: [J.knL[0], J.knL[1], fs * wh * 0.95], ftL: [J.ftL[0], J.ftL[1], fs * wh * 0.9], knR: [J.knR[0], J.knR[1], -fs * wh * 0.95], ftR: [J.ftR[0], J.ftR[1], -fs * wh * 0.9],
-  };
-  // the trunk's own axes: U up the spine, F out of the chest, S toward the person's left
-  let ux = J.neck[0] - J.hip[0], uy = J.neck[1] - J.hip[1]; const Ln = Math.hypot(ux, uy) || 0.56; ux /= Ln; uy /= Ln;
-  let vx = J.head[0] - J.neck[0], vy = J.head[1] - J.neck[1]; const hl = Math.hypot(vx, vy) || 0.2; vx /= hl; vy /= hl;
-  K.fig = { J, P, S: (K.fig && K.fig.S) || {}, sc, fs, bw, lw, ws, wh, wt, za, hr: 0.17 * sc, look: L,
-    tor: { o: P.hip, U: [ux, uy, 0], F: [uy * fs, -ux * fs, 0], S: [0, 0, fs], L: Ln },
-    hd: { o: P.head, U: [vx, vy, 0], F: [vy * fs, -vx * fs, 0], S: [0, 0, fs] } };
+  const ws = 0.18 * sc * bw, wh = 0.115 * sc * bw, wt = ws - 0.045 * sc, za = ws + 0.06 * sc;
+  let P;
+  if (J.j3) {
+    const j = J.j3, H = RD_N * 3, g = (i) => [j[i * 3], j[i * 3 + 1], j[i * 3 + 2]], sh = [j[H + 3], j[H + 4], j[H + 5]], shL = g(RD_SHL), shR = g(RD_SHR), k = wt / ws;
+    P = { hip: [j[H], j[H + 1], j[H + 2]], neck: [j[H + 6], j[H + 7], j[H + 8]], head: g(RD_HEAD), sh, shL, shR,
+      tsL: [lerp(sh[0], shL[0], k), lerp(sh[1], shL[1], k), lerp(sh[2], shL[2], k)], tsR: [lerp(sh[0], shR[0], k), lerp(sh[1], shR[1], k), lerp(sh[2], shR[2], k)],
+      elL: g(RD_ELL), haL: g(RD_HAL), elR: g(RD_ELR), haR: g(RD_HAR), hpL: g(RD_HPL), hpR: g(RD_HPR), knL: g(RD_KNL), ftL: g(RD_FTL), knR: g(RD_KNR), ftR: g(RD_FTR) };
+  } else {
+    const sh = J.sh || J.neck;
+    // a person facing right (+x) has their right side toward the shooter, so right is -z and left is +z
+    P = {
+      hip: [J.hip[0], J.hip[1], 0], neck: [J.neck[0], J.neck[1], 0], head: [J.head[0], J.head[1], 0], sh: [sh[0], sh[1], 0],
+      shL: [sh[0], sh[1], fs * ws], shR: [sh[0], sh[1], -fs * ws], tsL: [sh[0], sh[1], fs * wt], tsR: [sh[0], sh[1], -fs * wt], elL: [J.elL[0], J.elL[1], fs * za], haL: [J.haL[0], J.haL[1], fs * za], elR: [J.elR[0], J.elR[1], -fs * za], haR: [J.haR[0], J.haR[1], -fs * za],
+      hpL: [J.hip[0], J.hip[1], fs * wh], hpR: [J.hip[0], J.hip[1], -fs * wh], knL: [J.knL[0], J.knL[1], fs * wh * 0.95], ftL: [J.ftL[0], J.ftL[1], fs * wh * 0.9], knR: [J.knR[0], J.knR[1], -fs * wh * 0.95], ftR: [J.ftR[0], J.ftR[1], -fs * wh * 0.9],
+    };
+  }
+  // the trunk's own axes (U up the spine, S toward the person's left, F out of the chest) and the head's
+  const tor = { o: P.hip, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0], L: 0.56 * sc }, hd = { o: P.head, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0] };
+  tor.L = kcAxes(tor, P.neck[0] - P.hip[0], P.neck[1] - P.hip[1], P.neck[2] - P.hip[2], P.shL[0] - P.shR[0] + P.hpL[0] - P.hpR[0], P.shL[1] - P.shR[1] + P.hpL[1] - P.hpR[1], P.shL[2] - P.shR[2] + P.hpL[2] - P.hpR[2]) || 0.56 * sc;
+  kcAxes(hd, P.head[0] - P.neck[0], P.head[1] - P.neck[1], P.head[2] - P.neck[2], tor.S[0], tor.S[1], tor.S[2]);
+  K.fig = { J, P, S: (K.fig && K.fig.S) || {}, sc, fs, bw, lw, ws, wh, wt, za, hr: 0.17 * sc, look: L, tor, hd };
   return K.fig;
 }
+// Set a frame's U along (ux, uy, uz) and S along (sx, sy, sz) made square to it; F = U x S.
+// Returns the length of U as given.
+function kcAxes(fr, ux, uy, uz, sx, sy, sz) {
+  const l = Math.hypot(ux, uy, uz); if (l < 1e-6) return 0;
+  ux /= l; uy /= l; uz /= l;
+  const d = sx * ux + sy * uy + sz * uz; sx -= ux * d; sy -= uy * d; sz -= uz * d;
+  const m = Math.hypot(sx, sy, sz); if (m < 1e-6) return l;
+  sx /= m; sy /= m; sz /= m;
+  fr.U[0] = ux; fr.U[1] = uy; fr.U[2] = uz; fr.S[0] = sx; fr.S[1] = sy; fr.S[2] = sz;
+  fr.F[0] = uy * sz - uz * sy; fr.F[1] = uz * sx - ux * sz; fr.F[2] = ux * sy - uy * sx;
+  return l;
+}
+// How much one of a frame's axes points along a camera direction (for "can we see the face").
+const kcDot = (v, x, y, z) => v[0] * x + v[1] * y + v[2] * z;
 // The outside of the figure, in the game's own look: dark ink limbs with a pale edge, the coat,
 // the hat. xr (0..1) turns it to glass. infl (0..1) lets the trunk fill out from the flat
 // stick it is in the scope to something with a chest.
@@ -890,11 +1103,11 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
   const quad = (a, b, d, e) => { ctx.beginPath(); ctx.moveTo(S[a][0], S[a][1]); ctx.lineTo(S[b][0], S[b][1]); ctx.lineTo(S[d][0], S[d][1]); ctx.lineTo(S[e][0], S[e][1]); ctx.closePath(); };
   // the hem of a coat or the bottom of a vest: points below (or above) the hips on each side
   const hemK = L.coat ? (L.long ? 0.55 : 0.05) : 0;
-  const low = (key, z, kk) => { const q = S[key] || (S[key] = [0, 0, 0, 0]); kcProj(c, P.hip[0] - tor.U[0] * tor.L * kk, P.hip[1] - tor.U[1] * tor.L * kk, z, q); };
-  low('lowL', P.hpL[2] * 1.05, hemK); low('lowR', P.hpR[2] * 1.05, hemK); low('vstL', P.hpL[2], -0.3); low('vstR', P.hpR[2], -0.3);
+  const low = (key, a, kk) => { const q = S[key] || (S[key] = [0, 0, 0, 0]); kcLocP(c, tor, a, -tor.L * kk, 0, q); };
+  low('lowL', fig.wh * 1.05, hemK); low('lowR', -fig.wh * 1.05, hemK); low('vstL', fig.wh, -0.3); low('vstR', -fig.wh, -0.3);
   const hs = S.head[2], hr = fig.hr * hs, hx = S.head[0], hy = S.head[1];
-  const camF = hd.F[0] * (c.x - P.head[0]) + hd.F[1] * (c.y - P.head[1]); // above zero when we can see the face
-  const tilt = Math.atan2(hd.U[0] * c.rx, hd.U[0] * c.ux + hd.U[1] * c.uy); // how the head's "up" leans on screen
+  const camF = kcDot(hd.F, c.x - P.head[0], c.y - P.head[1], c.z - P.head[2]); // above zero when we can see the face
+  const tilt = Math.atan2(hd.U[0] * c.rx + hd.U[2] * c.rz, kcDot(hd.U, c.ux, c.uy, c.uz)); // how the head's "up" leans on screen
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // ---- pale outline under everything, so the figure reads against any background
   ctx.globalAlpha = alpha * lerp(1, 0.9, xr); ctx.strokeStyle = rim; ctx.fillStyle = rim;
@@ -922,7 +1135,7 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
     ctx.globalAlpha = alpha * aCl;
     if (L.dress) { // a skirt: a cone from the neck to below the hips
       const cl = D(L.dress); ctx.fillStyle = cl;
-      if (kcProj(c, P.neck[0] - tor.U[0] * 0.08 * sc, P.neck[1] - tor.U[1] * 0.08 * sc, 0, kcQ) && kcProj(c, P.hip[0] - tor.U[0] * 0.38 * sc, P.hip[1] - tor.U[1] * 0.38 * sc, 0, kcQ2)) {
+      if (kcLocP(c, tor, 0, tor.L - 0.08 * sc, 0, kcQ) && kcLocP(c, tor, 0, -0.38 * sc, 0, kcQ2)) {
         const wt = 0.12 * sc * kcQ[2], wb = 0.27 * sc * kcQ2[2]; let ax = kcQ2[0] - kcQ[0], ay = kcQ2[1] - kcQ[1]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
         ctx.beginPath(); ctx.moveTo(kcQ[0] - ay * wt, kcQ[1] + ax * wt); ctx.lineTo(kcQ[0] + ay * wt, kcQ[1] - ax * wt); ctx.lineTo(kcQ2[0] + ay * wb, kcQ2[1] - ax * wb); ctx.lineTo(kcQ2[0] - ay * wb, kcQ2[1] + ax * wb); ctx.closePath(); ctx.fill();
         ctx.beginPath(); ctx.ellipse(kcQ2[0], kcQ2[1], wb, wb * 0.14, Math.atan2(ax, -ay), 0, TAU); ctx.fill();
@@ -931,15 +1144,15 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
     if (L.coat) {
       const cl = D(L.coat), cr = lerp(rl * 2.5, 0.092 * sc, infl); ctx.strokeStyle = cl; ctx.fillStyle = cl; quad('tsL', 'tsR', 'lowR', 'lowL'); ctx.lineWidth = wOf(cr, 'sh', 'hip'); ctx.fill(); ctx.stroke();
       // the opening down the front, once we have come far enough round to see it
-      if (camF > 0.3 && kcProj(c, P.neck[0] + tor.F[0] * cr - tor.U[0] * 0.05 * sc, P.neck[1] + tor.F[1] * cr - tor.U[1] * 0.05 * sc, 0, kcQ) && kcProj(c, P.hip[0] + tor.F[0] * cr - tor.U[0] * tor.L * hemK, P.hip[1] + tor.F[1] * cr - tor.U[1] * tor.L * hemK - 0.09 * sc, 0, kcQ2)) {
+      if (camF > 0.3 && kcLocP(c, tor, 0, tor.L - 0.05 * sc, cr, kcQ) && kcLocP(c, tor, 0, -tor.L * hemK - 0.09 * sc, cr, kcQ2)) {
         ctx.strokeStyle = mix(cl, '#000000', 0.38); ctx.lineWidth = Math.max(1.2, 0.012 * sc * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
       }
     }
     if (L.vest) { const cl = D(L.vest); ctx.strokeStyle = cl; ctx.fillStyle = cl; quad('tsL', 'tsR', 'vstR', 'vstL'); ctx.lineWidth = wOf(lerp(rl * 2.4, 0.088 * sc, infl), 'sh', 'hip'); ctx.fill(); ctx.stroke(); }
-    if (L.tie && camF > -0.2 && kcProj(c, P.neck[0] + tor.F[0] * (rT + 0.02), P.neck[1] + tor.F[1] * (rT + 0.02) - 0.04 * sc, 0, kcQ) && kcProj(c, P.neck[0] + tor.F[0] * (rT + 0.035) - tor.U[0] * 0.32 * sc, P.neck[1] + tor.F[1] * (rT + 0.035) - tor.U[1] * 0.32 * sc, 0, kcQ2)) {
+    if (L.tie && camF > -0.2 && kcLocP(c, tor, 0, tor.L - 0.04 * sc, rT + 0.02, kcQ) && kcLocP(c, tor, 0, tor.L - 0.32 * sc, rT + 0.035, kcQ2)) {
       ctx.strokeStyle = D(L.tie); ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(1.5, 0.06 * sc * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); ctx.lineCap = 'round';
     }
-    if (L.scarf) { ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(2, 0.07 * sc * S.neck[2]); ctx.beginPath(); if (kcEll(ctx, c, P.neck[0], P.neck[1] + 0.01, 0, kcSet(kcV1, 0.085 * sc, 0, 0), kcSet(kcV2, 0, 0, 0.085 * sc))) ctx.stroke(); }
+    if (L.scarf) { ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(2, 0.07 * sc * S.neck[2]); ctx.beginPath(); if (kcEll(ctx, c, P.neck[0], P.neck[1] + 0.01, P.neck[2], kcMul(kcV1, tor.F, 0.085 * sc), kcMul(kcV2, tor.S, 0.085 * sc))) ctx.stroke(); }
   } });
   // things carried
   kcBag(ctx, K, c, fig, parts, alpha * aCl, D);
@@ -950,9 +1163,9 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
       if (hc !== 'long' && hc !== 'bun') return;
       ctx.globalAlpha = alpha * aCl; ctx.fillStyle = hcol; ctx.strokeStyle = hcol;
       if (hc === 'long') {
-        if (kcProj(c, P.head[0] - hd.F[0] * 0.04 * sc, P.head[1] - hd.F[1] * 0.04 * sc + 0.015, 0, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 1.13, 0, TAU); ctx.fill(); }
-        if (kcProj(c, P.head[0] - hd.F[0] * 0.11 * sc, P.head[1] - hd.F[1] * 0.11 * sc, 0, kcQ) && kcProj(c, P.head[0] - hd.F[0] * 0.15 * sc - hd.U[0] * 0.3 * sc, P.head[1] - hd.F[1] * 0.15 * sc - hd.U[1] * 0.3 * sc, 0, kcQ2)) { ctx.lineWidth = 0.2 * sc * kcQ[2]; ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
-      } else if (kcProj(c, P.head[0] - hd.F[0] * 0.13 * sc + hd.U[0] * 0.14 * sc, P.head[1] - hd.F[1] * 0.13 * sc + hd.U[1] * 0.14 * sc, 0, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], 0.08 * sc * kcQ[2], 0, TAU); ctx.fill(); }
+        if (kcLocP(c, hd, 0, 0.015, -0.04 * sc, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 1.13, 0, TAU); ctx.fill(); }
+        if (kcLocP(c, hd, 0, 0, -0.11 * sc, kcQ) && kcLocP(c, hd, 0, -0.3 * sc, -0.15 * sc, kcQ2)) { ctx.lineWidth = 0.2 * sc * kcQ[2]; ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
+      } else if (kcLocP(c, hd, 0, 0.14 * sc, -0.13 * sc, kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], 0.08 * sc * kcQ[2], 0, TAU); ctx.fill(); }
     };
     if (hairFirst) hairBack();
     ctx.globalAlpha = alpha * aInk; ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
@@ -960,14 +1173,14 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
     ctx.globalAlpha = alpha * aCl;
     ctx.save(); ctx.translate(hx, hy); ctx.rotate(tilt);
     if (hc === 'short' || hc === 'white' || hc === 'bun' || hc === 'long') { ctx.fillStyle = hcol; ctx.beginPath(); ctx.arc(0, -hr * 0.06, hr * 1.05, Math.PI + 0.22, TAU - 0.22); ctx.closePath(); ctx.fill(); }
-    else if (hc === 'mohawk') { ctx.fillStyle = hcol; ctx.beginPath(); ctx.ellipse(0, -hr * 0.95, hr * (0.25 + 0.6 * Math.abs(c.rx * hd.F[0])), hr * 0.42, 0, 0, TAU); ctx.fill(); }
+    else if (hc === 'mohawk') { ctx.fillStyle = hcol; ctx.beginPath(); ctx.ellipse(0, -hr * 0.95, hr * (0.25 + 0.6 * Math.abs(c.rx * hd.F[0] + c.rz * hd.F[2])), hr * 0.42, 0, 0, TAU); ctx.fill(); }
     if (L.mask) { ctx.fillStyle = D(L.mask); ctx.beginPath(); ctx.arc(0, 0, hr * 1.02, 0.25, Math.PI - 0.25); ctx.closePath(); ctx.fill(); }
     if (L.phones) { ctx.strokeStyle = D(L.phones); ctx.lineWidth = Math.max(1.5, 0.04 * sc * hs); ctx.beginPath(); ctx.arc(0, 0, hr * 1.12, Math.PI + 0.3, TAU - 0.3); ctx.stroke(); }
     ctx.restore();
-    if (L.beard && kcProj(c, P.head[0] + hd.F[0] * 0.07 * sc - hd.U[0] * 0.08 * sc, P.head[1] + hd.F[1] * 0.07 * sc - hd.U[1] * 0.08 * sc, 0, kcQ)) { ctx.fillStyle = D(L.beard === true ? '#8a8f96' : L.beard); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 0.66, 0, TAU); ctx.fill(); }
+    if (L.beard && kcLocP(c, hd, 0, -0.08 * sc, 0.07 * sc, kcQ)) { ctx.fillStyle = D(L.beard === true ? '#8a8f96' : L.beard); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], hr * 0.66, 0, TAU); ctx.fill(); }
     if (L.glasses && camF > -0.25) {
       const sh = L.glasses === 'shades'; ctx.strokeStyle = D(sh ? '#f2f4f7' : '#cfd6de'); ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = Math.max(1, (sh ? 0.05 : 0.024) * sc * hs);
-      const e0 = kcProj(c, P.head[0] + hd.F[0] * 0.165 * sc + hd.U[0] * 0.03 * sc, P.head[1] + hd.F[1] * 0.165 * sc + hd.U[1] * 0.03 * sc, 0.062 * sc, kcQ), e1 = kcProj(c, P.head[0] + hd.F[0] * 0.165 * sc + hd.U[0] * 0.03 * sc, P.head[1] + hd.F[1] * 0.165 * sc + hd.U[1] * 0.03 * sc, -0.062 * sc, kcQ2);
+      const e0 = kcLocP(c, hd, 0.062 * sc, 0.03 * sc, 0.165 * sc, kcQ), e1 = kcLocP(c, hd, -0.062 * sc, 0.03 * sc, 0.165 * sc, kcQ2);
       if (e0 && e1) {
         if (sh) { ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
         else { const rr = Math.max(1.2, 0.045 * sc * hs), sq = Math.max(0.25, Math.abs(c.rz)); ctx.beginPath(); ctx.ellipse(kcQ[0], kcQ[1], rr * sq, rr, 0, 0, TAU); ctx.moveTo(kcQ2[0] + rr * sq, kcQ2[1]); ctx.ellipse(kcQ2[0], kcQ2[1], rr * sq, rr, 0, 0, TAU); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke(); }
@@ -980,11 +1193,18 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
   // where the round went in and came out
   if (K.hitT !== null && K.plan) {
     const pl = K.plan, fr = pl.part === 'head' ? hd : tor, bb = pl.part === 'head' ? pl.u0 : pl.b0;
-    ctx.globalAlpha = alpha; ctx.fillStyle = K.gore ? '#5c060c' : '#0a1018';
+    ctx.globalAlpha = alpha;
     for (let i = 0; i < 2; i++) {
       if (i === 1 && K.dmg.skin1 === undefined) break;
       kcLoc(fr, (i ? pl.sOut : pl.sIn) * fig.fs, bb, pl.c0, kcL0);
-      if (kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) { ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], Math.max(1.5, (i ? 0.02 : 0.012) * kcQ[2]), 0, TAU); ctx.fill(); }
+      if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) continue;
+      // the way in is a small neat hole; the way out is larger and torn, more so for a big round
+      const r = Math.max(1.5, (i ? 0.01 + 0.024 * K.exitK : 0.007 + 0.005 * K.power) * kcQ[2]);
+      if (K.gore) { ctx.fillStyle = '#8c1219'; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.3, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = K.gore ? '#3a0408' : '#0a1018'; ctx.beginPath();
+      if (i) for (let j = 0; j < 6; j++) { const an = j * 1.05 + kcHash(j + pl.c0 * 40) * 0.7, rr = r * (0.55 + 0.6 * kcHash(j * 3.7 + pl.sOut * 20)); ctx.moveTo(kcQ[0] + Math.cos(an) * r * 0.4 + rr, kcQ[1] + Math.sin(an) * r * 0.4); ctx.arc(kcQ[0] + Math.cos(an) * r * 0.4, kcQ[1] + Math.sin(an) * r * 0.4, rr, 0, TAU); }
+      else ctx.arc(kcQ[0], kcQ[1], r, 0, TAU);
+      ctx.fill();
     }
   }
   ctx.globalAlpha = 1;
@@ -1009,8 +1229,8 @@ function kcBag(ctx, K, c, fig, parts, al, D) {
   if (bag === 'case') box(h[0], h[1] - 0.17 * sc, h[2], 0.2 * sc, 0.13 * sc, 0.055 * sc, D(L.bagCol || '#7b5a36'), zh - 0.05);
   else if (bag === 'shopping') box(h[0], h[1] - 0.22, h[2], 0.15, 0.17, 0.06, D(L.bagCol || '#e9e2d0'), zh - 0.05);
   else if (bag === 'duffel') blob(h[0], h[1] - 0.2 * sc, h[2], kcSet([0, 0, 0], 0.34 * sc, 0, 0), kcSet([0, 0, 0], 0, 0.16 * sc, 0), kcSet([0, 0, 0], 0, 0, 0.15 * sc), D(L.bagCol || '#3f4a5c'), zh - 0.05);
-  else if (bag === 'box' || bag === 'paper' || bag === 'clip') { const m = [(P.haL[0] + P.haR[0]) / 2, (P.haL[1] + P.haR[1]) / 2]; if (bag === 'box') box(m[0], m[1] + 0.1, 0, 0.24, 0.18, 0.2, D(L.bagCol || '#b08a52'), S.sh[3] - 0.3 * tor.F[0] * c.fx); else box(m[0], m[1] + 0.1, 0, 0.03, 0.15, 0.2, D(bag === 'paper' ? '#e9e6dc' : L.bagCol || '#e7e2d4'), S.sh[3] - 0.3 * tor.F[0] * c.fx); }
-  else if (bag === 'backpack') { const bx = lerp(P.hip[0], P.neck[0], 0.62) - tor.F[0] * 0.17 * sc, by = lerp(P.hip[1], P.neck[1], 0.62) - tor.F[1] * 0.17 * sc; blob(bx, by, 0, kcSet([0, 0, 0], tor.F[0] * 0.1 * sc, tor.F[1] * 0.1 * sc, 0), kcSet([0, 0, 0], tor.U[0] * 0.22 * sc, tor.U[1] * 0.22 * sc, 0), kcSet([0, 0, 0], 0, 0, 0.16 * sc), D(L.bagCol || '#5d6b4a'), (S.sh[3] + S.hip[3]) / 2 + 0.17 * tor.F[0] * c.fx); }
+  else if (bag === 'box' || bag === 'paper' || bag === 'clip') { const m = [(P.haL[0] + P.haR[0]) / 2, (P.haL[1] + P.haR[1]) / 2]; if (bag === 'box') box(m[0], m[1] + 0.1, 0, 0.24, 0.18, 0.2, D(L.bagCol || '#b08a52'), S.sh[3] - 0.3 * kcDot(tor.F, c.fx, c.fy, c.fz)); else box(m[0], m[1] + 0.1, 0, 0.03, 0.15, 0.2, D(bag === 'paper' ? '#e9e6dc' : L.bagCol || '#e7e2d4'), S.sh[3] - 0.3 * kcDot(tor.F, c.fx, c.fy, c.fz)); }
+  else if (bag === 'backpack') { const q = kcLoc(tor, 0, tor.L * 0.62, -0.17 * sc, [0, 0, 0]); blob(q[0], q[1], q[2], kcMul([0, 0, 0], tor.F, 0.1 * sc), kcMul([0, 0, 0], tor.U, 0.22 * sc), kcMul([0, 0, 0], tor.S, 0.16 * sc), D(L.bagCol || '#5d6b4a'), (S.sh[3] + S.hip[3]) / 2 + 0.17 * kcDot(tor.F, c.fx, c.fy, c.fz)); }
   else if (bag === 'umbrella') parts.push({ z: zh - 0.3, f() {
     if (!kcProj(c, h[0], h[1], h[2], kcQ) || !kcProj(c, h[0], 2.2 * sc, h[2], kcQ2)) return;
     ctx.globalAlpha = al; ctx.strokeStyle = D('#22252b'); ctx.lineWidth = Math.max(1, 0.03 * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
@@ -1029,10 +1249,10 @@ function kcHat(ctx, K, c, fig, al, D, tilt, ink) {
   // once loose it lifts off and turns, in the same slow time as the spray
   let ox = 0, oy = 0, oz = 0, rot = 0;
   if (K.hat.fly) { const t = (K.T - K.hat.fly) * 0.3, hp = K.plan.part === 'head' ? 1 : 0.45; ox = K.side * 0.25 * t * hp; oy = (2.6 * t - 4.9 * t * t) * hp; oz = K.dir[2] * 1.6 * t * hp; rot = t * 3.2 * hp * K.side; }
-  const bx = P.head[0] + hd.U[0] * hr0 * 0.62 + ox, by = P.head[1] + hd.U[1] * hr0 * 0.62 + oy, bz = oz;
+  kcLoc(hd, 0, hr0 * 0.62, 0, kcL1); const bx = kcL1[0] + ox, by = kcL1[1] + oy, bz = kcL1[2] + oz;
   if (!kcProj(c, bx, by, bz, kcQ)) return;
   const x = kcQ[0], y = kcQ[1], s = kcQ[2] * sc, col = D(L.hatCol || '#2a2d33'), sq = Math.max(0.06, Math.abs(Math.sin(c.pitch)) + 0.04); // how open a flat ring looks from this height
-  const camF = hd.F[0] * c.rx; // which way "forward" points across the screen
+  const camF = hd.F[0] * c.rx + hd.F[2] * c.rz; // which way "forward" points across the screen
   ctx.save(); ctx.translate(x, y); ctx.rotate(tilt + rot); ctx.globalAlpha = al; ctx.fillStyle = col; ctx.strokeStyle = col;
   const brim = (r) => { ctx.beginPath(); ctx.ellipse(0, 0, r * s, Math.max(1.2, r * s * sq), 0, 0, TAU); ctx.fill(); };
   const drum = (r, h, r2) => { ctx.beginPath(); ctx.moveTo(-r * s, 0); ctx.lineTo(-(r2 || r) * s, -h * s); ctx.ellipse(0, -h * s, (r2 || r) * s, (r2 || r) * s * sq, 0, Math.PI, TAU); ctx.lineTo(r * s, 0); ctx.ellipse(0, 0, r * s, r * s * sq, 0, 0, Math.PI); ctx.closePath(); ctx.fill(); };
@@ -1049,7 +1269,7 @@ function kcHat(ctx, K, c, fig, al, D, tilt, ink) {
   else if (hat === 'helmet') dome(0.197, 0.09);
   else if (hat === 'beret') { ctx.beginPath(); ctx.ellipse(-camF * 0.04 * s, -0.02 * s, 0.21 * s, 0.08 * s, -camF * 0.2, 0, TAU); ctx.fill(); }
   else if (hat === 'hood') { // a ball of cloth round the head, open at the face
-    const toCam = -(hd.F[0] * c.fx + hd.F[1] * c.fy);
+    const toCam = -kcDot(hd.F, c.fx, c.fy, c.fz);
     ctx.beginPath(); ctx.arc(-camF * 0.03 * s, 0.105 * s, 0.204 * s, 0, TAU); ctx.fill();
     if (toCam > -0.35) { ctx.fillStyle = ink; ctx.beginPath(); ctx.ellipse(camF * 0.085 * s, 0.11 * s, 0.11 * s * (0.3 + 0.7 * Math.max(0, toCam)), 0.115 * s, 0, 0, TAU); ctx.fill(); }
   }
@@ -1066,10 +1286,10 @@ function kcInnards(ctx, K, c, fig, al) {
   const items = [];
   const age = (k) => (dmg[k] === undefined ? -1 : T - dmg[k]);
   // how much further from us a point is for each metre along the trunk's side and front axes
-  const dA = tor.S[2] * c.fz, dC = tor.F[0] * c.fx + tor.F[1] * c.fy;
+  const dA = kcDot(tor.S, c.fx, c.fy, c.fz), dC = kcDot(tor.F, c.fx, c.fy, c.fz);
   const zAt = (a, b, cc) => { kcLoc(tor, a, b, cc, kcL0); return (kcL0[0] - c.x) * c.fx + (kcL0[1] - c.y) * c.fy + (kcL0[2] - c.z) * c.fz; };
   const z0 = zAt(0, L * 0.6, 0);
-  if (!kcProj(c, P.sh[0], P.sh[1], 0, kcQ)) return;
+  if (!kcProj(c, P.sh[0], P.sh[1], P.sh[2], kcQ)) return;
   const ps = kcQ[2] * sc; // pixels per metre at the chest, times the figure's size
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
@@ -1113,7 +1333,8 @@ function kcInnards(ctx, K, c, fig, al) {
         let b = L * 0.03 + i * gap, a = 0, cc = -0.032 * sc, fr = tor;
         if (i >= n) { // neck bones: a short run from the top of the trunk into the head
           const k = (i - n + 1) / 4; fr = null;
-          kcSet(kcL0, lerp(P.neck[0] - tor.F[0] * 0.03 * sc, P.head[0] - hd.U[0] * 0.1 * sc - hd.F[0] * 0.02 * sc, k), lerp(P.neck[1] - tor.F[1] * 0.03 * sc, P.head[1] - hd.U[1] * 0.1 * sc - hd.F[1] * 0.02 * sc, k), 0);
+          kcLoc(tor, 0, tor.L, -0.03 * sc, kcL1); kcLoc(hd, 0, -0.1 * sc, -0.02 * sc, kcV3);
+          kcSet(kcL0, lerp(kcL1[0], kcV3[0], k), lerp(kcL1[1], kcV3[1], k), lerp(kcL1[2], kcV3[2], k));
           if (aC >= 0 && i === n + 1) continue;
           if (aC >= 0) kcL0[2] += (i > n + 1 ? 0.014 : -0.008) * sc * easeOut(aC / 0.3);
         } else {
@@ -1121,9 +1342,9 @@ function kcInnards(ctx, K, c, fig, al) {
           if (iB >= 0 && Math.abs(i - iB) === 1) a = fs * 0.012 * sc * easeOut(aS / 0.3) * (i > iB ? 1 : -0.6);
           kcLoc(tor, a, b, cc, kcL0);
         }
-        const ux = fr ? tor.U[0] : hd.U[0], uy = fr ? tor.U[1] : hd.U[1], hh = gap * 0.34;
-        if (pass) { if (kcProj(c, kcL0[0] - ux * hh, kcL0[1] - uy * hh, kcL0[2], kcQ) && kcProj(c, kcL0[0] + ux * hh, kcL0[1] + uy * hh, kcL0[2], kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
-        else if (kcProj(c, kcL0[0], kcL0[1], kcL0[2] - 0.036 * sc, kcQ) && kcProj(c, kcL0[0], kcL0[1], kcL0[2] + 0.036 * sc, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } // the little wings each side
+        const Uv = fr ? tor.U : hd.U, Sv = tor.S, hh = gap * 0.34, ww = 0.036 * sc;
+        if (pass) { if (kcProj(c, kcL0[0] - Uv[0] * hh, kcL0[1] - Uv[1] * hh, kcL0[2] - Uv[2] * hh, kcQ) && kcProj(c, kcL0[0] + Uv[0] * hh, kcL0[1] + Uv[1] * hh, kcL0[2] + Uv[2] * hh, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } }
+        else if (kcProj(c, kcL0[0] - Sv[0] * ww, kcL0[1] - Sv[1] * ww, kcL0[2] - Sv[2] * ww, kcQ) && kcProj(c, kcL0[0] + Sv[0] * ww, kcL0[1] + Sv[1] * ww, kcL0[2] + Sv[2] * ww, kcQ2)) { ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); } // the little wings each side
       }
       ctx.stroke();
     }
@@ -1190,7 +1411,7 @@ function kcInnards(ctx, K, c, fig, al) {
         const ag = age(g.id), beat = g.id === 'heart' && ag < 0 ? 0.05 * Math.pow(Math.max(0, Math.sin(T * 5.2)), 6) : 0;
         const sw = ag >= 0 ? 0.3 * Math.exp(-ag * 3.2) * (0.6 + 0.4 * Math.cos(ag * 16)) - 0.07 * smooth(ag / 0.9) : beat, k = sc * (1 + sw);
         kcLoc(tor, g.a * sc * bw, g.b * L, g.c * sc, kcL1);
-        kcSet(kcV1, 0, 0, tor.S[2] * g.ra * bw * k); kcMul(kcV2, tor.U, g.rb * k * (ag >= 0 && g.id.charAt(0) === 'l' ? 1 - 0.12 * smooth(ag / 1.2) : 1)); kcMul(kcV3, tor.F, g.rc * k);
+        kcMul(kcV1, tor.S, g.ra * bw * k); kcMul(kcV2, tor.U, g.rb * k * (ag >= 0 && g.id.charAt(0) === 'l' ? 1 - 0.12 * smooth(ag / 1.2) : 1)); kcMul(kcV3, tor.F, g.rc * k);
         ctx.globalAlpha = al; ctx.beginPath(); if (!kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2, kcV3)) return;
         ctx.fillStyle = ag >= 0 ? mix(g.col, '#ff5a4a', 0.75 * Math.exp(-ag * 4)) : g.col; ctx.fill();
         ctx.strokeStyle = 'rgba(40,6,10,0.55)'; ctx.lineWidth = 1; ctx.stroke();
@@ -1198,7 +1419,7 @@ function kcInnards(ctx, K, c, fig, al) {
         ctx.fillStyle = g.hi; ctx.globalAlpha = al * 0.55; ctx.beginPath(); ctx.ellipse(cx - rb * 0.22, cy - rb * 0.28, ra * 0.5, rb * 0.42, an, 0, TAU); ctx.fill();
         if (g.id === 'heart') { ctx.globalAlpha = al; ctx.strokeStyle = g.col; ctx.lineWidth = Math.max(1.5, 0.018 * ps); ctx.beginPath(); kcRun(ctx, c, tor, [0.012, g.b * L / sc + 0.045, 0.03, 0.0, g.b * L / sc + 0.085, 0.02, -0.02, g.b * L / sc + 0.095, 0.0], sc, 1); ctx.stroke(); }
         if (ag >= 0) { // the tear along the round's line
-          kcLoc(tor, g.a * sc * bw, pl.b0, pl.c0, kcL1); kcSet(kcV1, 0, 0, g.ra * sc * bw * 0.95 * easeOut(ag / 0.2)); kcMul(kcV2, tor.U, 0.016 * sc * (0.5 + easeOut(ag / 0.4)));
+          kcLoc(tor, g.a * sc * bw, pl.b0, pl.c0, kcL1); kcMul(kcV1, tor.S, g.ra * sc * bw * 0.95 * easeOut(ag / 0.2)); kcMul(kcV2, tor.U, 0.016 * sc * (0.5 + easeOut(ag / 0.4)));
           ctx.globalAlpha = al; ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill();
         }
       } });
@@ -1209,7 +1430,7 @@ function kcInnards(ctx, K, c, fig, al) {
       for (let i = 0; i <= 24; i++) { const r = Math.floor(i / 5), u = (i % 5) / 4; pts.push((r % 2 ? 1 - u : u) * 0.17 - 0.085 + (ag >= 0 ? 0.008 * Math.sin(i * 2.1) * easeOut(ag / 0.4) : 0), (L / sc) * (0.29 - r * 0.052) - (u === 0 || u === 1 ? 0.012 : 0), 0.03); }
       ctx.globalAlpha = al; ctx.strokeStyle = '#8f5a4c'; ctx.lineWidth = Math.max(2, 0.036 * ps); ctx.beginPath(); kcRun(ctx, c, tor, pts, sc * bw, 1); ctx.stroke();
       ctx.strokeStyle = ag >= 0 ? mix('#cf9580', '#ff5a4a', 0.6 * Math.exp(-ag * 4)) : '#cf9580'; ctx.lineWidth = Math.max(1.2, 0.024 * ps); ctx.stroke();
-      if (ag >= 0) { kcLoc(tor, 0, pl.b0, pl.c0, kcL1); kcSet(kcV1, 0, 0, 0.09 * sc * easeOut(ag / 0.25)); kcMul(kcV2, tor.U, 0.02 * sc); ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
+      if (ag >= 0) { kcLoc(tor, 0, pl.b0, pl.c0, kcL1); kcMul(kcV1, tor.S, 0.09 * sc * easeOut(ag / 0.25)); kcMul(kcV2, tor.U, 0.02 * sc); ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
     } });
   }
   items.push({ z: S.head[3], f() { kcSkull(ctx, K, c, fig, al, bone, boneD, dark); } });
@@ -1222,19 +1443,19 @@ function kcInnards(ctx, K, c, fig, al) {
 function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
   const hd = fig.hd, sc = fig.sc, fs = fig.fs, pl = K.plan, T = K.T, dmg = K.dmg;
   const age = (k) => (dmg[k] === undefined ? -1 : T - dmg[k]);
-  const cx3 = hd.o[0] + hd.U[0] * 0.018 * sc, cy3 = hd.o[1] + hd.U[1] * 0.018 * sc, rs = 0.142 * sc;
-  if (!kcProj(c, cx3, cy3, 0, kcQ)) return;
+  const cx3 = hd.o[0] + hd.U[0] * 0.018 * sc, cy3 = hd.o[1] + hd.U[1] * 0.018 * sc, cz3 = hd.o[2] + hd.U[2] * 0.018 * sc, rs = 0.142 * sc;
+  if (!kcProj(c, cx3, cy3, cz3, kcQ)) return;
   const x = kcQ[0], y = kcQ[1], s = kcQ[2], R = rs * s;
-  const camF = (hd.F[0] * (c.x - cx3) + hd.F[1] * (c.y - cy3)) / (Math.hypot(c.x - cx3, c.y - cy3, c.z) || 1); // 1 = looking straight at the face
+  const camF = kcDot(hd.F, c.x - cx3, c.y - cy3, c.z - cz3) / (Math.hypot(c.x - cx3, c.y - cy3, c.z - cz3) || 1); // 1 = looking straight at the face
   const aIn = age('skullIn'), aOut = age('skullOut'), aBr = age('brain'), head = pl.part === 'head';
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   // the brain first, since the skull is drawn round it
   if (K.gore) {
     const sw = aBr >= 0 ? 0.26 * Math.exp(-aBr * 3) * (0.6 + 0.4 * Math.cos(aBr * 15)) : 0;
-    kcSet(kcV1, 0, 0, 0.105 * sc * (1 + sw * 1.6)); kcMul(kcV2, hd.U, 0.085 * sc * (1 - sw * 0.4)); kcMul(kcV3, hd.F, 0.115 * sc);
+    kcMul(kcV1, hd.S, 0.105 * sc * (1 + sw * 1.6)); kcMul(kcV2, hd.U, 0.085 * sc * (1 - sw * 0.4)); kcMul(kcV3, hd.F, 0.115 * sc);
     const bz = aBr >= 0 ? 0.012 * sc * smooth(aBr / 0.3) : 0; // pushed toward the way out
     ctx.globalAlpha = al; ctx.beginPath();
-    if (kcEll(ctx, c, hd.o[0] + hd.U[0] * 0.03 * sc, hd.o[1] + hd.U[1] * 0.03 * sc, bz, kcV1, kcV2, kcV3)) {
+    if (kcEll(ctx, c, hd.o[0] + hd.U[0] * 0.03 * sc + hd.S[0] * bz * fs, hd.o[1] + hd.U[1] * 0.03 * sc + hd.S[1] * bz * fs, hd.o[2] + hd.U[2] * 0.03 * sc + hd.S[2] * bz * fs, kcV1, kcV2, kcV3)) {
       ctx.fillStyle = aBr >= 0 ? mix('#d9979f', '#ff5a4a', 0.7 * Math.exp(-aBr * 4)) : '#d9979f'; ctx.fill();
       const bx = kcQ[0], by = kcQ[1], ra = kcE[0], rb = kcE[1], an = kcE[2];
       // the folds: a split down the middle and a few curls each side
@@ -1244,7 +1465,7 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
       for (let i = -1; i <= 1; i += 2) for (let j = 0; j < 3; j++) { const px = i * ra * (0.3 + 0.22 * j), py = rb * (-0.45 + 0.4 * j); ctx.moveTo(px - ra * 0.14, py); ctx.quadraticCurveTo(px, py - rb * 0.28, px + ra * 0.14, py + rb * 0.05); }
       ctx.stroke(); ctx.restore();
       ctx.fillStyle = '#f0bcc0'; ctx.globalAlpha = al * 0.45; ctx.beginPath(); ctx.ellipse(bx - rb * 0.2, by - rb * 0.32, ra * 0.42, rb * 0.3, an, 0, TAU); ctx.fill();
-      if (aBr >= 0) { kcLoc(hd, 0, pl.u0, pl.c0, kcL1); kcSet(kcV1, 0, 0, 0.1 * sc * easeOut(aBr / 0.2)); kcMul(kcV2, hd.U, 0.016 * sc * (0.5 + easeOut(aBr / 0.4))); ctx.globalAlpha = al; ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
+      if (aBr >= 0) { kcLoc(hd, 0, pl.u0, pl.c0, kcL1); kcMul(kcV1, hd.S, 0.1 * sc * easeOut(aBr / 0.2)); kcMul(kcV2, hd.U, 0.016 * sc * (0.5 + easeOut(aBr / 0.4))); ctx.globalAlpha = al; ctx.fillStyle = '#35040a'; ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2)) ctx.fill(); }
     }
   }
   // the dome
@@ -1254,7 +1475,7 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
   const pt = (a, u, f, out) => { kcLoc(hd, a * sc, u * sc, f * sc, kcL0); return kcProj(c, kcL0[0], kcL0[1], kcL0[2], out); };
   if (camF > 0.12) {
     ctx.fillStyle = dark; ctx.globalAlpha = al * Math.min(1, camF * 2);
-    for (let sg = -1; sg <= 1; sg += 2) { ctx.beginPath(); kcLoc(hd, sg * 0.052 * sc, 0.012 * sc, 0.118 * sc, kcL1); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcSet(kcV1, 0, 0, 0.034 * sc), kcMul(kcV2, hd.U, 0.03 * sc))) ctx.fill(); }
+    for (let sg = -1; sg <= 1; sg += 2) { ctx.beginPath(); kcLoc(hd, sg * 0.052 * sc, 0.012 * sc, 0.118 * sc, kcL1); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcMul(kcV1, hd.S, 0.034 * sc), kcMul(kcV2, hd.U, 0.03 * sc))) ctx.fill(); }
     if (pt(0, -0.035, 0.14, kcQ) && pt(0.016, -0.07, 0.132, kcQ2)) { ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); if (pt(-0.016, -0.07, 0.132, kcQ2)) ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.closePath(); ctx.fill(); }
   }
   // the jaw: a U of bone hinged below each ear
@@ -1292,8 +1513,8 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
         for (let j = 0; j <= Math.min(nseg, Math.ceil(grow)); j++) {
           let a = cr.line[j * 3], u = cr.line[j * 3 + 1], f = cr.line[j * 3 + 2];
           if (j > grow) { const k = grow - (j - 1); a = lerp(cr.line[j * 3 - 3], a, k); u = lerp(cr.line[j * 3 - 2], u, k); f = lerp(cr.line[j * 3 - 1], f, k); }
-          const wx = cx3 + (hd.U[0] * u + hd.F[0] * f) * rs, wy = cy3 + (hd.U[1] * u + hd.F[1] * f) * rs, wz = a * fs * rs;
-          const facing = (wx - cx3) * (c.x - cx3) + (wy - cy3) * (c.y - cy3) + wz * c.z > -0.02; // only the half of the dome turned toward us
+          const wx = cx3 + (hd.S[0] * a + hd.U[0] * u + hd.F[0] * f) * rs, wy = cy3 + (hd.S[1] * a + hd.U[1] * u + hd.F[1] * f) * rs, wz = cz3 + (hd.S[2] * a + hd.U[2] * u + hd.F[2] * f) * rs;
+          const facing = (wx - cx3) * (c.x - cx3) + (wy - cy3) * (c.y - cy3) + (wz - cz3) * (c.z - cz3) > -0.02; // only the half of the dome turned toward us
           if (!facing || !kcProj(c, wx, wy, wz, kcQ)) { pen = false; continue; }
           if (pen) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); pen = true;
         }
@@ -1307,11 +1528,11 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
       for (let i = 0; i < n; i++) { const an = (i / n) * TAU, rr = pr * (0.8 + 0.4 * kcHash(i * 5.3 + pl.u0 * 50)); hole.push(uc + Math.cos(an) * rr, pl.c0 + Math.sin(an) * rr); }
       const ez = pl.chord * 0.96;
       ctx.fillStyle = dark; ctx.globalAlpha = al * 0.9; ctx.beginPath();
-      for (let i = 0; i < n; i++) { const wx = cx3 + hd.U[0] * hole[i * 2] + hd.F[0] * hole[i * 2 + 1], wy = cy3 + hd.U[1] * hole[i * 2] + hd.F[1] * hole[i * 2 + 1]; if (!kcProj(c, wx, wy, ez, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
+      for (let i = 0; i < n; i++) { const hu = hole[i * 2], hf = hole[i * 2 + 1], ea = ez * fs; if (!kcProj(c, cx3 + hd.S[0] * ea + hd.U[0] * hu + hd.F[0] * hf, cy3 + hd.S[1] * ea + hd.U[1] * hu + hd.F[1] * hf, cz3 + hd.S[2] * ea + hd.U[2] * hu + hd.F[2] * hf, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
       ctx.closePath(); ctx.fill();
       ctx.fillStyle = bone; ctx.strokeStyle = boneD; ctx.lineWidth = 1; ctx.globalAlpha = al * clamp(1.6 - aOut * 0.5, 0, 1); ctx.beginPath();
       const cr = Math.cos(q.rot), sr = Math.sin(q.rot);
-      for (let i = 0; i < n; i++) { const du = hole[i * 2] - uc, df = hole[i * 2 + 1] - pl.c0, ru = du * cr - df * sr * 0.5, rz = du * sr; const wx = cx3 + hd.U[0] * (uc + ru) + hd.F[0] * (pl.c0 + df) + q.x, wy = cy3 + hd.U[1] * (uc + ru) + hd.F[1] * (pl.c0 + df) + q.y; if (!kcProj(c, wx, wy, ez + q.z + rz, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
+      for (let i = 0; i < n; i++) { const du = hole[i * 2] - uc, df = hole[i * 2 + 1] - pl.c0, ru = du * cr - df * sr * 0.5, rz = du * sr, hu = uc + ru, hf = pl.c0 + df, ea = ez * fs; if (!kcProj(c, cx3 + hd.S[0] * ea + hd.U[0] * hu + hd.F[0] * hf + q.x, cy3 + hd.S[1] * ea + hd.U[1] * hu + hd.F[1] * hf + q.y, cz3 + hd.S[2] * ea + hd.U[2] * hu + hd.F[2] * hf + q.z + rz, kcQ)) break; if (i) ctx.lineTo(kcQ[0], kcQ[1]); else ctx.moveTo(kcQ[0], kcQ[1]); }
       ctx.closePath(); ctx.fill(); ctx.stroke();
     }
   }
@@ -1330,7 +1551,7 @@ function kcTrack(ctx, K, c, fig) {
     kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcL0);
     if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
     const x = (T - sm[i * 2 + 1]) / 0.16, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
-    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push(0.034 * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push(0.0065 * Math.min(1, ends * 1.6) * kcQ[2]);
+    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push((0.02 + 0.03 * K.power) * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push((0.005 + 0.004 * K.exitK) * Math.min(1, ends * 1.6) * kcQ[2]);
   }
   let ax = xs[n - 1] - xs[0], ay = ys[n - 1] - ys[0]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
   const shape = (w, add) => { ctx.beginPath(); for (let i = 0; i < n; i++) { const x = xs[i] - ay * (w[i] + add), y = ys[i] + ax * (w[i] + add); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } for (let i = n - 1; i >= 0; i--) ctx.lineTo(xs[i] + ay * (w[i] + add), ys[i] - ax * (w[i] + add)); ctx.closePath(); };
@@ -1341,8 +1562,8 @@ function kcTrack(ctx, K, c, fig) {
 }
 // Blood, bone and dust in flight. Each bit is a point in space put through the camera; drops
 // are drawn stretched along the way they are moving.
-function kcDrawParts(ctx, K, c) {
-  const ps = K.parts; if (!ps.length) return;
+function kcDrawParts(ctx, K, c, list) {
+  const ps = list || K.parts; if (!ps.length) return;
   ctx.lineCap = 'round';
   const flat = Math.max(0.12, Math.abs(Math.sin(c.pitch)));
   // mist and dust: soft dots that swell and thin
@@ -1363,7 +1584,7 @@ function kcDrawParts(ctx, K, c) {
       for (let i = 0; i < ps.length; i++) {
         const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
         const s = kcQ[2], x = kcQ[0], y = kcQ[1], fade = clamp((p.life - p.age) / 0.05, 0, 1), r = Math.max(0.8, p.r * s) * (0.4 + 0.6 * fade);
-        if (p.stuck) { if (shape) { ctx.moveTo(x + r * 2.2, y); ctx.ellipse(x, y, r * 2.2, Math.max(0.6, r * 2.2 * flat), 0, 0, TAU); } continue; }
+        if (p.stuck) { if (shape) { if (p.wall) { kcEll(ctx, c, p.x, p.y, p.z, kcSet(kcV1, p.r * 2.6, 0, 0), kcSet(kcV2, 0, p.r * 2.2, 0)); } else { ctx.moveTo(x + r * 2.2, y); ctx.ellipse(x, y, r * 2.2, Math.max(0.6, r * 2.2 * flat), 0, 0, TAU); } } continue; }
         if (shape) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); continue; }
         if (!kcProj(c, p.x - p.vx * 0.011, p.y - p.vy * 0.011, p.z - p.vz * 0.011, kcQ2)) continue;
         let tx = kcQ2[0] - x, ty = kcQ2[1] - y; const tl = Math.hypot(tx, ty); if (tl < r * 0.7) continue;
@@ -1373,12 +1594,29 @@ function kcDrawParts(ctx, K, c) {
       ctx.fill();
     }
   }
-  // splinters of bone: short pale sticks, turning
-  ctx.strokeStyle = K.gore ? '#efe7d2' : '#d9ecfa';
+  // splinters (of bone, of wood) and chips of brick: short sticks, turning
+  for (let pass = 0; pass < 3; pass++) {
+    const kind = pass === 0 ? 2 : pass === 1 ? 6 : 8;
+    ctx.strokeStyle = kind === 2 ? (K.gore ? '#efe7d2' : '#d9ecfa') : kind === 6 ? '#b88a55' : '#a29a90';
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]; if (p.k !== kind || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+      const s = kcQ[2], l = p.r * s * (kind === 8 ? 0.3 : 0.5), cs = Math.cos(p.rot), sn = Math.sin(p.rot) * (p.stuck ? flat : 1);
+      ctx.globalAlpha = clamp((p.life - p.age) / 0.06, 0, 1); ctx.lineWidth = Math.max(1, p.r * s * (kind === 8 ? 0.45 : 0.28)); ctx.beginPath(); ctx.moveTo(kcQ[0] - cs * l, kcQ[1] - sn * l); ctx.lineTo(kcQ[0] + cs * l, kcQ[1] + sn * l); ctx.stroke();
+    }
+  }
+  // glass: small bright shards that turn and catch the light
+  ctx.fillStyle = '#d6ecff';
   for (let i = 0; i < ps.length; i++) {
-    const p = ps[i]; if (p.k !== 2 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
-    const s = kcQ[2], l = p.r * s * 0.5, cs = Math.cos(p.rot), sn = Math.sin(p.rot) * (p.stuck ? flat : 1);
-    ctx.globalAlpha = clamp((p.life - p.age) / 0.06, 0, 1); ctx.lineWidth = Math.max(1, p.r * s * 0.28); ctx.beginPath(); ctx.moveTo(kcQ[0] - cs * l, kcQ[1] - sn * l); ctx.lineTo(kcQ[0] + cs * l, kcQ[1] + sn * l); ctx.stroke();
+    const p = ps[i]; if (p.k !== 5 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+    const r = Math.max(1.2, p.r * kcQ[2]), a = p.rot, w = 0.45 + 0.55 * Math.abs(Math.sin(p.rot * 1.7));
+    ctx.globalAlpha = 0.85 * clamp((p.life - p.age) / 0.1, 0, 1);
+    ctx.beginPath(); ctx.moveTo(kcQ[0] + Math.cos(a) * r, kcQ[1] + Math.sin(a) * r * w); ctx.lineTo(kcQ[0] + Math.cos(a + 2.3) * r * 0.6, kcQ[1] + Math.sin(a + 2.3) * r * 0.6 * w); ctx.lineTo(kcQ[0] + Math.cos(a + 4.1) * r * 0.8, kcQ[1] + Math.sin(a + 4.1) * r * 0.8 * w); ctx.closePath(); ctx.fill();
+  }
+  // sparks: bright streaks along the way they fly
+  ctx.strokeStyle = '#ffd98a'; ctx.lineCap = 'round';
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i]; if (p.k !== 7 || !kcProj(c, p.x, p.y, p.z, kcQ) || !kcProj(c, p.x - p.vx * 0.012, p.y - p.vy * 0.012, p.z - p.vz * 0.012, kcQ2)) continue;
+    ctx.globalAlpha = clamp(1 - p.age / p.life, 0, 1); ctx.lineWidth = Math.max(1, p.r * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }

@@ -59,6 +59,10 @@ Oracle.prototype.predict = function (i, dt) {
   if (!b) return null;
   const win0 = !!s.winAt, fail0 = !!s.failInfo;
   const path = [[b.t0, b.ox, b.oy, b.oz], [s.t, b.x, b.y, b.z]], kills = [], hits = [];
+  // Everything else the round meets on the way, in order: glass, a door or a fence it punches
+  // through, the wall or the ground it ends in. The kill camera shows these (and never anything
+  // the round did not do). Each kill keeps what came before it (cover) and after it.
+  const seq = [];
   s.ev.length = 0;
   let guard = 0;
   while (b.alive && s.state === 'play' && guard++ < 1400) {
@@ -73,12 +77,16 @@ Oracle.prototype.predict = function (i, dt) {
         const tf = clamp((z - pz) / Math.max(1, vz), 0, dt);
         // where the round goes in: the recorded hit if there is one, otherwise the bullet's own line at that distance
         const hx = h ? h.x : px + vx * tf, hy = h ? h.y : py + vy * tf;
-        kills.push({ id: e.id, part: e.part, x: hx, y: hy, z, t: pt + tf, vx, vy, vz, ax: a ? a.x : hx, ay: a ? a.y : hy - 1, inVeh: !!(a && a.inVeh), behind: !!(a && a.behind) });
+        kills.push({ id: e.id, part: e.part, x: hx, y: hy, z, t: pt + tf, vx, vy, vz, ax: a ? a.x : hx, ay: a ? a.y : hy - 1, inVeh: !!(a && a.inVeh), behind: !!(a && a.behind), cover: seq.slice(), seqAt: seq.length });
+      } else if (e.k === 'impact' || e.k === 'glass' || e.k === 'objhit' || e.k === 'tyre' || e.k === 'vest') {
+        const z = e.plane ? e.plane.z : e.z;
+        if (isFinite(z) && isFinite(e.x)) seq.push({ k: e.k, x: e.x, y: e.y, z, mat: e.k === 'glass' ? 'glass' : e.k === 'impact' ? e.mat : 'metal', small: !!e.small, ground: !!e.ground, t: pt + clamp((z - pz) / Math.max(1, vz), 0, dt) });
       }
     }
     s.ev.length = 0;
     path.push([s.t, b.x, b.y, b.z]);
   }
+  kills.forEach((k) => { k.after = seq.slice(k.seqAt); });
   const out = { i, t0: b.t0, path, kills, win: !win0 && !!s.winAt && !s.failInfo, fail: !fail0 && !!s.failInfo, stopped: !b.alive, tEnd: s.t };
   // the copy now lives in the future: build a new one from the log
   O.synced = false; O.rb = { s: O.mk(), n: 0, fi: 0 };

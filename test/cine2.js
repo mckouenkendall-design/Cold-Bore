@@ -16,6 +16,7 @@
 //   RESIZE=3                  turn the screen round this many seconds into the film
 //   VANTAGE=1                 shooting position, for missions that offer more than one
 //   DPR=1.5                   device pixel ratio
+//   SETUP="<js>" or "@file"   code run in the page before the mission starts (to stage a test scene)
 // Frames: shots/k2_<mission>_<part>[_tag]_<WxH>_<nn>.png, sheets: shots/k2_..._sheet<n>.png
 const { chromium } = require('playwright');
 const path = require('path');
@@ -40,13 +41,14 @@ const fs = require('fs');
     // take the loop over: from here every frame is exactly one sixtieth of a second, whatever the machine is doing
     await page.evaluate(() => { window.requestAnimationFrame = () => 0; });
     await page.waitForTimeout(120);
-    await page.evaluate(({ m, gun, vantage, cfgJ, gore, killcam }) => {
+    await page.evaluate(({ m, gun, vantage, cfgJ, gore, killcam, setup }) => {
+      if (setup) (0, eval)(setup);
       if (gore === '0') CB.Save.data.settings.gore = false;
       if (killcam === '0') CB.Save.data.settings.killcam = false;
       // start from the menus, the way a player does, so the results screen has somewhere to appear
       try { CB.Sfx.unlock(); } catch (e) { /* no sound in this browser */ }
       CB.UI.launch(m, { gun, cfg: Object.assign(CB.defaultConfig(gun), cfgJ ? JSON.parse(cfgJ) : {}), shotSeed: 1, vantage });
-    }, { m, gun, vantage: +(E.VANTAGE || 0), cfgJ: E.CFG || '', gore: E.GORE || '', killcam: E.KILLCAM || '' });
+    }, { m, gun, vantage: +(E.VANTAGE || 0), cfgJ: E.CFG || '', gore: E.GORE || '', killcam: E.KILLCAM || '', setup: E.SETUP ? (E.SETUP.charAt(0) === '@' ? fs.readFileSync(E.SETUP.slice(1), 'utf8') : E.SETUP) : '' });
     await page.waitForTimeout(1000); // let the fade-in at the start of the mission clear
     const info = await page.evaluate(({ tid, part, at, until, pre }) => {
       const G = CB.Game;
