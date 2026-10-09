@@ -1,11 +1,13 @@
-// The sound test. A script cannot tell whether something sounds good, but it can measure it.
-// Every sound is rendered through the game's own sound code into an offline audio context in
-// headless Chromium (no speaker involved), then measured:
+// The sound test (everything but the rifles' reports, which test/sfx_guns.js covers). A script
+// cannot tell whether something sounds good, but it can measure it. Every sound is rendered through
+// the game's own sound code into an offline audio context in headless Chromium (no speaker
+// involved), then measured:
 //   peak    the loudest sample (1.0 is full scale: anything at or over it would clip)
 //   len     how long it lasts, until it falls 40 dB under its loudest moment (ms)
-//   bright  a rough brightness number: the spectral centroid, the "average pitch" of all its
-//           energy (Hz). Higher means brighter and sharper, lower means duller and deeper.
-// It checks a few promises, then saves WAV files in shots/sfx/ so a person can listen.
+//   bright  the spectral centroid, the "average pitch" of all its energy (Hz): higher is brighter
+//   loud    how loud it feels: the loudest 50 ms, weighted the way the ear weights loudness (dBFS)
+//   low     how much of its energy is below 150 Hz (dB of the whole)
+// It checks a set of promises, then saves WAV files in shots/sfx/ so a person can listen.
 // usage: NODE_PATH=/opt/npm-tools/node_modules node test/sfx.js
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -17,28 +19,9 @@ const OUT = path.join(ROOT, 'shots', 'sfx');
 
 // ---- runs inside the page ----------------------------------------------------------------
 function pageLib() {
-  const X = CB.Sfx;
+  const X = CB.Sfx, SG = X.gen;
   // the same random numbers every run, so the numbers below do not wobble
   const seeded = (seed) => { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
-  // the suppressed shot exactly as it was before this change, for comparison
-  const oldSupp = (e) => {
-    const c = X.CAL[e.cal] || X.CAL.c308, p = c.p;
-    X.click(0, 4200, 0.12);
-    X.noise({ type: 'bandpass', f: 1300 * p, q: 0.8, dur: 0.075, gain: 0.3 + c.boom * 0.08 });
-    X.noise({ type: 'lowpass', f: 420, dur: 0.11, gain: 0.26 });
-    X.tone({ f: 170 * p, f1: 70, dur: 0.07, gain: 0.22 });
-    [2150, 3350, 5200].forEach((f, i) => X.tone({ at: 0.012 + i * 0.003, f: f * p, dur: 0.03, gain: 0.05 }));
-    if (!e.sub) X.noise({ at: 0.07, type: 'highpass', f: 2600, dur: 0.09, gain: 0.07, verb: 0.9 });
-    const cyc = e.cycle;
-    if (e.action === 'bolt') {
-      X.click(cyc * 0.2, 2600, 0.14); X.slide(cyc * 0.3, 2200, 800, cyc * 0.14, 0.14); X.click(cyc * 0.45, 1900, 0.18);
-      X.brass(cyc * 0.5); X.slide(cyc * 0.58, 800, 2300, cyc * 0.14, 0.14); X.click(cyc * 0.76, 1500, 0.2);
-    } else if (e.action === 'semi') { X.click(0.035, 2300, 0.16); X.click(0.075, 1700, 0.13); X.brass(0.09); }
-  };
-  // the old kill confirm (before this change): the far smack plus a tiny tone when lethal
-  const oldHit = (e, at) => { X.impact('flesh', e.dist, at); if (e.lethal) X.tone({ at: 0.02, f: 1900, dur: 0.05, gain: 0.05 }); };
-
-  // a radix-2 FFT, in place
   const fft = (re, im) => {
     const n = re.length;
     for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
@@ -53,30 +36,26 @@ function pageLib() {
   // shows). So every render starts with LEAD seconds of silence, and that part is cut off here.
   const LEAD = 0.5;
   const trim = (buf) => { const a = Math.round(LEAD * buf.sampleRate); return [buf.getChannelData(0).subarray(a), buf.getChannelData(1).subarray(a), buf.sampleRate]; };
+  const spectrum = (L, R, sr, i0, i1) => { // centroid and share below 150 Hz between two sample indices
+    let fs = 0, ps = 0, lo = 0; const N = 2048, re = new Float32Array(N), im = new Float32Array(N);
+    for (let i = i0; i + N <= i1; i += N / 2) { for (let j = 0; j < N; j++) { re[j] = ((L[i + j] + R[i + j]) / 2) * (0.5 - 0.5 * Math.cos((2 * Math.PI * j) / (N - 1))); im[j] = 0; } fft(re, im); for (let k = 1; k < N / 2; k++) { const p = re[k] * re[k] + im[k] * im[k], f = (k * sr) / N; fs += f * p; ps += p; if (f < 150) lo += p; } }
+    return { bright: Math.round(fs / Math.max(1e-20, ps)), low: +(10 * Math.log10((lo + 1e-20) / Math.max(1e-20, ps))).toFixed(1) };
+  };
   const analyze = (buf, win) => {
     const [L, R, sr] = trim(buf), n = L.length;
     let peak = 0, sum = 0;
     for (let i = 0; i < n; i++) { const a = Math.abs(L[i]), b = Math.abs(R[i]); if (a > peak) peak = a; if (b > peak) peak = b; sum += L[i] * L[i] + R[i] * R[i]; }
-    // 5 ms loudness steps
     const w = Math.round(sr * 0.005), env = [];
     for (let i = 0; i + w <= n; i += w) { let s = 0; for (let j = i; j < i + w; j++) s += (L[j] * L[j] + R[j] * R[j]) / 2; env.push(Math.sqrt(s / w)); }
     const em = Math.max(...env), thr = em * Math.pow(10, -40 / 20), thr30 = em * Math.pow(10, -30 / 20);
     let first = env.findIndex((v) => v >= thr), last = env.length - 1; while (last > 0 && env[last] < thr) last--;
     const active = env.filter((v) => v >= thr30).length * 5;
-    let loud = 0; for (let i = 0; i + 10 <= env.length; i++) { let s = 0; for (let j = i; j < i + 10; j++) s += env[j] * env[j]; loud = Math.max(loud, Math.sqrt(s / 10)); }
-    // brightness: the centroid of all the energy, frame by frame
-    const N = 2048, hop = 1024, re = new Float32Array(N), im = new Float32Array(N), pow = new Float64Array(N / 2);
-    for (let i = 0; i + N <= n; i += hop) {
-      for (let j = 0; j < N; j++) { const hw = 0.5 - 0.5 * Math.cos((2 * Math.PI * j) / (N - 1)); re[j] = ((L[i + j] + R[i + j]) / 2) * hw; im[j] = 0; }
-      fft(re, im);
-      for (let k = 1; k < N / 2; k++) pow[k] += re[k] * re[k] + im[k] * im[k];
-    }
-    let fs = 0, ps = 0; for (let k = 1; k < N / 2; k++) { const f = (k * sr) / N; fs += f * pow[k]; ps += pow[k]; }
-    const out = { peak: +peak.toFixed(3), peakDb: +db(peak).toFixed(1), len: first < 0 ? 0 : (last - first + 1) * 5, active, bright: Math.round(fs / Math.max(1e-20, ps)), rmsDb: +db(Math.sqrt(sum / (2 * n))).toFixed(1), loudDb: +db(loud).toFixed(1) };
-    if (win) { // loudness (dBFS) inside a window, e.g. after 'end' to prove everything stopped
+    const sp = spectrum(L, R, sr, 0, n);
+    const out = { peak: +peak.toFixed(3), peakDb: +db(peak).toFixed(1), len: first < 0 ? 0 : (last - first + 1) * 5, active, bright: sp.bright, low: sp.low, rmsDb: +db(Math.sqrt(sum / (2 * n))).toFixed(1), loudDb: +SG.loud(L, R, sr).toFixed(1) };
+    if (win) { // inside a window: loudness (dBFS), brightness, e.g. after 'end' to prove everything stopped
       const a = Math.floor(win[0] * sr), b = Math.min(n, Math.floor(win[1] * sr)); let s = 0, pk = 0;
       for (let i = a; i < b; i++) { s += (L[i] * L[i] + R[i] * R[i]) / 2; pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i])); }
-      out.winRmsDb = +db(Math.sqrt(s / Math.max(1, b - a))).toFixed(1); out.winPeakDb = +db(pk).toFixed(1);
+      out.winRmsDb = +db(Math.sqrt(s / Math.max(1, b - a))).toFixed(1); out.winPeakDb = +db(pk).toFixed(1); out.winBright = spectrum(L, R, sr, a, b).bright;
     }
     return out;
   };
@@ -92,18 +71,20 @@ function pageLib() {
     return btoa(s);
   };
 
-  // the kill camera beats, with what a real film sends
+  // A kill camera film as the real one sends it (src/21_killcam.js): the true rate is 0.05 at the
+  // rifle and from the swing through the X-ray, about 0.2 to 1 in the flight, and climbs from 0.06
+  // toward 0.55 in the hold. Times are those of a real 155 m chest shot (test/cine2.js BEATS=1).
   const kco = (rate, extra, gore) => Object.assign({ rate, part: 'torso', cal: 'c308', power: 0.8, gore: gore !== false, quiet: false, sub: false }, extra || {});
-  const seq = (gore, rateOf) => [
-    [0, () => X.kc('fly', kco(rateOf(0.12), null, gore))],
-    [2.2, () => X.kc('near', kco(rateOf(0.2), null, gore))],
-    [2.75, () => X.kc('enter', kco(rateOf(0.1), null, gore))],
-    [2.85, () => X.kc('bone', kco(rateOf(0.1), { bone: 'rib' }, gore))],
-    [2.98, () => X.kc('bone', kco(rateOf(0.1), { bone: 'spine' }, gore))],
-    [3.3, () => X.kc('exit', kco(rateOf(0.12), { size: 0.8 }, gore))],
-    [4.4, () => X.kc('fall', kco(rateOf(0.2), { mat: 'dirt' }, gore))],
-    [5.6, () => X.kc('end', kco(rateOf(0.3), null, gore))],
-  ];
+  const film = (gore, rateOf, head) => {
+    const P = head ? 'head' : 'torso', g = gore !== false, sp = (v) => (g ? v : 0);
+    const L = [[0.08, 'fly', 0.05], [3.62, 'slow', 0.05, { len: 4.45 }], [4.17, 'near', 0.05], [4.67, 'enter', 0.05, { spray: sp(0.54) }]];
+    if (head) L.push([4.9, 'bone', 0.05, { bone: 'skull' }]); else L.push([5.3, 'bone', 0.05, { bone: 'limb' }], [5.63, 'bone', 0.05, { bone: 'rib' }]);
+    if (g) L.push([5.75, 'organ', 0.05, { organ: head ? 'brain' : 'lungL', key: !!head }]); if (g && !head) L.push([6.0, 'organ', 0.05, { organ: 'heart', key: true }]);
+    L.push([6.25, 'bone', 0.05, { bone: head ? 'skull' : 'spine' }], [7.27, 'exit', 0.05, { size: head ? 1 : 0.6, spray: sp(head ? 0.9 : 0.4) }], [8.63, 'resume', 0.05], [9.8, 'fall', 0.55, { mat: 'dirt' }], [10.68, 'end', 0.55]);
+    return [12.2, L.map(([t, s, r, ex]) => [t, () => X.kc(s, kco(rateOf(r), Object.assign({ part: P }, ex || {}), g))])
+      .concat([[0, () => X.shot({ k: 'fire', cal: 'c308', quiet: false, action: 'bolt', cycle: 1.45 })]])
+      .concat(Array.from({ length: 60 }, (_, i) => [i * 0.18, () => X.kcTick(rateOf(i * 0.18 < 1.2 || (i * 0.18 > 2.4 && i * 0.18 < 8.6) ? 0.05 : i * 0.18 < 2.4 ? 0.6 : 0.4))]))];
+  };
   const beatsOnly = (rate) => [
     [0.1, () => X.kc('cover', kco(rate, { mat: 'wood' }))],
     [0.6, () => X.kc('enter', kco(rate))],
@@ -112,71 +93,72 @@ function pageLib() {
     [1.1, () => X.kc('exit', kco(rate, { size: 0.8 }))],
     [2.0, () => X.kc('fall', kco(rate, { mat: 'dirt' }))],
   ]; // (no 'end' here: its snap back would be counted in the length)
-  const shot = (o) => Object.assign({ k: 'fire', quiet: true, sub: false, cal: 'c308', action: 'none', cycle: 1.45 }, o);
-
+  const one = (secs, fn, at) => [secs, [[at || 0.02, fn]]];
   // every sound to render: [seconds, list of [time, call]]
   const S = {
-    supp_old_c308_report: [0.8, [[0, () => oldSupp(shot({}))]]],
-    supp_light_c308_report: [0.8, [[0, () => X.shot(shot({ can: 'light' }))]]],
-    supp_heavy_c308_report: [0.8, [[0, () => X.shot(shot({ can: 'heavy' }))]]],
-    supp_int_c300s_report: [0.8, [[0, () => X.shot(shot({ can: 'int', cal: 'c300s', sub: true }))]]],
-    supp_heavy_c308_sub_report: [0.8, [[0, () => X.shot(shot({ can: 'heavy', sub: true }))]]],
-    shot_loud_c308_report: [0.8, [[0, () => X.shot(shot({ quiet: false }))]]],
-    supp_old_c308_bolt: [2.4, [[0, () => oldSupp(shot({ action: 'bolt' }))]]],
-    supp_light_c308_bolt: [2.4, [[0, () => X.shot(shot({ can: 'light', action: 'bolt' }))]]],
-    supp_heavy_c308_bolt: [2.4, [[0, () => X.shot(shot({ can: 'heavy', action: 'bolt' }))]]],
-    supp_heavy_c308_subsonic_bolt: [2.4, [[0, () => X.shot(shot({ can: 'heavy', sub: true, action: 'bolt' }))]]],
-    supp_light_c556_semi_lark: [1.2, [[0, () => X.shot(shot({ can: 'light', cal: 'c556', action: 'semi', cycle: 0.26 }))]]],
-    supp_int_c300s_whisper: [2.2, [[0, () => X.shot(shot({ can: 'int', cal: 'c300s', sub: true, action: 'bolt', cycle: 1.25 }))]]],
-    supp_int_c9s_hush: [1.2, [[0, () => X.shot(shot({ can: 'int', cal: 'c9s', sub: true, action: 'semi', cycle: 0.3 }))]]],
-    supp_int_c22_ratter: [1.2, [[0, () => X.shot(shot({ can: 'int', cal: 'c22', sub: true, action: 'semi', cycle: 0.32 }))]]],
-    shot_loud_c308_reference: [2.4, [[0, () => X.shot(shot({ quiet: false, action: 'bolt' }))]]],
-    confirm_head_kill: [0.6, [[0.05, () => X.confirm({ part: 'head', lethal: true })]]],
-    confirm_body_kill: [0.6, [[0.05, () => X.confirm({ part: 'torso', lethal: true })]]],
-    confirm_wound: [0.6, [[0.05, () => X.confirm({ part: 'legL', lethal: false })]]],
-    hit_old_head_300m: [1.6, [[0.05, () => oldHit({ part: 'head', lethal: true, dist: 300 }, 300 / 343)]]],
-    hit_head_kill_300m: [1.6, [[0.05, () => X.hit({ part: 'head', lethal: true, dist: 300 }, 300 / 343, true)]]],
-    hit_body_kill_300m: [1.6, [[0.05, () => X.hit({ part: 'torso', lethal: true, dist: 300 }, 300 / 343, true)]]],
-    hit_wound_300m: [1.6, [[0.05, () => X.hit({ part: 'legL', lethal: false, dist: 300 }, 300 / 343, true)]]],
-    killcam_gore: [6.4, seq(true, (r) => r)],
-    killcam_nogore: [6.4, seq(false, (r) => r)],
-    killcam_head_glass: [6.4, [
-      [0, () => X.kc('fly', kco(0.12, { cal: 'c338', part: 'head' }))], [2.2, () => X.kc('near', kco(0.2, { part: 'head' }))],
-      [2.45, () => X.kc('cover', kco(0.15, { mat: 'glass', part: 'head' }))], [2.8, () => X.kc('enter', kco(0.1, { part: 'head' }))],
-      [2.86, () => X.kc('bone', kco(0.1, { bone: 'skull', part: 'head' }))], [3.1, () => X.kc('exit', kco(0.12, { size: 1, part: 'head' }))],
-      [4.3, () => X.kc('fall', kco(0.2, { mat: 'hard', part: 'head' }))], [5.6, () => X.kc('end', kco(0.3))]]],
-    killcam_seq_rate01: [6.4, seq(true, () => 0.1)],
-    killcam_seq_rate1: [6.4, seq(true, () => 1)],
-    killcam_beats_rate01: [7.6, beatsOnly(0.1)],
-    killcam_beats_rate1: [7.6, beatsOnly(1)],
+    // hits on people: the confirm alone (heard at once) and the whole hit at 300 m
+    confirm_head_kill: one(0.8, () => X.confirm({ part: 'head', lethal: true })),
+    confirm_body_kill: one(0.8, () => X.confirm({ part: 'torso', lethal: true })),
+    confirm_wound: one(0.8, () => X.confirm({ part: 'legL', lethal: false })),
+    confirm_vest: one(1.2, () => X.vest(300, 300 / 343)),
+    hit_head_kill_300m: one(1.8, () => X.hit({ part: 'head', lethal: true, dist: 300 }, 300 / 343, true)),
+    hit_body_kill_300m: one(1.8, () => X.hit({ part: 'torso', lethal: true, dist: 300 }, 300 / 343, true)),
+    hit_body_kill_300m_nogore: one(1.8, () => X.hit({ part: 'torso', lethal: true, dist: 300 }, 300 / 343, false)),
+    hit_wound_300m: one(1.8, () => X.hit({ part: 'legL', lethal: false, dist: 300 }, 300 / 343, true)),
+    // misses, each material at 150 m
+    miss_dirt: one(1.6, () => X.impact('dirt', 150, 0.05)), miss_metal: one(1.6, () => X.impact('metal', 150, 0.05)), miss_hard: one(1.6, () => X.impact('hard', 150, 0.05)),
+    miss_glass: one(1.6, () => X.impact('glass', 150, 0.05)), miss_wood: one(1.6, () => X.impact('wood', 150, 0.05)), miss_water: one(1.6, () => X.impact('water', 150, 0.05)), miss_snow: one(1.6, () => X.impact('snow', 150, 0.05)),
+    // a fuel tank going up, near and far; thunder, close (twice, to hear two storms) and far
+    explosion_80m: one(7, () => X.boom(80, 0.02)), explosion_400m: one(7, () => X.boom(400, 0.02)),
+    thunder_close: one(8, () => X.thunder(0.02)), thunder_close_2: one(8, () => { X.get('thunder:close:1', () => SG.thunder('close', 2)); X.thunN = 0; X.thunder(0.02); }),
+    thunder_far: one(9, () => X.thunder(0.02, true)),
+    // the rifle's reference shot, for scale
+    shot_c308_bare: one(3, () => X.shot({ k: 'fire', cal: 'c308', quiet: false, action: 'bolt', cycle: 1.45 })),
+    // handling
+    reload_bolt: one(3.6, () => X.reload(3.2, 'bolt')), reload_semi: one(3, () => X.reload(2.6, 'semi')), reload_single: one(2.6, () => X.reload(2.1, 'single')), reload_charge: one(5, () => X.reload(4.5, 'charge')),
+    dry_fire: one(0.5, () => X.dry()), charge: one(1.2, () => X.onEvent({ k: 'charge', dur: 0.85 }, { S: { refZ: 200 } })),
+    // the world
+    alarm_siren: one(7, () => X.siren(0.02)), bell_steel: one(3.5, () => X.bell(300, 0.02, 560)), crash_car: one(2.6, () => X.onEvent({ k: 'crash' }, { S: { refZ: 150 } })),
+    range_plate: one(3, () => X.onEvent({ k: 'ring', kind: 'bell' }, { S: { refZ: 300 }, M: { range: 0 } })), spark: one(1, () => X.onEvent({ k: 'spark' }, { S: { refZ: 150 } })), tyre: one(1.4, () => X.onEvent({ k: 'tyre' }, { S: { refZ: 150 } })), npc_shot: one(3, () => X.onEvent({ k: 'npcshot' }, { S: { refZ: 250 } })),
+    // the interface
+    ui_tap: one(0.4, () => X.ui('tap')), ui_back: one(0.4, () => X.ui('back')), ui_go: one(0.6, () => X.ui('go')), ui_deny: one(0.6, () => X.ui('deny')), ui_buy: one(0.6, () => X.ui('buy')),
+    ui_equip: one(0.6, () => X.ui('equip')), ui_star: one(1.4, () => X.ui('star')), ui_tick: one(0.3, () => X.ui('tick')),
+    // the kill camera
+    killcam_gore: film(true, (r) => r),
+    killcam_nogore: film(false, (r) => r),
+    killcam_head_gore: film(true, (r) => r, true),
+    killcam_film_rate1: film(true, () => 1),
+    killcam_beats_slow: [3.6, beatsOnly(0.05)],
+    killcam_beats_rate1: [3.6, beatsOnly(1)],
     // the bed and heartbeat on their own, to see how far under the impacts they sit
-    killcam_bed_only: [3.0, [[0, () => X.kc('fly', kco(0.1))]]],
+    killcam_bed_only: [3.0, [[0, () => X.kc('fly', kco(0.05))], [0.4, () => X.kc('slow', kco(0.05, { len: 4 }))]]],
     // skipped early: everything has to stop when 'end' comes, even the tear, the heartbeat and the bed
-    killcam_skip: [3.2, [[0, () => X.kc('fly', kco(0.12))], [0.5, () => X.kc('near', kco(0.2))], [0.9, () => X.kc('enter', kco(0.1))], [1.0, () => X.kc('end', kco(0.3))]]],
+    killcam_skip: [3.2, [[0, () => X.kc('fly', kco(0.05))], [0.5, () => X.kc('near', kco(0.2))], [0.9, () => X.kc('enter', kco(0.05))], [1.0, () => X.kc('end', kco(0.25))]]],
     // six beats in the same instant: must not pile up or clip
-    killcam_pileup: [3.0, [[0.2, () => { ['enter', 'bone', 'bone', 'bone', 'exit', 'cover'].forEach((s, i) => X.kc(s, kco(0.1, { bone: ['skull', 'rib', 'spine'][i % 3], mat: 'metal', size: 1 }))); }], [2.8, () => X.kc('end', kco(1))]]],
-    killcam_one_enter: [3.0, [[0.2, () => X.kc('enter', kco(0.1))], [2.8, () => X.kc('end', kco(1))]]],
-    // the worst case: the loudest rifle, a kill confirm and a pile of kill camera beats all at once
-    stack: [2.0, [[0.05, () => { X.shot(shot({ quiet: false, cal: 'c50', action: 'bolt', cycle: 1.9 })); X.confirm({ part: 'head', lethal: true }); X.boom(80, 0); ['enter', 'bone', 'exit', 'fall'].forEach((s) => X.kc(s, kco(0.1, { bone: 'skull', size: 1, mat: 'metal', power: 1 }))); }], [1.9, () => X.kc('end', kco(1))]]],
+    killcam_pileup: [3.0, [[0.2, () => { ['enter', 'bone', 'bone', 'bone', 'exit', 'cover'].forEach((s, i) => X.kc(s, kco(0.05, { bone: ['skull', 'rib', 'spine'][i % 3], mat: 'metal', size: 1 }))); }], [2.8, () => X.kc('end', kco(1))]]],
+    killcam_one_enter: [3.0, [[0.2, () => X.kc('enter', kco(0.05))], [2.8, () => X.kc('end', kco(1))]]],
+    // the worst case: the loudest rifle, a kill confirm, an explosion and a pile of kill camera beats all at once
+    stack: [2.0, [[0.05, () => { X.shot({ k: 'fire', cal: 'c50', quiet: false, action: 'bolt', cycle: 1.9 }); X.confirm({ part: 'head', lethal: true }); X.boom(80, 0); ['enter', 'bone', 'exit', 'fall'].forEach((s) => X.kc(s, kco(0.05, { bone: 'skull', size: 1, mat: 'metal', power: 1 }))); }], [1.9, () => X.kc('end', kco(1))]]],
   };
-  const WIN = { killcam_skip: [1.25, 3.2], killcam_gore: [2.7, 4.3], killcam_nogore: [2.7, 4.3], killcam_bed_only: [1.5, 3.0] };
+  const WIN = { hit_body_kill_300m: [0.86, 1.6], hit_body_kill_300m_nogore: [0.86, 1.6], killcam_skip: [1.25, 3.2], killcam_gore: [4.6, 7.3], killcam_nogore: [4.6, 7.3], killcam_bed_only: [1.2, 3.0], thunder_close: [1.2, 6], thunder_far: [1, 7], thunder_close_2: [1.2, 6], explosion_80m: [0.3, 2.5] };
+  const WIN0 = { thunder_close: [0, 0.3], thunder_far: [0, 0.6], thunder_close_2: [0, 0.3] }; // (a second window: the very start)
 
   window.SFXT = {
     names: Object.keys(S),
-    async render(name, raw, keepWav) {
+    async render(name, raw, keepWav, second) {
       const [secs, calls] = S[name], sr = 48000;
       const ac = new OfflineAudioContext(2, Math.ceil((secs + LEAD) * sr), sr);
-      const keep = Math.random; Math.random = seeded(1234 + name.length * 77);
+      const keep = Math.random, keepLater = X.later; Math.random = seeded(1234 + name.length * 77);
       try {
-        X.build(ac, { raw });
+        X.build(ac, { raw }); X.thunN = 0;
         const byT = new Map();
         calls.forEach(([t, fn]) => { const q = Math.round((t + LEAD) * sr / 128) * 128 / sr; if (!byT.has(q)) byT.set(q, []); byT.get(q).push(fn); });
         for (const [t, fns] of byT) ac.suspend(t).then(() => { fns.forEach((f) => f()); ac.resume(); });
         const buf = await ac.startRendering();
-        const m = analyze(buf, WIN[name]);
+        const m = analyze(buf, second ? WIN0[name] : WIN[name]);
         if (keepWav) m.wav = wav(buf);
         return m;
-      } finally { Math.random = keep; }
+      } finally { Math.random = keep; X.later = keepLater; }
     },
   };
 }
@@ -184,6 +166,7 @@ function pageLib() {
 (async () => {
   execSync('node build.js', { cwd: ROOT, stdio: 'ignore' });
   fs.mkdirSync(OUT, { recursive: true });
+  fs.readdirSync(OUT).forEach((f) => { if (f.endsWith('.wav') && f.indexOf('killcam_film_') !== 0) fs.unlinkSync(path.join(OUT, f)); });
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
   const page = await browser.newPage();
   const errs = [];
@@ -199,39 +182,51 @@ function pageLib() {
     const r = await page.evaluate((n) => SFXT.render(n, false, true), n);
     fs.writeFileSync(path.join(OUT, n + '.wav'), Buffer.from(r.wav, 'base64')); delete r.wav;
     R[n] = r;
-    raw[n] = await page.evaluate((n) => SFXT.render(n, true, false), n); // without the limiter and safety clipper
+    if (/^killcam_(pileup|one_enter)$|^stack$/.test(n)) raw[n] = await page.evaluate((n) => SFXT.render(n, true, false), n); // without the limiter and safety clipper
+    if (/^thunder/.test(n)) R[n].start = await page.evaluate((n) => SFXT.render(n, false, false, true), n);
   }
 
   // ---- the numbers ----
   const pad = (s, w) => String(s).padEnd(w);
-  console.log(pad('sound', 32) + pad('peak', 8) + pad('peak dB', 9) + pad('no-lim', 8) + pad('len ms', 8) + pad('bright Hz', 10) + pad('loud dB', 9) + 'rms dB');
-  for (const n of names) { const r = R[n]; console.log(pad(n, 32) + pad(r.peak, 8) + pad(r.peakDb, 9) + pad(raw[n].peak, 8) + pad(r.len, 8) + pad(r.bright, 10) + pad(r.loudDb, 9) + r.rmsDb); }
-  console.log('(no-lim = the peak with the limiter and safety clipper taken out, to show what they catch;');
-  console.log(' loud = the loudest 50 ms, a rough stand-in for how loud it feels)');
+  console.log(pad('sound', 28) + pad('peak', 8) + pad('peak dB', 9) + pad('len ms', 8) + pad('bright Hz', 10) + pad('loud dB', 9) + pad('low dB', 8) + 'rms dB');
+  for (const n of names) { const r = R[n]; console.log(pad(n, 28) + pad(r.peak, 8) + pad(r.peakDb, 9) + pad(r.len, 8) + pad(r.bright, 10) + pad(r.loudDb, 9) + pad(r.low, 8) + r.rmsDb); }
+  console.log('(loud = the loudest 50 ms, ear-weighted, a stand-in for how loud it feels; low = share of energy under 150 Hz)');
 
   // ---- the promises ----
   const fails = [], check = (ok, what) => { console.log((ok ? 'ok    ' : 'FAIL  ') + what); if (!ok) fails.push(what); };
   check(names.every((n) => R[n].peak < 1), 'nothing clips: every peak is under full scale (worst ' + Math.max(...names.map((n) => R[n].peak)) + ')');
-  const o = R.supp_old_c308_report, l = R.supp_light_c308_report, h = R.supp_heavy_c308_report;
-  check(l.len < o.len && h.len < o.len, `suppressed shot is shorter: old ${o.len} ms, Featherweight ${l.len} ms, Monolith ${h.len} ms`);
-  check(l.bright > o.bright && h.bright > o.bright, `suppressed shot is brighter: old ${o.bright} Hz, Featherweight ${l.bright} Hz, Monolith ${h.bright} Hz`);
-  const lr = R.shot_loud_c308_report;
-  check(l.loudDb < lr.loudDb - 6, `suppressed is clearly quieter than no suppressor: ${l.loudDb} vs ${lr.loudDb} dB (loudest 50 ms)`);
-  check(h.loudDb < l.loudDb, `Monolith is quieter than Featherweight: ${h.loudDb} vs ${l.loudDb} dB (loudest 50 ms)`);
-  const wr = R.supp_int_c300s_report, sr = R.supp_heavy_c308_sub_report;
-  check(wr.loudDb < l.loudDb - 6, `subsonic Whisper is much quieter than a supersonic can: ${wr.loudDb} vs ${l.loudDb} dB`);
-  check(sr.loudDb < h.loudDb - 6, `subsonic ammo in a Monolith is much quieter than supersonic: ${sr.loudDb} vs ${h.loudDb} dB`);
-  const ch = R.confirm_head_kill, cb = R.confirm_body_kill, cw = R.confirm_wound;
-  check(ch.bright > cb.bright, `head confirm is brighter than body confirm: ${ch.bright} vs ${cb.bright} Hz`);
-  check(cw.rmsDb < cb.rmsDb - 4 && cw.len < cb.len, `a wound sounds different from a kill: ${cw.rmsDb} dB, ${cw.len} ms vs body kill ${cb.rmsDb} dB, ${cb.len} ms`);
-  const b01 = R.killcam_beats_rate01, b1 = R.killcam_beats_rate1;
-  check(b01.bright < b1.bright && b01.len > b1.len, `kill camera beats at rate 0.1 are lower and longer than at rate 1: ${b01.bright} vs ${b1.bright} Hz, ${b01.len} vs ${b1.len} ms`);
-  const s01 = R.killcam_seq_rate01, s1 = R.killcam_seq_rate1;
-  check(s01.bright < s1.bright && s01.active > s1.active, `whole kill camera film at rate 0.1 is lower and fuller than at rate 1: ${s01.bright} vs ${s1.bright} Hz, ${s01.active} vs ${s1.active} ms above -30 dB`);
+  const shot = R.shot_c308_bare, ch = R.confirm_head_kill, cb = R.confirm_body_kill, cw = R.confirm_wound, cv = R.confirm_vest;
+  check(ch.loudDb > shot.loudDb - 6 && cb.loudDb > shot.loudDb - 6, `a kill confirm hits nearly as hard as the shot itself: head ${ch.loudDb}, body ${cb.loudDb} vs a bare .308 ${shot.loudDb} dB`);
+  check(ch.bright > cb.bright * 1.3, `head confirm is brighter than body confirm (crack and skull): ${ch.bright} vs ${cb.bright} Hz`);
+  check(cb.low > ch.low, `body confirm is heavier than head confirm: ${cb.low} vs ${ch.low} dB under 150 Hz`);
+  check(cw.loudDb < cb.loudDb - 4 && cw.len < cb.len, `a wound is weaker and shorter than a kill: ${cw.loudDb} dB, ${cw.len} ms vs body kill ${cb.loudDb} dB, ${cb.len} ms`);
+  check(cv.bright > cb.bright * 2 && cv.len > cb.len, `armour rings like steel (bright and long): ${cv.bright} Hz, ${cv.len} ms vs body kill ${cb.bright} Hz, ${cb.len} ms`);
+  { const g = R.hit_body_kill_300m, d = R.hit_body_kill_300m_nogore; check(Math.abs(g.winBright / d.winBright - 1) >= 0.1 || g.len > d.len + 100, `gore on makes the impact (as it arrives from 300 m) wet: a squelch and drops, ${g.winBright} vs ${d.winBright} Hz, ${g.len} vs ${d.len} ms`); }
+  const mats = ['dirt', 'metal', 'hard', 'glass', 'wood', 'water', 'snow'].map((m) => [m, R['miss_' + m]]), same = [];
+  mats.forEach(([a, x], i) => mats.forEach(([b, y], j) => { if (j > i && Math.abs(x.bright / y.bright - 1) < 0.12 && Math.abs(x.len / y.len - 1) < 0.15) same.push(a + '/' + b); }));
+  check(!same.length, 'every miss material sounds its own (brightness or length): ' + mats.map(([m, r]) => m + ' ' + r.bright + ' Hz ' + r.len + ' ms').join(', ') + (same.length ? '; too alike: ' + same.join(', ') : ''));
+  check(R.miss_metal.len > R.miss_dirt.len && R.miss_glass.len > R.miss_dirt.len, `metal rings and glass tinkles on after dirt has stopped: ${R.miss_metal.len}, ${R.miss_glass.len} vs ${R.miss_dirt.len} ms`);
+  const ex = R.explosion_80m, ex4 = R.explosion_400m;
+  check(ex.len > 3000 && ex.loudDb >= shot.loudDb - 1 && ex.low > shot.low, `an explosion is big: ${ex.len} ms long, ${ex.loudDb} dB (a bare .308 ${shot.loudDb}), ${ex.low} dB of it under 150 Hz (the .308 ${shot.low})`);
+  check(ex.winRmsDb > ex.rmsDb - 6, `it rolls on with debris and echoes: ${ex.winRmsDb} dB RMS from 0.3 to 2.5 s (whole: ${ex.rmsDb})`);
+  check(ex4.loudDb < ex.loudDb && ex4.bright < ex.bright, `further off it is quieter and duller: ${ex4.loudDb} dB, ${ex4.bright} Hz vs ${ex.loudDb} dB, ${ex.bright} Hz`);
+  const tc = R.thunder_close, tf = R.thunder_far, tc2 = R.thunder_close_2;
+  check(tc.start.winBright > 1500 && tc.winBright < 500 && tc.len > 4000, `close lightning is a tearing crack then a deep roll: start ${tc.start.winBright} Hz, roll ${tc.winBright} Hz, ${tc.len} ms`);
+  check(tf.start.winBright < 600 && tf.len > 5000 && tf.loudDb < tc.loudDb - 4, `far thunder is only a deep rumble: start ${tf.start.winBright} Hz, ${tf.len} ms, ${tf.loudDb} vs close ${tc.loudDb} dB`);
+  check(Math.abs(tc2.len - tc.len) > 200 || Math.abs(tc2.bright - tc.bright) > 30, `no two storms roll the same: ${tc.len} ms ${tc.bright} Hz vs ${tc2.len} ms ${tc2.bright} Hz`);
+  check(['reload_bolt', 'reload_semi', 'reload_single', 'reload_charge'].every((n) => R[n].loudDb > -30 && R[n].active > 150), 'reloads are clearly heard: ' + ['reload_bolt', 'reload_semi', 'reload_single', 'reload_charge'].map((n) => n.slice(7) + ' ' + R[n].loudDb + ' dB').join(', '));
+  check(R.alarm_siren.len > 5000 && R.alarm_siren.loudDb > -26, `the alarm wails for its whole length and is loud: ${R.alarm_siren.len} ms, ${R.alarm_siren.loudDb} dB`);
+  check(['tap', 'back', 'go', 'deny', 'buy', 'equip', 'tick'].every((k) => R['ui_' + k].len < 600 && R['ui_' + k].loudDb > -30), 'interface sounds are short and crisp: ' + ['tap', 'back', 'go', 'deny', 'buy', 'equip', 'tick'].map((k) => k + ' ' + R['ui_' + k].len + ' ms').join(', '));
+  const b01 = R.killcam_beats_slow, b1 = R.killcam_beats_rate1;
+  check(b01.bright < b1.bright && b01.len > b1.len, `kill camera beats in the slow motion are lower and longer than at real time: ${b01.bright} vs ${b1.bright} Hz, ${b01.len} vs ${b1.len} ms`);
+  const s05 = R.killcam_gore, s1 = R.killcam_film_rate1;
+  check(s05.active > s1.active, `the slowed film is fuller than one at real time: ${s05.active} vs ${s1.active} ms above -30 dB`);
   check(R.killcam_skip.winRmsDb < -60, `after a skip everything stops: ${R.killcam_skip.winRmsDb} dB RMS (peak ${R.killcam_skip.winPeakDb} dB) from 0.25 s after 'end'`);
   check(R.killcam_pileup.peak < 1 && raw.killcam_pileup.peak < raw.killcam_one_enter.peak * 2.2, `six beats at once do not pile up: peak ${raw.killcam_pileup.peak} vs ${raw.killcam_one_enter.peak} for one beat (before the limiter)`);
   check(R.killcam_gore.winRmsDb > R.killcam_nogore.winRmsDb, `gore off drops the wet layers: ${R.killcam_nogore.winRmsDb} vs ${R.killcam_gore.winRmsDb} dB RMS from entry to exit`);
-  check(R.killcam_bed_only.winRmsDb < R.killcam_gore.loudDb - 12, `the bed sits well under the impacts: bed ${R.killcam_bed_only.winRmsDb} dB RMS, loudest impact ${R.killcam_gore.loudDb} dB`);
+  check(R.killcam_bed_only.winRmsDb < R.killcam_gore.loudDb - 15, `the bed sits well under the impacts: bed ${R.killcam_bed_only.winRmsDb} dB RMS, loudest impact ${R.killcam_gore.loudDb} dB`);
+  check(R.killcam_bed_only.winBright > 150, `the bed is deep but not mud: ${R.killcam_bed_only.winBright} Hz`);
+  check(R.stack.peak < 1, `the worst pile-up (a .50, a confirm, an explosion, kill camera beats) still does not clip: ${R.stack.peak} (${raw.stack.peak} before the limiter)`);
 
   // ---- the real thing: a live audio context on a real page, every call, nothing may throw ----
   const live = await page.evaluate(async () => {
@@ -239,10 +234,12 @@ function pageLib() {
     X.ac = null; X.ok = false; X.unlock();
     if (!X.ok) return 'no live audio context';
     ['light', 'heavy', 'int'].forEach((can) => { X.shot({ quiet: true, sub: false, cal: 'c308', action: 'bolt', cycle: 1.4, can }); X.shot({ quiet: true, sub: true, cal: 'c9s', action: 'semi', cycle: 0.3, can }); });
+    X.suppressed({ cal: 'c556', action: 'semi', cycle: 0.26 }, 'light'); X.brass(0.1); X.reload(2.5, 'bolt');
     X.hit({ part: 'head', lethal: true, dist: 200 }, 0.5, true); X.hit({ part: 'armR', lethal: false, dist: 200 }, 0.5, false); X.vest(200, 0.5);
-    X.kc('end', {}); X.kc('bone', { rate: 0.1 }); X.kc('end', {}); X.kc('end', {});
-    const base = { rate: 0.1, part: 'torso', cal: 'c308', power: 0.5, gore: true };
-    for (const s of ['fly', 'near', 'cover', 'enter', 'bone', 'exit', 'fall']) { X.kc(s, Object.assign({}, base, { mat: s === 'cover' ? 'nonsense' : undefined, bone: 'unknown' })); await wait(20); }
+    ['dirt', 'metal', 'nonsense', 'interior'].forEach((m) => X.impact(m, 200, 0.1)); X.boom(100, 0.1); X.thunder(0.1); X.thunder(0.1, true);
+    X.kc('end', {}); X.kc('bone', { rate: 0.05 }); X.kc('end', {}); X.kc('end', {});
+    const base = { rate: 0.05, part: 'torso', cal: 'c308', power: 0.5, gore: true };
+    for (const s of ['fly', 'near', 'slow', 'cover', 'enter', 'bone', 'organ', 'exit', 'resume', 'fall']) { X.kc(s, Object.assign({}, base, { mat: s === 'cover' ? 'nonsense' : undefined, bone: 'unknown', organ: 'nonsense', len: 'x', spray: 'y' })); X.kcTick(0.05); await wait(20); }
     X.kc('fly', base); X.kc('fly', base); X.kc('end', base);
     X.kc('fly', null); X.kc(undefined, undefined); X.kc('end');
     await wait(200);

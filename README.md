@@ -20,9 +20,12 @@ right moment, take one shot.
 - Made for a phone held sideways; the scope picture fills the screen
 - Real bullet flight: travel time, drop and wind, with scope markings that are
   true to scale
+- Every rifle has its own sound, from its calibre, barrel, stock and action, and
+  every muzzle brake, compensator, flash hider and suppressor changes it. The
+  place shapes the echo: city, harbour, valley, mountain ridge
 - Everything is earned by playing. No ads, no purchases, no accounts
-- One self-contained page. All art is drawn in code and all sound is generated
-  in code. There are no image or audio files
+- One self-contained page. All art is drawn in code and all sound is made in
+  code. There are no image or audio files
 
 ## Play
 
@@ -66,7 +69,8 @@ That joins every `src/*.js` (in filename order) and `src/style.css` into
 | `src/05_sim.js` | the mission simulation: people, noise, witnesses, alarms |
 | `src/06_view.js` | the scope picture and the reticles |
 | `src/09_save.js`, `src/39_progress.js` | saving, rewards, caches |
-| `src/10_sfx.js` | all sound, generated live |
+| `src/10_sfx.js` | the sound engine: wiring, playing, the kill camera's sound, ambience and music |
+| `src/10b_sfxgen.js` | the sound generator: every rifle and muzzle option, hits, explosions, thunder, reloads, worked out sample by sample |
 | `src/11_gunart.js` | rifle artwork and skins |
 | `src/12_partart.js` | pictures of every part and the view through every scope |
 | `src/13_ragdoll.js` | ragdoll physics for falling bodies (picture only, never gameplay) |
@@ -102,8 +106,37 @@ node test/notebook.js           # notebook scrolls by touch, messages close on a
 node test/tester.js             # tester mode unlocks everything and gives the real save back
 node test/gunroom.js            # the gun room at several sizes
 node test/ragdoll.js calibre    # contact sheets of falling bodies
-node test/sfx.js                # renders every new sound offline, saves WAVs in shots/sfx/
+node test/sfx.js                # hits, misses, explosions, thunder, reloads, interface, kill camera beats
+node test/sfx_guns.js           # every rifle with every muzzle option and load, compared pair by pair
+node test/sfx_film.js           # the kill camera's sound, taken from real films
+BEATS=1 node test/cine2.js c1m1 fenwick t torso   # also prints when each sound beat fires
 ```
 
-Sound cannot be judged by a script. `test/sfx.js` measures loudness, length and
-brightness and saves WAV files to listen to, but nobody has listened to them yet.
+## Sound
+
+Every sound is made in code; there are no audio files. Anything that does not change
+while it plays (a rifle's report and action, reloads, hits, impacts, explosions, thunder,
+the alarm, the interface) is worked out sample by sample by `src/10b_sfxgen.js` into a
+buffer and then played. The rifle a mission is played with is worked out as the mission
+starts (two takes of its shot, played in turn), the rest a piece at a time between frames.
+The kill camera, ambience and music are built live because they follow the game.
+
+A shot is made of layers: the striker falling; the bullet's crack and the whip of it going
+away (only faster than sound); the muzzle blast with the rifle's own two resonances; the
+gas hissing out; the boom; a deep thump driven so a phone still plays it; the barrel's
+ring and the stock's knock; the action (a semi-automatic's carrier slams inside the
+shot, a bolt is worked after it); the echoes of the place and the echo back from the
+target area. A suppressor keeps the bullet's crack but leaks its own thump, tock and
+ring; a subsonic load loses the crack.
+
+No recordings are used. A search in October 2026 for gunshot, explosion and thunder
+recordings with an explicit CC0 or public-domain licence that the build machine can
+reach (npm, GitHub) found nothing usable; anything added later must be CC0 or public
+domain, with its source and licence written next to it.
+
+Sound cannot be judged by a script, so the tests measure it instead: loudness the way the
+ear weighs it, peak, low end, brightness, decay, and a pitch-and-time comparison of every
+pair of rifle set-ups (none may be nearly the same, none may be more than 10 dB quieter
+than the loudest rifle, nothing may clip, heavier calibres must measure heavier). They save
+WAV files in `shots/sfx/` (`shots/sfx/guns/` for every rifle set-up) to listen to. Nobody
+has listened to them yet.
