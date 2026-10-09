@@ -645,7 +645,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 9:13 AM";
+const BUILD = "Oct 9, 2:10 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -1288,25 +1288,94 @@ function figJoints(p) {
   return J;
 }
 
+// ---- walking and running ---------------------------------------------------
+// The feet are placed, not swung. Each foot stands on the ground for part of the stride and
+// travels back under the body at exactly the speed the person is walking, so on the ground it
+// stays where it was put; then it lifts, swings forward and lands again. The legs are fitted to
+// the feet (thigh and shin reaching from the hip). That only works if one cycle of the walk
+// phase (A.ph, 2 pi) covers the same ground as the body does, so the simulation advances A.ph by
+// `k` radians for every metre walked (src/05_sim.js) and the stride below is worked out from it.
+//   k     phase per metre: one whole cycle (two steps) covers 2 pi / k metres
+//   duty  the part of a cycle each foot is on the ground (more than half: both feet are down for a
+//         moment at every step when walking; less than half: nobody is on the ground for a moment
+//         when running)
+//   lift  how high the foot is carried at the top of its swing, hy the hip height, dip how far the
+//         hip sinks onto a running leg
+const FIG_GAIT = {
+  walk: { k: 4.8, duty: 0.58, lift: 0.055, hy: FIG.hip - 0.004, dip: 0, kick: 0.5 },
+  run: { k: 2.6, duty: 0.34, lift: 0.22, hy: FIG.hip - 0.035, dip: 0.04, kick: 0.6 },
+};
+const FIG_FOOT_Y = -0.018; // where the ankle joint sits when the shoe is flat on the ground (as in the standing pose)
+// Fit one leg to a foot at (fx, fy), with the hip at (0, hy). Thigh and shin are the same length.
+function figLegTo(p, side, hy, fx, fy) {
+  const l = FIG.thigh, dy = hy - fy, d = Math.min(Math.hypot(fx, dy), 2 * l - 0.002);
+  const k = 2 * Math.acos(Math.min(1, d / (2 * l))), a = Math.atan2(fx, dy);
+  if (side) { p.tR = a + k / 2; p.kR = k; } else { p.tL = a + k / 2; p.kL = k; }
+}
+// Where a foot is at leg phase s (0 to 1, 0 = the moment it lands, out in front).
+const FIG_FT = [0, 0, 0];
+function figFoot(G, D, h, s) {
+  if (s < G.duty) { // planted: straight back at the walking speed, the heel and then the toes taking the weight at either end
+    const u = s / G.duty, e = (2 * u - 1) * (2 * u - 1);
+    FIG_FT[0] = h * (1 - 2 * u); FIG_FT[1] = FIG_FOOT_Y + 0.05 * e * e; FIG_FT[2] = u; return true;
+  }
+  // in the air: forward on a curve that leaves and meets the ground moving at the same speed as the planted foot
+  const u = (s - G.duty) / (1 - G.duty), u2 = u * u, u3 = u2 * u, m = -D * (1 - G.duty);
+  FIG_FT[0] = (2 * u3 - 3 * u2 + 1) * -h + (u3 - 2 * u2 + u) * m + (-2 * u3 + 3 * u2) * h + (u3 - u2) * m;
+  // a running foot kicks up behind first and comes through low, a walking one just clears the ground
+  const bump = Math.sin(Math.PI * u) * (1 + G.kick * (0.5 - u));
+  FIG_FT[1] = FIG_FOOT_Y + 0.05 + G.lift * Math.max(0, bump); FIG_FT[2] = u; return false;
+}
+function figGait(p, G, ph) {
+  const D = TAU / G.k, h = (D * G.duty) / 2, R = 2 * FIG.thigh - 0.006;
+  let sL = (ph - Math.PI / 2) / TAU; sL -= Math.floor(sL); let sR = sL + 0.5; if (sR >= 1) sR -= 1;
+  const onL = figFoot(G, D, h, sL), xL = FIG_FT[0], yL = FIG_FT[1], uL = FIG_FT[2];
+  const onR = figFoot(G, D, h, sR), xR = FIG_FT[0], yR = FIG_FT[1], uR = FIG_FT[2];
+  // the hip rides as high as it likes, but never so high that a planted foot cannot reach the ground
+  let hy = G.hy;
+  if (onL) hy = Math.min(hy - G.dip * Math.sin(Math.PI * uL), yL + Math.sqrt(R * R - xL * xL));
+  if (onR) hy = Math.min(hy - G.dip * Math.sin(Math.PI * uR), yR + Math.sqrt(R * R - xR * xR));
+  p.hy = hy;
+  figLegTo(p, 0, hy, xL, yL); figLegTo(p, 1, hy, xR, yR);
+}
+
+// What somebody holds up when they aim: their rifle if they carry one, otherwise a pistol. The
+// simulation gives a rifle (look.gun) to anyone a mission ever shows holding one (see figHoldsRifle),
+// so a gunman never raises a pistol while a rifle hangs on his back, nor pulls a rifle out of nowhere.
+function figAimAs(A, an) { return an === 'aim' || an === 'aimrifle' ? (A.look && A.look.gun === 'rifle' ? 'aimrifle' : 'aim') : an; }
+function figHoldsRifle(d) {
+  const has = (r) => !!r && r.some((op) => Array.isArray(op) && ((op[0] === 'wait' && (op[2] === 'guard' || op[2] === 'aimrifle')) || (op[0] === 'anim' && (op[1] === 'guard' || op[1] === 'aimrifle'))));
+  return d.anim === 'guard' || d.anim === 'aimrifle' || has(d.routine) || has(d.flee);
+}
+
 // Pose for a named animation at time t (seconds). `ph` is the walk phase.
 function figPose(anim, t, ph, A) {
   const b = Math.sin(t * 1.6 + (A.seed || 0)) * 0.015;
   const p = { hy: FIG.hip + b * 0.4, lean: 0, tL: 0.04, tR: -0.04, kL: 0.02, kR: 0.02, aL: 0.06, aR: -0.06, eL: 0.12, eR: 0.12 };
-  const s = Math.sin(ph), c = Math.cos(ph);
+  const s = Math.sin(ph);
+  anim = figAimAs(A, anim);
   switch (anim) {
     case 'walk':
-      p.tL = 0.46 * s; p.tR = -0.46 * s;
-      p.kL = 0.08 + 0.6 * Math.max(0, c); p.kR = 0.08 + 0.6 * Math.max(0, -c); // the knee bends while the leg swings forward (foot in the air), not while it pushes back
-      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28;
-      p.hy = FIG.hip - 0.035 * Math.abs(s); p.lean = 0.05;
+      figGait(p, FIG_GAIT.walk, ph);
+      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28; p.lean = 0.05;
       break;
     case 'run': case 'panic':
-      p.tL = 0.85 * s; p.tR = -0.85 * s;
-      p.kL = 0.2 + 1.15 * Math.max(0, c); p.kR = 0.2 + 1.15 * Math.max(0, -c);
-      p.hy = FIG.hip - 0.07 * Math.abs(s) - 0.03; p.lean = 0.24;
+      figGait(p, FIG_GAIT.run, ph); p.lean = 0.24;
       if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }
       break;
+    case 'climb': { // up a ladder: hand over hand, a foot up to the next rung with each
+      const c = t * 3.4 + (A.seed || 0), u = Math.sin(c), v = Math.max(0, Math.sin(c + 1.2));
+      p.lean = 0.12; p.head = -0.25;
+      p.aL = 2.55 + 0.35 * u; p.eL = 0.45 - 0.3 * u; p.aR = 2.55 - 0.35 * u; p.eR = 0.45 + 0.3 * u;
+      p.tL = 0.35 + 0.55 * Math.max(0, u); p.kL = 0.3 + 1.0 * Math.max(0, u); p.tR = 0.35 + 0.55 * Math.max(0, -u); p.kR = 0.3 + 1.0 * Math.max(0, -u);
+      p.hy = FIG.hip - 0.06 - 0.04 * v;
+      break;
+    }
+    case 'held': { // the pose somebody was in when they began to change it (see figPoseChange)
+      const q = A.poseFrom; if (q) for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; if (q[key] !== undefined) p[key] = q[key]; }
+      break;
+    }
     case 'phone':
       p.aR = 0.35; p.eR = 2.45; p.head = 0.06;
       p.aL = 0.05 + 0.04 * Math.sin(t * 0.7);
@@ -1383,9 +1452,9 @@ function figPose(anim, t, ph, A) {
       break;
     // Handing something over. The near arm goes out over half a second (k), slower than the
     // quarter second every change of pose takes, so it reads as a reach rather than a twitch.
-    // When this is the pose being left behind (A.anim is something else) it is held fully out.
+    // When it is the pose being left behind, the figure eases out of it from wherever the arm had got to.
     case 'handover': { // standing, stooped a little, holding something out at waist height
-      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      const k = (A.animCur || A.anim) === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
       p.lean = 0.05 + 0.25 * k; p.head = 0.08 * k; p.tL = 0.14; p.tR = -0.12; p.aL = 0.12; p.eL = 0.3;
       p.aR = lerp(0.1, 1.0, k); p.eR = lerp(0.2, 0.25, k);
       break;
@@ -1395,7 +1464,7 @@ function figPose(anim, t, ph, A) {
     // over the shoulder to whoever sits behind. Each one starts where the one before it ends, so
     // the hand never drops out of the window on the way. The head and body stay where they are.
     case 'sitreach': case 'sitpass': case 'sitread': {
-      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      const k = (A.animCur || A.anim) === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
       p.hy = 0.5; p.tL = 1.5; p.tR = 1.45; p.kL = 1.3; p.kR = 1.3; p.aL = 1.0; p.eL = 0.5; p.lean = -0.08;
       if (anim === 'sitreach') { p.aR = lerp(1.05, 1.65, k); p.eR = lerp(0.45, 0.95, k); }
       else if (anim === 'sitread') { p.aR = lerp(1.65, 0.9, k); p.eR = lerp(0.95, 1.78, k); p.head = 0.14 * k; }
@@ -1411,6 +1480,45 @@ function figPose(anim, t, ph, A) {
 }
 
 const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
+
+// ---- changing pose ----------------------------------------------------------
+// Every change of pose eases over POSE_BLEND seconds, out of whatever the figure looked like at
+// that moment. The simulation calls figPoseChange when it notices that A.anim has changed (in its
+// step for that person, src/05_sim.js). Until then the figure goes on showing A.animCur, the pose
+// it was already in, so a pose set from outside the person's own step (by a shot, an alarm or a
+// mission's trigger) is never drawn for a frame before its ease begins.
+// The pose being left is frozen, exactly as it was on screen, in A.poseFrom and goes by the name
+// 'held'. Because it is the pose as drawn, a change that comes while the last one is still easing
+// in starts from that half-way pose, and nothing jumps. A pose that lasts a single step (a walker
+// reaching a waypoint goes to his idle pose for one step before setting off to the next) is
+// forgotten, and the ease that was running before it carries on as if it had never happened.
+function figAnimNow(A) { return figAimAs(A, A.animCur || A.anim || 'stand'); }
+function figLivePose(A) {
+  const t = A.t || 0, ph = A.ph || 0, p = figPose(A.animCur || A.anim || 'stand', t, ph, A);
+  if (A.animFrom && A.animAt !== undefined) {
+    const u = (t - A.animAt) / POSE_BLEND;
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+  }
+  return p;
+}
+// How much the person is walking (1) or running (2) right now, eased like the pose.
+function figMv(A) {
+  let mv = figMoving(A.animCur || A.anim);
+  if (A.animFrom && A.animAt !== undefined) {
+    const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
+    if (u >= 0 && u < 1) mv = lerp(A.animFrom === 'held' ? (A.poseFrom && A.poseFrom.mv) || 0 : figMoving(A.animFrom), mv, smooth(u));
+  }
+  return mv;
+}
+function figPoseChange(A) {
+  const to = A.anim, B = A.animBack;
+  if (B && B.anim === to && (A.t || 0) - A.animAt < 0.05) { A.animCur = to; A.animFrom = B.from; A.animAt = B.at; A.poseFrom = B.pose; A.animBack = null; return; }
+  const p = figLivePose(A), q = { mv: figMv(A) };
+  for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; q[key] = p[key] || 0; }
+  A.animBack = { anim: A.animCur, from: A.animFrom, at: A.animAt, pose: A.poseFrom };
+  A.poseFrom = q; A.animFrom = 'held'; A.animAt = A.t || 0; A.animCur = to;
+}
+
 // ---- dying -----------------------------------------------------------------
 // A dead body is a ragdoll: see src/13_ragdoll.js. The pose it died in comes from figPose
 // above; from then on the solver there moves it, and actorJoints below asks it where the
@@ -1421,13 +1529,7 @@ const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'k
 function actorJoints(A) {
   // the dead: wherever the ragdoll has got to (already facing the right way and scaled)
   if (A.dead) return rdJoints(A, (A.deadT || 0) + rdLead);
-  const p = figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A);
-  // ease out of the previous pose over a quarter of a second
-  if (A.animFrom && A.animAt !== undefined) {
-    const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
-    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, A.t || 0, A.ph || 0, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
-  }
-  const J = figJoints(p);
+  const J = figJoints(figLivePose(A));
   // turning round: the figure narrows through the turn rather than flipping in one frame
   let f = A.face || 1;
   if (A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
@@ -1472,7 +1574,7 @@ const FIG_LEGS = ['#2a2f3a', '#31353b', '#3a3229', '#33392d', '#25292f'];
 const FIG_SHOES = ['#101114', '#2b2119', '#1c1e23'];
 
 // The figure being drawn right now. One at a time, so one shared record and no garbage.
-const FGS = { ctx: null, A: null, L: null, env: null, st: null, px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
+const FGS = { ctx: null, A: null, L: null, env: null, st: null, anim: 'stand', px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
   sc: 1, ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
   ux: 0, uy: 1, nx: 1, ny: 0, T: 0.56, ww: 0.08, wc: 0.09, wsh: 0.1, hdx: 0, hdy: 0, htilt: 0, wind: 0,
   cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false,
@@ -1530,7 +1632,7 @@ function figState(A, env, f) {
   const t = env.t === undefined ? (A.t || 0) : env.t;
   if (!st) {
     const h = ((typeof A.id === 'string' ? hashStr(A.id) : 0) ^ Math.floor((A.seed || 0) * 7919.3)) >>> 0;
-    st = A._fg = { top: FIG_TOPS[h % FIG_TOPS.length], legs: FIG_LEGS[(h >>> 3) % FIG_LEGS.length], shoe: FIG_SHOES[(h >>> 6) % FIG_SHOES.length], sole: (h >>> 9) % 3 === 0,
+    st = A._fg = { top: FIG_TOPS[h % FIG_TOPS.length], legs: FIG_LEGS[(h >>> 3) % FIG_LEGS.length], shoe: FIG_SHOES[(h >>> 6) % FIG_SHOES.length], sole: (h >>> 9) % 3 === 0, v: (h >>> 12) & 15,
       t, x: A.x, v: 0, vs: 0, s: 0, sv: 0, fl: f };
     return st;
   }
@@ -1636,6 +1738,10 @@ function figLimbsBack(c, G, K, farGrip) {
   c.fillStyle = figSh(st.shoe, 0.2); c.beginPath(); figShoePath(c, G, knL, ftL); c.fill();
   c.fillStyle = figC(st.shoe); c.beginPath(); figShoePath(c, G, knR, ftR); c.fill();
   if (st.sole || K.dress) { c.strokeStyle = figC(K.dress ? '#3a3d44' : '#8d9399'); c.lineWidth = Math.max(0.014, px * 0.8); c.lineCap = 'butt'; c.beginPath(); c.moveTo(FIG_SOLE[0], FIG_SOLE[1]); c.lineTo(FIG_SOLE[2], FIG_SOLE[3]); c.stroke(); c.lineCap = 'round'; }
+  if (lg) { // a pressed crease down the front of the nearer trouser leg
+    c.strokeStyle = figSh(lg, 0.35); c.lineWidth = Math.max(0.008, px * 0.6); c.beginPath();
+    const fx = G.fs * 0.012; c.moveTo(lerp(hip[0], knR[0], 0.25) + fx, lerp(hip[1], knR[1], 0.25)); c.lineTo(knR[0] + fx, knR[1]); c.lineTo(kRx + fx * 0.6, kRy); c.stroke();
+  }
   figLimbGlint(c, G, hip, knR, ftR, 0.05 * bw);
 }
 // The arm nearer to us, in front of everything. (At medium size its hand was painted with the head.)
@@ -1653,6 +1759,12 @@ function figArmNear(c, G, K, grip) {
   if (sl) figCap(c, cx, cy, ha[0], ha[1], r2, r2 * 0.94); else figChain(c, sh[0], sh[1], el[0], el[1], ha[0], ha[1], r0, r1, r2, true);
   if (G.fine) figHandPath(c, G, el, ha, grip); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
   c.fill();
+  if (G.fine && sl && (G.st.v & 1) && !G.dead) { // a watch just below the cuff
+    const wx = lerp(el[0], ha[0], FIG_CUFF + 0.07), wy = lerp(el[1], ha[1], FIG_CUFF + 0.07);
+    let dx = ha[0] - el[0], dy = ha[1] - el[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    c.strokeStyle = figC(G.st.v & 2 ? '#b9a26a' : '#aab1b9'); c.lineWidth = Math.max(0.014, G.px * 0.8); c.lineCap = 'butt'; c.beginPath();
+    c.moveTo(wx - dy * r2 * 1.15, wy + dx * r2 * 1.15); c.lineTo(wx + dy * r2 * 1.15, wy - dx * r2 * 1.15); c.stroke(); c.lineCap = 'round';
+  }
   if (G.fine) figLimbGlint(c, G, sh, el, ha, (sl ? 0.048 : 0.036) * bw);
 }
 // A shoe. It points the way the person faces, lies flat when the foot is on the ground and
@@ -2333,7 +2445,7 @@ function figClip(c, G, mode) {
 
 // ---- things that belong to what somebody is doing --------------------------
 function figRifle(c, G) {
-  const A = G.A, px = G.px, held = (A.anim === 'guard' || A.anim === 'aimrifle') && !G.dead;
+  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead;
   const a = G.haR, b = G.haL;
   let dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), ox = a[0], oy = a[1];
   if (G.dead) { ox = G.cR[0] - G.fs * 0.1; oy = Math.max(G.cR[1], 0.045); dx = G.fs; dy = 0.5 * (1 - smooth(G.dT / 0.45)); l = 0.34; }
@@ -2363,7 +2475,7 @@ function figRifle(c, G) {
   c.restore();
 }
 function figProps(c, G) {
-  const A = G.A, anim = A.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
+  const anim = G.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
   if (anim === 'aim') {
     // a pistol, pointing where the arm points
     let dx = ha[0] - G.elR[0], dy = ha[1] - G.elR[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
@@ -2558,6 +2670,41 @@ function figClothes(c, G, K) {
   }
   if (K.coat && fine && !L.scarf && L.hat !== 'hood') { // collar, turned up a little at the back of the neck
     c.fillStyle = figSh(K.coat, 0.3); c.beginPath(); figCap(c, figPX(G, 0.985, -0.052), figPY(G, 0.985, -0.052), figPX(G, 0.995, 0.03), figPY(G, 0.995, 0.03), 0.022, 0.018); c.fill();
+  }
+}
+// Small things that make each person their own and hold up close in the scope: pockets on a
+// coat, a belt round a long coat, a placket and a buckle on an everyday top, a holster on the
+// hip of anybody armed with only a pistol. All paint on the body: the joints are never touched,
+// and nothing here is bright enough to be mistaken for what a brief tells the player to look for.
+function figDetails(c, G, K) {
+  const L = G.L, f = G.f, px = G.px, ww = G.ww, wc = G.wc, fine = G.fine, v = G.st.v, lw = Math.max(0.01, px * 0.75);
+  const P = (t, o) => { FIG_TMP[0] = figPX(G, t, o); FIG_TMP[1] = figPY(G, t, o); return FIG_TMP; };
+  const seg = (t0, o0, t1, o1) => { P(t0, o0); c.moveTo(FIG_TMP[0], FIG_TMP[1]); P(t1, o1); c.lineTo(FIG_TMP[0], FIG_TMP[1]); };
+  if (K.coat && !K.smock) {
+    // a pocket flap on each hip (the far one only just shows), and close up a breast pocket
+    c.strokeStyle = figSh(K.coat, 0.45); c.lineWidth = lw; c.beginPath();
+    seg(0.26, f * ww * 0.12, 0.23, f * ww * 0.74);
+    if (fine) { seg(0.25, -f * ww * 0.55, 0.23, -f * ww * 0.9); if (!L.vest) seg(0.74, f * wc * 0.28, 0.73, f * wc * 0.7); }
+    c.stroke();
+    if (fine && K.long && (v & 4)) { // a belt tied round a long coat, its buckle at the front
+      c.strokeStyle = figSh(K.coat, 0.22); c.lineWidth = Math.max(0.028, px); c.lineCap = 'butt'; c.beginPath(); seg(0.1, -ww, 0.1, ww); c.stroke(); c.lineCap = 'round';
+      c.fillStyle = figSh(K.coat, 0.5); c.beginPath(); P(0.1, f * (ww - 0.035)); c.rect(FIG_TMP[0] - 0.018, FIG_TMP[1] - 0.019, 0.036, 0.038); c.fill();
+    }
+  } else if (!K.coat && !K.dress && fine) {
+    // an everyday top: a row of buttons (or a zip) down the front, and the buckle of the belt
+    const dark = figSh(K.body, 0.42);
+    if (!L.vest) { c.strokeStyle = dark; c.lineWidth = lw; c.beginPath(); seg(0.93, f * (wc - 0.03), 0.06, f * (ww - 0.03)); c.stroke(); }
+    c.fillStyle = figC(v & 8 ? '#9a8a62' : '#8d949c'); c.beginPath(); P(0.0, f * (ww - 0.03)); c.rect(FIG_TMP[0] - 0.016, FIG_TMP[1] - 0.016, 0.032, 0.032); c.fill();
+  }
+  // somebody armed who carries no rifle has a pistol, and keeps it on the hip when it is not in the hand
+  const A = G.A;
+  if ((A.role === 'guard' || A.role === 'hostile') && L.gun !== 'rifle' && L.gun !== null && G.anim !== 'aim' && !G.dead) {
+    const o = -f * (ww + 0.004);
+    P(0.08, o); const hx = FIG_TMP[0], hy = FIG_TMP[1];
+    c.save(); c.translate(hx, hy); c.rotate(Math.atan2(-G.ux, G.uy) - f * 0.12);
+    c.fillStyle = figC('#121418'); c.beginPath(); figRR(c, -0.03, -0.11, 0.06, 0.14, 0.018); c.fill();
+    if (fine) { c.fillStyle = figC('#2c3036'); c.fillRect(-0.03, 0.0, 0.06, 0.018); }
+    c.restore();
   }
 }
 // A scarf: a wrap round the neck, an end hanging in front, and a tail down the back that
@@ -2799,10 +2946,9 @@ function drawFigure(ctx, A, env) {
   G.sc = sc; G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
-  const an = dead ? A.deathPose : A.anim;
+  const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
-  let mv = figMoving(A.anim);
-  if (A.animFrom && A.animAt !== undefined) { const u = ((A.t || 0) - A.animAt) / POSE_BLEND; if (u >= 0 && u < 1) mv = lerp(figMoving(A.animFrom), mv, smooth(u)); }
+  const mv = dead ? 0 : figMv(A);
   G.mv = dead ? 0 : mv; G.lag = dead ? 0 : clamp((st.s - st.vs * 0.03) * inv, -0.2, 0.2);
   // the light: how dim, and where the bright edge goes
   figDimK = env.dim || 0;
@@ -2831,7 +2977,7 @@ function drawFigure(ctx, A, env) {
     G.dR[0] = st.drop[0] + slide; G.dR[1] = Math.max(0, st.drop[1] - fall); G.dL[0] = st.drop[2] + slide; G.dL[1] = Math.max(0, st.drop[3] - fall);
     G.cR = G.dR; G.cL = G.dL;
   }
-  const K = figWear(G), bag = L.bag, anim = A.anim;
+  const K = figWear(G), bag = L.bag, anim = G.anim = an;
   const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
   const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
 
@@ -2849,6 +2995,7 @@ function drawFigure(ctx, A, env) {
   if (bag === 'umbrella') figCarry(c, G, 1); // held on the far side: only its handle shows in front
   figLimbsBack(c, G, K, farGrip);
   figClothes(c, G, K);
+  if (hi) figDetails(c, G, K);
   if (bag === 'backpack' || bag === 'guitar') figStraps(c, G);
   if (gore && A.rd.part !== 'head') figWound(c, G, A.rd);
   G.nearHand = !!K.sleeve;
@@ -2958,8 +3105,9 @@ function figDrawFar(ctx, A, env, J, L) {
     ctx.strokeStyle = D('#d7dbe0'); ctx.lineWidth = Math.max(0.012, minw * 0.5); ctx.beginPath(); ctx.moveTo(hand[0], hand[1] + up); ctx.lineTo(hand[0] + sway * sc, 2.73 * sc + up); ctx.stroke();
     ctx.fillStyle = D(L.bagCol || '#e0413a'); ctx.beginPath(); ctx.ellipse(hand[0] + sway * sc, 2.98 * sc + up, 0.2 * sc, 0.25 * sc, 0, 0, TAU); ctx.fill();
   }
-  if ((L.gun === 'rifle' || A.anim === 'guard' || A.anim === 'aimrifle') && !dead) {
-    const held = A.anim === 'guard' || A.anim === 'aimrifle', a = J.haR, b2 = J.haL;
+  const an = figAnimNow(A);
+  if ((L.gun === 'rifle' || an === 'guard' || an === 'aimrifle') && !dead) {
+    const held = an === 'guard' || an === 'aimrifle', a = J.haR, b2 = J.haL;
     let dx = b2[0] - a[0], dy = b2[1] - a[1], l = Math.hypot(dx, dy) || 1, x0, y0, x1, y1;
     if (held && l > 0.05 * sc) { dx /= l; dy /= l; x0 = a[0] - dx * 0.3 * sc; y0 = a[1] - dy * 0.3 * sc; x1 = b2[0] + dx * 0.4 * sc; y1 = b2[1] + dy * 0.4 * sc; }
     else { x0 = tx(0.42) - f * 0.14 * sc; y0 = ty(0.42) - 0.3 * sc; x1 = x0 - f * 0.12 * sc; y1 = y0 + 1.0 * sc; }
@@ -2968,8 +3116,8 @@ function figDrawFar(ctx, A, env, J, L) {
   }
   // small lights that give people away at night: a phone screen, a cigarette end
   if (!dead && env.dark) {
-    if (A.anim === 'phone' || A.anim === 'sitphone') { ctx.fillStyle = '#cfe6ff'; ctx.fillRect(J.haR[0] - 0.035, J.haR[1] - 0.02, 0.07, 0.13); ctx.globalAlpha = 0.14; ctx.beginPath(); ctx.arc(J.haR[0], J.haR[1] + 0.04, 0.3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    else if (A.anim === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    if (an === 'phone' || an === 'sitphone') { ctx.fillStyle = '#cfe6ff'; ctx.fillRect(J.haR[0] - 0.035, J.haR[1] - 0.02, 0.07, 0.13); ctx.globalAlpha = 0.14; ctx.beginPath(); ctx.arc(J.haR[0], J.haR[1] + 0.04, 0.3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (an === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
   }
   ctx.restore();
 }
@@ -5960,6 +6108,8 @@ Sim.prototype.addActor = function (d) {
   }, d);
   if (d.at) Object.assign(a, d.at);
   a.look = Object.assign({}, d.look || {});
+  // anyone the mission shows holding a rifle carries it all the time, and aims it rather than a pistol (see figAimAs)
+  if (a.look.gun === undefined && figHoldsRifle(d)) a.look.gun = 'rifle';
   a.idle = a.anim; a.animCur = a.anim; a.animFrom = null; a.animAt = -9; a.faceS = a.face;
   a.routine = (d.routine || []).slice();
   sim.actors.push(a); sim.byId[a.id] = a;
@@ -6265,10 +6415,10 @@ Sim.prototype.place = function (a, p) {
   if (p.behind === undefined && p.plane) a.behind = !!p.room;
 };
 // One person, one step. The wrapper notes when the pose or the facing changes so the
-// figure can ease from one to the other instead of snapping (see actorJoints).
+// figure can ease from one to the other instead of snapping (see figPoseChange).
 Sim.prototype.stepActor = function (a, dt) {
   this.stepActorCore(a, dt);
-  if (a.anim !== a.animCur) { a.animFrom = a.animCur; a.animCur = a.anim; a.animAt = a.t; }
+  if (a.anim !== a.animCur) figPoseChange(a);
   if (!a.dead) a.faceS = approach(a.faceS === undefined ? a.face : a.faceS, a.face, dt * 9);
 };
 Sim.prototype.stepActorCore = function (a, dt) {
@@ -6286,7 +6436,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   }
   if (a.state === 'alarm') { // guard reaching for the radio
     a.react -= dt; a.face = Math.sin(a.t * 5) > 0 ? 1 : -1;
-    if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * 11; } else a.react = Math.min(a.react, 0.2); }
+    if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * RUN * FIG_GAIT.run.k; } else a.react = Math.min(a.react, 0.2); }
     if (a.react <= 0) { sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
     return;
   }
@@ -6302,7 +6452,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
     const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1), dx = a.goal - a.x, stepd = sp * dt;
     a.face = sign(dx) || a.face; a.vx = a.face * sp;
     a.anim = a.running ? (a.state === 'panic' ? 'panic' : 'run') : 'walk';
-    a.ph += dt * sp * (a.running ? 2.6 : 4.3);
+    a.ph += dt * sp * (a.running ? FIG_GAIT.run : FIG_GAIT.walk).k; // the stride is worked out from this, so the feet stay put on the ground
     if (Math.abs(dx) <= stepd) { a.x = a.goal; a.goal = null; a.vx = 0; a.anim = a.idle; }
     else a.x += sign(dx) * stepd;
     return;
@@ -6353,6 +6503,7 @@ Sim.prototype.leave = function (a) {
 Sim.prototype.killActor = function (a, part, how, bullet, src) {
   const sim = this;
   if (a.dead) return;
+  if (a.anim !== a.animCur) figPoseChange(a); // a pose set this step and not yet eased into: the body falls from the one on screen
   a.dead = true; a.deadT = 0; a.deathAtT = sim.t; a.deathPose = a.anim; a.deathAt = a.t; a.deathPh = a.ph; a.bubble = null;
   a.deathHow = how; a.deathPart = part; a.deathDir = bullet ? (bullet.vx >= 0 ? 1 : -1) : 0; // for the artwork only
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;
@@ -25711,10 +25862,13 @@ mission({
     const up = (x) => Y.deckY + clamp((x - s0) / (s1 - s0), 0, 1) * (Y.sunY - Y.deckY);
     return [
       // (she leaves her glass in the saloon when she goes out on deck, and picks one up again when she comes back in)
+      // She goes in and out at the aft end of the saloon (x 15.4), behind its wall where no window shows her, and
+      // steps onto the deck at the same spot, so she never jumps. The waits around it are trimmed by the extra
+      // walking, so she reaches the crate, the top deck and the gangway when she always did.
       Object.assign(H.saloon(21), { id: 'maeve', role: 'target', face: 1, anim: 'drink', look: { hair: 'white', coat: COL.red, long: true, h: 0.97, bag: 'cup' },
-        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 5, 'talk', -1], ['walk', 16.3], ['look', { bag: null }], ['to', H.deck(14.6)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
+        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 3.69, 'talk', -1], ['walk', 15.4], ['look', { bag: null }], ['to', H.deck(15.4)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
           ['walk', s0], ['call', (sim, a) => { a.yFn = up; }], ['walk', s1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.sun(s1)); }], ['walk', 20.4], ['emit', 'on_call'], ['wait', 17, 'phone', 1],
-          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 14.6], ['to', H.saloon(16.3)], ['look', { bag: 'cup' }], ['walk', 21], ['wait', 9, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
+          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; a.y = up(a.x); }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 15.4], ['to', H.saloon(15.4)], ['look', { bag: 'cup' }], ['walk', 21], ['wait', 7.69, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
         escapeText: 'She went below and the Silver Tide sailed on the tide, with Maeve Calloway aboard.' }),
       Object.assign(H.sun(15.5), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { coat: '#1d2026', build: 'big', glasses: 'shades', h: 1.05, gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] }),
       Object.assign(H.deck(11), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { coat: '#1d2026', hat: 'cap', hatCol: '#1d2026' }, routine: [['wait', 999, 'arms', -1]] }),
@@ -25893,13 +26047,17 @@ mission({
   cast(H) {
     const T = H.tower, B = H.lodge;
     const stairTop = { plane: H.PD, x: T.stairTop, y: T.floor, zone: 'yard', room: null, behind: false };
+    // The cook walks along the hide to its corner post before he steps out onto the stair (and back the same way),
+    // so he never jumps between the two. Two metres each way: his waits are shortened to match, so he keeps his times.
+    const inHide = T.stairTop - T.x, step = inHide / 1.3;
     const watch = []; for (let i = 0; i < 10; i++) watch.push(['wait', 9, 'look', -1], ['wait', 7, 'look', 1]);
     return [
       Object.assign(T.place(-0.6), { id: 't', role: 'target', face: -1, anim: 'look', look: { hat: 'cap', hatCol: '#4a5a3a', coat: '#55653c', beard: '#5a4634' },
         routine: watch.concat([['hide'], ['gone']]), escapeText: 'His watch ended and he climbed down to sleep. The next man up there will be fresher.' }),
       Object.assign(T.place(0), { id: 'cook', role: 'civ', face: -1, anim: 'talk', yFn: T.stairY, look: { hat: 'tophat', hatCol: '#f4f1e6', coat: '#f4f1e6', long: true, bag: 'cup' },
         failText: 'That was the cook. He made soup for a living. The contract is void.',
-        routine: [['wait', 15, 'talk', -1], ['to', stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', B.winX(B.door) - 1.5], ['hide'], ['wait', 9], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', T.place(0)], ['loop']] }),
+        routine: [['wait', 15 - step, 'talk', -1], ['walk', T.stairTop], ['to', stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', B.winX(B.door) - 1.5], ['hide'], ['wait', 9 - step], ['show'],
+          ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', T.place(inHide)], ['walk', T.x], ['loop']] }),
     ];
   },
   onAlarm(sim) { const t = sim.byId.t; if (t && !t.dead) t.escapeText = 'The lookout dropped behind the boards and got on his radio. The whole valley knows about you now.'; },
@@ -26377,8 +26535,9 @@ mission({
         escapeText: 'He heard the round hit the boards, went down the back of the tower like a squirrel, and the lodge knows somebody is on the mountain.' }),
       Object.assign(inn(0.9), { id: 'cook', role: 'civ', face: -1, anim: 'talk', yFn: T.stairY, look: { hat: 'tophat', hatCol: '#f4f1e6', coat: '#f4f1e6', long: true, bag: 'cup' },
         failText: 'That was the cook. Twice now he has climbed that tower with soup, and this time he did not come down. The contract is void.',
-        routine: [['wait', 12, 'talk', -1], ['walk', T.x + edge], ['to', stairTop], ['emit', 'cook_down'], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', door - 1.5], ['hide'], ['look', { bag: null }], ['wait', 16],
-          ['look', { bag: 'cup' }], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', inn(edge)], ['walk', T.x + 0.9], ['loop']] }),
+        // (he steps between the hide and the stair behind the end of the boards, at one spot, so he never jumps)
+        routine: [['wait', 12, 'talk', -1], ['walk', T.x + edge], ['to', Object.assign({}, stairTop, { x: T.x + edge })], ['emit', 'cook_down'], ['walk', T.stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', door - 1.5], ['hide'], ['look', { bag: null }], ['wait', 16],
+          ['look', { bag: 'cup' }], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['walk', T.x + edge], ['to', inn(edge)], ['walk', T.x + 0.9], ['loop']] }),
       Object.assign(H.yard(door + 3), { id: 'c1', role: 'civ', face: 1, anim: 'work', look: { hat: 'cap', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
         routine: [['wait', 6, 'work', 1], ['walk', door + 9], ['wait', 5, 'work', 1], ['walk', door + 3], ['loop']] }),
     ];
@@ -26746,14 +26905,21 @@ mission({
     const stair = (f) => ['call', (sim, a) => { a.yFn = (x) => F.floorY(f) + clamp((x - xa) / (xb - xa), 0, 1) * F.fh; }];
     const landing = (f) => ['call', (sim, a) => { a.yFn = null; a.y = F.floorY(f); }];
     const climb = (f) => [['walk', xa], stair(f), ['speed', 0.75], ['walk', xb], ['speed', 1], landing(f + 1)];
+    // Up the drop ladder at the foot of the fire escape (drawn by K.fireEscape at its left end) to the first
+    // landing, hand over hand, instead of appearing there. It takes him a second longer than the old jump did,
+    // so he stands a second less at her window: the pistol still comes up when it always did.
+    const lx = fx - 0.78, up = 2.6;
+    const ladder = [['walk', lx], ['wait', 0.3, 'stand', -1],
+      ['call', (sim, a) => { a.flee = [['wait', 0.7, 'cower'], ['gone']]; const t0 = sim.t, y0 = a.y, y1 = F.floorY(1); a.yFn = () => lerp(y0, y1, clamp((sim.t - t0) / up, 0, 1)); }],
+      ['wait', up, 'climb', -1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.escape(1, lx - fx)); }], ['wait', 0.2, 'stand']];
     return [
       Object.assign(H.flat(4, 2, 0.8), { id: 'brandt', role: 'target', face: -1, anim: 'type', look: { hair: 'long', hairCol: '#2a2019', glasses: true, coat: '#3f7a6a' }, routine: [['face', -1], ['wait', 999, 'type']] }),
       // A professional: noise does not rattle him. If he is only winged he gives up and gets out of sight
       // (round the corner from the pavement, through the nearest window from the stairs), unless he
       // already has the pistol up, in which case he fires first.
       Object.assign(H.near(-25.5), { id: 'mask', role: 'hostile', state: 'alert', calmOnAlarm: true, hidden: true, look: { coat: '#15171b', long: true, hat: 'beanie', hatCol: '#15171b', mask: '#2a2e36' }, flee: [['run', -26.4], ['gone']],
-        routine: [['wait', 13], ['show'], ['emit', 'mask_seen'], ['walk', fx + 0.9], ['wait', 1.6, 'stand', -1], ['to', H.escape(1, 0.9)], ['call', (sim, a) => { a.flee = [['wait', 0.7, 'cower'], ['gone']]; }], ['wait', 0.5, 'stand']]
-          .concat(climb(1), climb(2), climb(3), [['emit', 'mask_top'], ['walk', fx + 0.45], ['wait', 2.4, 'stand', -1], ['threat', 'brandt', 7]]) }),
+        routine: [['wait', 13], ['show'], ['emit', 'mask_seen']]
+          .concat(ladder, climb(1), climb(2), climb(3), [['emit', 'mask_top'], ['walk', fx + 0.45], ['wait', 1.4, 'stand', -1], ['threat', 'brandt', 7]]) }),
       Object.assign(H.flat(3, 1), { id: 'n1', role: 'civ', face: 1, look: { hair: 'white', coat: COL.wine, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
       Object.assign(H.flat(2, 0), { id: 'n2', role: 'civ', look: { hair: 'short', coat: COL.olive }, routine: pace(F.winX(0) - 0.5, F.winX(0) + 0.5, 7, 6, 'phone') }),
       Object.assign(H.flat(5, 0), { id: 'n3', role: 'civ', face: 1, look: { hair: 'bun', dress: COL.navy, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
@@ -27762,11 +27928,14 @@ mission({
         flee: [['run', L.x0 + 0.8], ['hide'], ['gone']],
         escapeText: 'He was out through the little door at the back before the echo came back. Aurel will be listening from somewhere else by morning.' }),
       Object.assign(inn(L.s1 - 0.8), { id: 'mind', role: 'guard', face: -1, anim: 'guard', look: { coat: '#22262d', hat: 'beanie', hatCol: '#1d2026', build: 'big' },
-        routine: [['wait', 6, 'guard', -1], ['walk', L.x0 + 1.0], ['wait', 5, 'guard', 1], ['walk', L.s1 - 0.5], ['wait', 3, 'guard', 1], ['to', out(L.s1 + 0.1)], ['walk', L.x1 + 1.8], ['wait', 16, 'smoke', 1],
-          ['walk', L.s1 + 0.1], ['to', inn(L.s1 - 0.1)], ['walk', L.s1 - 0.8], ['loop']] }),
+        // (in and out of the lock-up he changes from one to the other behind the tin wall at the end of the shutter,
+        // where he stands, so his feet never jump; the wait is shortened by the extra steps, keeping his times)
+        routine: [['wait', 6, 'guard', -1], ['walk', L.x0 + 1.0], ['wait', 5, 'guard', 1], ['walk', L.s1 - 0.5], ['wait', 3 - 0.6 / 1.3, 'guard', 1], ['walk', L.s1 + 0.1], ['to', out(L.s1 + 0.1)], ['walk', L.x1 + 1.8], ['wait', 16 - 0.2 / 1.3, 'smoke', 1],
+          ['walk', L.s1 + 0.1], ['to', inn(L.s1 + 0.1)], ['walk', L.s1 - 0.8], ['loop']] }),
       Object.assign(out(L.x0 - 8), { id: 'tea', role: 'civ', hidden: true, face: 1, look: { dress: COL.wine, coat: '#c9b48a', hair: 'bun', hairCol: '#9aa0a8', bag: 'cup' },
         failText: 'You shot the tea lady. Nine years she has carried tea to that lock-up, and she never once asked what the radios were for.',
-        routine: [['wait', 4], ['show'], ['walk', L.s0 - 0.1], ['to', inn(L.s0 + 0.1)], ['walk', L.x0 + 3.0], ['wait', 8, 'talk', -1], ['walk', L.s0 + 0.1], ['to', out(L.s0 - 0.1)], ['walk', L.x0 - 8], ['hide'], ['wait', 34], ['show'], ['loop', 2]] }),
+        // (she goes in and comes out behind the tin wall beside the shutter, at one spot, so she never jumps)
+        routine: [['wait', 4], ['show'], ['walk', L.s0 - 0.1], ['to', inn(L.s0 - 0.1)], ['walk', L.x0 + 3.0], ['wait', 8 - 0.2 / 1.3, 'talk', -1], ['walk', L.s0 - 0.1], ['to', out(L.s0 - 0.1)], ['walk', L.x0 - 8], ['hide'], ['wait', 34 - 0.2 / 1.3], ['show'], ['loop', 2]] }),
       Object.assign(H.inBox(-1.5), { id: 'sig', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
     ];
   },

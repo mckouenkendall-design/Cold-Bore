@@ -78,7 +78,7 @@ function pageMain(name) {
   if (name === 'anims' || name === 'anims2') {
     const half = Math.ceil(ANIMS.length / 2), list = name === 'anims' ? ANIMS.slice(0, half) : ANIMS.slice(half);
     const lk = [{}, { coat: COL.tan, hair: 'short' }, { hair: 'long', dress: COL.wine }, { hat: 'cap', hatCol: '#3f6fb0', vest: '#3f6fb0' }, { coat: '#39404a', long: true, hat: 'fedora', hatCol: '#22252b' }];
-    list.forEach((an, i) => add(an, actor({ anim: an, look: Object.assign({}, lk[i % lk.length]), face: i % 4 === 3 ? -1 : 1, seed: 1 + i * 0.7, t: 2.3 + i * 0.61, ph: 0.8 + i }), 'day', 190));
+    list.forEach((an, i) => add(an, actor({ anim: an, look: Object.assign(an === 'aimrifle' || an === 'guard' ? { gun: 'rifle' } : {}, lk[i % lk.length]), face: i % 4 === 3 ? -1 : 1, seed: 1 + i * 0.7, t: 2.3 + i * 0.61, ph: 0.8 + i }), 'day', 190));
   } else if (name === 'hats' || name === 'hats2') {
     (name === 'hats' ? HATS.slice(0, 5) : HATS.slice(5)).forEach((h) => { const L = { hat: h, hatCol: h === 'hardhat' ? '#e2b33c' : h === 'sun' ? '#e8dcc0' : h === 'tophat' ? '#22252b' : h === 'helmet' ? '#ece8dc' : h === 'cap' ? '#3f6fb0' : h === 'beret' ? '#7a2438' : h === 'hood' ? '#d8b52a' : h === 'peaked' ? '#27365a' : h === 'beanie' ? '#5a2a2a' : '#5a4634', coat: h === 'hood' ? '#d8b52a' : '#4a505a' }; if (h === 'fedora' || h === 'tophat' || h === 'sun') L.hatBand = COL.red;
       const o = { crop: 0.42, w: 186, rowKey: h };

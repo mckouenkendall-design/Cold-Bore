@@ -400,10 +400,13 @@ mission({
     const up = (x) => Y.deckY + clamp((x - s0) / (s1 - s0), 0, 1) * (Y.sunY - Y.deckY);
     return [
       // (she leaves her glass in the saloon when she goes out on deck, and picks one up again when she comes back in)
+      // She goes in and out at the aft end of the saloon (x 15.4), behind its wall where no window shows her, and
+      // steps onto the deck at the same spot, so she never jumps. The waits around it are trimmed by the extra
+      // walking, so she reaches the crate, the top deck and the gangway when she always did.
       Object.assign(H.saloon(21), { id: 'maeve', role: 'target', face: 1, anim: 'drink', look: { hair: 'white', coat: COL.red, long: true, h: 0.97, bag: 'cup' },
-        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 5, 'talk', -1], ['walk', 16.3], ['look', { bag: null }], ['to', H.deck(14.6)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
+        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 3.69, 'talk', -1], ['walk', 15.4], ['look', { bag: null }], ['to', H.deck(15.4)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
           ['walk', s0], ['call', (sim, a) => { a.yFn = up; }], ['walk', s1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.sun(s1)); }], ['walk', 20.4], ['emit', 'on_call'], ['wait', 17, 'phone', 1],
-          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 14.6], ['to', H.saloon(16.3)], ['look', { bag: 'cup' }], ['walk', 21], ['wait', 9, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
+          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; a.y = up(a.x); }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 15.4], ['to', H.saloon(15.4)], ['look', { bag: 'cup' }], ['walk', 21], ['wait', 7.69, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
         escapeText: 'She went below and the Silver Tide sailed on the tide, with Maeve Calloway aboard.' }),
       Object.assign(H.sun(15.5), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { coat: '#1d2026', build: 'big', glasses: 'shades', h: 1.05, gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] }),
       Object.assign(H.deck(11), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { coat: '#1d2026', hat: 'cap', hatCol: '#1d2026' }, routine: [['wait', 999, 'arms', -1]] }),
