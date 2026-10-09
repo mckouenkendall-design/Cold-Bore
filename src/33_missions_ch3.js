@@ -92,7 +92,8 @@ mission({
         routine: [['wait', 16, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 13, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 12, 'work', 1], ['walk', B.winX(4)], ['gone']],
         escapeText: 'He finished the count and went in for his lunch. The lodge is fed and armed for another week.' }),
       Object.assign(H.yard(17), { id: 'c1', role: 'civ', face: -1, look: { hat: 'beanie', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
-        routine: [['wait', 3, 'work', -1], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['look', { bag: 'box' }], ['loop']] }),
+        // (he picks the next box up at the end of his three seconds bent over the pile, not the moment he arrives)
+        routine: [['wait', 3, 'work', -1], ['look', { bag: 'box' }], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['loop']] }),
     ];
   },
   onAlarm(sim) { const t = sim.byId.t; if (t && !t.dead) t.escapeText = 'He heard the round strike and ran for the trees. The lodge knows somebody is on the mountain now.'; },
