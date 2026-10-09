@@ -651,7 +651,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 3:57 PM";
+const BUILD = "Oct 9, 4:04 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -15580,7 +15580,7 @@ SCN.estate = function (o) {
   const ry = B.roofY + 0.3, ch = { x0: 14.5, x1: 16.4, y1: 13.3 }, dx = B.winX(3), hfC = {}, hwC = {}, capC = S.tone('#8f8370', PH);
   // on the wall itself (behind anyone at a window): corner stones, the plinth, the shade
   // under the eaves, downpipes, and the stains the sills leave
-  PH.add({ x0: B.x - 0.5, x1: B.x + B.w + 0.5, layer: 0, draw(ctx, env) {
+  const houseWall = PH.add({ x0: B.x - 0.5, x1: B.x + B.w + 0.5, layer: 0, draw(ctx, env) {
     if (ry + 0.5 < env.y0 || 0 > env.y1) return;
     const s = env.s;
     R4(ctx, B.x, 0, B.w, 0.42, stoneD); R4(ctx, B.x, 0.4, B.w, 0.06, stoneHi);
@@ -15792,7 +15792,7 @@ SCN.estate = function (o) {
   const gate = H.gate = { x0: 47.4, x1: 54.2 };
   // the lane outside the wall: a dirt road with two ruts and a grassy middle
   const ln = { road: S.tone(night ? '#2a2a26' : '#b3a582', PF), rut: S.tone(night ? '#1e1e1b' : '#998a68', PF), grav: S.tone(night ? '#34342e' : '#c7bb9c', PF) };
-  PF.add({ x0: -110, x1: 110, layer: 0, draw(ctx, env) {
+  const laneItem = PF.add({ x0: -110, x1: 110, layer: 0, draw(ctx, env) {
     if (0.2 < env.y0 || -3.6 > env.y1) return;
     const a = Math.max(-110, env.x0 - 1), b = Math.min(110, env.x1 + 1);
     R4(ctx, a, -3.2, b - a, 1.9, ln.road); ctx.fillStyle = ln.rut; ctx.beginPath(); ctx.rect(a, -1.75, b - a, 0.18); ctx.rect(a, -2.9, b - a, 0.2); ctx.fill();
@@ -15850,8 +15850,169 @@ SCN.estate = function (o) {
   H.study = (x, extra) => Object.assign({ plane: PH, x, y: 0, room: 'house:study', zone: 'house:study', behind: true }, extra || {});
   H.inHut = (extra) => Object.assign({ plane: PD, x: hut.x + 1.7, y: 0, room: 'gatehut', zone: 'gatehut', behind: true }, extra || {});
   H.onBalcony = (x, extra) => Object.assign({ plane: PH, x, y: H.bal.y, room: null, zone: H.bal.zone, behind: false }, extra || {});
+  esDetail(S, H, { houseWall, laneItem, PHl, night, rain, side, trees: [-96, -78, -61, -47, -30, -14, 3, 19, 37, 52, 70, 88].map((x, i) => x + (i % 3) * 1.5) });
   return H;
 };
+
+// ---- an estate that is lived in ------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): hairline cracks in
+// the render, rising damp, patched plaster and green streaks on the house, lichen and cracks
+// on the walls, harvest nets, poppies and beehives in the olive grove, gravel and ruts on the
+// drive and the lane, lemon trees in pots and a sprinkler in the east garden, and a farm with
+// a cypress avenue on the vineyard hill. Everything lies on the ground, sits on a wall that
+// already hides what is behind it, or stands low at the far end of the garden where nobody
+// goes; nothing is solid or shootable.
+function esDetail(S, H, q) {
+  const B = H.house, PH = H.PH, night = q.night, rain = q.rain, side = q.side;
+  const wins = Object.keys(B.wins).map((k) => B.wins[k]);
+  const onWin = (x, y, m) => wins.some((op) => x > op.x - m && x < op.x + op.w + m && y > op.y - m && y < op.y + op.h + m);
+  // ---- the house front: plaster that has lived through a lot of summers ----
+  K.deco(S, PH, { after: q.houseWall, seed: 5101 }, (D, R) => {
+    const x0 = B.x, x1 = B.x + B.w, top = B.roofY;
+    // rising damp above the plinth: a darker band with a ragged edge, a salt line along its top
+    KW.grime(D, R, x0 + 0.9, x1 - 0.9, 0.46, 0.75, '#8a7a5a', 0.3);
+    for (let x = x0 + 1; x < x1 - 1; x += R.r(0.4, 1.0)) D.rect(x, 0.46 + R.r(0.45, 0.72), R.r(0.3, 0.9), 0.03, '#f4efe2', 0.45);
+    // patches where the plaster has been made good, a shade off the rest
+    for (let i = 0; i < 9; i++) { const w = R.r(0.7, 1.8), h = R.r(0.5, 1.2), x = R.r(x0 + 1, x1 - 1 - w), y = R.r(1.0, top - 1.5 - h); if (onWin(x + w / 2, y + h / 2, 0.6 + w / 2)) continue; D.rect(x, y, w, h, R.chance(0.5) ? '#efe6d0' : '#d8ccb0', 0.7); }
+    // hairline cracks running out from the corners of the windows, the way old plaster goes
+    for (const op of wins) {
+      if (R.chance(0.45)) KW.cracks(D, R, op.x + op.w + 0.05, op.y + op.h + 0.05, R.r(0.5, 1.1), '#8a7c62', { dir: R.r(0.5, 1.1), w: 0.018, a: 0.6 });
+      if (R.chance(0.35)) KW.cracks(D, R, op.x - 0.05, op.y - 0.05, R.r(0.4, 0.9), '#8a7c62', { dir: Math.PI + R.r(0.5, 1.0), w: 0.018, a: 0.6 });
+    }
+    // green and grey streaks where the gutter overflows at each end
+    for (const ex of [x0 + 1.4, x1 - 1.6]) KW.streaks(D, R, ex - 0.5, ex + 0.5, top - 0.35, '#6a7a52', { n: 4, len: [1.2, 3.2], w: [0.1, 0.22], a: 0.25 });
+    // paint coming away from the plinth here and there
+    for (let i = 0; i < 6; i++) KW.peel(D, R, R.r(x0 + 1, x1 - 1), 0.22, R.r(0.3, 0.6), 0.16, '#b2a68a', 0.6);
+  });
+  // the garage and the loggia front: cracks, a stain where the gutter drips, oil on the apron
+  K.deco(S, PH, { seed: 5113 }, (D, R) => {
+    const g = H.garage;
+    for (let i = 0; i < 4; i++) KW.cracks(D, R, R.r(g.x0 + 0.5, g.x1 - 0.5), R.r(3.2, 3.8), R.r(0.4, 0.9), '#8a7c62', { w: 0.018, a: 0.55 });
+    KW.streaks(D, R, g.x0 + 0.2, g.x1 - 0.2, g.h - 0.35, '#7a6a4a', { per: 0.5, len: [0.3, 1.0], w: [0.06, 0.14], a: 0.22 });
+    KW.grime(D, R, g.x0, g.x1, 0, 0.5, '#5a5040', 0.25);
+  });
+  K.deco(S, PH, { seed: 5117 }, (D, R) => {                 // (over the gravel path in front)
+    const g = H.garage;
+    for (let i = 0; i < 2; i++) KW.blob(D, R, g.x0 + 3.8 + i * 6.4, -0.25, 1.1, 0.12, '#3a3630', 0.4, 0.25);
+  });
+
+  // ---- the rear wall and the tower: lichen, and cracks in the old stone ----
+  K.deco(S, H.PRW, { seed: 5121 }, (D, R) => {
+    for (let i = 0; i < 160; i++) D.ell(R.r(-90, 90), R.r(0.2, 2.3), R.r(0.06, 0.16), R.r(0.04, 0.1), R.chance(0.6) ? '#a8ac84' : '#8a9466', 0.6);
+    for (let i = 0; i < 14; i++) KW.cracks(D, R, R.r(-88, 88), R.r(1.4, 2.4), R.r(0.4, 1.0), '#7a6e58', { w: 0.02, a: 0.5 });
+    KW.grime(D, R, -90, 90, 0, 0.45, '#5a5a3e', 0.25);
+  });
+  K.deco(S, H.PB, { seed: 5125 }, (D, R) => {
+    const x0 = 13, x1 = 19;
+    for (let i = 0; i < 30; i++) D.ell(R.r(x0 + 0.2, x1 - 0.2), R.r(0.3, 8.6), R.r(0.05, 0.14), R.r(0.04, 0.09), '#a8ac84', 0.55);
+    KW.streaks(D, R, x0 + 0.2, x1 - 0.2, 8.8, '#6a6a4a', { n: 6, len: [1, 3.5], w: [0.08, 0.2], a: 0.22 });
+    KW.cracks(D, R, x0 + 4.6, 6.2, 1.2, '#7a6e58', { w: 0.02, a: 0.5 });
+  });
+
+  // ---- the front wall and the lane outside it ----
+  const gate = H.gate;
+  K.deco(S, H.PF, { seed: 5131 }, (D, R) => {
+    for (let i = 0; i < 150; i++) { const x = R.r(-110, 110); if (x > gate.x0 - 1.2 && x < gate.x1 + 1.2) continue; D.ell(x, R.r(0.15, 1.8), R.r(0.06, 0.16), R.r(0.04, 0.1), R.chance(0.6) ? '#a8ac84' : '#8a9466', 0.6); }
+    for (let i = 0; i < 16; i++) { const x = R.r(-108, 108); if (x > gate.x0 - 2 && x < gate.x1 + 2) continue; KW.cracks(D, R, x, R.r(1.2, 1.9), R.r(0.4, 1.0), '#7a6e58', { w: 0.02, a: 0.5 }); }
+    for (let x = -110; x < 110; x += R.r(3, 9)) { if (x > gate.x0 - 2 && x < gate.x1 + 2) continue; KW.moss(D, R, x, x + R.r(0.8, 2.4), 0.02, 0.1, night ? '#2a3a26' : '#5a6a3c', 0.85); }
+  });
+  K.deco(S, H.PF, { after: q.laneItem, seed: 5133 }, (D, R) => {
+    // grass down the middle of the lane, potholes holding water, stones thrown out of the ruts
+    for (let x = -110; x < 110; x += R.r(0.4, 1.4)) KC.tuft(D, R, x, -2.35 + R.r(-0.12, 0.12), R.r(0.12, 0.26), night ? '#24301e' : '#7a8a48');
+    for (let i = 0; i < 18; i++) { const x = R.r(-108, 108), y = R.chance(0.5) ? -1.66 : -2.8, rx = R.r(0.4, 1.0); D.ell(x, y, rx, 0.09, night ? '#16161a' : '#7a6c50', 0.7); if (rain || !night) { D.pass = 1; D.ell(x - rx * 0.1, y + 0.01, rx * 0.7, 0.05, rain ? (night ? '#2a3448' : '#9fb0bc') : '#8f8062', 0.8); D.pass = 0; } }
+    D.pass = 2; for (let i = 0; i < 160; i++) D.rect(R.r(-110, 110), -R.r(1.4, 3.1), R.r(0.06, 0.14), 0.05, night ? '#40403a' : '#d8ccae', 0.9); D.pass = 0;
+  });
+
+  // ---- the drive: more gravel, the marks the cars leave ----
+  K.deco(S, H.PD, { ground: true, seed: 5141 }, (D, R) => {
+    const st = night ? '#4a4c52' : '#d2c8b2', st2 = night ? '#26282c' : '#948a74';
+    for (let i = 0; i < 420; i++) D.rect(R.r(-90, 90), -R.r(0.05, 0.95), R.r(0.05, 0.11), 0.04, R.chance(0.5) ? st : st2, 0.95);
+    for (let i = 0; i < 12; i++) KW.blob(D, R, R.r(-88, 88), -R.r(0.2, 0.7), R.r(0.4, 1.2), 0.07, night ? '#1c1d20' : '#7a705c', 0.35, 0.25);
+    for (let i = 0; i < 6; i++) { const x = R.r(-80, 70), l = R.r(5, 14); D.line([x, -0.42, x + l * 0.5, -0.45 + R.r(-0.04, 0.04), x + l, -0.4], 0.05, night ? '#202226' : '#9a8f78', 0.6); }
+  });
+
+  // ---- the olive grove outside the wall: harvest nets under the trees, poppies, beehives ----
+  K.deco(S, H.PT, { ground: true, seed: 5151 }, (D, R) => {
+    const dry = night ? '#20281c' : '#a8a46a', dry2 = night ? '#161c14' : '#8a8a52';
+    for (let i = 0; i < 70; i++) { const rx = R.r(1.5, 5); KW.blob(D, R, R.r(-200, 200), -R.r(0.6, 22), rx, R.r(0.12, 0.3), R.chance(0.5) ? dry : dry2, 0.5, 0.25); }
+    // nets spread under the trees for the picking, green and black, with olives lying on them
+    for (const tx of q.trees) {
+      if (R.chance(0.3)) continue;
+      const c = R.chance(0.5) ? (night ? '#1c2a22' : '#4f7a5a') : (night ? '#141616' : '#3a3e3a'), w = R.r(5, 8), p = [tx - w / 2, -0.12];
+      for (let k = 1; k <= 4; k++) p.push(tx - w / 2 + (w * k) / 4, -0.1 + R.r(-0.04, 0.04));
+      p.push(tx + w / 2 + 0.6, -0.95); for (let k = 3; k >= 1; k--) p.push(tx - w / 2 - 0.4 + ((w + 1) * k) / 4, -0.95 + R.r(-0.06, 0.06)); p.push(tx - w / 2 - 0.4, -0.95);
+      D.poly(p, c, 0.55, 0.5);
+      if (!night) { D.pass = 1; for (let k = 0; k < 20; k++) D.ell(tx + R.r(-w / 2, w / 2), -R.r(0.25, 0.85), 0.05, 0.035, '#3a3a2a', 0.9); D.pass = 0; }
+    }
+    // a pair of crates of picked olives, and a ladder lying in the grass
+    D.pass = 1; KC.crate(D, q.trees[5] + 2.8, -1.6, 0.7, 0.45, '#8a6a45'); KC.crate(D, q.trees[5] + 3.6, -1.65, 0.7, 0.45, '#7a5c3c');
+    D.poly([q.trees[8] - 3, -1.9, q.trees[8] + 0.8, -1.7, q.trees[8] + 0.8, -1.6, q.trees[8] - 3, -1.8], '#8a6a45');
+    // poppies along the terraces, and a few white campion among them
+    if (!night) for (let i = 0; i < 90; i++) {
+      const cx = R.r(-200, 200), cy = -R.r(1, 20), n = R.i(3, 8);
+      D.pass = 1; for (let k = 0; k < n; k++) D.ell(cx + R.gauss() * 0.6, cy + R.gauss() * 0.12, 0.1, 0.08, R.chance(0.8) ? '#d9372b' : '#f1ede2');
+    }
+    // a stone field hut among the olives: rough walls, a pantiled roof, a plank door
+    { const hx = 26, hy = -10.6, w = 4.2, h = 2.4, st = night ? '#2a2c26' : '#b8ad8e', stD = night ? '#1c1e1a' : '#8f8668';
+      D.pass = 2; D.rect(hx, hy, w, h, st); D.poly([hx - 0.4, hy + h, hx + w + 0.4, hy + h, hx + w - 0.3, hy + h + 1.1, hx + 0.3, hy + h + 1.1], night ? '#2a1e1a' : '#a84e34');
+      D.pass = 3; D.rect(hx + 1.6, hy, 0.95, 1.8, night ? '#161412' : '#5a4632'); D.rect(hx + 0.4, hy + 1.2, 0.6, 0.5, night ? '#121210' : '#3a3630');
+      for (let k = 0; k < 18; k++) D.rect(hx + R.r(0.1, w - 0.5), hy + R.r(0.1, h - 0.3), R.r(0.25, 0.5), 0.16, stD, 0.7);
+      for (let k = 1; k < 4; k++) D.rect(hx - 0.3 + k * 0.1, hy + h + k * 0.27, w + 0.6 - k * 0.2, 0.05, night ? '#1e1612' : '#8a3e2a', 0.8);
+      D.pass = 0; }
+    // beehives on one terrace: white boxes on stands, their roofs a little darker
+    for (let k = 0; k < 4; k++) { const hx = -122 + k * 1.4, hy = -6.9; D.pass = 2; D.rect(hx + 0.08, hy, 0.06, 0.25, '#4a3a2c'); D.rect(hx + 0.62, hy, 0.06, 0.25, '#4a3a2c'); D.rect(hx, hy + 0.25, 0.76, 0.5, night ? '#5a5c58' : '#efe8d6'); D.pass = 3; D.rect(hx - 0.05, hy + 0.75, 0.86, 0.1, night ? '#3a3c3a' : '#b8b0a0'); D.rect(hx + 0.2, hy + 0.3, 0.36, 0.04, '#2a2420'); }
+    D.pass = 0;
+  });
+
+  // ---- the east garden: lemon trees in pots, and a sprinkler going round ----
+  const PG = H.PG;
+  K.deco(S, PG, { seed: 5161 }, (D, R) => {
+    for (const px of [63.6, 66.8]) {
+      D.poly([px - 0.38, 0, px + 0.38, 0, px + 0.46, 0.62, px - 0.46, 0.62], '#b5583a'); D.rect(px - 0.5, 0.58, 1.0, 0.1, '#c96a48');
+      D.rect(px - 0.04, 0.68, 0.08, 0.5, '#5a4632');
+      KC.bush(D, R, px, 1.05, 1.2, 0.7, '#3f6a3c');
+      D.pass = 2; for (let k = 0; k < 9; k++) D.ell(px + R.r(-0.5, 0.5), 1.1 + R.r(0.1, 0.6), 0.08, 0.09, '#f1d24a'); D.pass = 0;
+    }
+  });
+  if (!night && !rain) {
+    const sx = 71.5, wc = S.tone('#dfeef6', PG, true);
+    PG.add({ x0: sx - 5, x1: sx + 5, layer: 0, draw(ctx, env) {
+      if (env.s < 3 || 2.4 < env.y0 || -0.3 > env.y1) return;
+      R4(ctx, sx - 0.06, -0.05, 0.12, 0.3, S.tone('#2a2e36', PG));
+      // drops thrown up from the head, each flying its own arc; the head swings slowly side to side,
+      // so the spray fans out one way and then the other
+      const t = env.t, r = Math.max(0.03, env.px * 0.8);
+      ctx.fillStyle = wc; ctx.globalAlpha = 0.8; ctx.beginPath();
+      for (let k = 0; k < 26; k++) {
+        const age = ((t + k / 26) % 1) * 0.95, te = t - age, an = Math.PI / 2 + 0.95 * Math.sin(te * 0.7), v = 4.4 + (k % 3) * 0.3;
+        const x = sx + Math.cos(an) * v * age, y = 0.28 + Math.sin(an) * v * age - 4.9 * age * age; if (y < 0) continue;
+        ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+      }
+      ctx.fill(); ctx.globalAlpha = 1;
+    } });
+  }
+
+  // ---- far off: a farm on the vineyard hill, with a line of cypresses up its track ----
+  const PHl = q.PHl, hA = PHl.heightAt;
+  K.deco(S, PHl, { seed: 5171 }, (D, R) => {
+    for (const fx of [-138, 112]) {
+      const y = hA(fx) - 9;
+      D.rect(fx - 4, y, 8, 4.2, night ? '#3a3a3c' : '#e6dcc4'); D.rect(fx + 1.2, y, 4.5, 3.0, night ? '#323234' : '#d8ccb0');
+      D.rect(fx - 2.45, y + 4.3, 0.5, 1.7, night ? '#2a2a2c' : '#c9bea4'); D.poly([fx - 4.6, y + 4.2, fx + 4.6, y + 4.2, fx, y + 6.2], night ? '#2a1e1a' : '#b5583a'); D.poly([fx + 0.8, y + 3.0, fx + 6.1, y + 3.0, fx + 3.4, y + 4.3], night ? '#2a1e1a' : '#a84e34');
+      D.pass = 1; for (let k = 0; k < 3; k++) D.rect(fx - 3.2 + k * 2.1, y + 1.8, 0.8, 1.0, night ? '#ffd98a' : '#4a4038'); D.rect(fx + 2.4, y, 1.4, 2.0, night ? '#20201e' : '#6a5440'); D.pass = 0;
+      // the track down the hill, lined with cypresses
+      const dir = fx < 0 ? 1 : -1, trk = [fx + dir * 4, y - 0.2], cyp = [];
+      for (let k = 1; k <= 7; k++) { const tx = fx + dir * (4 + k * 6.5), ty = Math.min(hA(tx) - 3, y - 0.2 - k * 1.7); trk.push(tx, ty); cyp.push(tx + dir * 0.9, ty + 0.2); }
+      D.line(trk, 0.7, night ? '#26261e' : '#c9b98a', 0.85);
+      D.pass = 1; for (let k = 0; k < cyp.length; k += 2) { const tx = cyp[k], ty = cyp[k + 1], h = 5.5 + R.r(0, 1.2); D.poly([tx - 0.45, ty, tx - 0.62, ty + h * 0.25, tx - 0.4, ty + h * 0.65, tx, ty + h, tx + 0.4, ty + h * 0.65, tx + 0.62, ty + h * 0.25, tx + 0.45, ty], night ? '#121a14' : '#2d4a32'); } D.pass = 0;
+    }
+  });
+  // smoke from the farms' chimneys, leaning with the wind
+  PHl.add({ x0: -150, x1: 125, layer: 0, draw(ctx, env) {
+    if (env.s < 0.8) return;
+    for (const fx of [-138, 112]) { const y = hA(fx) - 9 + 6.0; if (fx < env.x0 - 20 || fx > env.x1 + 20) continue; ydSmoke(ctx, env, fx - 2.2, y, night ? 'rgb(70,76,90)' : 'rgb(236,232,226)', 4, 9, 0.5, 2.6, 0.06, 0.32, (env.wind || 0) * 3, (Math.abs(fx) * 0.013) % 1); }
+  } });
+}
 
 
 // ===== 07g_scene_bridge.js =====
