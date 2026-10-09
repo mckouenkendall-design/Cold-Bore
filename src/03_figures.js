@@ -372,7 +372,7 @@ function figState(A, env, f) {
   const t = env.t === undefined ? (A.t || 0) : env.t;
   if (!st) {
     const h = ((typeof A.id === 'string' ? hashStr(A.id) : 0) ^ Math.floor((A.seed || 0) * 7919.3)) >>> 0;
-    st = A._fg = { top: FIG_TOPS[h % FIG_TOPS.length], legs: FIG_LEGS[(h >>> 3) % FIG_LEGS.length], shoe: FIG_SHOES[(h >>> 6) % FIG_SHOES.length], sole: (h >>> 9) % 3 === 0,
+    st = A._fg = { top: FIG_TOPS[h % FIG_TOPS.length], legs: FIG_LEGS[(h >>> 3) % FIG_LEGS.length], shoe: FIG_SHOES[(h >>> 6) % FIG_SHOES.length], sole: (h >>> 9) % 3 === 0, v: (h >>> 12) & 15,
       t, x: A.x, v: 0, vs: 0, s: 0, sv: 0, fl: f };
     return st;
   }
@@ -478,6 +478,10 @@ function figLimbsBack(c, G, K, farGrip) {
   c.fillStyle = figSh(st.shoe, 0.2); c.beginPath(); figShoePath(c, G, knL, ftL); c.fill();
   c.fillStyle = figC(st.shoe); c.beginPath(); figShoePath(c, G, knR, ftR); c.fill();
   if (st.sole || K.dress) { c.strokeStyle = figC(K.dress ? '#3a3d44' : '#8d9399'); c.lineWidth = Math.max(0.014, px * 0.8); c.lineCap = 'butt'; c.beginPath(); c.moveTo(FIG_SOLE[0], FIG_SOLE[1]); c.lineTo(FIG_SOLE[2], FIG_SOLE[3]); c.stroke(); c.lineCap = 'round'; }
+  if (lg) { // a pressed crease down the front of the nearer trouser leg
+    c.strokeStyle = figSh(lg, 0.35); c.lineWidth = Math.max(0.008, px * 0.6); c.beginPath();
+    const fx = G.fs * 0.012; c.moveTo(lerp(hip[0], knR[0], 0.25) + fx, lerp(hip[1], knR[1], 0.25)); c.lineTo(knR[0] + fx, knR[1]); c.lineTo(kRx + fx * 0.6, kRy); c.stroke();
+  }
   figLimbGlint(c, G, hip, knR, ftR, 0.05 * bw);
 }
 // The arm nearer to us, in front of everything. (At medium size its hand was painted with the head.)
@@ -495,6 +499,12 @@ function figArmNear(c, G, K, grip) {
   if (sl) figCap(c, cx, cy, ha[0], ha[1], r2, r2 * 0.94); else figChain(c, sh[0], sh[1], el[0], el[1], ha[0], ha[1], r0, r1, r2, true);
   if (G.fine) figHandPath(c, G, el, ha, grip); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
   c.fill();
+  if (G.fine && sl && (G.st.v & 1) && !G.dead) { // a watch just below the cuff
+    const wx = lerp(el[0], ha[0], FIG_CUFF + 0.07), wy = lerp(el[1], ha[1], FIG_CUFF + 0.07);
+    let dx = ha[0] - el[0], dy = ha[1] - el[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    c.strokeStyle = figC(G.st.v & 2 ? '#b9a26a' : '#aab1b9'); c.lineWidth = Math.max(0.014, G.px * 0.8); c.lineCap = 'butt'; c.beginPath();
+    c.moveTo(wx - dy * r2 * 1.15, wy + dx * r2 * 1.15); c.lineTo(wx + dy * r2 * 1.15, wy - dx * r2 * 1.15); c.stroke(); c.lineCap = 'round';
+  }
   if (G.fine) figLimbGlint(c, G, sh, el, ha, (sl ? 0.048 : 0.036) * bw);
 }
 // A shoe. It points the way the person faces, lies flat when the foot is on the ground and
@@ -1402,6 +1412,41 @@ function figClothes(c, G, K) {
     c.fillStyle = figSh(K.coat, 0.3); c.beginPath(); figCap(c, figPX(G, 0.985, -0.052), figPY(G, 0.985, -0.052), figPX(G, 0.995, 0.03), figPY(G, 0.995, 0.03), 0.022, 0.018); c.fill();
   }
 }
+// Small things that make each person their own and hold up close in the scope: pockets on a
+// coat, a belt round a long coat, a placket and a buckle on an everyday top, a holster on the
+// hip of anybody armed with only a pistol. All paint on the body: the joints are never touched,
+// and nothing here is bright enough to be mistaken for what a brief tells the player to look for.
+function figDetails(c, G, K) {
+  const L = G.L, f = G.f, px = G.px, ww = G.ww, wc = G.wc, fine = G.fine, v = G.st.v, lw = Math.max(0.01, px * 0.75);
+  const P = (t, o) => { FIG_TMP[0] = figPX(G, t, o); FIG_TMP[1] = figPY(G, t, o); return FIG_TMP; };
+  const seg = (t0, o0, t1, o1) => { P(t0, o0); c.moveTo(FIG_TMP[0], FIG_TMP[1]); P(t1, o1); c.lineTo(FIG_TMP[0], FIG_TMP[1]); };
+  if (K.coat && !K.smock) {
+    // a pocket flap on each hip (the far one only just shows), and close up a breast pocket
+    c.strokeStyle = figSh(K.coat, 0.45); c.lineWidth = lw; c.beginPath();
+    seg(0.26, f * ww * 0.12, 0.23, f * ww * 0.74);
+    if (fine) { seg(0.25, -f * ww * 0.55, 0.23, -f * ww * 0.9); if (!L.vest) seg(0.74, f * wc * 0.28, 0.73, f * wc * 0.7); }
+    c.stroke();
+    if (fine && K.long && (v & 4)) { // a belt tied round a long coat, its buckle at the front
+      c.strokeStyle = figSh(K.coat, 0.22); c.lineWidth = Math.max(0.028, px); c.lineCap = 'butt'; c.beginPath(); seg(0.1, -ww, 0.1, ww); c.stroke(); c.lineCap = 'round';
+      c.fillStyle = figSh(K.coat, 0.5); c.beginPath(); P(0.1, f * (ww - 0.035)); c.rect(FIG_TMP[0] - 0.018, FIG_TMP[1] - 0.019, 0.036, 0.038); c.fill();
+    }
+  } else if (!K.coat && !K.dress && fine) {
+    // an everyday top: a row of buttons (or a zip) down the front, and the buckle of the belt
+    const dark = figSh(K.body, 0.42);
+    if (!L.vest) { c.strokeStyle = dark; c.lineWidth = lw; c.beginPath(); seg(0.93, f * (wc - 0.03), 0.06, f * (ww - 0.03)); c.stroke(); }
+    c.fillStyle = figC(v & 8 ? '#9a8a62' : '#8d949c'); c.beginPath(); P(0.0, f * (ww - 0.03)); c.rect(FIG_TMP[0] - 0.016, FIG_TMP[1] - 0.016, 0.032, 0.032); c.fill();
+  }
+  // somebody armed who carries no rifle has a pistol, and keeps it on the hip when it is not in the hand
+  const A = G.A;
+  if ((A.role === 'guard' || A.role === 'hostile') && L.gun !== 'rifle' && L.gun !== null && G.anim !== 'aim' && !G.dead) {
+    const o = -f * (ww + 0.004);
+    P(0.08, o); const hx = FIG_TMP[0], hy = FIG_TMP[1];
+    c.save(); c.translate(hx, hy); c.rotate(Math.atan2(-G.ux, G.uy) - f * 0.12);
+    c.fillStyle = figC('#121418'); c.beginPath(); figRR(c, -0.03, -0.11, 0.06, 0.14, 0.018); c.fill();
+    if (fine) { c.fillStyle = figC('#2c3036'); c.fillRect(-0.03, 0.0, 0.06, 0.018); }
+    c.restore();
+  }
+}
 // A scarf: a wrap round the neck, an end hanging in front, and a tail down the back that
 // trails behind a walker and streams out in the wind.
 function figScarf(c, G) {
@@ -1690,6 +1735,7 @@ function drawFigure(ctx, A, env) {
   if (bag === 'umbrella') figCarry(c, G, 1); // held on the far side: only its handle shows in front
   figLimbsBack(c, G, K, farGrip);
   figClothes(c, G, K);
+  if (hi) figDetails(c, G, K);
   if (bag === 'backpack' || bag === 'guitar') figStraps(c, G);
   if (gore && A.rd.part !== 'head') figWound(c, G, A.rd);
   G.nearHand = !!K.sleeve;
