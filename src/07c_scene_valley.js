@@ -1568,3 +1568,114 @@ SCN.valley = function (o) {
   };
   return H;
 };
+
+// ---- thin cover, hung in front of what it hides -----------------------------------------------
+// Used by the three armour-piercing contracts (c3m8, c4m8, c5m8). A bullet tests the people on a
+// plane before the walls on that same plane, so anything that is meant to stand between a round
+// and a person must sit on a plane of its own, a little nearer the shooter. K.coverPlane makes
+// one just in front of plane PB. Everything on it is given in PB's own coordinates and scaled
+// about the shooter's eye, so from that position it lines up exactly with what is behind it.
+//   C.x(x), C.y(y)       PB coordinates to cover-plane coordinates
+//   C.solid(x,y,w,h,mat) a solid, given in PB coordinates
+//   C.add(x0,x1,layer,draw)  draw(ctx, env) works in PB coordinates; env.s and env.px are PB's
+K.coverPlane = function (S, PB, z, eye) {
+  const P = S.plane(z, PB.name + ' cover'), ez = eye[2] || 0, k = (z - ez) / (PB.z - ez), ox = eye[0] * (1 - k), oy = eye[1] * (1 - k);
+  const C = { P, PB, k, ox, oy };
+  C.x = (x) => ox + x * k; C.y = (y) => oy + y * k;
+  C.solid = (x, y, w, h, mat) => P.solid(C.x(x), C.y(y), w * k, h * k, mat);
+  const e2 = {};
+  C.add = (x0, x1, layer, draw) => P.add({ x0: C.x(x0), x1: C.x(x1), layer, draw(ctx, env) {
+    Object.assign(e2, env);
+    e2.s = env.s * k; e2.px = env.px / k; e2.x0 = (env.x0 - ox) / k; e2.x1 = (env.x1 - ox) / k; e2.y0 = (env.y0 - oy) / k; e2.y1 = (env.y1 - oy) / k;
+    e2.text = (c2, str, x, y, size, col, align, glow) => env.text(c2, str, C.x(x), C.y(y), size * k, col, align, glow);
+    ctx.save(); ctx.transform(k, 0, 0, k, ox, oy); draw(ctx, e2); ctx.restore();
+  } });
+  return C;
+};
+
+// Breath on a cold morning: a small white puff from a person's mouth every few seconds,
+// drifting off with the wind. It shows where somebody's head is, even behind boards.
+function covBreath(ctx, env, a, t, k) {
+  if (!a || a.dead || a.gone || a.hidden) return;
+  const per = 3.1 + (a.seed % 1) * 0.6, u = ((t + a.seed * 2.3) % per) / 1.7;
+  if (u >= 1) return;
+  const J = actorJoints(a), hx = a.x + J.head[0] + (a.face || 1) * 0.16, hy = a.y + J.head[1] - 0.04, dr = env.wind * 0.16 * u + (a.face || 1) * 0.12 * u;
+  ctx.fillStyle = '#f4f6f8';
+  for (let i = 0; i < 3; i++) {
+    const v = clamp(u * 1.3 - i * 0.15, 0, 1); if (v <= 0) continue;
+    ctx.globalAlpha = (1 - v) * 0.6 * (k || 1); ctx.beginPath(); ctx.arc(hx + dr + i * 0.05, hy + v * 0.2 + i * 0.03, 0.05 + v * 0.13, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---- the hunting tower, boarded in (c3m8) ------------------------------------------------------
+// After the lookout in the open tower was shot, the lodge nailed old fence boards across the
+// front of it, leaving a slot under the eaves for air. The boards are 'wood': ordinary rounds
+// stop in them, armour-piercing ones go through. Whoever is inside stands on the deck plane
+// behind them as an ordinary person in the open, so a round that gets through finds them
+// wherever they are. Through the gaps between the boards they show in thin stripes, and on a
+// cold morning their breath comes out through the cracks.
+//   H        the valley handles (uses H.tower, H.PD, H.zD)
+//   o.eye    the shooting position, [x, y, z]
+//   o.sim()  returns the running simulation, or null (for breath and the binoculars)
+//   o.breath ids of the people whose breath shows; o.glass the id of the man with binoculars
+// Returns { C, inside(dx, extra) }: inside() is a placement on the tower floor, zone 'boards'.
+K.boardedSeat = function (S, H, o) {
+  o = o || {};
+  const T = H.tower, fl = T.floor, w = T.w, x0 = T.x - w / 2 - 0.08, x1 = T.x + w / 2 + 0.08, yP = fl - 0.28, yB = fl + 0.95, yTop = fl + 1.86;
+  const C = K.coverPlane(S, H.PD, H.zD - 0.9, o.eye || [0, H.eye, 0]), P = C.P, PB = H.PD;
+  const tn = (hex) => S.tone(hex, PB);
+  const wood = tn('#7d5d3c'), woodL = tn('#93714b'), dark = tn('#4d3929'), darker = tn('#3a2b1f'), nail = tn('#2a2e36');
+  const old = ['#7b7066', '#857a6c', '#6f665d', '#8a7f72'].map(tn), oldD = tn('#4a433d'), oldL = tn('#a19583'), rust = tn('#6a4832'), lens = tn('#15171b');
+  // the boards: grey old fence planks of uneven width, nailed on in a hurry, the odd one askew
+  const D = makeRng(Math.floor(-T.x * 13) + 4041), boards = [];
+  for (let y = yB + 0.02; y < yTop - 0.06;) { const h = Math.min(yTop - y, D.r(0.15, 0.2)); boards.push({ y, h: h - 0.055, l: x0 - D.r(0.02, 0.16), r: x1 + D.r(0.0, 0.18), tilt: D.chance(0.3) ? D.r(-0.03, 0.03) : 0, c: D.i(0, 3), knot: D.r(0.15, 0.85), n1: D.r(0.08, 0.2), n2: D.r(0.08, 0.2) }); y += h; }
+  C.add(x0 - 1, x1 + 1, 2, (ctx, env) => {
+    if (yTop + 0.6 < env.y0 || yP > env.y1) return;
+    const s = env.s, fine = s > 12;
+    // the old parapet, exactly where it was, so nobody inside shows through it
+    R4(ctx, T.x - w / 2 - 0.35, fl - 0.28, w + 0.7, 0.28, dark);
+    R4(ctx, T.x - w / 2, fl, w, 0.95, wood);
+    if (s > 3) { ctx.fillStyle = dark; ctx.beginPath(); for (let xx = T.x - w / 2 + 0.45; xx < T.x + w / 2; xx += 0.45) ctx.rect(xx, fl, Math.max(0.04, env.px * 0.6), 0.95); ctx.fill(); }
+    if (fine) { ctx.fillStyle = woodL; ctx.beginPath(); for (let kk = 0; kk < 8; kk += 3) ctx.rect(T.x - w / 2 + kk * 0.45 + 0.06, fl, 0.33, 0.95); ctx.globalAlpha = 0.6; ctx.fill(); ctx.globalAlpha = 1; }
+    R4(ctx, T.x - w / 2 - 0.1, fl + 0.9, w + 0.2, 0.12, dark);
+    // the corner posts the boards are nailed to
+    R4(ctx, T.x - w / 2 - 0.07, fl, 0.14, 2.3, darker); R4(ctx, T.x + w / 2 - 0.07, fl, 0.14, 2.3, darker);
+    // the boards themselves, with daylight between them
+    for (let i = 0; i < boards.length; i++) {
+      const b = boards[i];
+      ctx.save(); if (b.tilt) { ctx.translate(T.x, b.y + b.h / 2); ctx.rotate(b.tilt); ctx.translate(-T.x, -(b.y + b.h / 2)); }
+      ctx.fillStyle = old[b.c]; ctx.fillRect(b.l, b.y, b.r - b.l, b.h);
+      if (s > 5) {
+        ctx.fillStyle = oldD; ctx.fillRect(b.l, b.y, b.r - b.l, Math.max(0.018, env.px * 0.7));                                   // shade under the board above
+        ctx.fillStyle = oldL; ctx.fillRect(b.l, b.y + b.h - Math.max(0.015, env.px * 0.6), b.r - b.l, Math.max(0.015, env.px * 0.6)); // lit top edge
+      }
+      if (fine) {
+        // grain, a knot, and the nails into the corner posts (one weeping rust)
+        ctx.strokeStyle = oldD; ctx.lineWidth = Math.max(0.008, env.px * 0.5); ctx.globalAlpha = 0.5; ctx.beginPath();
+        for (let g = 1; g < 3; g++) { const gy = b.y + (b.h * g) / 3 + Math.sin(g + i) * 0.01; ctx.moveTo(b.l + 0.1, gy); ctx.quadraticCurveTo(T.x, gy + 0.012 * (g % 2 ? 1 : -1), b.r - 0.1, gy); }
+        ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = oldD; ctx.beginPath(); ctx.ellipse(lerp(b.l, b.r, b.knot), b.y + b.h * 0.5, 0.05, 0.025, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = nail; ctx.beginPath(); for (const nx of [T.x - w / 2, T.x + w / 2]) { ctx.rect(nx - 0.02, b.y + b.h * 0.3, 0.035, 0.035); ctx.rect(nx - 0.02, b.y + b.h * 0.62, 0.035, 0.035); } ctx.fill();
+        if (i % 3 === 1) { ctx.fillStyle = rust; ctx.globalAlpha = 0.45; ctx.fillRect(T.x + w / 2 - 0.02, b.y + b.h * 0.05, 0.03, b.h * 0.28); ctx.globalAlpha = 1; }
+      }
+      ctx.restore();
+    }
+    // breath through the cracks, and the binoculars pushed into a gap when he looks out
+    const sim = o.sim && o.sim(); if (!sim) return;
+    if (o.glass) {
+      const a = sim.byId[o.glass];
+      if (a && !a.dead && !a.gone && a.zone === 'boards' && a.anim === 'look' && a.goal === null) {
+        const J = actorJoints(a), ex = a.x + J.head[0] + a.face * 0.05, ey = a.y + J.head[1] + 0.03, gl = Math.pow(Math.max(0, Math.sin(env.t * 1.3 + a.seed)), 10);
+        ctx.fillStyle = lens; ctx.beginPath(); ctx.ellipse(ex, ey, 0.16, 0.065, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#c9d6e2'; ctx.beginPath(); ctx.arc(ex - 0.07, ey, 0.038, 0, TAU); ctx.arc(ex + 0.07, ey, 0.038, 0, TAU); ctx.fill();
+        if (gl > 0.02) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = gl; ctx.fillStyle = '#fff6dc'; ctx.beginPath(); ctx.arc(ex - 0.07, ey, 0.09, 0, TAU); ctx.arc(ex + 0.07, ey, 0.09, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+      }
+    }
+    (o.breath || []).forEach((id) => { const a = sim.byId[id]; if (a && a.zone === 'boards') covBreath(ctx, env, a, env.t, 1); });
+  });
+  // boards and parapet stop a round; only armour-piercing rounds go through. The slot
+  // under the eaves is left open, as it is.
+  C.solid(x0 - 0.1, yP, x1 - x0 + 0.2, yTop - yP, 'wood');
+  return { C, x0, x1, yTop, inside: (dx, extra) => Object.assign({ plane: PB, x: T.x + (dx || 0), y: fl, zone: 'boards', room: null, behind: false }, extra || {}) };
+};

@@ -524,3 +524,61 @@ mission({
   },
   reward: { cr: 3000, xp: 600 },
 });
+
+// ---------------------------------------------------------------------------
+// Boarded Up. Straight after Crosswind: the lodge has learned from the tower.
+// The first of three contracts that need armour-piercing rounds: the new
+// lookout stands behind fence boards nailed over the front of the same tower,
+// and the only way to him is through them.
+mission({
+  id: 'c3m8', ch: 3, title: 'Boarded Up', range: 470, follows: 'c3m2', needs: { pen: 1.4 },
+  objective: 'The new lookout behind the boards on the hunting tower. Shoot through the planks.',
+  brief: 'They learned from the tower. There is a new lookout up there, and they have nailed old fence boards across the front of it, so now he watches the valley through the cracks like a hen in a coop. Nobody comes up this side of the mountain without him seeing. An ordinary round stops in the first plank. Pip has sent up a box of armour-piercing: a hardened core that goes through boards, and through him. You will not see much of him. It is a cold morning, and a man has to breathe. The cook still brings the soup up. Leave him be.',
+  intel: ['Fit ARMOUR-PIERCING rounds in the Ammunition slot. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
+    'Breath and binoculars mark his face. His chest is half a metre lower. When he sits down at the radio, all of him drops half a metre.', 'The cook in white brings soup up the stair. His tall hat shows in the slot under the eaves. Wait until he has gone back down.', 'Range 470 m. Wind about 3 m/s from the right.'],
+  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
+    'Watch for puffs of breath and the glint of binoculars between the boards. That is his head.', 'Wait until he stands still, hold for drop and wind, and put the aim half a metre below his head. One round.'],
+  wind: { v: -3, gust: 1 }, par: 1, rules: { kill: ['t'] },
+  vantages: [{ name: 'Larch stump', desc: '470 m across the valley, a little above the top of the tower.', eye: [0, 38, 0] }],
+  look: [-60, 7.5],
+  setup() {
+    const H = SCN.valley({ z: 470, eye: 38, time: 'dawn', seed: 19, flagX: -45, lodge: { wins: { '0,1': { lit: true }, '1,3': { lit: true } } } });
+    H.boards = K.boardedSeat(H.S, H, { eye: [0, 38, 0], sim: () => H.sim, breath: ['t', 'cook'], glass: 't' });
+    H.kit.duck(H.S, H.PD, H.tower.stairFoot, 1.27, 1.25);    // on the bottom post of the stair rail
+    return H;
+  },
+  start(sim, H) { H.sim = sim; },
+  cast(H) {
+    const T = H.tower, B = H.lodge, door = B.winX(B.door), inn = H.boards.inside, edge = T.w / 2 - 0.25;
+    const stairTop = { plane: H.PD, x: T.stairTop, y: T.floor, zone: 'yard', room: null, behind: false };
+    return [
+      Object.assign(inn(-0.7), { id: 't', role: 'target', face: -1, anim: 'look', look: { h: 0.97, hat: 'beanie', hatCol: '#3a3f47', coat: '#4a3b2e', beard: '#3a2a20' },
+        routine: [['wait', 9, 'look', -1], ['walk', T.x + 0.8], ['wait', 8, 'look', 1], ['walk', T.x - 0.1], ['wait', 7, 'sitphone', 1], ['walk', T.x - 0.7], ['loop']],
+        flee: [['run', T.x + edge], ['hide'], ['gone']],
+        escapeText: 'He heard the round hit the boards, went down the back of the tower like a squirrel, and the lodge knows somebody is on the mountain.' }),
+      Object.assign(inn(0.9), { id: 'cook', role: 'civ', face: -1, anim: 'talk', yFn: T.stairY, look: { hat: 'tophat', hatCol: '#f4f1e6', coat: '#f4f1e6', long: true, bag: 'cup' },
+        failText: 'That was the cook. Twice now he has climbed that tower with soup, and this time he did not come down. The contract is void.',
+        routine: [['wait', 12, 'talk', -1], ['walk', T.x + edge], ['to', stairTop], ['emit', 'cook_down'], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', door - 1.5], ['hide'], ['look', { bag: null }], ['wait', 16],
+          ['look', { bag: 'cup' }], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', inn(edge)], ['walk', T.x + 0.9], ['loop']] }),
+      Object.assign(H.yard(door + 3), { id: 'c1', role: 'civ', face: 1, anim: 'work', look: { hat: 'cap', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
+        routine: [['wait', 6, 'work', 1], ['walk', door + 9], ['wait', 5, 'work', 1], ['walk', door + 3], ['loop']] }),
+    ];
+  },
+  onAlarm(sim) { const t = sim.byId.t; if (t && !t.dead) t.escapeText = 'He dropped off the back of the tower and ran for the lodge. Everybody up there knows about the rifle on the mountain now.'; },
+  triggers() {
+    return [
+      hint(1.5, 'He is behind the new boards on the hunting tower. An ordinary round stops in them; armour-piercing goes through. You cannot see him, so look for his breath in the cold air and the glint of his binoculars.', 12),
+      hint(15, 'Breath and binoculars show where his face is. Aim about half a metre lower, for his chest, and hold for drop and wind as usual.', 10),
+      onEv('cook_down', (sim) => { if (sim.alive('t') && sim.t < 30) sim.msg('Marlow', 'The cook is on his way down. Let him get well clear of the stair before you fire.'); }, 0.6),
+      say(34, 'Marlow', 'He sits down at the radio to report every so often. Sitting, his chest is behind the old parapet. Those planks are no thicker.'),
+    ];
+  },
+  challenge: { id: 'sitting', text: 'Take him while he is sitting down at the radio', test: (sim) => { const t = sim.byId.t; return !!t.dead && /^sit/.test(t.deathPose || '') && sim.kills.some((k) => k.id === 't' && k.how === 'shot'); } },
+  after: 'Through the planks, and the lodge none the wiser until the cook carries up the next pot. Pip asks me to tell you that boards are not walls, and that she did say so.',
+  solve(H) {
+    const T = H.tower;
+    const clear = (s) => { const c = s.byId.cook, t = s.byId.t; return c.zone !== 'boards' && (c.hidden || Math.abs(c.x - T.stairFoot) > 8) && t.goal === null && t.wait > 1.6 && t.state === 'calm'; };
+    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+  },
+  reward: { cr: 2100, xp: 460 },
+});
