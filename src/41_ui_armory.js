@@ -107,6 +107,8 @@ UI.partPicker = function (gunId, slot) {
     const o = [], dm = b.mag - a.mag, dr = b.reload - a.reload, db = b.breath - a.breath, dh = b.handling - a.handling;
     if (dm) o.push([(dm > 0 ? '+' : '') + dm + ' rounds', dm > 0]);
     if (Math.abs(dr) >= 0.05) o.push(['Reload ' + (dr > 0 ? '+' : '') + fmt(dr, 1) + ' s', dr < 0]);
+    const dc = b.cycle - a.cycle; // the rate bar cannot show this for the slowest rifles, so say it in seconds
+    if (Math.abs(dc) >= 0.04 && Math.abs(statBars(b).rate - statBars(a).rate) < 0.02) o.push(['Next shot ' + (dc > 0 ? '+' : '') + fmt(dc, 2) + ' s', dc < 0]);
     if (Math.abs(db) >= 0.1) o.push(['Hold breath ' + (db > 0 ? '+' : '') + fmt(db, 1) + ' s', db > 0]);
     if (Math.abs(dh) >= 0.03) o.push([dh > 0 ? 'Settles faster' : 'Settles slower', dh > 0]);
     if (Math.abs(b.pan - a.pan) >= 0.02) o.push([b.pan < a.pan ? 'Slower to swing' : 'Quicker to swing', b.pan > a.pan]);
@@ -118,6 +120,7 @@ UI.partPicker = function (gunId, slot) {
     if ((a.pen >= 1.2) !== (b.pen >= 1.2)) o.push([b.pen >= 1.2 ? 'Goes on through people' : 'Stays in the body', null]);
     if ((a.pen >= 0.5) !== (b.pen >= 0.5)) o.push([b.pen >= 0.5 ? 'Beats body armour' : 'Body armour stops it', b.pen >= 0.5]);
     if (a.silent && !b.silent) o.push(['No longer silent', false]); else if (!a.silent && b.silent) o.push(['Silent', true]);
+    if (!a.quiet && !b.quiet && Math.abs(b.noise - a.noise) >= 30) o.push(['Heard to ' + fmtCr(Math.round(b.noise / 10) * 10) + ' m', b.noise < a.noise]); // how far away the shot causes panic
     if (b.eff !== a.eff) o.push(['Reach ' + (b.eff > a.eff ? '+' : '') + (b.eff - a.eff) + ' m', b.eff > a.eff]);
     return o.map((x) => `<span class="dchip ${x[1] === null ? 'n' : x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
   };
@@ -231,6 +234,7 @@ UI.skinPicker = function (gunId) {
         UI.over.querySelectorAll('.skcell.on').forEach((e) => e.classList.remove('on')); t.classList.add('on');
       } else { peek = ds.id; t.classList.add('peek'); }
       const box = UI.over.querySelector('.sk-side'); box.innerHTML = side(); UI.paintIn(box, 'over');
+      if (!own && document.body.classList.contains('portrait')) box.scrollIntoView({ block: 'start', behavior: 'smooth' }); // upright, the rifle is above the shelves: bring it into view
     },
   });
 };
@@ -311,6 +315,7 @@ UI.collection = function () {
     h.skin = (ds, el2) => {
       UI.colSkin = ds.id; UI.root.querySelectorAll('.skcell.on').forEach((e) => e.classList.remove('on')); el2.classList.add('on');
       const box = UI.root.querySelector('.sk-side'); box.innerHTML = side(); UI.paintIn(box, 'root');
+      if (document.body.classList.contains('portrait')) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
     };
     h.fit = () => {
       const c = gunCfg(gunId), s = SKIN_BY_ID[UI.colSkin]; c.skin = s.id; d.guns[gunId].cfg = c; Save.write(); UI.toast(s.name + ' fitted to ' + g.name + '.', 'good');
