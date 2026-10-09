@@ -106,10 +106,19 @@ Progress.apply = function (M, res, info) {
     if (res.stars === 3 && !rec.c3paid) { if (guided) out.held.push('stars'); else { rec.c3paid = true; out.caches.push('field'); } }
     if (d.settings.assist === 'veteran') add('Veteran bonus', out.cr * 0.25, 0);
     const wasDone = Progress.chapterDone(M.ch);
+    // Contracts added in an update slot in with `follows`. A save that had already finished every
+    // original contract in this chapter was paid the chapter bonus then, so finishing the new one
+    // completes the chapter again without paying it twice.
+    const origDone = MISSIONS.filter((m) => m.ch === M.ch && !m.follows).every((m) => Progress.rec(m.id).done);
+    if (!d.chDone) d.chDone = {};
     rec.done = true; rec.stars = Math.max(rec.stars, res.stars);
     if (!rec.best || res.stars > rec.best.stars || (res.stars === rec.best.stars && res.time < rec.best.time)) rec.best = { stars: res.stars, time: Math.round(res.time * 10) / 10, shots: res.shots, gun: info && info.gun };
     if (res.outcome && res.outcome.set) { Object.assign(d.flags, res.outcome.set); rec.outcome = res.outcome.id; }
-    if (!wasDone && Progress.chapterDone(M.ch)) { out.chapterDone = true; add('Chapter complete', 600 * M.ch, 150 * M.ch); out.caches.push('sealed'); }
+    if (!wasDone && Progress.chapterDone(M.ch)) {
+      out.chapterDone = true;
+      if (!d.chDone[M.ch] && !(origDone && M.follows)) { add('Chapter complete', 600 * M.ch, 150 * M.ch); out.caches.push('sealed'); }
+    }
+    if (Progress.chapterDone(M.ch)) d.chDone[M.ch] = true;
     if (out.chapterDone && M.ch === 2 && !d.scopes.ranger) { // the mountains need a scope with marks on it
       d.scopes.ranger = 1; out.unlocked.push({ kind: 'scope', id: 'ranger', text: 'Ranger 4-12x Mil-Dot scope, a gift from Pip' });
       Object.keys(d.guns).forEach((gid) => { const c = d.guns[gid].cfg; if (c.scope === 'hunter' && scopeFits(SCOPE_BY_ID.ranger, GUN_BY_ID[gid])) c.scope = 'ranger'; });
