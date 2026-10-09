@@ -487,6 +487,22 @@ textarea { display: block; width: 100%; height: 84px; margin: 0 0 8px; border-ra
 .banner.up { background: linear-gradient(90deg, rgba(255, 170, 60, .28), rgba(255, 170, 60, .1)); border: 1px solid var(--amber); color: var(--amber2); } .banner.got { background: rgba(111, 182, 255, .14); border: 1px solid var(--blue); color: var(--blue); }
 .nb-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; } .nb-btns .btn { flex: 1 1 30%; padding: 0 10px; font-size: 12px; letter-spacing: .1em; }
 
+/* guided runs in the menus: the briefing's "Show me how", the sheet it opens, the note on the results */
+.howbtn { flex: none; gap: 6px; border-color: rgba(111, 182, 255, .55); color: #cfe6ff; }
+.howbtn svg { width: 17px; height: 17px; color: var(--blue); flex: none; }
+.deal { display: flex; gap: 11px; align-items: flex-start; margin-bottom: 10px; padding: 10px 13px; border-radius: 13px; border: 1px solid rgba(111, 182, 255, .5); background: rgba(111, 182, 255, .09); }
+.deal > svg { width: 24px; height: 24px; color: var(--blue); flex: none; margin-top: 1px; }
+.deal b { display: block; font-size: 14.5px; line-height: 1.35; } .deal span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
+.walk { margin-bottom: 10px; padding: 10px 13px; border-radius: 13px; background: var(--panel); border: 1px solid var(--line); }
+.walk ol { margin: 2px 0 0; padding-left: 22px; } .walk li { font-size: 13.5px; line-height: 1.42; margin: 5px 0; color: #d3dae2; padding-left: 2px; }
+.walk li::marker { font: 800 13px var(--head); color: var(--amber); }
+.walk .dim { margin: 2px 0 0; }
+.showhow .sh-body.split { padding-top: 10px; } .showhow .main.scroll { padding: 0 0 10px; }
+.showhow .deal { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 0; touch-action: pan-y; }
+.cta.col { flex-direction: column; gap: 7px; }
+.gnote { margin-bottom: 9px; padding: 10px 13px; border-radius: 12px; border: 1px solid rgba(111, 182, 255, .55); background: rgba(111, 182, 255, .1); }
+.gnote b { display: block; font: 800 13.5px var(--head); letter-spacing: .1em; text-transform: uppercase; color: #cfe6ff; } .gnote span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
+
 /* narrow sideways screens: drop what is only nice to have */
 @media (max-width: 780px) {
   .rank span { display: none; }
@@ -541,6 +557,9 @@ body.portrait .sh-body.twocol { display: block; } body.portrait .sh-body.split {
 body.portrait .howcols, body.portrait .setcols { columns: 1; }
 body.portrait .cgrid { grid-template-columns: 1fr; } body.portrait .cc-t i { display: block; }
 body.portrait .cacheopen { width: calc(100% - 32px); max-width: 420px; }
+body.portrait .howbtn { padding: 0 9px; gap: 5px; font-size: 11px; letter-spacing: .05em; } body.portrait .howbtn svg { width: 15px; height: 15px; }
+body.portrait .brief .bar > .stars { display: none; } body.portrait .brief .bar .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.portrait .showhow .cta { margin-top: 10px; }
 body.portrait .co-card { flex-direction: column; } body.portrait .co-pic { flex: none; height: 120px; min-height: 0; }
 body.portrait #toast { top: calc(64px + var(--sat)); }
 
