@@ -1507,3 +1507,63 @@ SCN.towers = function (o) {
   };
   return H;
 };
+
+// ---- a car armoured the wrong way round (c4m8) --------------------------------------------------
+// Glass that stops anything, fitted to doors made of ordinary sheet steel. Each window carries a
+// pane of armoured glass: a shootable 'armour' object on the car's own plane, which is tested
+// before the car itself, so every round that meets it stops dead (and o.onHit is told). The doors
+// and pillars are left as the car's own thin steel, which armour-piercing rounds go through.
+// The panes are drawn over whoever sits behind them: thick glass, faintly green at the edges,
+// in a heavy rubber frame, with a chip where each round struck.
+// Call A.follow(sim) from the mission's start() and tick() so the panes ride along with the car.
+K.armourGlass = function (S, P, vehId, kind, o) {
+  o = o || {};
+  const c = CARS[kind], y0 = c.body + 0.06, hh = c.h - 0.14 - y0, panes = [];
+  const frame = S.tone('#121418', P), edge = 'rgba(126,196,160,0.55)', tint = 'rgba(70,120,104,0.2)', shine = 'rgba(220,240,235,0.16)', seam = 'rgba(150,160,175,0.35)', handle = S.tone('#8f98a3', P);
+  c.win.forEach((wn, i) => {
+    const ww = (wn[1] - wn[0]) * c.len;
+    const ob = K.thing(S, P, 'armour', -999, -999, { id: vehId + '_pane' + i, r: 0.5, w: ww + 0.04, h: hh + 0.04, mat: 'metal', gone: true,
+      onHit(sim, q) {
+        // the simulation has just reported where the round struck: keep that spot for the chip
+        for (let k = sim.ev.length - 1; k >= 0; k--) { const e = sim.ev[k]; if (e.k === 'objhit' && e.id === q.id) { q.chips.push([e.x - q.x, e.y - q.y, sim.t * 7.3]); break; } }
+        if (o.onHit) o.onHit(sim, q);
+      },
+      drawFn(ctx, env) {
+        const x0 = ob.x - ww / 2, yb = ob.y - hh / 2, s = env.s, v = ob.car;
+        // the door under this window: its seams and handle, so it reads as a door and not as more car
+        if (s > 4 && v) {
+          const fl = v.y + 0.22, back = v.dir > 0 ? x0 : x0 + ww;
+          ctx.strokeStyle = seam; ctx.lineWidth = Math.max(0.015, env.px * 0.7); ctx.beginPath();
+          ctx.moveTo(x0 - 0.04, fl); ctx.lineTo(x0 - 0.04, yb - 0.02); ctx.moveTo(x0 + ww + 0.04, fl); ctx.lineTo(x0 + ww + 0.04, yb - 0.02); ctx.stroke();
+          ctx.fillStyle = handle; ctx.fillRect(back + v.dir * 0.1 - (v.dir > 0 ? 0 : 0.22), yb - 0.17, 0.22, 0.045);
+        }
+        if (o.lamp === i) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,214,140,0.14)'; ctx.fillRect(x0, yb, ww, hh); ctx.globalCompositeOperation = 'source-over'; }   // his reading lamp
+        ctx.fillStyle = tint; ctx.fillRect(x0, yb, ww, hh);
+        ctx.strokeStyle = frame; ctx.lineWidth = Math.max(0.05, env.px); ctx.strokeRect(x0, yb, ww, hh);
+        if (s > 5) {
+          ctx.strokeStyle = edge; ctx.lineWidth = Math.max(0.025, env.px * 0.8); ctx.strokeRect(x0 + 0.045, yb + 0.045, ww - 0.09, hh - 0.09);   // the green of thick glass, seen at its edge
+          ctx.fillStyle = shine; ctx.beginPath(); ctx.moveTo(x0 + ww * 0.12, yb + hh - 0.05); ctx.lineTo(x0 + ww * 0.3, yb + hh - 0.05); ctx.lineTo(x0 + ww * 0.12, yb + 0.06); ctx.lineTo(x0 + 0.06, yb + 0.06); ctx.closePath(); ctx.fill();
+        }
+        // where a round has struck: a white chip with cracks running out of it. The glass holds.
+        if (ob.chips.length) {
+          ctx.strokeStyle = 'rgba(240,246,250,0.85)'; ctx.lineWidth = Math.max(0.012, env.px * 0.6); ctx.beginPath();
+          for (let k = 0; k < ob.chips.length; k++) { const q = ob.chips[k], cx = ob.x + q[0], cy = ob.y + q[1]; for (let j = 0; j < 6; j++) { const an = j * 1.05 + q[2]; ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(an) * 0.09, cy + Math.sin(an) * 0.09); } }
+          ctx.stroke(); ctx.fillStyle = 'rgba(250,252,255,0.9)'; for (let k = 0; k < ob.chips.length; k++) { const q = ob.chips[k]; circ(ctx, ob.x + q[0], ob.y + q[1], Math.max(0.025, env.px), 'rgba(250,252,255,0.9)'); }
+        }
+      } });
+    ob.chips = []; ob.win = i; ob.dx = (wn[0] + wn[1]) / 2 * c.len; ob.dy = y0 + hh / 2;
+    panes.push(ob);
+  });
+  const A = { panes,
+    // put each pane over its window. A moving car is a step ahead of the panes by the time the
+    // next round flies, so they are moved on by one step's travel.
+    follow(sim) {
+      const v = sim.byId[vehId];
+      panes.forEach((ob) => {
+        if (!v || v.gone) { ob.gone = true; return; }
+        ob.car = v; ob.gone = false; ob.x = v.x + v.dir * ob.dx + (v.goal !== null ? v.dir * v.v / 60 : 0); ob.y = v.y + ob.dy;
+      });
+    },
+  };
+  return A;
+};

@@ -102,6 +102,7 @@ mission({
   id: 'c2m1', ch: 2, title: 'Tide Tables',
   range: 260,                       // rifles with less reach are not allowed
   needs: { glass: true },           // optional: quiet, silent, glass, rof, mag, pen
+  follows: 'c1m7',                  // optional: play straight after this mission (see below)
   objective: 'One line, under 90 characters.',
   brief: 'Marlow speaking. 60 to 110 words.',
   intel: ['Two to five short facts the player needs.'],
@@ -123,6 +124,16 @@ mission({
 });
 ```
 `brief`, `objective`, `intel`, `after` and `par` may be functions of `flags`.
+
+Missions are played in the order they are registered. A mission written later
+can take its place in the story with `follows: '<id>'` and still sit at the end
+of its chapter's file, with the next free id (c3m8 follows c3m2). A contract a
+player has already finished always stays open, so an old save never finds a
+finished contract locked behind a new one.
+
+`needs: { pen: 1.4 }` asks for punch enough to go through thin cover (see
+section 8). Most rifles only get there with armour-piercing rounds, and the
+loadout screen tells the player so. The test bot fits them by itself.
 
 ### Rules (`rules`)
 `kill` (ids that must die), `destroy` (object ids that must be destroyed),
@@ -313,3 +324,32 @@ important is hidden. Use a rifle with enough zoom for long ranges (for example
   figure standing in a field".
 - Teach each new idea once with a `hint(...)`, then stop explaining it.
 - Keep every mission finishable in under two minutes if played well.
+
+## 8. Shooting through thin cover
+
+A round crossing a plane is tested against that plane's things in this order:
+shootable objects, people in the open, vehicles, fallen loads, windows and
+gaps, and only then walls and other solids. So a wall on the SAME plane as a
+person never protects them. Cover that is meant to stand between the rifle and
+somebody must hang on a plane of its own, a little nearer the shooter.
+
+- `K.coverPlane(S, PB, z, eye)` makes such a plane at distance `z`, in front of
+  plane `PB`. Draw on it and add solids in `PB`'s own coordinates (`C.add`,
+  `C.solid`); they are scaled about the shooter's eye so that, from that
+  position, they line up exactly with what is behind. The people stay
+  ordinary people in the open on `PB`, so a round that gets through the cover
+  finds them wherever they are.
+- Material: `thin` or `wood` (punch 1.4 goes through, which most rifles reach
+  only with armour-piercing rounds); `wall` needs punch 3. Leave honest gaps
+  (the slot under the eaves, the gap under a shutter) without a solid.
+- A car's own body already needs punch 1.4. Its windows do not: glass breaks
+  for any rifle. `K.armourGlass` puts an 'armour' object over each window of a
+  moving car (objects are tested before cars), so the glass stops everything
+  and the doors are the only way in. Call `A.follow(sim)` from `start` and
+  `tick`.
+- Ready-made pieces: `K.boardedSeat` (the valley's hunting tower with planks
+  nailed over the front; breath and binoculars show through), `K.lockUp` (a
+  tin lock-up in the rail yard with its shutter half up; legs show under it).
+- A round with punch 1.2 or more carries on through a body. Put something
+  solid behind the target (`K.lockUp` has a brick back wall) or make sure
+  nobody stands in line.

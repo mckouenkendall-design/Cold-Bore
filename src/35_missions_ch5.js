@@ -647,3 +647,66 @@ mission({
   solve: [['until', (s) => s.did('rook_shot1'), 30], ['wait', 0.6], ['hold'], ['shootObj', 'rook']],
   reward: { cr: 5200, xp: 1000 },
 });
+
+// ---------------------------------------------------------------------------
+// Feet First. Straight after The Quartermaster. The third contract that needs
+// armour-piercing rounds: Aurel's radio listener works in a tin lock-up with the
+// shutter half up, so all the player sees is legs, and the shot goes through the
+// shutter about a metre and a quarter above the right pair of shoes.
+mission({
+  id: 'c5m8', ch: 5, title: 'Feet First', range: 420, follows: 'c5m3', needs: { pen: 1.4 },
+  objective: 'The listener in the tin lock-up. Find his legs under the shutter, then shoot through it.',
+  brief: 'Somebody told Aurel the armoury boat was going down before it touched the bottom, and I have found out who. A listener: a man with a bench full of radio sets in a tin lock-up in Calder Yard. He hears every police call, every taxi, and until tonight every word I said to you. He works with the shutter half up, because those old valve sets cook a room, so all you will see of him is his legs. That shutter is tin. Armour-piercing goes through it like a letter through a door. His minder is in there with him, and the tea lady comes round. Read the feet, Kestrel.',
+  intel(f) {
+    return ['Fit ARMOUR-PIERCING rounds. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
+      'His minder wears a short black jacket and steps outside now and then to smoke. The tea lady wears a wine-red skirt. She must not be hit.', 'A standing man\'s chest is about a metre and a quarter straight above his shoes. Anyone in there with him will see him fall.',
+      vargaHelps(f) ? 'Range 420 m, wind 3 m/s from the left. Varga is keeping the police band quiet tonight, so he will hear nothing useful.' : 'Range 420 m, wind 3 m/s from the left. A train on the far line covers a loud shot.'];
+  },
+  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
+    'Wait until the tea lady has gone and the minder has stepped outside to smoke.', 'Aim a metre and a quarter straight above the listener\'s shoes, hold for drop and wind, and fire once while he stands still.'],
+  wind: { v: 3, gust: 1.2 }, par: 1, rules: { kill: ['t'] },
+  vantages: [{ name: 'Grain elevator', desc: 'High over the yard, 420 m out, looking straight at the strip.', eye: [0, 30, 0] }],
+  look: [27, 1.5],
+  testFlags: CH5_FLAGS,
+  setup() {
+    const H = SCN.yard({ z: 420, time: 'night', seed: 13 });
+    H.lock = K.lockUp(H.S, H, { eye: [0, 30, 0], x0: 24, x1: 30.4 });
+    K.thing(H.S, H.PM, 'duck', 11.05, 2.1);   // on the stacked crates along the strip
+    H.f1 = H.train({ id: 'f1', track: 'far', at: 16, dir: -1, speed: 12, col: '#7a3a2e', seed: 1 });
+    return H;
+  },
+  cast(H) {
+    const L = H.lock, inn = L.inside, out = (x) => H.strip(x);
+    return [
+      Object.assign(inn(L.x0 + 2.2), { id: 't', role: 'target', face: 1, anim: 'work', look: { coat: '#8d949c', long: true, hair: 'short', hairCol: '#3a2a20', phones: COL.red, glasses: true },
+        routine: [['wait', 12, 'work', 1], ['walk', L.x0 + 3.4], ['wait', 9, 'work', 1], ['walk', L.x0 + 2.2], ['loop']],
+        flee: [['run', L.x0 + 0.8], ['hide'], ['gone']],
+        escapeText: 'He was out through the little door at the back before the echo came back. Aurel will be listening from somewhere else by morning.' }),
+      Object.assign(inn(L.s1 - 0.8), { id: 'mind', role: 'guard', face: -1, anim: 'guard', look: { coat: '#22262d', hat: 'beanie', hatCol: '#1d2026', build: 'big' },
+        routine: [['wait', 6, 'guard', -1], ['walk', L.x0 + 1.0], ['wait', 5, 'guard', 1], ['walk', L.s1 - 0.5], ['wait', 3, 'guard', 1], ['to', out(L.s1 + 0.1)], ['walk', L.x1 + 1.8], ['wait', 16, 'smoke', 1],
+          ['walk', L.s1 + 0.1], ['to', inn(L.s1 - 0.1)], ['walk', L.s1 - 0.8], ['loop']] }),
+      Object.assign(out(L.x0 - 8), { id: 'tea', role: 'civ', hidden: true, face: 1, look: { dress: COL.wine, coat: '#c9b48a', hair: 'bun', hairCol: '#9aa0a8', bag: 'cup' },
+        failText: 'You shot the tea lady. Nine years she has carried tea to that lock-up, and she never once asked what the radios were for.',
+        routine: [['wait', 4], ['show'], ['walk', L.s0 - 0.1], ['to', inn(L.s0 + 0.1)], ['walk', L.x0 + 3.0], ['wait', 8, 'talk', -1], ['walk', L.s0 + 0.1], ['to', out(L.s0 - 0.1)], ['walk', L.x0 - 8], ['hide'], ['wait', 34], ['show'], ['loop', 2]] }),
+      Object.assign(H.inBox(-1.5), { id: 'sig', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
+    ];
+  },
+  vehicles(H) { return [H.f1.veh]; },
+  triggers(H, f) {
+    const t = [H.f1.trig,
+      hint(1.5, 'The tin lock-up on the right, with light under its shutter. You will only see legs. The long grey coat hem is your man. Armour-piercing goes through the tin; aim about a metre and a quarter above his shoes.', 13),
+      say(9, 'Pip', 'Tea lady, going in now. Wine-red skirt. Let her say her piece and leave.'),
+      { when: (sim) => { const m = sim.byId.mind; return m.zone !== 'lockup' && m.goal === null; }, do(sim) { if (sim.alive('t')) sim.msg('Pip', 'The minder has gone out for a smoke, and his back is to the shutter. If the tea lady is clear, that is your moment.'); } },
+    ];
+    if (vargaHelps(f)) t.push(say(4.5, 'Varga', 'Varga. I have put the police band on a channel he cannot hear. Whatever he picks up tonight, it will not be us.'));
+    return t;
+  },
+  challenge: { id: 'head', text: 'A head shot, through the shutter', test: (sim) => sim.kills.some((k) => k.id === 't' && k.how === 'shot' && k.part === 'head') },
+  after: (f) => (vargaHelps(f) ? 'The tin box has stopped talking to Aurel. Varga says the police band went quiet at eleven minutes past, and she has never been so glad to hear nothing.' : 'The tin box has stopped talking to Aurel. From tonight, when I talk to you, the only people listening are you and me. I had forgotten what that was like.'),
+  solve(H) {
+    const L = H.lock;
+    const clear = (s) => { const m = s.byId.mind, tea = s.byId.tea, a = s.byId.t; return m.zone !== 'lockup' && m.goal === null && tea.zone !== 'lockup' && (tea.hidden || tea.x < L.s0 - 3) && a.goal === null && a.wait > 1.6 && a.state === 'calm'; };
+    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+  },
+  reward: { cr: 4100, xp: 880 },
+});

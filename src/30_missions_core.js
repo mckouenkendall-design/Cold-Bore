@@ -3,7 +3,15 @@
 // ---------------------------------------------------------------------------
 const MISSIONS = [];
 const MISSION_BY_ID = {};
-function mission(def) { MISSIONS.push(def); MISSION_BY_ID[def.id] = def; return def; }
+// Missions are played in the order they are registered. A contract written
+// later can name the one it comes straight after with `follows: 'c3m2'`, so
+// it can sit at the end of its chapter's file and still take its place in
+// the story.
+function mission(def) {
+  let i = MISSIONS.length;
+  if (def.follows) { const j = MISSIONS.findIndex((m) => m.id === def.follows); if (j >= 0) i = j + 1; }
+  MISSIONS.splice(i, 0, def); MISSION_BY_ID[def.id] = def; return def;
+}
 
 const COL = { red: '#c8372d', blue: '#2f6db5', green: '#3f8f4f', yellow: '#e2b33c', white: '#ece8dc', grey: '#7a8088', orange: '#e07b2a', purple: '#7d4fa0', pink: '#e07a9a',
   brown: '#7b5a36', black: '#1d2026', teal: '#2a9d8f', navy: '#27365a', cream: '#e8dcc0', tan: '#b89a6a', olive: '#5d6b3a', wine: '#7a2438', sky: '#7fb6e6' };
@@ -57,6 +65,15 @@ function elTrain(H, o) {
   return { veh, trig };
 }
 
+// Would this rifle have punch enough if armour-piercing rounds went in the
+// Ammunition slot in place of whatever is there now?
+function apReaches(st, pen) {
+  const ap = PART_BY_ID.am_ap, now = PART_BY_ID[st.cfg && st.cfg.ammo];
+  if (!ap || !partFits(ap, st.gun)) return false;
+  const nowAdd = now && partFits(now, st.gun) ? (now.mod.penAdd || 0) : 0;
+  return st.pen - nowAdd + ap.mod.penAdd >= pen;
+}
+
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
   if (M.range && st.eff < M.range) return 'Not enough reach: this job is at ' + M.range + ' m.';
@@ -66,7 +83,7 @@ function gunAllowed(M, st) {
   if (need.glass && st.pen < 0.3) return 'Too weak to shoot through window glass.';
   if (need.rof && st.cycle > need.rof) return 'Too slow between shots for this job.';
   if (need.mag && st.mag < need.mag) return 'Not enough rounds in the magazine for this job.';
-  if (need.pen && st.pen < need.pen) return 'Not enough punch for this job.';
+  if (need.pen && st.pen < need.pen) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
   if (M.allow) { const r = M.allow(st); if (r) return r; }
   return null;
 }
