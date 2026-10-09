@@ -381,8 +381,30 @@ mission({
     H.PH.add({ x0: 18, x1: 21, layer: 0, draw(ctx) { R4(ctx, 18.42, 0.8, 1.66, 0.42, H.S.tone('#6b4f3a', H.PH, true)); } });
     K.thing(H.S, H.PF, 'duck', H.gate.x1 + 0.45, 3.32); // on the right-hand gate post
     if (!vargaHelps(f)) K.parked(H.S, H.PT, 'sedan', 41, -1, '#27365a', { y: 0 });
+    // the study's glazed door opens as she goes out to the fire and comes back in (drawn behind the
+    // people in the study, because the door is also one of its windows)
+    const sd = H.house.wins['0,7'];
+    K.swingDoor(H.S, H.PH, { H, x: sd.x, y: sd.y, w: sd.w, h: sd.h, hinge: -1, lit: true, col: '#f6f1e4', layer: 0, open: (sim) => K.doorBusy(sim, ['marlow'], sd.x + sd.w / 2, 1.5) });
+    // the fire flares up each time Marlow drops an armful of files into the drum (H.burnT, set from her routine)
+    const bz = H.brazier, BP = bz.plane;
+    BP.add({ x0: bz.x - 3, x1: bz.x + 3, layer: 2, draw(ctx, env) {
+      const u = (env.t - (H.burnT === undefined ? -99 : H.burnT)) / 1.8; if (u < 0 || u > 1 || !bz.alive || env.s < 2) return;
+      const x = bz.x, top = bz.y - 0.1, k = 1 - u, drift = (env.wind || 0) * 0.12 * u;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, top + 0.5, 0.05, x, top + 0.5, 1.8 * k + 0.2);
+      g.addColorStop(0, 'rgba(255,190,90,' + (0.55 * k).toFixed(3) + ')'); g.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, top + 0.5, 1.8 * k + 0.2, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      const hh = 1.5 * Math.sqrt(k); ctx.fillStyle = H.S.tone('#ff9a2e', BP, true); ctx.beginPath(); ctx.moveTo(x - 0.26, top); ctx.quadraticCurveTo(x - 0.3, top + hh * 0.6, x + drift, top + hh); ctx.quadraticCurveTo(x + 0.3, top + hh * 0.55, x + 0.26, top); ctx.closePath(); ctx.fill();
+      for (let i = 0; i < 8; i++) { // scraps of burning paper and sparks lifting off it
+        const q = ((i * 37) % 10) / 10, ex = x + Math.sin(i * 2.3) * 0.3 + drift * (1 + q), ey = top + 0.3 + u * (1.6 + 1.4 * q);
+        ctx.globalAlpha = k; if (i % 2) circ(ctx, ex, ey, Math.max(0.03, env.px), H.S.tone('#ffb050', BP, true)); else R4(ctx, ex, ey, 0.08, 0.05, H.S.tone('#2a2420', BP));
+      }
+      ctx.globalAlpha = 1;
+    } });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const door = H.lawn(23.75), inDoor = H.study(23.75);
     const atRadio = (sim, a) => {
@@ -402,7 +424,8 @@ mission({
     let loops = 0;
     const c = [
       Object.assign(H.study(19.4), { id: 'marlow', role: 'target', face: -1, anim: 'work', look: { coat: '#7c838c', long: true, hair: 'bun', hairCol: '#d3d7dc', glasses: true }, flee: leave(true),
-        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['wait', 5, 'work', 1], ['look', { bag: null }], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
+        // (the files go into the fire as she reaches it; the flare is drawn from H.burnT)
+        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
           ['call', (sim, a) => { if (++loops >= 3) { sim.msg('Pip', 'That is the last of the files. She has her case. She is going to the car.'); sim.setRoutine(a, [['look', { bag: 'case' }], ['wait', 1.5, 'stand', 1]].concat(leave(false))); } }], ['loop']] }),
       Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' }, routine: pace(-6, 16, 4, 4, 'guard') }),
       // the housekeeper, washing up in the kitchen. She has never heard of the Ledger.
