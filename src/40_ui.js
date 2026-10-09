@@ -26,6 +26,8 @@ const ICON = {
   cross: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
   box: '<svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v9l-9 5-9-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 8l9 5 9-5M12 13v9" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 10-3-3M3 14h15a3 3 0 11-3 3M3 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  room: '<svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 9.5h12M6 15.5h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="8.5" cy="17.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="17.6" r="1.1" fill="currentColor"/></svg>',
+  guide: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 17c5-1.2 1.5-7.8 7-9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.4 2.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 const fmtCr = (n) => Math.round(n).toLocaleString('en-US');
@@ -336,7 +338,7 @@ UI.shell = function (head, body, cls) {
   const tab = (id, icon, label, badge) => `<button class="tabb ${UI.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${ICON[icon]}<span>${label}</span>${badge ? '<em>' + badge + '</em>' : ''}</button>`;
   return `<div class="scr hub ${cls || ''}">
     <nav class="tabs">
-      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
+      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
     </nav>
     <div class="hubmain">
       <div class="top">
@@ -350,6 +352,7 @@ UI.shell = function (head, body, cls) {
 UI.shellHandlers = function (h) {
   return Object.assign({
     tab(ds) { UI.tab = ds.tab; UI.hub(); },
+    gunroom() { UI.gallery(); }, // the gun room (43_ui_gallery.js), from the rail or any screen in the shell
     rankinfo() { UI.rankInfo(); },
   }, h || {});
 };
@@ -412,7 +415,7 @@ UI.brief = function (M, keep) {
   const par = (typeof M.par === 'function' ? M.par(flags) : M.par) || 1;
   const choice = M.outcomes && M.outcomes.some((o) => o.set);
   UI.render(`<div class="scr brief">
-    <div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Chapter ${ROMAN[M.ch]}  ·  Contract ${MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1}</div><h2>${esc(M.title)}</h2></div>${starsHtml(rec.stars || 0)}</div>
+    <div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Chapter ${ROMAN[M.ch]}  ·  Contract ${MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1}</div><h2>${esc(M.title)}</h2></div><button class="btn ghost sm howbtn" data-a="showhow">${ICON.guide}<span>Show me how</span></button>${starsHtml(rec.stars || 0)}</div>
     <div class="split">
       <div class="side">
         <div class="thumb"><canvas id="thumb" data-mthumb="${M.id}" data-v="${P.v}"></canvas><div class="th-cap"><span id="thtime"></span><span>${ICON.wind} ${aw < 0.3 ? 'Calm' : fmt(aw, 1) + ' m/s from ' + ((wind.v || 0) > 0 ? 'left' : 'right')}</span></div></div>
@@ -443,7 +446,32 @@ UI.brief = function (M, keep) {
     vant(ds) { P.v = +ds.i; UI.keepScroll(); UI.brief(M, true); },
     gun() { UI.gunPicker(M); },
     go() { UI.launch(M.id, { vantage: P.v }); },
+    showhow() { UI.showHow(M); },
   }, 'is-brief');
+};
+
+// ---- guided runs ------------------------------------------------------------------------------
+// The written walkthrough for a mission, as a numbered list (or a note that there is none yet).
+UI.walkthrough = function (M, title) {
+  const g = missionText(M, 'guide');
+  const steps = Array.isArray(g) && g.length ? '<ol>' + g.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ol>' : '<p class="dim">No walkthrough written for this one yet.</p>';
+  return `<div class="walk"><div class="eyebrow">${esc(title || 'How to three-star it')}</div>${steps}</div>`;
+};
+// "Show me how": the steps, the deal, and a way to start a guided run from the briefing.
+UI.showHow = function (M) {
+  const d = Save.data, P = UI.pick, st = buildStats(d.equipped, gunCfg(d.equipped)), why = gunAllowed(M, st);
+  const V = M.vantages || [{ name: 'Position' }], vname = V.length > 1 ? V[P.v || 0].name : '';
+  UI.overlay(`<div class="sheet tall showhow"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${esc(M.title)}${vname ? '  ·  from the ' + esc(vname.toLowerCase()) : ''}</div><h3>Show me how</h3></div><button class="x" data-a="close">${ICON.cross}</button></div>
+    <div class="sh-body split">
+      <div class="side">
+        <div class="deal">${ICON.guide}<div><b>Guided run: you still earn stars, credits and xp, but no caches from this run.</b><span>A coach on the screen takes you through it as it happens: when to wait, when to hold your breath, a mark showing exactly where to aim, and FIRE NOW at the right moment. The caches stay there for a run of your own.</span></div></div>
+        <div class="cta col"><button class="btn pri ${why ? 'off' : ''}" data-a="guided" data-snd="go">${why ? 'Rifle not suitable' : 'Start a guided run'}</button><button class="btn ghost" data-a="close" data-snd="back">Not now</button></div>
+      </div>
+      <div class="main scroll">${UI.walkthrough(M)}</div>
+    </div></div>`, {
+    close() { UI.closeOverlay(); },
+    guided() { UI.launch(M.id, { vantage: P.v || 0, guided: true }); },
+  });
 };
 UI.launch = function (id, opts) {
   UI.attractStop(); UI.closeOverlay(); UI.flushSeen();

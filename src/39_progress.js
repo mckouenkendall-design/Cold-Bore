@@ -22,7 +22,31 @@ const DUCK_MILESTONES = [5, 10, 20, 30];
 
 const Progress = CB.Progress = {};
 
-Progress.rec = function (id) { const m = Save.data.missions; if (!m[id]) m[id] = { done: false, stars: 0, ch: false, plays: 0, best: null }; return m[id]; };
+// One mission's record. c3paid and chPaid say whether the three-star cache and the challenge cache
+// have been handed out: a guided run can earn the stars and the challenge but not their caches, so
+// those stay to be earned on a run without the guide. Saves from before guided runs paid a cache
+// the moment a mission reached three stars or its challenge was done, so those count as paid.
+Progress.rec = function (id) {
+  const m = Save.data.missions; if (!m[id]) m[id] = { done: false, stars: 0, ch: false, plays: 0, best: null, c3paid: false, chPaid: false };
+  const r = m[id];
+  if (r.c3paid === undefined) r.c3paid = r.stars >= 3;
+  if (r.chPaid === undefined) r.chPaid = !!r.ch;
+  return r;
+};
+// Kills, headshots, shots and the longest kill for each rifle. The gun room uses them to pick the
+// rifle that goes in the glass case.
+Progress.gunStats = function (id) {
+  const d = Save.data; if (!d.stats.guns) d.stats.guns = {};
+  if (!d.stats.guns[id]) d.stats.guns[id] = { kills: 0, heads: 0, shots: 0, longest: 0 };
+  return d.stats.guns[id];
+};
+// The rifle with the most kills. Before any kill has been recorded, the one you carry.
+Progress.favourite = function () {
+  const d = Save.data, G = d.stats.guns || {};
+  let best = null, n = 0;
+  Object.keys(d.guns).forEach((id) => { const k = (G[id] && G[id].kills) || 0; if (k > n || (k === n && k > 0 && id === d.equipped)) { best = id; n = k; } });
+  return best || (d.guns[d.equipped] ? d.equipped : Object.keys(d.guns)[0]);
+};
 Progress.missionOpen = function (M) {
   if (CB.debug) return true;
   const i = MISSIONS.indexOf(M);
@@ -50,11 +74,24 @@ Progress.grantGun = function (id) {
 Progress.grantSkin = function (id) { const d = Save.data; if (d.skins[id]) return false; d.skins[id] = 1; return true; };
 
 // Work out and bank the rewards for a finished mission. Returns a summary
-// for the results screen.
+// for the results screen. info: { gun, guided }. A guided run (the coach showed
+// every step) still completes the contract and earns stars, credits and xp, but
+// not the three-star cache or the challenge cache; those wait for a run of your own.
 Progress.apply = function (M, res, info) {
-  const d = Save.data, rec = Progress.rec(M.id), out = { cr: 0, xp: 0, lines: [], caches: [], unlocked: [], rankUp: null, firstClear: false, newStars: 0, chNew: false, duckNew: false, chapterDone: false, storyEnd: false };
+  const d = Save.data, rec = Progress.rec(M.id), guided = !!(info && info.guided);
+  const out = { cr: 0, xp: 0, lines: [], caches: [], unlocked: [], rankUp: null, firstClear: false, newStars: 0, chNew: false, duckNew: false, chapterDone: false, storyEnd: false, guided, held: [] };
   rec.plays++; d.stats.plays++; d.stats.shots += res.shots || 0;
   if (M.practice) { Save.write(); return out; }
+  // what each rifle has done, win or lose
+  if (info && info.gun && GUN_BY_ID[info.gun]) {
+    const g = Progress.gunStats(info.gun);
+    g.shots += res.shots || 0;
+    (res.kills || []).forEach((k) => {
+      if (k.how === 'npc') return; // somebody else's doing
+      g.kills++;
+      if (k.how === 'shot') { if (k.part === 'head') g.heads++; g.longest = Math.max(g.longest, Math.round(k.range || 0)); }
+    });
+  }
   const rank0 = rankOf(d.xp).n;
   if (res.win) {
     d.stats.wins++;
@@ -63,8 +100,9 @@ Progress.apply = function (M, res, info) {
     if (!rec.done) { out.firstClear = true; add('Contract fee', base, bx); } else add('Repeat fee', base * 0.2, bx * 0.1);
     const ns = Math.max(0, res.stars - Math.max(1, rec.stars));
     if (ns > 0) { out.newStars = ns; add(ns === 2 ? 'Clean and precise' : (res.stars === 3 && rec.stars === 2 ? 'Third star' : 'Second star'), base * 0.3 * ns, bx * 0.2 * ns); }
-    if (res.challenge && !rec.ch) { out.chNew = true; rec.ch = true; add('Challenge', base * 0.5, bx * 0.25); out.caches.push('field'); }
-    if (res.stars === 3 && rec.stars < 3) out.caches.push('field');
+    if (res.challenge && !rec.ch) { out.chNew = true; rec.ch = true; add('Challenge', base * 0.5, bx * 0.25); }
+    if (res.challenge && !rec.chPaid) { if (guided) out.held.push('challenge'); else { rec.chPaid = true; out.caches.push('field'); } }
+    if (res.stars === 3 && !rec.c3paid) { if (guided) out.held.push('stars'); else { rec.c3paid = true; out.caches.push('field'); } }
     if (d.settings.assist === 'veteran') add('Veteran bonus', out.cr * 0.25, 0);
     const wasDone = Progress.chapterDone(M.ch);
     rec.done = true; rec.stars = Math.max(rec.stars, res.stars);

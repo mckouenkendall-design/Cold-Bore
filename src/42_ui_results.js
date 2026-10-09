@@ -21,7 +21,8 @@ const FAIL_TIP = {
 UI.results = function (M, res, last) {
   if (M.practice) { UI.tab = 'range'; UI.hub(); return; }
   const d = Save.data, recBefore = Object.assign({ stars: 0, ch: false }, d.missions[M.id] || {});
-  const pay = Progress.apply(M, res, { gun: last.opts.gun });
+  const guided = !!last.opts.guided;
+  const pay = Progress.apply(M, res, { gun: last.opts.gun, guided });
   UI.shots = {}; UI.shotKeys = []; // a choice may have changed what later scenes look like
   const i = MISSIONS.indexOf(M), next = MISSIONS[i + 1];
   const win = res.win;
@@ -34,19 +35,22 @@ UI.results = function (M, res, last) {
   }
   const rewards = pay.lines.length ? `<div class="rew"><div class="eyebrow">Earned</div>${pay.lines.map((l) => `<div class="rl"><span>${esc(l.label)}</span><b>${l.note ? esc(l.note) : (l.cr ? '+' + fmtCr(l.cr) + ' cr' : '') + (l.xp ? '<i>+' + l.xp + ' xp</i>' : '')}</b></div>`).join('')}
     <div class="rl tot"><span>Total</span><b>+${fmtCr(pay.cr)} cr<i>+${pay.xp} xp</i></b></div></div>` : '';
-  const extras = (pay.rankUp ? `<div class="banner up">Rank ${pay.rankUp.n}: ${esc(pay.rankUp.name)}</div>` : '')
+  // a guided run says plainly what it did not earn, and what is still there to be earned
+  const waiting = pay.held.length ? (pay.held.length === 2 ? 'The three-star cache and the challenge cache are' : pay.held[0] === 'stars' ? 'The three-star cache is' : 'The challenge cache is') + ' still waiting for a run without the guide.' : 'Stars, credits and xp count as normal.';
+  const guideNote = guided && win ? `<div class="gnote"><b>Guided run: no ${pay.caches.length ? 'star or challenge caches' : 'caches'} this time.</b><span>${waiting}</span></div>` : '';
+  const extras = guideNote + (pay.rankUp ? `<div class="banner up">Rank ${pay.rankUp.n}: ${esc(pay.rankUp.name)}</div>` : '')
     + pay.unlocked.map((u) => `<div class="banner got">Unlocked: ${esc(u.text)}</div>`).join('')
     + (pay.caches.length ? `<button class="cachebox has" data-a="caches" data-snd="riser"><div class="cb-ic">${ICON.box}</div><div class="cb-t"><b>${pay.caches.length} ${pay.caches.length === 1 ? 'cache' : 'caches'} earned</b><i>Tap to open ${pay.caches.length === 1 ? 'it' : 'them'} now</i></div></button>` : '');
   const clean = res.clean, cleanWhy = !clean ? (res.alarmBy ? ALARM_WHY[res.alarmBy] || 'the alarm was raised' : 'a bystander panicked') : '';
   UI.render(`<div class="scr results ${win ? 'win' : 'lose'}">
     <div class="split">
       <div class="side">
-        <div class="rs-head"><div class="eyebrow">${esc(M.title)}</div><h1>${win ? 'Contract complete' : 'Contract failed'}</h1>
+        <div class="rs-head"><div class="eyebrow">${esc(M.title)}${guided ? '  ·  guided run' : ''}</div><h1>${win ? 'Contract complete' : 'Contract failed'}</h1>
           ${win ? '<div class="bigstars">' + starsHtml(res.stars, 'big anim') + '</div>' : '<p class="why">' + esc(res.fail ? res.fail.text : '') + '</p>'}</div>
         <div class="statrow"><div><b>${fmtTime(res.time)}</b><i>time</i></div><div><b>${res.shots}</b><i>shots</i></div><div><b>${res.stats.longest ? Math.round(res.stats.longest) + ' m' : 'n/a'}</b><i>longest hit</i></div><div><b>${res.stats.heads}</b><i>headshots</i></div></div>
         ${pay.cr || pay.xp ? `<div class="rs-earn"><span>Earned</span><b>+${fmtCr(pay.cr)} cr</b><i>+${pay.xp} xp</i></div>` : ''}
         <div class="cta two">
-          <button class="btn ghost" data-a="again">${win ? 'Play again' : 'Try again'}</button>
+          <button class="btn ghost" data-a="again">${guided && win ? 'Try it yourself' : win ? 'Play again' : 'Try again'}</button>
           ${win ? `<button class="btn pri" data-a="next" data-snd="go">${pay.storyEnd ? 'The ending' : next ? (pay.chapterDone ? 'Continue' : 'Next contract') : 'Contracts'}</button>` : '<button class="btn pri" data-a="hub">Contracts</button>'}
         </div>
       </div>
@@ -63,7 +67,8 @@ UI.results = function (M, res, last) {
         ${rewards}
       </div>
     </div></div>`, {
-    again() { UI.launch(last.missionId, last.opts); },
+    // after a guided win, "Try it yourself" plays the same contract without the guide
+    again() { UI.launch(last.missionId, guided && win ? Object.assign({}, last.opts, { guided: false }) : last.opts); },
     hub() { UI.tab = 'contracts'; UI.chapter = M.ch; UI.hub(); },
     caches() { UI.afterCache = () => { const b = UI.root.querySelector('.cachebox'); if (b) b.remove(); }; UI.openCache(); },
     next() {
@@ -95,6 +100,7 @@ UI.notebook = function (sim) {
   <div class="sh-body twocol">
     <div>
       <div class="obj"><div class="eyebrow">${esc(M.title)}</div><p>${esc(missionText(M, 'objective'))}</p></div>
+      ${Game.coach ? UI.walkthrough(M, 'Guided run: the steps') : ''}
       ${intel.length ? '<div class="intel"><div class="eyebrow">What we know</div><ul>' + intel.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div>' : ''}
       ${M.brief ? '<details><summary>Read the full brief again</summary><p class="dim">' + esc(missionText(M, 'brief')) + '</p></details>' : ''}
       <button class="btn ghost wide" data-a="how">Controls and how to play</button>

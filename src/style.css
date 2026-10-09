@@ -104,6 +104,30 @@ body:not(.touch) #stage.aiming { cursor: none; }
 .h-banner.bad { color: var(--red); background: rgba(40, 6, 4, .78); border: 1px solid var(--red); }
 .h-banner.good { color: var(--green); background: rgba(6, 30, 16, .78); border: 1px solid var(--green); }
 
+/* ---------- guided run: the coach's card, and the button it is asking for ---------- */
+.h-coach { position: absolute; display: none; pointer-events: none; padding: 6px 11px 7px; border-radius: 11px; background: rgba(10, 14, 20, .84); border: 1px solid rgba(255, 170, 60, .55); border-left: 4px solid var(--amber); }
+body.guided .h-coach { display: block; }
+body.guided.landscape .h-obj, body.guided.coach-top .h-obj { visibility: hidden; }
+body.coach-top .h-coach { padding: 4px 10px 5px; } body.coach-top .h-coach .cc-hd { font-size: 16px; } body.coach-top .h-coach.fire .cc-hd { font-size: 19px; }
+body.coach-top .h-coach .cc-tx { font-size: 12px; -webkit-line-clamp: 2; }
+.h-coach .cc-eb { font: 700 9.5px var(--head); letter-spacing: .18em; text-transform: uppercase; color: var(--amber); opacity: .9; }
+.h-coach .cc-hd { font: 800 19px/1.1 var(--head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); margin-top: 1px; }
+.h-coach .cc-hd em { font: 700 17px var(--mono); font-style: normal; color: var(--amber2); margin-left: 6px; }
+.h-coach .cc-tx { font-size: 12.5px; line-height: 1.28; color: #d6dde6; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.h-coach.notext .cc-tx { display: none; }
+.h-coach.k-shoot { border-color: rgba(255, 170, 60, .8); }
+.h-coach.k-shoot .cc-hd { color: var(--amber2); }
+.h-coach.fire { border-color: var(--green); border-left-color: var(--green); background: rgba(6, 26, 14, .88); }
+.h-coach.fire .cc-hd { color: var(--green); font-size: 24px; letter-spacing: .12em; }
+.h-coach.fire .cc-eb { color: var(--green); }
+.h-coach.k-hold, .h-coach.k-reload, .h-coach.k-dial { border-left-color: var(--blue); } .h-coach.k-hold .cc-hd, .h-coach.k-reload .cc-hd, .h-coach.k-dial .cc-hd { color: var(--blue); }
+/* a ring that swells out from the button the coach wants pressed (a transform, cheap on a phone) */
+.h-ctl.go::before, .cell.go::before { content: ""; position: absolute; inset: -6px; border-radius: inherit; border: 3px solid var(--green); animation: coachring 1s ease-out infinite; pointer-events: none; }
+.h-breath.go::before, .h-reload.go::before, .cell.go::before { border-color: var(--blue); }
+.h-fire.go { background: radial-gradient(circle at 50% 35%, #a8f0c2, #4cc77c 60%, #23864a); color: #04210f; font-size: 17px; line-height: 1.05; }
+.cell.go { border-color: var(--blue) !important; }
+@keyframes coachring { from { transform: scale(.94); opacity: 1; } to { transform: scale(1.18); opacity: 0; } }
+
 /* ---------- menus ---------- */
 /* Every screen outside a mission. Laid out first for a phone held sideways (wide and short, with the
    camera island and the home bar eating into the edges): backgrounds run edge to edge, anything you
@@ -475,6 +499,44 @@ textarea { display: block; width: 100%; height: 84px; margin: 0 0 8px; border-ra
 .banner.up { background: linear-gradient(90deg, rgba(255, 170, 60, .28), rgba(255, 170, 60, .1)); border: 1px solid var(--amber); color: var(--amber2); } .banner.got { background: rgba(111, 182, 255, .14); border: 1px solid var(--blue); color: var(--blue); }
 .nb-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; } .nb-btns .btn { flex: 1 1 30%; padding: 0 10px; font-size: 12px; letter-spacing: .1em; }
 
+/* guided runs in the menus: the briefing's "Show me how", the sheet it opens, the note on the results */
+.howbtn { flex: none; gap: 6px; border-color: rgba(111, 182, 255, .55); color: #cfe6ff; }
+.howbtn svg { width: 17px; height: 17px; color: var(--blue); flex: none; }
+.deal { display: flex; gap: 11px; align-items: flex-start; margin-bottom: 10px; padding: 10px 13px; border-radius: 13px; border: 1px solid rgba(111, 182, 255, .5); background: rgba(111, 182, 255, .09); }
+.deal > svg { width: 24px; height: 24px; color: var(--blue); flex: none; margin-top: 1px; }
+.deal b { display: block; font-size: 14.5px; line-height: 1.35; } .deal span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
+.walk { margin-bottom: 10px; padding: 10px 13px; border-radius: 13px; background: var(--panel); border: 1px solid var(--line); }
+.walk ol { margin: 2px 0 0; padding-left: 22px; } .walk li { font-size: 13.5px; line-height: 1.42; margin: 5px 0; color: #d3dae2; padding-left: 2px; }
+.walk li::marker { font: 800 13px var(--head); color: var(--amber); }
+.walk .dim { margin: 2px 0 0; }
+.showhow .sh-body.split { padding-top: 10px; } .showhow .main.scroll { padding: 0 0 10px; }
+.showhow .deal { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 0; touch-action: pan-y; }
+.cta.col { flex-direction: column; gap: 7px; }
+.gnote { margin-bottom: 9px; padding: 10px 13px; border-radius: 12px; border: 1px solid rgba(111, 182, 255, .55); background: rgba(111, 182, 255, .1); }
+.gnote b { display: block; font: 800 13.5px var(--head); letter-spacing: .1em; text-transform: uppercase; color: #cfe6ff; } .gnote span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
+
+/* the gun room: a wall of canvases you swipe along, a slim bar over the top */
+.scr.gunroom { padding: 0; background: #0c0805; overflow: hidden; }
+.gr-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.gr-strip { position: absolute; left: 0; top: 0; bottom: 0; display: flex; transition: transform .38s cubic-bezier(.2, .8, .2, 1); will-change: transform; }
+.gr-sec { position: relative; flex: none; overflow: hidden; }
+.gr-sec canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.gr-hit { position: absolute; border-radius: 12px; }
+.gr-hit:active { background: rgba(255, 200, 120, .08); }
+.gr-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: var(--sat) calc(10px + var(--sar)) 14px calc(6px + var(--sal)); background: linear-gradient(rgba(8, 5, 3, .9), rgba(8, 5, 3, .55) 70%, rgba(8, 5, 3, 0)); pointer-events: none; }
+.gr-bar > * { pointer-events: auto; } .gr-bar .bar-t { pointer-events: none; }
+.gr-bar .eyebrow { margin: 0; color: #e8c27a; } .gr-bar h2 { font-size: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f3e6cc; }
+.gr-pager { position: absolute; top: calc(var(--sat) + 3px); right: calc(10px + var(--sar)); display: flex; align-items: center; gap: 2px; }
+body.portrait .gr-pager { top: auto; right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 6px); padding: 0 6px; border-radius: 26px; background: rgba(8, 5, 3, .72); border: 1px solid rgba(232, 194, 122, .25); }
+.gr-pager .gr-next svg { transform: scaleX(-1); }
+.gr-pager .ib.off { opacity: .25; pointer-events: none; }
+.gr-dots { display: flex; }
+.gr-dot { width: 16px; height: 44px; display: grid; place-items: center; }
+.gr-dot i { width: 8px; height: 8px; border-radius: 50%; background: rgba(243, 230, 204, .3); transition: all .2s; }
+.gr-dot.on i { background: #e8c27a; transform: scale(1.3); }
+.tabb.room { color: #c9a35e; }
+.gr-in { flex: none; margin-left: 12px; gap: 6px; border-color: rgba(201, 163, 94, .6); color: #f3e6cc; } .gr-in svg { width: 16px; height: 16px; color: #e8c27a; }
+
 /* narrow sideways screens: drop what is only nice to have */
 @media (max-width: 780px) {
   .rank span { display: none; }
@@ -529,6 +591,10 @@ body.portrait .sh-body.twocol { display: block; } body.portrait .sh-body.split {
 body.portrait .howcols, body.portrait .setcols { columns: 1; }
 body.portrait .cgrid { grid-template-columns: 1fr; } body.portrait .cc-t i { display: block; }
 body.portrait .cacheopen { width: calc(100% - 32px); max-width: 420px; }
+body.portrait .howbtn { padding: 0 9px; gap: 5px; font-size: 11px; letter-spacing: .05em; } body.portrait .howbtn svg { width: 15px; height: 15px; }
+body.portrait .brief .bar > .stars { display: none; } body.portrait .brief .bar .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.portrait .brief .bar h2 { font-size: 18px; white-space: normal; }
+body.portrait .showhow .cta { margin-top: 10px; }
 body.portrait .co-card { flex-direction: column; } body.portrait .co-pic { flex: none; height: 120px; min-height: 0; }
 body.portrait #toast { top: calc(64px + var(--sat)); }
 

@@ -65,6 +65,8 @@ Game.buildHud = function () {
   h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
+  // the coach's card on a guided run (hidden otherwise)
+  h.coach = mk('h-coach', '<div class="cc-eb"></div><div class="cc-hd"></div><div class="cc-tx"></div>');
 };
 Game.placeHud = function () {
   const G = Game, h = G.hud, V = G.view, W = G.W, Hh = G.H;
@@ -72,12 +74,17 @@ Game.placeHud = function () {
   const P = (e, o) => { for (const k in o) e.style[k] = typeof o[k] === 'number' ? o[k] + 'px' : o[k]; };
   if (G.mode === 'portrait') {
     const sb = V.cy + V.R; // bottom of the scope
+    const small = Hh < 720;
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
-    P(h.pills, { left: 0, right: 0, top: V.cy - V.R + 10, width: 'auto' });
-    P(h.msg, { left: 12, right: 12, top: sb + 64, width: 'auto', bottom: 'auto' });
+    // On a guided run the coach's card sits under the read-outs and the radio moves down below it.
+    // On a short phone there is no room down there, so the card takes the objective's place at the top.
+    const top = small && G.coach;
+    P(h.pills, { left: 0, right: 0, top: top ? G.safe.t + 96 : V.cy - V.R + 10, width: 'auto' });
+    P(h.coach, top ? { left: 58, right: 8, top: G.safe.t + 6, width: 'auto', bottom: 'auto' } : { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
+    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 64), width: 'auto', bottom: 'auto' });
+    document.body.classList.toggle('coach-top', !!top);
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
-    const small = Hh < 720;
     document.body.classList.toggle('short', small);
     if (small) {
       P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
@@ -93,7 +100,7 @@ Game.placeHud = function () {
   } else {
     // Sideways: the picture is the whole screen. Read-outs sit along the bottom between the
     // thumbs, zoom under the left thumb, fire under the right, messages top right.
-    document.body.classList.remove('short');
+    document.body.classList.remove('short'); document.body.classList.remove('coach-top');
     const sf = G.safe, L = sf.l, Rt = sf.r, B = Math.min(sf.b, 14), small = Hh < 430;
     const fire = small ? 104 : 118, br = small ? 76 : 84, rl = small ? 56 : 62;
     P(h.fire, { right: Rt + 16, bottom: B + 16, width: fire, height: fire, left: 'auto', top: 'auto' });
@@ -103,7 +110,11 @@ Game.placeHud = function () {
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
     const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
     P(h.strip, { left: sl, top: 'auto', bottom: B + (G.touch ? 8 : 30), width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: 50 });
+    // On a guided run the coach's card takes the place of the objective line, top left beside
+    // the notebook button, well clear of the middle of the picture. The pills drop below it.
+    const cw = Math.max(220, Math.min(320, W * 0.36));
+    P(h.coach, { left: L + 64, top: sf.t + 6, width: cw, right: 'auto', bottom: 'auto' });
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: G.coach ? sf.t + 100 : 50 });
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
   }
 };
@@ -137,7 +148,7 @@ Game.updateHud = function (dt) {
   h.fire.classList.toggle('wait', !ready); h.fire.classList.toggle('charge', sh.chargeT > 0);
   const cyc = sh.reloadT > 0 ? 1 - sh.reloadT / sh.reloadLen : sh.cycleT > 0 ? 1 - sh.cycleT / sh.cycleLen : 1;
   h.fire.style.setProperty('--p', String(clamp(cyc, 0, 1)));
-  set(h.fire.firstChild, sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : 'FIRE');
+  set(h.fire.firstChild, sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
   h.reload.classList.toggle('need', sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0);
   h.reload.classList.toggle('off', sh.ammo >= st.mag || sh.reserve <= 0);
   // ammo pips
@@ -151,6 +162,21 @@ Game.updateHud = function (dt) {
   // radio messages fade out
   const now = sim.t;
   for (let i = h.msg.children.length - 1; i >= 0; i--) { const c = h.msg.children[i]; if (now > c._until) c.classList.add('out'); if (now > c._until + 0.6) h.msg.removeChild(c); }
+  if (G.coach) G.coachHud(set);
+};
+// The coach's card, and a glow on whichever button it is asking for.
+Game.coachHud = function (set) {
+  const h = Game.hud, o = Game.coach.out; if (!o) return;
+  const k = o.kind;
+  set(h.coach.children[0], 'Guided run  &middot;  shot ' + Math.min(o.shot, o.shots) + ' of ' + o.shots);
+  set(h.coach.children[1], esc(o.head) + (o.count !== null ? ' <em>' + Math.ceil(o.count) + '</em>' : ''));
+  set(h.coach.children[2], esc(o.text || ''));
+  const cls = 'h-coach k-' + k + (o.fire ? ' fire' : '') + (o.text ? '' : ' notext');
+  if (h.coach.className !== cls) h.coach.className = cls;
+  h.fire.classList.toggle('go', !!o.fire);
+  h.breath.classList.toggle('go', k === 'hold');
+  h.reload.classList.toggle('go', k === 'reload');
+  h.sZero.classList.toggle('go', k === 'dial');
 };
 Game.pushMsg = function (who, text, dur) {
   const G = Game, h = G.hud;
@@ -176,6 +202,11 @@ Game.start = function (missionId, opts) {
   // a shadow copy of the mission that can be run ahead to see where a shot will land
   G.oracle = null;
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
+  // a guided run: the coach reads the mission's own three-star script and shows each step
+  G.coach = null;
+  if (opts.guided) { try { G.coach = new Coach(G.sim); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
+  document.body.classList.toggle('guided', !!G.coach);
+  G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
@@ -195,7 +226,7 @@ Game.start = function (missionId, opts) {
 };
 Game.stop = function () {
   const G = Game;
-  G.state = 'menu'; G.sim = null; G.oracle = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine');
+  G.state = 'menu'; G.sim = null; G.oracle = null; G.coach = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine'); document.body.classList.remove('guided');
   if (CB.KillCam && CB.KillCam.active) CB.KillCam.stop();
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
@@ -256,7 +287,9 @@ Game.loop = function (ts) {
   if (G.state !== 'mission' || !G.sim) return;
   if (G.cine) { KC.draw(0); return; }
   G.view.updateReadout(sim, dt);
+  if (G.coach) G.coach.update(); // after the world has moved on, before the picture is drawn
   G.view.draw(sim, dt, dt * G.scale);
+  if (G.coach) G.coach.draw(G.view, G.view.rt);
   G.updateHud(dt);
   Sfx.tick(sim, dt, G.scale);
 };
