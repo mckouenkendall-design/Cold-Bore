@@ -24,6 +24,18 @@ UI.armory = function () {
 };
 
 function partName(slot, cfg) { if (slot === 'scope') return (SCOPE_BY_ID[cfg.scope] || {}).name; if (slot === 'skin') return (SKIN_BY_ID[cfg.skin || 'factory'] || SKINS[0]).name; return (PART_BY_ID[cfg[slot]] || {}).name; }
+// The part in a slot that actually counts: a part that does not fit this rifle is ignored by buildStats, so show the factory one.
+function uiFitted(gunId, cfg, slot) { const p = PART_BY_ID[cfg[slot]]; return p && partFits(p, GUN_BY_ID[gunId]) ? p.id : defaultConfig(gunId)[slot]; }
+// How far a bullet gets through things, as steps (the same thresholds the bullets follow in a mission).
+function uiPenStep(pen) { return pen >= 3 ? 4 : pen >= 1.4 ? 3 : pen >= 1 ? 2 : pen >= 0.2 ? 1 : 0; }
+const UI_PEN_UP = ['', 'Gets through glass', 'Clean through glass', 'Goes through thin cover', 'Goes through a wall'];
+const UI_PEN_DOWN = ['', 'Glass stops it', 'Glass knocks it off line', 'No longer through thin cover', 'No longer through walls'];
+// A short note on which rifles a part was made for, if it is not a general part.
+function uiFitNote(p, g) {
+  if (p.guns) { if (p.guns.length === 1) return 'Made for this rifle'; if (p.guns.length > 3) return 'Fits ' + p.guns.length + ' rifles'; const n = p.guns.map((id) => id.charAt(0).toUpperCase() + id.slice(1)); return 'Made for the ' + n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1]; }
+  if (p.cals) return 'Made for ' + g.calName;
+  return '';
+}
 function statDeltas(a, b) {
   const out = [];
   STAT_LABELS.forEach(([k, label]) => { const dv = Math.round((b[k] - a[k]) * 100); if (Math.abs(dv) >= 2) out.push({ label, dv }); });
@@ -48,10 +60,10 @@ UI.bench = function (gunId) {
   else if (rank < g.rank) action = '<div class="lockmsg">' + ICON.lock + ' Needs rank ' + g.rank + ' (' + RANKS[g.rank - 1].name + '). You are rank ' + rank + '.</div>';
   else action = '<button class="btn pri wide ' + (d.credits >= g.price ? '' : 'off') + '" data-a="buy" data-snd="buy">Buy for ' + fmtCr(g.price) + ' credits' + (d.credits >= g.price ? '' : ' (you have ' + fmtCr(d.credits) + ')') + '</button>';
   const tile = (s) => {
-    const fixed = uiSlotOptions(s.id, g).length <= 1, isScope = s.id === 'scope', id = isScope ? st.scope.id : cfg[s.id];
+    const fixed = uiSlotOptions(s.id, g).length <= 1, isScope = s.id === 'scope', id = isScope ? st.scope.id : uiFitted(gunId, cfg, s.id);
     const inner = `<span class="sl-pic plate"><canvas data-part-slot="${s.id}" data-part-id="${id}" data-gun="${gunId}" ${cfgA}></canvas></span>
       ${isScope ? `<canvas class="glass" data-glass="${id}" data-gun="${gunId}" ${cfgA}></canvas>` : ''}
-      <span class="sl-t"><span>${s.name}</span><b>${esc((isScope ? st.scope.name : partName(s.id, cfg)) || 'Standard')}</b>${isScope ? '<i>' + uiScopeFacts(st.scope) + '</i>' : ''}</span>`;
+      <span class="sl-t"><span>${s.name}</span><b>${esc((isScope ? st.scope.name : (PART_BY_ID[id] || {}).name) || 'Standard')}</b>${isScope ? '<i>' + uiScopeFacts(st.scope) + '</i>' : ''}</span>`;
     if (!own) return `<div class="slot fixed ${isScope ? 'scope' : ''}">${inner}</div>`;
     return `<button class="slot ${fixed ? 'fixed' : ''} ${isScope ? 'scope' : ''}" data-a="slot" data-slot="${s.id}" ${fixed ? 'data-quiet="1"' : ''}>${inner}${fixed ? '<em>Fixed</em>' : ''}</button>`;
   };
@@ -100,15 +112,23 @@ UI.partPicker = function (gunId, slot) {
     if (Math.abs(b.pan - a.pan) >= 0.02) o.push([b.pan < a.pan ? 'Slower to swing' : 'Quicker to swing', b.pan > a.pan]);
     if (b.jerk < a.jerk - 0.005) o.push(['Cleaner trigger pull', true]); else if (b.jerk > a.jerk + 0.005) o.push(['Rougher trigger pull', false]);
     if (b.tracer !== a.tracer) o.push([b.tracer ? 'You see the bullet fly' : 'No glowing bullet', b.tracer]);
-    return o.map((x) => `<span class="dchip ${x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
+    // what it gets through: glass, cover, walls, people, body armour
+    const pa = uiPenStep(a.pen), pb = uiPenStep(b.pen);
+    if (pb > pa) o.push([UI_PEN_UP[pb], true]); else if (pb < pa) o.push([UI_PEN_DOWN[pa], false]);
+    if ((a.pen >= 1.2) !== (b.pen >= 1.2)) o.push([b.pen >= 1.2 ? 'Goes on through people' : 'Stays in the body', null]);
+    if ((a.pen >= 0.5) !== (b.pen >= 0.5)) o.push([b.pen >= 0.5 ? 'Beats body armour' : 'Body armour stops it', b.pen >= 0.5]);
+    if (a.silent && !b.silent) o.push(['No longer silent', false]); else if (!a.silent && b.silent) o.push(['Silent', true]);
+    if (b.eff !== a.eff) o.push(['Reach ' + (b.eff > a.eff ? '+' : '') + (b.eff - a.eff) + ' m', b.eff > a.eff]);
+    return o.map((x) => `<span class="dchip ${x[1] === null ? 'n' : x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
   };
   const rows = opts.map((p) => {
-    const own = isScope ? ownsScope(p.id) : ownsPart(p.id), cur = cfg[slot] === p.id, locked = !own && rank < p.rank;
+    const own = isScope ? ownsScope(p.id) : ownsPart(p.id), cur = (isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === p.id, locked = !own && rank < p.rank;
     const c2 = Object.assign({}, cfg); c2[slot] = p.id;
     const st2 = cur ? null : buildStats(gunId, c2), dl = cur ? [] : statDeltas(base, statBars(st2));
     let extra = cur ? '' : facts(st0, st2);
+    const note = isScope ? '' : uiFitNote(p, g);
     if (isScope) extra += `<span class="dchip n">${p.zoom[0] === p.zoom[1] ? p.zoom[0] + 'x fixed' : p.zoom[0] + '-' + p.zoom[1] + 'x'}</span>` + (p.turret ? '<span class="dchip n">zero dial</span>' : '') + (p.lrf ? '<span class="dchip n">rangefinder</span>' : '') + (p.nv ? '<span class="dchip n">night vision</span>' : '') + (p.smart ? '<span class="dchip n">aim computer</span>' : '');
-    const chips = dl.map((x) => `<span class="dchip ${x.dv > 0 ? 'up' : 'down'}">${x.label} ${x.dv > 0 ? '+' : ''}${x.dv}</span>`).join('') + extra;
+    const chips = (note ? `<span class="dchip fitfor">${note}</span>` : '') + dl.map((x) => `<span class="dchip ${x.dv > 0 ? 'up' : 'down'}">${x.label} ${x.dv > 0 ? '+' : ''}${x.dv}</span>`).join('') + extra;
     let btn;
     if (cur) btn = '<span class="st fitted">Fitted</span>';
     else if (own) btn = '<span class="st fit">Owned  ·  fit</span>';
@@ -125,7 +145,7 @@ UI.partPicker = function (gunId, slot) {
     close() { UI.closeOverlay(); },
     pick(ds) {
       const id = ds.id, p = isScope ? SCOPE_BY_ID[id] : PART_BY_ID[id], own = isScope ? ownsScope(id) : ownsPart(id);
-      if (cfg[slot] === id) return;
+      if ((isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === id) return;
       if (!own) { const err = Progress.buy(isScope ? 'scope' : 'part', id); if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; } Sfx.ui('buy'); UI.toast('Bought: ' + p.name, 'good'); } else Sfx.ui('equip');
       cfg[slot] = id; d.guns[gunId].cfg = cfg; Save.write();
       UI.closeOverlay(); UI.keepScroll(); UI.bench(gunId);
@@ -141,48 +161,75 @@ const UI_SKIN_GROUPS = [
   { k: 'l', name: 'Legendary', cls: 'r4', has: (s) => !s.ex && s.r === 4 }, { k: 't', name: 'Trophy', cls: 'rt', has: (s) => !!s.ex },
 ];
 function uiSkinGroup(s) { for (let i = 0; i < UI_SKIN_GROUPS.length; i++) if (UI_SKIN_GROUPS[i].has(s)) return UI_SKIN_GROUPS[i]; return UI_SKIN_GROUPS[0]; }
-// The shelves, with a row of counters on top that also work as filters.
-//   o.all   show every skin (the collection) or only the ones owned (the workbench)
+// How to get a skin you do not have yet, in one or two plain sentences.
+function uiSkinHow(s) {
+  if (s.ex) return 'A trophy: it never comes out of a cache. To earn it, ' + s.ex.charAt(0).toLowerCase() + s.ex.slice(1) + '.';
+  const odds = ['field', 'sealed', 'vault'].filter((k) => CACHE_ODDS[k][s.r] > 0).map((k) => CACHE_NAME[k].toLowerCase() + ' ' + CACHE_ODDS[k][s.r] + '%');
+  return 'Comes out of caches. The chance that a cache holds ' + (s.r === 1 || s.r === 3 ? 'an ' : 'a ') + RAR[s.r].toLowerCase() + ' skin: ' + odds.join(', ') + '.';
+}
+// A locked skin shown on the rifle: its real colours, pattern and movement under a light grey veil, with a lock.
+function uiLockedStage(gunId, cfg, s) {
+  return `<div class="stage plate locked"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(Object.assign({}, cfg, { skin: s.id }))}></canvas><span class="veil"></span><span class="lk">${ICON.lock}</span></div>`;
+}
+
+// The shelves, with a row of counters on top that also work as filters. Every skin is shown: the ones
+// not owned yet keep their real look under a grey veil with a lock, and tapping one says how to get it.
+//   o.all   the collection (every skin in its usual order) or the workbench (owned skins first)
 //   o.gun   the rifle the skins are being chosen for, if any
 //   o.cur   the skin to mark as chosen
+//   o.peek  a locked skin being looked at
 UI.skinShelves = function (o) {
   const d = Save.data, f = UI.skinFilter, seen = d.skinSeen || {};
   const tiles = UI_SKIN_GROUPS.map((g) => {
     const all = SKINS.filter((s) => s.id !== 'factory' && g.has(s)), own = all.filter((s) => d.skins[s.id]).length;
     return `<button class="rtile ${g.cls} ${f === g.k ? 'on' : ''} ${own >= all.length ? 'full' : ''}" data-a="filter" data-k="${g.k}"><span>${g.name}</span><b>${own}<small>/${all.length}</small></b></button>`;
   }).join('');
+  const gunAttr = o.gun ? 'data-gun="' + o.gun + '"' : '';
   const cell = (s) => {
-    const g = uiSkinGroup(s), own = !!d.skins[s.id] || s.id === 'factory', on = o.cur === s.id ? 'on' : '';
-    if (!own) return `<button class="skcell ${g.cls} unknown ${on}" data-a="skin" data-id="${s.id}"><span class="q">?</span><b>${s.ex ? esc(s.name) : 'Not found yet'}</b><i>${s.ex ? esc(s.ex) : g.name}</i></button>`;
+    const g = uiSkinGroup(s), own = !!d.skins[s.id] || s.id === 'factory', on = o.cur === s.id ? 'on' : o.peek === s.id ? 'peek' : '';
+    if (!own) return `<button class="skcell ${g.cls} locked ${on}" data-a="skin" data-id="${s.id}"><span class="skpic"><canvas data-swatch="${s.id}" data-lazy ${gunAttr}></canvas><span class="veil"></span><span class="lk">${ICON.lock}</span></span><b>${esc(s.name)}</b><i>${s.ex ? 'Trophy' : g.name}  ·  locked</i></button>`;
     const fresh = s.id !== 'factory' && !seen[s.id];
-    return `<button class="skcell ${g.cls} own ${on}" data-a="skin" data-id="${s.id}"><canvas data-swatch="${s.id}" data-lazy ${o.gun ? 'data-gun="' + o.gun + '"' : ''} ${fresh ? 'data-fresh' : ''}></canvas><b>${esc(s.name)}</b><i>${s.id === 'factory' ? 'Standard' : g.name}</i>${fresh ? '<em class="new">New</em>' : ''}</button>`;
+    return `<button class="skcell ${g.cls} own ${on}" data-a="skin" data-id="${s.id}"><canvas data-swatch="${s.id}" data-lazy ${gunAttr} ${fresh ? 'data-fresh' : ''}></canvas><b>${esc(s.name)}</b><i>${s.id === 'factory' ? 'Standard' : g.name}</i>${fresh ? '<em class="new">New</em>' : ''}</button>`;
   };
   const shelves = UI_SKIN_GROUPS.filter((g) => !f || f === g.k).map((g) => {
-    const all = SKINS.filter((s) => g.has(s) && (s.id !== 'factory' || !o.all)), list = o.all ? all : all.filter((s) => d.skins[s.id] || s.id === 'factory');
+    const all = SKINS.filter((s) => g.has(s) && (s.id !== 'factory' || !o.all)), mine = (s) => d.skins[s.id] || s.id === 'factory';
+    const list = o.all ? all : all.filter(mine).concat(all.filter((s) => !mine(s)));
     const total = all.filter((s) => s.id !== 'factory').length, own = all.filter((s) => s.id !== 'factory' && d.skins[s.id]).length;
-    if (!list.length && !f) return '';
-    return `<div class="rgroup ${g.cls}"><div class="rhead"><b>${g.name}</b><i>${own} of ${total}</i></div>${list.length ? '<div class="skgrid">' + list.map(cell).join('') + '</div>' : '<p class="dim">' + (g.k === 't' ? 'None yet. Trophies are earned, not found in caches. The Collection screen says how.' : 'None of these yet. They come out of caches.') + '</p>'}</div>`;
+    if (!list.length) return '';
+    return `<div class="rgroup ${g.cls}"><div class="rhead"><b>${g.name}</b><i>${own} of ${total}</i></div><div class="skgrid">${list.map(cell).join('')}</div></div>`;
   }).join('');
   return `<div class="rtiles">${tiles}</div><p class="dim rhint">${f ? 'Showing one kind. Tap it again to see them all.' : 'Tap a kind above to show only those.'}</p>${shelves}`;
 };
 
-// Choose a skin for one rifle. Tapping a skin fits it straight away.
+// Choose a skin for one rifle. Tapping a skin you own fits it straight away; tapping a locked one shows it
+// on the rifle under the veil and says how to get it.
 UI.skinPicker = function (gunId) {
   const d = Save.data, g = GUN_BY_ID[gunId];
+  let peek = null;
   const side = () => {
-    const cfg = gunCfg(gunId), s = SKIN_BY_ID[cfg.skin || 'factory'] || SKINS[0], grp = uiSkinGroup(s), n = SKINS.filter((k) => k.id !== 'factory' && d.skins[k.id]).length;
+    const cfg = gunCfg(gunId), n = SKINS.filter((k) => k.id !== 'factory' && d.skins[k.id]).length, done = '<div class="cta"><button class="btn pri wide" data-a="close" data-snd="back">Done</button></div>';
+    if (peek) {
+      const s = SKIN_BY_ID[peek], grp = uiSkinGroup(s);
+      return `${uiLockedStage(gunId, cfg, s)}
+        <div class="sk-info ${grp.cls}"><div class="eyebrow">${s.ex ? 'Trophy' : grp.name}  ·  locked${uiSkinMoves(s) ? '  ·  it moves' : ''}</div><h3>${esc(s.name)}</h3>
+        <p class="dim">${esc(uiSkinHow(s))} Until then it cannot be fitted.</p></div>${done}`;
+    }
+    const s = SKIN_BY_ID[cfg.skin || 'factory'] || SKINS[0], grp = uiSkinGroup(s);
     return `<div class="stage plate"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(cfg)}></canvas></div>
       <div class="sk-info ${grp.cls}"><div class="eyebrow">${s.id === 'factory' ? 'Standard' : grp.name}${uiSkinMoves(s) ? '  ·  it moves' : ''}</div><h3>${esc(s.name)}</h3>
-      <p class="dim">Skins are for looks only and fit every rifle. You own ${n} of ${SKINS.length - 1}. More come out of caches, and a few are trophies.</p></div>
-      <div class="cta"><button class="btn pri wide" data-a="close" data-snd="back">Done</button></div>`;
+      <p class="dim">Skins are for looks only and fit every rifle. You own ${n} of ${SKINS.length - 1}. More come out of caches, and a few are trophies.</p></div>${done}`;
   };
   UI.overlay(`<div class="sheet tall skins"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${esc(g.name)}</div><h3>Skins</h3></div><button class="x" data-a="close">${ICON.cross}</button></div>
     <div class="sh-body split"><div class="side sk-side">${side()}</div><div class="main scroll">${UI.skinShelves({ all: false, gun: gunId, cur: gunCfg(gunId).skin || 'factory' })}</div></div></div>`, {
     close() { UI.closeOverlay(); UI.flushSeen(); UI.keepScroll(); UI.bench(gunId); },
     filter(ds) { UI.skinFilter = UI.skinFilter === ds.k ? null : ds.k; UI.skinPicker(gunId); },
     skin(ds, t) {
-      const cfg = gunCfg(gunId); cfg.skin = ds.id; d.guns[gunId].cfg = cfg; Save.write(); Sfx.ui('equip');
-      UI.over.querySelectorAll('.skcell.on').forEach((e) => e.classList.remove('on')); t.classList.add('on');
+      const own = !!d.skins[ds.id] || ds.id === 'factory';
+      UI.over.querySelectorAll('.skcell.peek').forEach((e) => e.classList.remove('peek'));
+      if (own) {
+        const cfg = gunCfg(gunId); cfg.skin = ds.id; d.guns[gunId].cfg = cfg; Save.write(); Sfx.ui('equip'); peek = null;
+        UI.over.querySelectorAll('.skcell.on').forEach((e) => e.classList.remove('on')); t.classList.add('on');
+      } else { peek = ds.id; t.classList.add('peek'); }
       const box = UI.over.querySelector('.sk-side'); box.innerHTML = side(); UI.paintIn(box, 'over');
     },
   });
@@ -253,10 +300,11 @@ UI.collection = function () {
       const cfg = gunCfg(gunId), s = SKIN_BY_ID[UI.colSkin] || SKINS[0], own = !!d.skins[s.id] || s.id === 'factory', grp = uiSkinGroup(s), on = (cfg.skin || 'factory') === s.id;
       let act;
       if (own) act = on ? '<div class="inuse">' + ICON.check + ' On your ' + esc(g.name) + ' now</div>' : '<button class="btn pri wide" data-a="fit" data-snd="equip">Put it on my rifle</button>';
-      else act = s.ex ? '<div class="lockmsg">' + ICON.lock + ' Trophy: ' + esc(s.ex.toLowerCase()) + '.</div>' : '<button class="btn ghost wide" data-a="sub" data-t="caches">It comes out of a cache</button>';
-      return `<div class="stage plate ${own ? '' : 'shade'}"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(Object.assign({}, cfg, { skin: own ? s.id : 'factory' }))}></canvas></div>
-        <div class="sk-info ${grp.cls}"><div class="eyebrow">${s.id === 'factory' ? 'Standard' : grp.name}${own && uiSkinMoves(s) ? '  ·  it moves' : ''}</div><h3>${own || s.ex ? esc(s.name) : 'Not found yet'}</h3>
-        <p class="dim">${own ? 'Shown on your ' + esc(g.name) + '. Skins are for looks only and fit every rifle.' : 'You do not have this one yet, so it is kept in the dark.'}</p></div>
+      else act = s.ex ? '<div class="lockmsg">' + ICON.lock + ' Trophy: ' + esc(s.ex.charAt(0).toLowerCase() + s.ex.slice(1)) + '.</div>' : '<button class="btn ghost wide" data-a="sub" data-t="caches">See the caches</button>';
+      const stage = own ? `<div class="stage plate"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(Object.assign({}, cfg, { skin: s.id }))}></canvas></div>` : uiLockedStage(gunId, cfg, s);
+      return `${stage}
+        <div class="sk-info ${grp.cls}"><div class="eyebrow">${s.id === 'factory' ? 'Standard' : s.ex ? 'Trophy' : grp.name}${own ? '' : '  ·  locked'}${uiSkinMoves(s) ? '  ·  it moves' : ''}</div><h3>${esc(s.name)}</h3>
+        <p class="dim">${own ? 'Shown on your ' + esc(g.name) + '. Skins are for looks only and fit every rifle.' : esc(uiSkinHow(s))}</p></div>
         <div class="cta">${act}</div>`;
     };
     h.filter = (ds) => { UI.skinFilter = UI.skinFilter === ds.k ? null : ds.k; UI.collection(); };
