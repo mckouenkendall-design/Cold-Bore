@@ -1033,6 +1033,8 @@ function P_roof(S, P, x, y, w, col) {
 //   H        the yard handles (uses H.PM, H.z)
 //   o.eye    the shooting position; o.x0, o.x1 the ends of the lock-up; o.gap height of the
 //            shutter's bottom edge
+//   o.sim()  returns the running simulation, or null: the bulb inside throws the legs of whoever
+//            stands in there as long shadows out across the lit ground in front (picture only)
 // Returns { C, x0, x1, s0, s1, gap, inside(x, extra) } where s0 and s1 are the shutter's ends and
 // inside() is a placement on the floor (zone 'lockup', which is lit).
 K.lockUp = function (S, H, o) {
@@ -1042,6 +1044,7 @@ K.lockUp = function (S, H, o) {
   S.litZones.lockup = true;
   const T = (c, lit) => S.tone(c, PM, lit), night = S.pal.dark > 0.3;
   const tin = T('#6f7a78'), tinD = T('#56605f'), tinL = T('#8d9896'), rust = T('#7a4a2a'), slat = T('#7d8584'), slatD = T('#5e6665'), rail = T('#2a2e36'), roofC = T('#4a4f55'), roofL = T('#646a70'), paint = T('#e8e2cc');
+  const edgeC = mix(T('#c9d0d2'), T('#c9d0d2', true), 0.35), shutC = mix(T('#9aa3a2'), T('#9aa3a2', true), 0.25);
   const warm = T('#e7b46a', true), warmD = T('#a7743e', true), floorC = T('#8a6f52', true), wallIn = T('#4a3a2c', true), wood = T('#6b5038', true), woodD = T('#4a3626', true), cable = T('#15171b'), heat = '#ff8a3a';
   // inside, on the strip itself: only the bottom of it is ever seen, under the shutter
   PM.add({ x0: x0, x1: x1, layer: 0, draw(ctx, env) {
@@ -1064,9 +1067,18 @@ K.lockUp = function (S, H, o) {
   const D = makeRng(Math.floor(x0 * 17) + 5113), streaks = []; for (let i = 0; i < 7; i++) streaks.push([D.r(x0 + 0.1, x1 - 0.1), D.r(0.3, 1.1), D.r(0.03, 0.07)]);
   C.add(x0 - 2, x1 + 2, 2, (ctx, env) => {
     if (rTop + 0.4 < env.y0 || -1 > env.y1) return;
-    const s = env.s, fine = s > 12;
-    // the warm light under the shutter, out across the ground in front
-    if (night && s > 2) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.28; kxSpillAt(ctx, kxSpill('#ffcf8a'), s0, -0.42, s1 - s0, 0.42, 0.6); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+    const s = env.s, fine = s > 12, low = s < 14, px = env.px;
+    // the warm light under the shutter, out across the ground in front (stronger at low zoom, where
+    // the bright slot under the shutter is the thing the eye finds first)
+    if (night && s > 2) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = low ? 0.42 : 0.28; kxSpillAt(ctx, kxSpill('#ffcf8a'), s0, -0.42, s1 - s0, 0.42, 0.6); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+    // the shadows of the legs inside, thrown out across that light by the bulb above them
+    const sim = o.sim && o.sim();
+    if (night && sim && s > 2.5) {
+      ctx.fillStyle = 'rgba(12,10,8,0.5)'; ctx.beginPath();
+      for (let i = 0; i < sim.actors.length; i++) { const a = sim.actors[i]; if (a.zone !== 'lockup' || a.hidden || a.gone || a.plane !== PM) continue;
+        const sw = Math.max(0.09, px * 1.2), mid = (s0 + s1) / 2; for (const dx of [-0.07, 0.07]) { const fx = a.x + dx, lean = (fx - mid) * 0.12; ctx.moveTo(fx - sw / 2, -0.01); ctx.lineTo(fx + sw / 2, -0.01); ctx.lineTo(fx + sw * 0.9 + lean, -0.4); ctx.lineTo(fx - sw * 0.9 + lean, -0.4); ctx.closePath(); } }
+      ctx.fill();
+    }
     // tin walls either side of the shutter, ribbed
     ctx.fillStyle = tin; ctx.fillRect(x0, 0, s0 - x0, hTop); ctx.fillRect(s1, 0, x1 - s1, hTop);
     if (s > 3) { ctx.fillStyle = tinD; ctx.beginPath(); for (let i = 0; i < ribs.length; i++) ctx.rect(ribs[i], 0, Math.max(0.025, env.px * 0.7), hTop); ctx.fill(); }
@@ -1078,13 +1090,20 @@ K.lockUp = function (S, H, o) {
     R4(ctx, s0, gap, s1 - s0, 0.08, rail);
     if (s > 5) { R4(ctx, (s0 + s1) / 2 - 0.2, gap + 0.025, 0.4, 0.03, tinL); ctx.strokeStyle = T('#b89a4a'); ctx.lineWidth = Math.max(0.02, env.px * 0.6); ctx.beginPath(); ctx.arc(s0 + 0.5, gap - 0.04, 0.045, 0, Math.PI, true); ctx.stroke(); R4(ctx, s0 + 0.45, gap - 0.11, 0.1, 0.08, T('#b89a4a')); }
     R4(ctx, s0 - 0.06, 0, 0.08, sTop, rail); R4(ctx, s1 - 0.02, 0, 0.08, sTop, rail);
+    if (low) { // at low zoom: the shutter's edges and the box's corners catch the yard lights
+      const e = Math.max(0.03, px * 0.9); ctx.fillStyle = edgeC; ctx.beginPath();
+      ctx.rect(s0, sTop - e, s1 - s0, e); ctx.rect(s0 + 0.02, gap + 0.08, e, sTop - gap - 0.08); ctx.rect(s1 - 0.02 - e, gap + 0.08, e, sTop - gap - 0.08);
+      ctx.rect(x0, 0, e, hTop); ctx.rect(x1 - e, 0, e, hTop); ctx.fill();
+      ctx.fillStyle = shutC; ctx.globalAlpha = 0.5; ctx.fillRect(s0 + 0.02 + e, gap + 0.08, s1 - s0 - 0.04 - 2 * e, sTop - gap - 0.08 - e); ctx.globalAlpha = 1;
+    }
     // rust running down from the top, and the yard's painted number
     if (s > 5) { ctx.fillStyle = rust; ctx.globalAlpha = 0.4; ctx.beginPath(); for (let i = 0; i < streaks.length; i++) { const q = streaks[i]; ctx.moveTo(q[0] - q[2], hTop); ctx.lineTo(q[0] + q[2], hTop); ctx.lineTo(q[0] + q[2] * 0.2, hTop - q[1]); ctx.closePath(); } ctx.fill(); ctx.globalAlpha = 1; }
     env.text(ctx, '7', x0 + 0.25, 1.35, 0.42, paint, 'center');
     // the shutter housing and a tin roof with an overhang and a gutter
     R4(ctx, x0, sTop, x1 - x0, hTop - sTop, tinD);
     ctx.fillStyle = roofC; ctx.beginPath(); ctx.moveTo(x0 - 0.3, hTop); ctx.lineTo(x1 + 0.3, hTop); ctx.lineTo(x1 + 0.1, rTop); ctx.lineTo(x0 - 0.1, rTop); ctx.closePath(); ctx.fill();
-    if (s > 5) { R4(ctx, x0 - 0.3, hTop - 0.07, x1 - x0 + 0.6, 0.07, rail); ctx.fillStyle = roofL; ctx.fillRect(x0 - 0.1, rTop - 0.04, x1 - x0 + 0.2, 0.04); }
+    if (s > 5) R4(ctx, x0 - 0.3, hTop - 0.07, x1 - x0 + 0.6, 0.07, rail);
+    ctx.fillStyle = low ? edgeC : roofL; ctx.fillRect(x0 - 0.1, rTop - Math.max(0.04, px * 0.9), x1 - x0 + 0.2, Math.max(0.04, px * 0.9));   // the roof edge, lit
     // light leaking at the shutter's ends, where the guides do not quite meet it
     if (night && s > 4) { ydGlow(ctx, s0, gap * 0.5, 0.25, gap * 0.7, '255,207,138', 0.35); ydGlow(ctx, s1, gap * 0.5, 0.25, gap * 0.7, '255,207,138', 0.35); }
   });

@@ -1621,7 +1621,7 @@ SCN.ridge = function (o) {
   H.pad = K.helipad(S, PM, 58, { squash: fs });
   H.sock = K.windsock(S, PM, 72, 6.5);
   H.lamps = [];
-  if (o.lamps) [-39.5, 24, 46].forEach((lx, i) => H.lamps.push(K.lamp(S, PM, lx, 6.2, 'yard', { id: 'lamp' + (i + 1), reach: 16, r: 0.4 })));
+  if (o.lamps) [-39.5, 24, 46].forEach((lx, i) => H.lamps.push(K.lamp(S, PM, lx, 6.2, 'yard', { id: 'lamp' + (i + 1), reach: 16, r: 0.4, style: 'flood' })));
   if (o.heli === 'parked') K.parked(S, PM, 'heli', 58, 1, '#262b33', { layer: 0 });
   else if (o.heli === 'live') H.heli = K.heli(S, PM, 58, { spin: o.heliSpin, spin0: o.heliSpin0 });
 

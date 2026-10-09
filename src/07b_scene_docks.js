@@ -1577,8 +1577,8 @@ SCN.docks = function (o) {
       }
     }
     H.lamps = [];
-    (o.lamps || [-34, -12, 10]).forEach((lx, i) => H.lamps.push(K.lamp(S, PQ, lx, 5.6, 'quay', { id: 'lamp' + (i + 1), reach: o.lampReach })));
-    (o.pierLamps || (pierLen > 0 ? [end + 14] : [])).forEach((lx, i) => H.lamps.push(K.lamp(S, PQ, lx, 4.6, 'quay', { id: 'plamp' + (i + 1), reach: o.pierReach || o.lampReach })));
+    (o.lamps || [-34, -12, 10]).forEach((lx, i) => H.lamps.push(K.lamp(S, PQ, lx, 5.6, 'quay', { id: 'lamp' + (i + 1), reach: o.lampReach, style: 'harbour' })));
+    (o.pierLamps || (pierLen > 0 ? [end + 14] : [])).forEach((lx, i) => H.lamps.push(K.lamp(S, PQ, lx, 4.6, 'quay', { id: 'plamp' + (i + 1), reach: o.pierReach || o.lampReach, style: 'harbour', wood: true })));
     (o.barrels || []).forEach((b, i) => { const bx = typeof b === 'number' ? b : b[0]; K.thing(S, PQ, 'barrel', bx, 0.62, { id: (typeof b === 'number' ? null : b[1]) || ('barrel' + (i + 1)) }); });
     if (o.crane !== false) {
       const c = o.crane || {};
