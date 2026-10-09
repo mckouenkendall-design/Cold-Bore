@@ -712,7 +712,7 @@ mission({
   testFlags: CH5_FLAGS,
   setup() {
     const H = SCN.yard({ z: 420, time: 'night', seed: 13 });
-    H.lock = K.lockUp(H.S, H, { eye: [0, 30, 0], x0: 24, x1: 30.4 });
+    H.lock = K.lockUp(H.S, H, { eye: [0, 30, 0], x0: 24, x1: 30.4, sim: () => H.sim });
     K.thing(H.S, H.PM, 'duck', 11.05, 2.1);   // on the stacked crates along the strip
     H.f1 = H.train({ id: 'f1', track: 'far', at: 16, dir: -1, speed: 12, col: '#7a3a2e', seed: 1 });
     return H;
@@ -736,6 +736,7 @@ mission({
       Object.assign(H.inBox(-1.5), { id: 'sig', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
     ];
   },
+  start(sim, H) { H.sim = sim; },   // for the picture only: the legs' shadows under the shutter
   vehicles(H) { return [H.f1.veh]; },
   triggers(H, f) {
     const t = [H.f1.trig,

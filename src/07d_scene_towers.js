@@ -715,7 +715,7 @@ K.twTerrace = function (S, P, B, o) {
   const T = { x0, x1, y, zone, lamps: [], posts: [] };
   const n = 4;
   for (let i = 0; i <= n; i++) T.posts.push(x0 + 0.5 + ((x1 - x0 - 1) * i) / n);
-  (o.lamps || [x0 + 3.6, x0 + 11.95, x1 - 3.4]).forEach((lx, i) => T.lamps.push(K.lamp(S, P, lx, 3.0, zone, { id: 'tl' + (i + 1), y, reach: o.reach || 4.6, arm: 0 })));
+  (o.lamps || [x0 + 3.6, x0 + 11.95, x1 - 3.4]).forEach((lx, i) => T.lamps.push(K.lamp(S, P, lx, 3.0, zone, { id: 'tl' + (i + 1), y, reach: o.reach || 4.6, arm: 0, style: 'terrace' })));
   T.on = () => T.lamps.some((l) => l.alive && l.on !== false);
   T.barX = x0 + 3.1;
   const tables = o.tables || [x0 + 8.2, x0 + 12.4, x0 + 16.2], heaters = o.heaters || [x0 + 7.0, x0 + 14.3];
@@ -1008,7 +1008,7 @@ K.twSite = function (S, P, o) {
     env.text(ctx, 'BUILDING CALDER SINCE 1921', fx0 + 9.4, 0.84, 0.17, S.tone('#1c2430', P, true), 'center');
   } });
   // floodlights
-  (o.lamps === undefined ? [[Z.yard0 + 0.5, 8.5, 1.2, 12], [fx0 + 9.5, 3.15, 0, 9]] : o.lamps).forEach((l, i) => { lampPosts.push(l[0]); Z.lamps.push(K.lamp(S, P, l[0], l[1], 'site', { id: 'sl' + (i + 1), reach: l[3] || 11, arm: l[2] })); });
+  (o.lamps === undefined ? [[Z.yard0 + 0.5, 8.5, 1.2, 12], [fx0 + 9.5, 3.15, 0, 9, 2.0]] : o.lamps).forEach((l, i) => { lampPosts.push(l[0]); Z.lamps.push(K.lamp(S, P, l[0], l[1], 'site', { id: 'sl' + (i + 1), reach: l[3] || 11, arm: l[2], style: 'site', foot: l[4] })); });
   if (o.upperLit) for (let l = 1; l <= lv; l++) S.litZones['site' + l] = true;
   // the load on the crane
   if (o.girder !== false) {
@@ -1296,7 +1296,7 @@ SCN.towers = function (o) {
   if (o.demo) {
     const ry = A.roofY, D = H.demo = { y: ry, rigX: -24.4, capsX: -19.6, fuseX: -15.4, valveX: -10.2, camX: -6.5, hutX: -6.2, fireT: -99 };
     S.litZones['A:roof'] = false;
-    D.lamps = [K.lamp(S, PA, -22.2, 4.3, 'A:roof', { id: 'rl1', y: ry + 0.3, reach: 9, arm: 0.9 }), K.lamp(S, PA, -9.2, 4.3, 'A:roof', { id: 'rl2', y: ry + 0.3, reach: 9.5, arm: -0.9 })];
+    D.lamps = [K.lamp(S, PA, -22.2, 4.3, 'A:roof', { id: 'rl1', y: ry + 0.3, reach: 9, arm: 0.9, style: 'flood', base: 'ballast' }), K.lamp(S, PA, -9.2, 4.3, 'A:roof', { id: 'rl2', y: ry + 0.3, reach: 9.5, arm: -0.9, style: 'flood', base: 'ballast' })];
     const steel = S.tone('#8f979e', PA), dark = S.tone('#20252d', PA), white = S.tone('#dfe5ea', PA), hut = S.tone('#3a4450', PA), hutD = S.tone('#2a323c', PA), keepR = {};
     PA.add({ x0: -27, x1: -1, layer: 0, draw(ctx, env) {
       const by = ry + 0.3, s = env.s;
@@ -1520,6 +1520,10 @@ K.armourGlass = function (S, P, vehId, kind, o) {
   o = o || {};
   const c = CARS[kind], y0 = c.body + 0.06, hh = c.h - 0.14 - y0, panes = [];
   const frame = S.tone('#121418', P), edge = 'rgba(126,196,160,0.55)', tint = 'rgba(70,120,104,0.2)', shine = 'rgba(220,240,235,0.16)', seam = 'rgba(150,160,175,0.35)', handle = S.tone('#8f98a3', P);
+  // a black car on a dark street is one black shape at 4x. The street lamps catch its chrome: a
+  // bright strip along the bottom of each window, the door shut lines, the handles. Under the
+  // window with his reading lamp that makes a lit door-shaped frame, right below his head.
+  const chrome = mix(S.tone('#c9d0d8', P), S.tone('#c9d0d8', P, true), 0.5), shut = 'rgba(176,188,204,0.62)';
   c.win.forEach((wn, i) => {
     const ww = (wn[1] - wn[0]) * c.len;
     const ob = K.thing(S, P, 'armour', -999, -999, { id: vehId + '_pane' + i, r: 0.5, w: ww + 0.04, h: hh + 0.04, mat: 'metal', gone: true,
@@ -1530,14 +1534,22 @@ K.armourGlass = function (S, P, vehId, kind, o) {
       },
       drawFn(ctx, env) {
         const x0 = ob.x - ww / 2, yb = ob.y - hh / 2, s = env.s, v = ob.car;
-        // the door under this window: its seams and handle, so it reads as a door and not as more car
-        if (s > 4 && v) {
-          const fl = v.y + 0.22, back = v.dir > 0 ? x0 : x0 + ww;
-          ctx.strokeStyle = seam; ctx.lineWidth = Math.max(0.015, env.px * 0.7); ctx.beginPath();
-          ctx.moveTo(x0 - 0.04, fl); ctx.lineTo(x0 - 0.04, yb - 0.02); ctx.moveTo(x0 + ww + 0.04, fl); ctx.lineTo(x0 + ww + 0.04, yb - 0.02); ctx.stroke();
-          ctx.fillStyle = handle; ctx.fillRect(back + v.dir * 0.1 - (v.dir > 0 ? 0 : 0.22), yb - 0.17, 0.22, 0.045);
+        // the door under this window: its shut lines, a chrome strip under the glass and the
+        // handle, so it reads as a door and not as more car (at any zoom: each at least a pixel)
+        if (s > 2 && v) {
+          const fl = v.y + 0.22, back = v.dir > 0 ? x0 : x0 + ww, hot = o.lamp === i, lw = Math.max(0.015, env.px * (hot ? 1.05 : 0.8));
+          ctx.strokeStyle = s > 14 && !hot ? seam : shut; ctx.lineWidth = lw; ctx.beginPath();
+          ctx.moveTo(x0 - 0.04, fl); ctx.lineTo(x0 - 0.04, yb - 0.02); ctx.moveTo(x0 + ww + 0.04, fl); ctx.lineTo(x0 + ww + 0.04, yb - 0.02);
+          if (hot) { ctx.moveTo(x0 - 0.04, fl); ctx.lineTo(x0 + ww + 0.04, fl); }
+          ctx.stroke();
+          R4(ctx, x0 - 0.02, yb - 0.05, ww + 0.04, Math.max(0.03, env.px * (hot ? 1.1 : 0.8)), chrome);
+          ctx.fillStyle = s > 14 ? handle : chrome; ctx.fillRect(back + v.dir * 0.1 - (v.dir > 0 ? 0 : 0.22), yb - 0.17, 0.22, Math.max(0.045, env.px * 0.9));
         }
-        if (o.lamp === i) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,214,140,0.14)'; ctx.fillRect(x0, yb, ww, hh); ctx.globalCompositeOperation = 'source-over'; }   // his reading lamp
+        if (o.lamp === i) { // his reading lamp: the glass glows warm, so his head shows dark against it
+          ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = s < 14 ? 'rgba(255,214,140,0.34)' : 'rgba(255,214,140,0.14)'; ctx.fillRect(x0, yb, ww, hh);
+          if (s > 3) { const lx = v && v.dir > 0 ? x0 + 0.16 : x0 + ww - 0.16; ctx.fillStyle = 'rgba(255,236,190,0.9)'; ctx.fillRect(lx - 0.05, yb + hh - 0.16, 0.1, 0.08); }
+          ctx.globalCompositeOperation = 'source-over';
+        }
         ctx.fillStyle = tint; ctx.fillRect(x0, yb, ww, hh);
         ctx.strokeStyle = frame; ctx.lineWidth = Math.max(0.05, env.px); ctx.strokeRect(x0, yb, ww, hh);
         if (s > 5) {

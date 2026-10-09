@@ -42,6 +42,9 @@ K.shore = function (S, P, o) {
   P.groundFn = (x) => { const dry = x < xl || x > xr; P._gm = dry ? 'hard' : 'water'; return dry ? qy : 0; };
   Object.defineProperty(P, 'groundMat', { get() { return P._gm; }, set() {}, configurable: true });
   (S._brWater = S._brWater || []).push(P);
+  // what lies on a paved quay, picked once: oil stains, tyre marks, drain covers, patched slabs
+  const pv = [], stainC = 'rgba(20,18,16,0.22)', tyreC = 'rgba(20,18,16,0.16)', patchC = S.tone(lighten(o.col || '#6b6660', 0.06), P), grate = S.tone('#2a2826', P);
+  if (o.pave) { const D = makeRng(Math.round(P.z * 3) + 4447); for (let sg = -1; sg <= 1; sg += 2) { const e = sg < 0 ? xl : xr; if (Math.abs(e) > 1e5) continue; for (let i = 0; i < 30; i++) pv.push([e - sg * D.r(3, 150), qy - D.r(1.0, 7.5), D.i(0, 3), D.r(0.8, 2.6)]); } }
   // the lights of a far bank, shining in the water near it
   const glints = [];
   if (o.glints) { const D = makeRng(Math.round(P.z) + 77); for (let i = 0; i < 70; i++) { const nearBank = i < 46, x = nearBank ? (i % 2 ? xl + D.r(1, 70) : xr - D.r(1, 70)) : D.r(xl, xr); if (x < xl || x > xr) continue; glints.push([x, D.r(0.3, 4), D.r(0.6, 2.2), D.f() * TAU, D.chance(0.25)]); } }
@@ -87,6 +90,25 @@ K.shore = function (S, P, o) {
         const pts = []; for (let k = 1; k < 9; k++) { const yy = qy - 0.35 - k * k * 0.55 - k * 0.5; if (yy < env.y0) break; pts.push(la, yy, lb, yy); }
         if (s > 2) pts.push(la, qy - 2.0, lb, qy - 2.0, la, qy - 2.5, lb, qy - 2.5);
         ydLines(ctx, env, pts, landD, 0.06);
+        if (s > 4.5) { // the joints between slabs, wider apart nearer the shooter, staggered row to row
+          const pj = []; let prev = qy - 0.35;
+          for (let k = 1; k < 9; k++) { const yy = qy - 0.35 - k * k * 0.55 - k * 0.5; if (prev < env.y0) break; const sp = 1.4 + k * 0.9; if (sp * s < 7) { prev = yy; continue; }
+            for (let x = Math.floor(Math.max(la, env.x0) / sp) * sp + (k % 2) * sp * 0.5; x < Math.min(lb, env.x1); x += sp) pj.push(x, prev, x, yy);
+            prev = yy; }
+          ydLines(ctx, env, pj, landD, 0.035);
+        }
+        if (s > 2.2) { // stains, tyre marks, a drain cover now and then, a newer slab: all flat on the ground
+          for (let pass = 0; pass < 4; pass++) {
+            ctx.fillStyle = pass === 0 ? stainC : pass === 1 ? tyreC : pass === 2 ? patchC : grate; ctx.beginPath();
+            for (let i = 0; i < pv.length; i++) { const q = pv[i]; if (q[2] !== pass || q[0] < la - 4 || q[0] > lb + 4 || q[0] < env.x0 - 4 || q[0] > env.x1 + 4 || q[1] < env.y0) continue;
+              if (pass === 0) { ctx.moveTo(q[0] + q[3], q[1]); ctx.ellipse(q[0], q[1], q[3], 0.1 + q[3] * 0.04, 0, 0, TAU); }
+              else if (pass === 1) { ctx.rect(q[0], q[1], q[3] * 2.4, 0.07); ctx.rect(q[0] + 0.3, q[1] - 0.32, q[3] * 2.4, 0.07); }
+              else if (pass === 2) ctx.rect(q[0], q[1], q[3] * 0.9, 0.3);
+              else if (s > 4) ctx.rect(q[0], q[1], 0.55, 0.14); }
+            ctx.fill();
+          }
+          if (s > 9) { const pts = []; for (let i = 0; i < pv.length; i++) { const q = pv[i]; if (q[2] !== 3 || q[0] < la || q[0] > lb) continue; for (let j = 1; j < 5; j++) pts.push(q[0] + j * 0.11, q[1] + 0.02, q[0] + j * 0.11, q[1] + 0.12); } ydLines(ctx, env, pts, landD, 0.025); }
+        }
         if (s > 1.5) { ctx.fillStyle = mix(land, S.tone(S.pal.skyBot, P), 0.35); ctx.beginPath(); for (let i = 0; i < 24; i++) { const px = (sg < 0 ? edge - 6 : edge + 6) - sg * ydHash(i, 3) * 150, py = qy - 1.2 - ydHash(i, 5) * 8; if (px < la || px > lb || py < env.y0) continue; ctx.moveTo(px + 1.2, py); ctx.ellipse(px, py, 0.6 + ydHash(i, 7) * 1.4, 0.12, 0, 0, TAU); } ctx.fill(); }
       }
       R4(ctx, wx, -0.2, 1.1, qy + 0.2, wall);
@@ -124,7 +146,7 @@ function brReflections(ctx, env, S, W, list, a, b) {
       const Lt = list[i]; if (!!Lt.red !== !!pass) continue;
       const L = Lt.P; if (L.z < W.z) continue;
       const sn = L._snap; if (!sn || sn.t !== t) continue;
-      if (Lt.ob ? !Lt.ob.alive || Lt.ob.on === false : Lt.on && !Lt.on(t)) continue;
+      if (Lt.ob ? !Lt.ob.alive || Lt.ob.on === false || (Lt.on && !Lt.on(t)) : Lt.on && !Lt.on(t)) continue;
       const k = sn.s / sW, lx = Lt.ob ? Lt.ob.x : Lt.x, ly = Lt.ob ? Lt.ob.y : Lt.y, xW = env.x0 + k * (lx - sn.x0);
       if (xW < a - 1 || xW > b + 1) continue;
       const yTop = Math.min(0, env.y1 - k * sn.y1), yBot = env.y1 - k * (sn.y1 + Math.min(ly, 32) * 1.15), yEnd = Math.max(yBot, cut, env.y0);
@@ -304,6 +326,12 @@ K.armsBoat = function (S, P, x0, o) {
   o = o || {};
   const len = o.len || 16, x1 = x0 + len, dy = o.deckY === undefined ? 1.6 : o.deckY;
   const st = { sunkT: null };
+  // o.mastX: where her mast is stepped on the wheelhouse roof (from her stern end). The masthead
+  // lantern is drawn by the scene's lamp at the top of it when o.masthead is false.
+  const mx = x0 + (o.mastX === undefined ? 5 : o.mastX), ownLamp = o.masthead !== false;
+  // how she sits: bobbing at her lines, and once the fuel has gone, heeling over and going down
+  const sink = (t) => (st.sunkT === null ? 0 : clamp((t - st.sunkT) / 7, 0, 1));
+  const tf = (ctx, t) => { const u = sink(t), bob = Math.sin(t * 0.9) * 0.06 * (1 - u); ctx.translate(x1 - 2, dy - 1.4); ctx.rotate(-0.42 * smooth(u * 1.4)); ctx.translate(-(x1 - 2), -(dy - 1.4) + bob - 4.6 * u * u); };
   const fuel = K.thing(S, P, 'tank', x1 - 2.6, dy + 0.75, { id: o.id || 'fuel', blast: o.blast || 8, r: 0.95, onHit(sim) { if (st.sunkT === null) st.sunkT = sim.t; } });
   fuel.draw = function () {}; // drawn with the boat (below) so that it sinks with her
   const drumA = S.tone('#d4443a', P, true), drumB = S.tone('#c23a2e', P, true), drumD = S.tone('#8a241c', P, true), drumHi = S.tone('#ea6a5a', P, true), warn = S.tone('#f4c542', P, true), ink = S.tone('#1c1f26', P);
@@ -315,12 +343,12 @@ K.armsBoat = function (S, P, x0, o) {
   const hullBase = o.col || '#2f3d4a', hull = S.tone(hullBase, P), hull2 = S.tone('#1c242c', P), hullHi = S.tone(lighten(hullBase, 0.12), P), red = S.tone('#b3312b', P), rust = S.tone('#7a4a2a', P), house = S.tone('#cfc8b6', P), houseD = S.tone('#aaa290', P), wood = S.tone('#8a6a45', P), wood2 = S.tone('#7a5c3c', P), green = S.tone('#5d6b4a', P), tarp = S.tone('#4f5a46', P), tarpD = S.tone('#3d4636', P);
   const lit = S.tone('#ffd98a', P, true), rope = S.tone('#a08a5a', P), tyre = S.tone('#16181c', P), ring = S.tone('#e8603a', P), white = S.tone('#e8e4d6', P), glass = S.tone(S.pal.glass, P);
   P.add({ x0: x0 - 6, x1: x1 + 6, layer: 1, draw(ctx, env) {
-    const s = env.s, u = st.sunkT === null ? 0 : clamp((env.t - st.sunkT) / 7, 0, 1), bob = Math.sin(env.t * 0.9) * 0.06 * (1 - u), afloat = st.sunkT === null, night = S.pal.dark > 0.3;
+    const s = env.s, u = sink(env.t), bob = Math.sin(env.t * 0.9) * 0.06 * (1 - u), afloat = st.sunkT === null, night = S.pal.dark > 0.3;
     if (afloat && s > 2.5) { // mooring lines to the jetty, slack and swinging a little
       const sw = Math.sin(env.t * 0.9) * 0.05; ctx.strokeStyle = rope; ctx.lineWidth = Math.max(0.03, env.px * 0.8); ctx.beginPath();
       ctx.moveTo(x0 - 0.8, dy + 0.9 + bob); ctx.quadraticCurveTo(x0 - 1.3, dy + 0.5 + sw, x0 - 1.9, dy + 0.75); ctx.moveTo(x0 + 2, dy + 0.9 + bob); ctx.quadraticCurveTo(x0 + 0.2, dy + 0.3 + sw, x0 - 2.0, dy + 0.75); ctx.stroke();
     }
-    ctx.save(); ctx.translate(x1 - 2, dy - 1.4); ctx.rotate(-0.42 * smooth(u * 1.4)); ctx.translate(-(x1 - 2), -(dy - 1.4) + bob - 4.6 * u * u);
+    ctx.save(); tf(ctx, env.t);
     // hull: a bow that rises at the left, the waterline in red below
     ctx.fillStyle = hull; ctx.beginPath(); ctx.moveTo(x0 - 1.4, dy + 0.3); ctx.quadraticCurveTo(x0 + 3, dy - 0.05, x1 + 0.3, dy); ctx.lineTo(x1 - 0.4, dy - 2.1); ctx.lineTo(x0 + 1.2, dy - 2.1); ctx.closePath(); ctx.fill();
     R4(ctx, x0 - 1.2, dy - 0.38, len + 1.4, 0.16, red); poly(ctx, [x0 + 1.2, dy - 2.1, x1 - 0.4, dy - 2.1, x1 - 0.6, dy - 2.6, x0 + 1.5, dy - 2.6], hull2);
@@ -337,9 +365,13 @@ K.armsBoat = function (S, P, x0, o) {
     const win = afloat && night ? lit : glass;
     R4(ctx, x0 + 3.6, dy + 1.2, 1.2, 0.9, win); R4(ctx, x0 + 5.2, dy + 1.2, 1.2, 0.9, win);
     if (s > 4) { ydLines(ctx, env, [x0 + 4.2, dy + 1.2, x0 + 4.2, dy + 2.1, x0 + 5.8, dy + 1.2, x0 + 5.8, dy + 2.1, x0 + 3.0, dy + 2.95, x0 + 7.0, dy + 2.95, x0 + 3.2, dy + 2.72, x0 + 3.2, dy + 2.95, x0 + 6.8, dy + 2.72, x0 + 6.8, dy + 2.95], hull2, 0.035); }
-    line(ctx, x0 + 5, dy + 2.7, x0 + 5, dy + 5.6, hull2, 0.1, env); circ(ctx, x0 + 5, dy + 5.7, Math.max(0.14, env.px), afloat ? '#fff3c4' : '#3a3f47');
-    if (s > 3) { R4(ctx, x0 + 4.2, dy + 4.6, 1.6, 0.14, hull2); R4(ctx, x0 + 4.9, dy + 4.45, 0.2, 0.18, hull2); }
-    if (afloat && night) ydGlow(ctx, x0 + 5, dy + 5.7, 1.0, 1.0, '255,240,200', 0.45);
+    // the mast is painted like the wheelhouse, so it shows at night under its own lantern
+    if (s > 5) { line(ctx, mx - 0.8, dy + 4.6, x0 + 3.2, dy + 2.72, hull2, 0.018, env); line(ctx, mx + 0.8, dy + 4.6, x0 + 6.8, dy + 2.72, hull2, 0.018, env); }   // the shrouds down to the roof edge
+    poly(ctx, [mx - 0.07, dy + 2.7, mx + 0.07, dy + 2.7, mx + 0.045, dy + 5.62, mx - 0.045, dy + 5.62], houseD);
+    if (s > 8) R4(ctx, mx + 0.01, dy + 2.7, 0.035, 2.9, hull2);
+    if (ownLamp) circ(ctx, mx, dy + 5.7, Math.max(0.14, env.px), afloat ? '#fff3c4' : '#3a3f47');
+    if (s > 3) { R4(ctx, mx - 0.8, dy + 4.6, 1.6, 0.12, houseD); R4(ctx, mx - 0.1, dy + 4.45, 0.2, 0.18, hull2); }
+    if (afloat && night && ownLamp) ydGlow(ctx, mx, dy + 5.7, 1.0, 1.0, '255,240,200', 0.45);
     if (s > 4) { ctx.strokeStyle = ring; ctx.lineWidth = 0.1; ctx.beginPath(); ctx.arc(x0 + 2.4, dy + 0.75, 0.3, 0, TAU); ctx.stroke(); }
     // crates of "tools", one stack under a lashed tarpaulin, a coil of rope
     R4(ctx, x0 + 8.0, dy, 1.9, 1.1, wood); R4(ctx, x0 + 8.3, dy + 1.1, 1.4, 0.9, wood2); R4(ctx, x0 + 10.2, dy, 1.5, 0.9, green);
@@ -366,7 +398,7 @@ K.armsBoat = function (S, P, x0, o) {
     }
   } });
   P.solid(x0 - 1.2, dy - 2.1, len + 1.2, 2.1, 'hard');
-  return { fuel, deckY: dy, x0, x1, st };
+  return { fuel, deckY: dy, x0, x1, st, mx, tf, sunk: () => st.sunkT !== null };
 };
 
 // A scope lens, or something made to look like one. `kind` chooses what you
@@ -742,10 +774,12 @@ SCN.bridge = function (o) {
       if (s > 4) { ctx.fillStyle = jw.rope; ctx.beginPath(); for (let i = 0; i < 3; i++) ctx.rect(jx1 - 1.25 - i * 9, jy + 0.45, 0.4, 0.08); ctx.rect(-93.6, jy + 0.45, 0.4, 0.08); ctx.fill(); }
     } });
     PJ.solid(jx0, jy - 0.36, jx1 - jx0, 0.36, 'wood');
-    H.boat = K.armsBoat(S, PJ, -62, { len: 16, deckY: jy, id: 'fuel', blast: o.blast });
-    H.jlamp = K.lamp(S, PJ, -82, 5.2, 'jetty', { id: 'jlamp', y: jy, reach: 10 });
-    H.blamp = K.lamp(S, PJ, -56, 3.2, 'jetty', { id: 'blamp', y: jy + 2.7, reach: 9, arm: 0 });
-    refl.push({ P: PJ, ob: H.jlamp, w: 0.8 }); refl.push({ P: PJ, ob: H.blamp, w: 0.7 });
+    // the boat's lamp is the lantern at her masthead (it used to be a street lamp standing on her
+    // wheelhouse roof, and it stayed standing in the air when she sank)
+    const boat = H.boat = K.armsBoat(S, PJ, -62, { len: 16, deckY: jy, id: 'fuel', blast: o.blast, mastX: 6, masthead: false });
+    H.jlamp = K.lamp(S, PJ, -82, 5.2, 'jetty', { id: 'jlamp', y: jy, reach: 10, style: 'harbour', wood: true });
+    H.blamp = K.lamp(S, PJ, -56, 3.2, 'jetty', { id: 'blamp', y: jy + 2.7, reach: 9, arm: 0, style: 'mast', noPole: true, ride: (ctx, env) => boat.tf(ctx, env.t), dim: boat.sunk });
+    refl.push({ P: PJ, ob: H.jlamp, w: 0.8 }); refl.push({ P: PJ, ob: H.blamp, w: 0.7, on: () => !boat.sunk() });
     H.crane = { x: -106, h: 17 }; K.crane(S, PJ, -106, 17, 20, { y: QY, col: '#c9a23a' });
     // a work lamp under the jib, so the hook and its load can be seen at night
     PJ.add({ x0: -96, x1: -80, layer: 2, draw(ctx, env) { const lx = -88, ly = QY + 16.7; R4(ctx, lx - 0.35, ly - 0.25, 0.7, 0.25, S.tone('#2a2e36', PJ)); circ(ctx, lx, ly - 0.3, 0.16, '#fff3c4');

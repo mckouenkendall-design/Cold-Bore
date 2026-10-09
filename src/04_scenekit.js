@@ -1869,15 +1869,24 @@ K.fence = function (S, P, x0, x1, h, o) {
 //   o.col      colour of the light (default a warm sodium yellow)
 //   o.pool     false leaves out the pool on the ground (for a lamp that stands on a roof edge, say)
 //   o.cone     false leaves out the cone in the air
-//   o.style    'post' draws a plain bracket lamp without the scroll work
+//   o.style    'post' draws a plain bracket lamp without the scroll work. The scroll-work street
+//              lamp belongs on a city pavement only: anywhere else pick the fitting that would
+//              really be there (see kxLampKit below: 'harbour', 'deck', 'wall', 'mast', 'flood',
+//              'site', 'terrace'). The style changes the picture only, never the light or its place.
 // The light fades with distance exactly as S.lightAt does: full to 0.3 of the reach, gone at 1.3.
 K.lamp = function (S, P, x, h, zone, o) {
   o = o || {}; const y = o.y || 0, post = S.tone('#20242b', P);
   const arm = o.arm === undefined ? 0.9 : o.arm;
   const postHi = S.tone('#414855', P), lc = o.col || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
+  let kit = null;
   const ob = S.obj({ kind: 'lamp', id: o.id, plane: P, x: x + arm, y: y + h - 0.12, r: o.r || 0.3, zone, on: true, mat: 'glass', layer: 2, reach: o.reach || 9,
     draw(ctx, env) {
-      const s = env.s, lx = ob.x, ly = ob.y, live = ob.alive && ob.on !== false, dir = arm >= 0 ? 1 : -1, dark = S.pal.dark, lit = live && dark > 0.3;
+      if (kit && kit.ride) { ctx.save(); kit.ride(ctx, env); }
+      kxLampDraw(ctx, env);
+      if (kit && kit.ride) ctx.restore();
+    } });
+  function kxLampDraw(ctx, env) {
+      const s = env.s, lx = ob.x, ly = ob.y, live = ob.alive && ob.on !== false && !(kit && kit.dim && kit.dim()), dir = arm >= 0 ? 1 : -1, dark = S.pal.dark, lit = live && dark > 0.3;
       // ---- light first, so the ironwork stands in front of its own glow ----
       if (lit) {
         const R1 = 1.3 * (ob.reach || 9), e = kxSee(env, P), tilt = kxTilt(e, P, y);
@@ -1907,6 +1916,8 @@ K.lamp = function (S, P, x, h, zone, o) {
         }
         ctx.restore();
       }
+      // ---- a fitting other than the street lamp ----
+      if (kit) { kit.draw(ctx, env, live); return; }
       // ---- the post ----
       if (s < 7) {
         line(ctx, x, y, x, y + h, post, 0.14, env);
@@ -1950,10 +1961,180 @@ K.lamp = function (S, P, x, h, zone, o) {
       }
       R4(ctx, lx - 0.17, ly - 0.235, 0.34, 0.04, post);
       if (!broken) R4(ctx, lx - 0.04, ly - 0.29, 0.08, 0.06, post);
-    } });
+  }
+  if (o.style && o.style !== 'post') kit = kxLampKit(S, P, ob, o, x, y, h, arm);
   ob.baseY = y; ob.postX = x; ob.poolK = o.pool === false ? 0 : 1;
   return ob;
 };
+
+// ---- lamps that are not street lamps ------------------------------------------------------------
+// Each fitting keeps the light exactly where the gameplay lamp is (ob.x, ob.y, the spot a bullet
+// has to find, no bigger and no smaller than before) and changes only what holds it up:
+//   'harbour'  a dock lamp: a plain steel standard with a braced arm and an enamel dome shade.
+//              o.wood puts it on a tarred timber post instead (piers and jetties)
+//   'deck'     a boat's deck light: a slim pole bolted to the deck with a floodlight on a yoke.
+//              o.paint 'stainless' (a yacht) or 'steel' (a working boat, the default)
+//   'wall'     the same floodlight on a bracket fixed to a wall at the top of the post line;
+//              nothing reaches down to the floor
+//   'mast'     an all-round lantern at the head of a short mast stepped on a cabin roof.
+//              o.noPole when the boat already draws the mast. o.ride(ctx, env) moves the
+//              picture with the boat (a sinking one), o.dim() says when its power has gone
+//   'flood'    a floodlight on a galvanised pole. o.base 'ballast' stands it on a flat roof on a
+//              weighted foot; otherwise it is set in a concrete footing in the ground
+//   'site'     a builder's work light: a yellow lamp on a scaffold tube with a sandbag on its
+//              foot. o.foot starts the tube higher up, clamped to something already there
+//   'terrace'  a modern lantern on a slim square post, for a hotel roof terrace
+// Returns { draw(ctx, env, live), ride, dim } or null for an unknown style.
+function kxLampKit(S, P, ob, o, x, y, h, arm) {
+  const st = o.style, T = (c, l) => S.tone(c, P, l), dir = arm >= 0 ? 1 : -1, yt = y + h;
+  const snowy = S.time === 'snow' || S.weather === 'snow', snowC = T('#f1f4f7');
+  const glassOff = T('#39414d'), glassOn = '#fff3c4', shard = 'rgba(190,215,240,0.45)', ink = T('#15171b');
+  // the floodlight head shared by several fittings: a box housing with its lens on the underside,
+  // tilted toward where it shines, hung in a yoke from the end of its arm
+  const head = (ctx, env, lx, ly, w, hh, tilt, body, bodyHi, live, yoke) => {
+    const s = env.s, broken = !ob.alive;
+    ctx.save(); ctx.translate(lx, ly); ctx.rotate(tilt);
+    if (yoke && s > 5) { ctx.strokeStyle = body; ctx.lineWidth = Math.max(0.03, env.px * 0.7); ctx.beginPath(); ctx.moveTo(-w * 0.42, 0); ctx.lineTo(-w * 0.42, hh * 0.5 + 0.08); ctx.lineTo(w * 0.42, hh * 0.5 + 0.08); ctx.lineTo(w * 0.42, 0); ctx.stroke(); }
+    R4(ctx, -w / 2, -hh / 2, w, hh, body);
+    if (s > 9) { R4(ctx, -w / 2, hh / 2 - Math.max(0.02, env.px * 0.7), w, Math.max(0.02, env.px * 0.7), bodyHi); ctx.fillStyle = bodyHi; ctx.beginPath(); for (let i = 1; i < 4; i++) ctx.rect(-w / 2 + (i * w) / 4 - 0.01, hh / 2, 0.02, 0.05); ctx.fill(); }   // cooling fins on the back
+    const lw = w - 0.05, lh = Math.max(hh * 0.34, env.px * 1.2);
+    if (!broken) { R4(ctx, -lw / 2, -hh / 2 - 0.01, lw, lh, live ? glassOn : glassOff); if (live && s > 6) R4(ctx, -lw * 0.3, -hh / 2 - 0.01, lw * 0.6, lh * 0.55, '#ffffff'); }
+    else { R4(ctx, -lw / 2, -hh / 2 - 0.01, lw, lh, ink); ctx.fillStyle = shard; ctx.beginPath(); ctx.moveTo(-lw / 2, -hh / 2); ctx.lineTo(-lw * 0.2, -hh / 2); ctx.lineTo(-lw * 0.36, -hh / 2 + lh); ctx.closePath(); ctx.moveTo(lw / 2, -hh / 2); ctx.lineTo(lw * 0.28, -hh / 2); ctx.lineTo(lw * 0.42, -hh / 2 + lh * 0.9); ctx.closePath(); ctx.fill(); }
+    if (snowy && s > 5) R4(ctx, -w / 2 - 0.02, hh / 2, w + 0.04, 0.06, snowC);
+    ctx.restore();
+  };
+  let draw = null;
+  if (st === 'harbour') {
+    const wood = !!o.wood, pole = T(wood ? '#3b3026' : '#2c3a36'), poleHi = T(wood ? '#5a4a3a' : '#4a5e58'), poleLo = T(wood ? '#2a221b' : '#1f2a27'), iron = T('#20242b'), shade = T('#2f4a3f'), shadeHi = T('#4d6e60'), enamel = T('#e9e4d6');
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, broken = !ob.alive, armY = ly + 0.14;
+      if (s < 6) {
+        line(ctx, x, y, x, yt + 0.06, pole, wood ? 0.22 : 0.14, env);
+        if (arm) line(ctx, x, armY, lx, armY, iron, 0.08, env);
+        poly(ctx, [lx - 0.3, ly - 0.04, lx + 0.3, ly - 0.04, lx + 0.1, ly + 0.14, lx - 0.1, ly + 0.14], shade);
+        circ(ctx, lx, ly - 0.1, 0.11, live ? glassOn : '#2a2e36');
+        return;
+      }
+      if (wood) { // a tarred timber post with iron bands, its top cut on the slant to shed the rain
+        R4(ctx, x - 0.12, y, 0.24, yt + 0.02 - y, pole); R4(ctx, x + 0.05, y, 0.07, yt + 0.02 - y, poleLo);
+        poly(ctx, [x - 0.12, yt + 0.02, x + 0.12, yt + 0.02, x + 0.12, yt + 0.07, x - 0.12, yt + 0.12], poleHi);
+        ctx.fillStyle = iron; ctx.beginPath(); ctx.rect(x - 0.13, y + 0.9, 0.26, 0.06); ctx.rect(x - 0.13, yt - 0.62, 0.26, 0.06); ctx.fill();
+        if (s > 14) { ctx.fillStyle = poleHi; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.rect(x - 0.08, y + 0.2, 0.012, h * 0.7); ctx.rect(x - 0.02, y + 1.4, 0.012, h * 0.5); ctx.fill(); ctx.globalAlpha = 1; }
+      } else { // a plain steel standard: a cast base with a door in it, a collar, a tapering shaft, a cap
+        R4(ctx, x - 0.22, y, 0.44, 0.06, poleLo);
+        poly(ctx, [x - 0.14, y + 0.06, x + 0.14, y + 0.06, x + 0.1, y + 0.9, x - 0.1, y + 0.9], pole);
+        poly(ctx, [x - 0.075, y + 0.9, x + 0.075, y + 0.9, x + 0.05, yt, x - 0.05, yt], pole);
+        R4(ctx, x - 0.11, y + 0.88, 0.22, 0.05, poleLo); R4(ctx, x - 0.08, yt - 0.02, 0.16, 0.08, poleLo);
+        if (s > 12) { poly(ctx, [x - 0.075, y + 0.93, x - 0.04, y + 0.93, x - 0.028, yt, x - 0.05, yt], poleHi); ctx.strokeStyle = poleHi; ctx.lineWidth = Math.max(0.012, env.px * 0.5); ctx.strokeRect(x - 0.05, y + 0.28, 0.1, 0.32); }
+      }
+      if (arm) { // a straight arm with a stay under it, and the shade hung from its end
+        ctx.strokeStyle = iron; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.06, env.px * 0.9); ctx.beginPath(); ctx.moveTo(x, armY); ctx.lineTo(lx, armY); ctx.stroke();
+        ctx.lineWidth = Math.max(0.035, env.px * 0.7); ctx.beginPath(); ctx.moveTo(x, armY - 0.6); ctx.lineTo(x + arm * 0.6, armY); ctx.stroke(); ctx.lineCap = 'butt';
+        if (s > 12) circ(ctx, x + arm * 0.6, armY, 0.035, poleHi);
+      }
+      // the enamel dome: dark green outside, white inside, the lamp under its rim
+      poly(ctx, [lx - 0.32, ly - 0.04, lx + 0.32, ly - 0.04, lx + 0.11, ly + 0.12, lx - 0.11, ly + 0.12], shade);
+      R4(ctx, lx - 0.04, ly + 0.12, 0.08, armY - ly - 0.1, iron);
+      if (s > 10) { poly(ctx, [lx - 0.32, ly - 0.04, lx - 0.22, ly - 0.04, lx - 0.06, ly + 0.12, lx - 0.11, ly + 0.12], shadeHi); R4(ctx, lx - 0.31, ly - 0.07, 0.62, 0.03, live ? T('#fff3d0', true) : enamel); }
+      if (!broken) {
+        circ(ctx, lx, ly - 0.1, 0.075, live ? '#ffffff' : glassOff);
+        if (live) { ctx.globalAlpha = 0.7; circ(ctx, lx, ly - 0.1, 0.11, glassOn); ctx.globalAlpha = 1; circ(ctx, lx, ly - 0.1, 0.06, '#ffffff'); }
+        if (s > 16) { ctx.strokeStyle = iron; ctx.lineWidth = Math.max(0.01, env.px * 0.5); ctx.beginPath(); ctx.moveTo(lx - 0.13, ly - 0.05); ctx.quadraticCurveTo(lx, ly - 0.32, lx + 0.13, ly - 0.05); ctx.moveTo(lx, ly - 0.05); ctx.lineTo(lx, ly - 0.22); ctx.stroke(); }
+      } else { R4(ctx, lx - 0.03, ly - 0.08, 0.06, 0.05, ink); ctx.fillStyle = shard; ctx.beginPath(); ctx.moveTo(lx - 0.07, ly - 0.06); ctx.lineTo(lx - 0.02, ly - 0.06); ctx.lineTo(lx - 0.06, ly - 0.15); ctx.closePath(); ctx.fill(); }
+    };
+  } else if (st === 'deck' || st === 'wall') {
+    const ss = o.paint === 'stainless', pole = T(ss ? '#c9ced3' : '#3a4048'), poleHi = T(ss ? '#eef1f3' : '#58606a'), poleLo = T(ss ? '#8d949a' : '#23282e'), body = T(ss ? '#d9dde0' : '#2c3138'), bodyHi = T(ss ? '#f4f6f7' : '#4a515a');
+    const thick = st === 'deck' && !ss ? 0.09 : 0.06;
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, armY = ly + 0.1, wall = st === 'wall';
+      if (!wall) {
+        if (s < 5) { line(ctx, x, y, x, armY, pole, thick + 0.02, env); if (arm) line(ctx, x, armY, lx, armY, pole, 0.06, env); R4(ctx, lx - 0.17, ly - 0.07, 0.34, 0.16, body); circ(ctx, lx, ly - 0.08, 0.1, live ? glassOn : '#2a2e36'); return; }
+        // the foot bolted to the deck, the pole with a clamp half way, a stay down to the deck
+        R4(ctx, x - 0.13, y, 0.26, 0.035, poleLo); R4(ctx, x - 0.07, y + 0.035, 0.14, 0.06, pole);
+        R4(ctx, x - thick / 2, y, thick, armY + 0.04 - y, pole);
+        if (s > 10) { R4(ctx, x - thick / 2, y, Math.max(0.012, thick * 0.3), armY - y, poleHi); R4(ctx, x - thick / 2 - 0.015, y + h * 0.5, thick + 0.03, 0.05, poleLo); }
+        if (!ss && s > 6) line(ctx, x, y + h * 0.62, x - dir * 0.9, y + 0.02, poleLo, 0.02, env);
+      } else {
+        if (s < 5) { if (arm) line(ctx, x, armY, lx, armY, pole, 0.06, env); R4(ctx, lx - 0.17, ly - 0.07, 0.34, 0.16, body); circ(ctx, lx, ly - 0.08, 0.1, live ? glassOn : '#2a2e36'); return; }
+        // a plate screwed to the wall, an arm with a stay under it
+        R4(ctx, x - 0.05, armY - 0.2, 0.1, 0.32, poleLo); if (s > 12) { circ(ctx, x, armY - 0.14, 0.015, poleHi); circ(ctx, x, armY + 0.06, 0.015, poleHi); }
+        if (arm) line(ctx, x, armY - 0.18, x + arm * 0.55, armY, pole, 0.03, env);
+      }
+      if (arm) { line(ctx, x, armY, lx, armY, pole, 0.05, env); if (s > 10) R4(ctx, lx - 0.03, armY - 0.03, 0.06, 0.07, poleLo); }
+      head(ctx, env, lx, ly - 0.04, 0.44, 0.22, dir * 0.35, body, bodyHi, live, true);
+    };
+  } else if (st === 'mast') {
+    const mc = T(o.paint === 'stainless' ? '#c9ced3' : '#2a3038'), mcHi = T('#4a525c'), brass = T('#8a7650'), cap = T('#1c2026');
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, broken = !ob.alive, top = ly - 0.2;
+      if (!o.noPole) { // a short mast on a foot, with a crosstree and its stays
+        poly(ctx, [x - 0.06, y, x + 0.06, y, x + 0.04, top, x - 0.04, top], mc);
+        if (s > 4) { const ym = y + (top - y) * 0.62; R4(ctx, x - 0.4, ym, 0.8, 0.05, mc); line(ctx, x - 0.4, ym, x - 0.6, y, mcHi, 0.015, env); line(ctx, x + 0.4, ym, x + 0.6, y, mcHi, 0.015, env); R4(ctx, x - 0.13, y, 0.26, 0.08, cap); }
+      }
+      if (s < 5) { R4(ctx, lx - 0.13, ly - 0.16, 0.26, 0.3, live ? glassOn : glassOff); R4(ctx, lx - 0.15, ly + 0.14, 0.3, 0.08, cap); return; }
+      // the lantern: a ring at its foot, a ribbed glass drum, a cap with a vent, an aerial above
+      R4(ctx, lx - 0.15, top, 0.3, 0.05, brass);
+      if (!broken) {
+        R4(ctx, lx - 0.12, top + 0.05, 0.24, 0.28, live ? glassOn : glassOff);
+        if (live) circ(ctx, lx, ly - 0.01, 0.07, '#ffffff');
+        if (s > 11) { ctx.fillStyle = live ? 'rgba(160,120,40,0.55)' : cap; ctx.beginPath(); ctx.rect(lx - 0.065, top + 0.05, 0.016, 0.28); ctx.rect(lx + 0.05, top + 0.05, 0.016, 0.28); ctx.rect(lx - 0.12, ly - 0.02, 0.24, 0.018); ctx.fill(); }
+      } else { R4(ctx, lx - 0.12, top + 0.05, 0.24, 0.06, ink); ctx.fillStyle = shard; ctx.beginPath(); ctx.moveTo(lx - 0.12, top + 0.05); ctx.lineTo(lx - 0.04, top + 0.05); ctx.lineTo(lx - 0.1, top + 0.2); ctx.closePath(); ctx.moveTo(lx + 0.12, top + 0.05); ctx.lineTo(lx + 0.06, top + 0.05); ctx.lineTo(lx + 0.11, top + 0.16); ctx.closePath(); ctx.fill(); }
+      poly(ctx, [lx - 0.15, top + 0.33, lx + 0.15, top + 0.33, lx + 0.07, top + 0.43, lx - 0.07, top + 0.43], cap);
+      R4(ctx, lx - 0.03, top + 0.43, 0.06, 0.05, cap);
+      if (s > 7) line(ctx, lx + 0.02, top + 0.48, lx + 0.02, top + 1.5, cap, 0.012, env);
+    };
+  } else if (st === 'flood') {
+    const ballast = o.base === 'ballast', galv = T('#7d858c'), galvHi = T('#a6adb3'), galvLo = T('#555c63'), conc = T('#8a857c'), concD = T('#6a665e'), body = T('#30353c'), bodyHi = T('#515861'), cable = T('#1a1d22');
+    const hw = Math.max(0.46, (ob.r || 0.3) * 1.45), hh = hw * 0.55;
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, armY = arm ? ly + 0.12 : ly - hh * 0.6;
+      if (s < 5) { line(ctx, x, y, x, armY, galv, 0.13, env); if (arm) line(ctx, x, armY, lx, armY, galv, 0.07, env); R4(ctx, lx - hw / 2, ly - hh / 2, hw, hh, body); circ(ctx, lx, ly - hh * 0.35, Math.min(0.14, hw * 0.3), live ? glassOn : '#2a2e36'); return; }
+      if (ballast) { // a steel foot frame weighed down with two concrete blocks, struts up to the pole
+        R4(ctx, x - 0.62, y, 1.24, 0.06, galvLo); R4(ctx, x - 0.62, y + 0.06, 0.34, 0.2, conc); R4(ctx, x + 0.28, y + 0.06, 0.34, 0.2, conc);
+        if (s > 9) { R4(ctx, x - 0.62, y + 0.06, 0.34, 0.04, concD); R4(ctx, x + 0.28, y + 0.06, 0.34, 0.04, concD); }
+        line(ctx, x - 0.4, y + 0.06, x - 0.04, y + 0.75, galvLo, 0.035, env); line(ctx, x + 0.4, y + 0.06, x + 0.04, y + 0.75, galvLo, 0.035, env);
+      } else { R4(ctx, x - 0.22, y, 0.44, 0.16, conc); if (s > 9) R4(ctx, x - 0.22, y + 0.12, 0.44, 0.04, concD); }
+      R4(ctx, x - 0.06, y + 0.06, 0.12, armY + 0.05 - y - 0.06, galv);
+      if (s > 9) { R4(ctx, x + 0.025, y + 0.06, 0.035, armY - y - 0.06, galvLo); R4(ctx, x - 0.06, y + 0.06, 0.02, armY - y - 0.06, galvHi); }
+      if (s > 11) { R4(ctx, x - dir * 0.09 - 0.012, y + 0.2, 0.024, armY - y - 0.4, cable); ctx.fillStyle = galvLo; ctx.beginPath(); for (let yy = y + 0.6; yy < armY - 0.3; yy += 0.9) ctx.rect(x - dir * 0.09 - 0.03, yy, 0.06, 0.03); ctx.fill(); }
+      if (snowy && s > 5) R4(ctx, x - 0.09, armY + 0.05, 0.18, 0.05, snowC);
+      if (arm) { R4(ctx, Math.min(x, lx), armY - 0.035, Math.abs(lx - x), 0.07, galv); if (snowy && s > 5) R4(ctx, Math.min(x, lx), armY + 0.035, Math.abs(lx - x), 0.04, snowC); }
+      head(ctx, env, lx, ly, hw, hh, arm ? dir * 0.45 : 0, body, bodyHi, live, true);
+    };
+  } else if (st === 'site') {
+    const tubeC = T('#9aa0a6'), tubeLo = T('#6c737a'), coup = T('#3a3f47'), sole = T('#8a6a45'), bag = T('#8f7f55'), bagD = T('#6f6142'), yel = mix(T('#e0a422'), T('#e0a422', true), 0.55), yelHi = mix(T('#f2c552'), T('#f2c552', true), 0.55), cable = T('#16181c');   // the yellow box catches its own light
+    const foot = y + (o.foot || 0);
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, armY = arm ? ly + 0.16 : ly - 0.12;
+      if (s < 5) { line(ctx, x, foot, x, armY, tubeC, 0.08, env); if (arm) line(ctx, x, armY, lx, armY, tubeC, 0.06, env); R4(ctx, lx - 0.2, ly - 0.12, 0.4, 0.26, yel); circ(ctx, lx, ly - 0.08, 0.1, live ? glassOn : '#2a2e36'); return; }
+      R4(ctx, x - 0.03, foot, 0.06, armY + 0.04 - foot, tubeC);
+      if (s > 10) R4(ctx, x + 0.012, foot, 0.018, armY - foot, tubeLo);
+      if (s > 7) { ctx.fillStyle = coup; ctx.beginPath(); for (let yy = foot + 1.5; yy < armY - 0.3; yy += 1.6) ctx.rect(x - 0.05, yy, 0.1, 0.07); ctx.fill(); }
+      if (!o.foot) { // a base plate on a sole board, and a sandbag to stop it walking
+        R4(ctx, x - 0.32, y, 0.64, 0.05, sole); R4(ctx, x - 0.09, y + 0.05, 0.18, 0.025, coup);
+        if (s > 6) { ctx.fillStyle = bag; ctx.beginPath(); ctx.ellipse(x + dir * 0.2, y + 0.13, 0.16, 0.08, 0, 0, TAU); ctx.ellipse(x - dir * 0.18, y + 0.12, 0.14, 0.07, 0, 0, TAU); ctx.fill(); if (s > 12) { R4(ctx, x + dir * 0.2 - 0.12, y + 0.12, 0.24, 0.015, bagD); } }
+      } else { R4(ctx, x - 0.07, foot - 0.04, 0.14, 0.1, coup); R4(ctx, x - 0.07, foot + 0.3, 0.14, 0.08, coup); }
+      if (arm) { R4(ctx, Math.min(x, lx), armY - 0.025, Math.abs(lx - x), 0.05, tubeC); R4(ctx, x - 0.05, armY - 0.05, 0.1, 0.1, coup); }
+      if (s > 6) { ctx.strokeStyle = cable; ctx.lineWidth = Math.max(0.02, env.px * 0.6); ctx.beginPath(); ctx.moveTo(lx + dir * 0.12, ly - 0.1); ctx.quadraticCurveTo(lx + dir * 0.1, armY - 0.75, x + 0.04, armY - 0.55); ctx.lineTo(x + 0.04, foot + 0.15); ctx.stroke(); }   // its cable, looped back and taped down the tube
+      // the work light: a yellow cast box in a tube frame with a handle over it
+      head(ctx, env, lx, ly, 0.42, 0.28, arm ? dir * 0.4 : 0, yel, yelHi, live, false);
+      if (s > 7) { ctx.strokeStyle = coup; ctx.lineWidth = Math.max(0.018, env.px * 0.6); ctx.beginPath(); ctx.moveTo(lx - 0.24, ly - 0.16); ctx.lineTo(lx - 0.24, ly + 0.2); ctx.lineTo(lx + 0.24, ly + 0.2); ctx.lineTo(lx + 0.24, ly - 0.16); ctx.stroke(); }
+    };
+  } else if (st === 'terrace') {
+    const bronze = T('#3a342c'), bronzeHi = T('#5a5244'), frost = T('#e9e2cf', true);
+    draw = (ctx, env, live) => {
+      const s = env.s, lx = ob.x, ly = ob.y, broken = !ob.alive;
+      R4(ctx, x - 0.13, y, 0.26, 0.06, bronze); R4(ctx, x - 0.045, y, 0.09, ly - 0.22 - y, bronze);
+      if (s > 10) R4(ctx, x - 0.045, y + 0.06, 0.02, ly - 0.3 - y, bronzeHi);
+      // the lantern: a slim box of frosted glass between a base and a flat cap
+      R4(ctx, lx - 0.15, ly - 0.24, 0.3, 0.05, bronze); R4(ctx, lx - 0.18, ly + 0.2, 0.36, 0.05, bronze);
+      if (!broken) { R4(ctx, lx - 0.12, ly - 0.19, 0.24, 0.39, live ? frost : glassOff); if (live) R4(ctx, lx - 0.05, ly - 0.12, 0.1, 0.25, '#ffffff'); if (s > 8) { R4(ctx, lx - 0.125, ly - 0.19, 0.025, 0.39, bronze); R4(ctx, lx + 0.1, ly - 0.19, 0.025, 0.39, bronze); } }
+      else { R4(ctx, lx - 0.12, ly - 0.19, 0.24, 0.1, ink); ctx.fillStyle = shard; ctx.beginPath(); ctx.moveTo(lx - 0.12, ly - 0.09); ctx.lineTo(lx - 0.02, ly - 0.09); ctx.lineTo(lx - 0.1, ly + 0.08); ctx.closePath(); ctx.fill(); }
+    };
+  }
+  if (!draw) return null;
+  return { draw, ride: o.ride || null, dim: o.dim || null };
+}
 
 // A hanging load on a hook. Shoot the hook and it drops on whoever is below.
 K.hang = function (S, P, x, yHook, kind, o) {

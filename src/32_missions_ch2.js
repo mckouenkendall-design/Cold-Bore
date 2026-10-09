@@ -260,7 +260,7 @@ mission({
   look: [20, 3],
   setup() {
     const H = SCN.docks({ z: 245, time: 'night', weather: 'rain', seed: 15, gate: { x: -45 }, lamps: [-13, 11], lampReach: 7, stacks: [[-25.6, 2], [-19.3, 1], [-2.6, 2], [3.7, 3], [12.5, 1]], crane: { x: -9.5, reach: -8 } });
-    K.lamp(H.S, H.PQ, -42.4, 5.6, 'quay', { id: 'glamp', reach: 7 });
+    K.lamp(H.S, H.PQ, -42.4, 5.6, 'quay', { id: 'glamp', reach: 7, style: 'harbour' });
     H.S.litZones.gate = true;
     K.parked(H.S, H.PQ, 'sedan', -50.6, 1, '#3a3f49', { layer: 0 });
     K.thing(H.S, H.PB, 'duck', -48.4, 5.14);
@@ -331,7 +331,8 @@ mission({
   setup() {
     const H = SCN.docks({ z: 275, time: 'night', seed: 18, barge: { x: 10 }, bell: { x: 9.3, lure: 24 }, lamps: [-34, -12, 8], pierLamps: [38], stacks: [[-25.6, 2], [-19.3, 3], [-13, 1], [4.5, 1], [10.8, 2]] });
     const D = H.bargeAt.y, S = H.S, P = H.PL;
-    K.lamp(S, P, 27.6, 4.4, 'barge', { y: D, id: 'blamp', reach: 9.5 }); K.lamp(S, P, 15.4, 3.4, 'barge', { y: D, id: 'hlamp', reach: 6, arm: 0.6 });
+    // a barge has deck lights on steel poles, not street lamps: the same two lamps, dressed for the job
+    K.lamp(S, P, 27.6, 4.4, 'barge', { y: D, id: 'blamp', reach: 9.5, style: 'deck' }); K.lamp(S, P, 15.4, 3.4, 'barge', { y: D, id: 'hlamp', reach: 6, arm: 0.6, style: 'deck' });
     K.thing(S, P, 'tank', 34, D + 1.5, { id: 'fuel', blast: 5.5 });
     [31.4, 32.3, 36.6].forEach((bx, i) => K.thing(S, P, 'barrel', bx, D + 0.62, { id: 'drum' + (i + 1) }));
     K.thing(S, P, 'bottle', 23.2, D + 2.1, { id: 'bottle', lure: 11, lureY: D });
@@ -390,8 +391,9 @@ mission({
     H.hook = K.hookLight(S, K.hang(S, P, 6.5, 9.4, 'crate', { id: 'hook', top: H.crane.tipY, floor: Y.deckY, col: '#8f7a55' }));
     const ink = S.tone('#20242b', P);
     P.add({ x0: -4, x1: 16, layer: 2, draw(ctx, env) { const p = H.hook.prop; env.text(ctx, 'AUREL', p.x, p.y + 0.62, 0.5, ink, 'center'); } });
-    K.lamp(S, P, 9.2, 2.5, 'aft', { y: Y.deckY, id: 'aftlamp', reach: 7, arm: 0.5 });
-    K.lamp(S, P, 22.2, 2.15, 'sun', { y: Y.sunY, id: 'sunlamp', reach: 9, arm: -0.7 });
+    // a yacht's own deck lights: a floodlight on a stainless pole aft, and one on a bracket on the wheelhouse front
+    K.lamp(S, P, 9.2, 2.5, 'aft', { y: Y.deckY, id: 'aftlamp', reach: 7, arm: 0.5, style: 'deck', paint: 'stainless' });
+    K.lamp(S, P, 22.2, 2.15, 'sun', { y: Y.sunY, id: 'sunlamp', reach: 9, arm: -0.7, style: 'wall', paint: 'stainless' });
     K.thing(S, P, 'duck', 25.2, Y.sunY + 2.97);
     return H;
   },

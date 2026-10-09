@@ -1604,11 +1604,14 @@ function covBreath(ctx, env, a, t, k) {
   if (!a || a.dead || a.gone || a.hidden) return;
   const per = 3.1 + (a.seed % 1) * 0.6, u = ((t + a.seed * 2.3) % per) / 1.7;
   if (u >= 1) return;
+  // at low zoom a puff a few centimetres across is less than a pixel: let it grow, so the breath
+  // still shows at 4x (it never grows past what a cold morning could explain, about 40 cm)
+  const big = clamp(14 / Math.max(1, env.s), 1, 2.2);
   const J = actorJoints(a), hx = a.x + J.head[0] + (a.face || 1) * 0.16, hy = a.y + J.head[1] - 0.04, dr = env.wind * 0.16 * u + (a.face || 1) * 0.12 * u;
   ctx.fillStyle = '#f4f6f8';
   for (let i = 0; i < 3; i++) {
     const v = clamp(u * 1.3 - i * 0.15, 0, 1); if (v <= 0) continue;
-    ctx.globalAlpha = (1 - v) * 0.6 * (k || 1); ctx.beginPath(); ctx.arc(hx + dr + i * 0.05, hy + v * 0.2 + i * 0.03, 0.05 + v * 0.13, 0, TAU); ctx.fill();
+    ctx.globalAlpha = Math.min(0.8, (1 - v) * 0.6 * (k || 1) * (big > 1 ? 1.3 : 1)); ctx.beginPath(); ctx.arc(hx + dr * big + i * 0.05, hy + v * 0.2 * big + i * 0.03, (0.05 + v * 0.13) * big, 0, TAU); ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
@@ -1631,10 +1634,25 @@ K.boardedSeat = function (S, H, o) {
   const C = K.coverPlane(S, H.PD, H.zD - 0.9, o.eye || [0, H.eye, 0]), P = C.P, PB = H.PD;
   const tn = (hex) => S.tone(hex, PB);
   const wood = tn('#7d5d3c'), woodL = tn('#93714b'), dark = tn('#4d3929'), darker = tn('#3a2b1f'), nail = tn('#2a2e36');
-  const old = ['#7b7066', '#857a6c', '#6f665d', '#8a7f72'].map(tn), oldD = tn('#4a433d'), oldL = tn('#a19583'), rust = tn('#6a4832'), lens = tn('#15171b');
+  // weathered dark, so the lantern-lit cracks between them stand out (pale boards hid them)
+  const old = ['#625a52', '#6b6258', '#5a534c', '#6f665b'].map(tn), oldD = tn('#3e3833'), oldL = tn('#8f8474'), rust = tn('#6a4832'), lens = tn('#15171b');
   // the boards: grey old fence planks of uneven width, nailed on in a hurry, the odd one askew
   const D = makeRng(Math.floor(-T.x * 13) + 4041), boards = [];
   for (let y = yB + 0.02; y < yTop - 0.06;) { const h = Math.min(yTop - y, D.r(0.15, 0.2)); boards.push({ y, h: h - 0.055, l: x0 - D.r(0.02, 0.16), r: x1 + D.r(0.0, 0.18), tilt: D.chance(0.3) ? D.r(-0.03, 0.03) : 0, c: D.i(0, 3), knot: D.r(0.15, 0.85), n1: D.r(0.08, 0.2), n2: D.r(0.08, 0.2) }); y += h; }
+  // Inside, a storm lantern hangs from the roof beam (it is a cold dark box at dawn). It lights the
+  // back wall, so every crack between the boards glows, and whoever stands behind them blocks the
+  // glow with a dark shape. That is what tells you somebody is in there, even at low zoom where
+  // the cracks themselves are thinner than a pixel. Drawn on the hide's own plane, behind the people.
+  const lampC = S.tone('#ffd68a', PB, true), lampW = S.tone('#ffe9bf', PB, true), lampD = S.tone('#2a2620', PB), glowA = '255,214,138', hx = T.x + w * 0.22, hy = fl + 2.02;
+  PB.add({ x0: T.x - w / 2, x1: T.x + w / 2, layer: 0, draw(ctx, env) {
+    if (fl + 2.4 < env.y0 || fl + 0.8 > env.y1) return;
+    const s = env.s;
+    // the lit back wall: warm and bright where the boards are, fading toward the floor and the corners
+    ctx.fillStyle = lampW; ctx.globalAlpha = 0.85; ctx.fillRect(T.x - w / 2, yB, w, fl + 2.22 - yB); ctx.globalAlpha = 1;
+    ydGlow(ctx, hx, yB + 0.55, w * 0.62, 0.9, glowA, 0.9);
+    // the lantern on its hook, under the eaves where the slot shows it
+    if (s > 6) { line(ctx, hx, hy + 0.2, hx, fl + 2.22, lampD, 0.015, env); R4(ctx, hx - 0.07, hy - 0.12, 0.14, 0.2, lampC); R4(ctx, hx - 0.08, hy + 0.08, 0.16, 0.04, lampD); R4(ctx, hx - 0.08, hy - 0.14, 0.16, 0.03, lampD); if (s > 14) { ctx.strokeStyle = lampD; ctx.lineWidth = Math.max(0.01, env.px * 0.5); ctx.beginPath(); ctx.arc(hx, hy + 0.14, 0.08, 0, Math.PI); ctx.stroke(); } }
+  } });
   C.add(x0 - 1, x1 + 1, 2, (ctx, env) => {
     if (yTop + 0.6 < env.y0 || yP > env.y1) return;
     const s = env.s, fine = s > 12;
@@ -1647,10 +1665,13 @@ K.boardedSeat = function (S, H, o) {
     // the corner posts the boards are nailed to
     R4(ctx, T.x - w / 2 - 0.07, fl, 0.14, 2.3, darker); R4(ctx, T.x + w / 2 - 0.07, fl, 0.14, 2.3, darker);
     // the boards themselves, with daylight between them
+    // at low zoom the 5 cm cracks are under a pixel: open them up to most of one, so they still
+    // show as lit lines (the whole front is one solid, so this changes nothing about where a round stops)
+    const ext = Math.max(0, Math.min(0.05, env.px * 0.85 - 0.055));
     for (let i = 0; i < boards.length; i++) {
       const b = boards[i];
       ctx.save(); if (b.tilt) { ctx.translate(T.x, b.y + b.h / 2); ctx.rotate(b.tilt); ctx.translate(-T.x, -(b.y + b.h / 2)); }
-      ctx.fillStyle = old[b.c]; ctx.fillRect(b.l, b.y, b.r - b.l, b.h);
+      ctx.fillStyle = old[b.c]; ctx.fillRect(b.l, b.y + ext / 2, b.r - b.l, b.h - ext);
       if (s > 5) {
         ctx.fillStyle = oldD; ctx.fillRect(b.l, b.y, b.r - b.l, Math.max(0.018, env.px * 0.7));                                   // shade under the board above
         ctx.fillStyle = oldL; ctx.fillRect(b.l, b.y + b.h - Math.max(0.015, env.px * 0.6), b.r - b.l, Math.max(0.015, env.px * 0.6)); // lit top edge
@@ -1666,15 +1687,32 @@ K.boardedSeat = function (S, H, o) {
       }
       ctx.restore();
     }
+    // a rail along the top and bottom of the boards, at least a pixel thick, so at low zoom the
+    // boarded front reads as one panel nailed across the opening
+    { const rl = Math.max(0.06, env.px * 1.1); ctx.fillStyle = darker; ctx.fillRect(x0 - 0.06, yTop - rl * 0.5, x1 - x0 + 0.12, rl); ctx.fillRect(x0 - 0.06, yB - rl * 0.5, x1 - x0 + 0.12, rl);
+      ctx.fillRect(T.x - w / 2 - 0.07, yB, Math.max(0.14, env.px * 1.1), yTop - yB); ctx.fillRect(T.x + w / 2 + 0.07 - Math.max(0.14, env.px * 1.1), yB, Math.max(0.14, env.px * 1.1), yTop - yB); }
     // breath through the cracks, and the binoculars pushed into a gap when he looks out
     const sim = o.sim && o.sim(); if (!sim) return;
+    // Below about 12x the cracks blur into the boards. What the eye would make of them is a panel
+    // faintly glowing all over, darker wherever somebody stands in front of the lantern: paint
+    // exactly that, fading out as you zoom in and the real cracks take over.
+    if (s < 14) {
+      const k = clamp((14 - s) / 5, 0, 1);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22 * k; ctx.fillStyle = lampC; ctx.fillRect(T.x - w / 2 + 0.07, yB, w - 0.14, yTop - yB); ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#16120e'; ctx.globalAlpha = 0.62 * k; ctx.beginPath();
+      for (let i = 0; i < sim.actors.length; i++) { const a = sim.actors[i]; if (a.zone !== 'boards' || a.hidden || a.gone || a.dead) continue;
+        const J = actorJoints(a), hx = a.x + J.head[0], top = Math.min(yTop, a.y + J.head[1] + 0.12), bx0 = Math.max(T.x - w / 2 + 0.07, a.x - 0.2), bx1 = Math.min(T.x + w / 2 - 0.07, a.x + 0.2);
+        if (top <= yB || bx1 <= bx0) continue;
+        ctx.rect(bx0, yB, bx1 - bx0, Math.max(0, top - 0.3 - yB)); ctx.moveTo(hx + 0.13, top - 0.15); ctx.arc(hx, top - 0.15, 0.13, 0, TAU); }
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
     if (o.glass) {
       const a = sim.byId[o.glass];
       if (a && !a.dead && !a.gone && a.zone === 'boards' && a.anim === 'look' && a.goal === null) {
         const J = actorJoints(a), ex = a.x + J.head[0] + a.face * 0.05, ey = a.y + J.head[1] + 0.03, gl = Math.pow(Math.max(0, Math.sin(env.t * 1.3 + a.seed)), 10);
         ctx.fillStyle = lens; ctx.beginPath(); ctx.ellipse(ex, ey, 0.16, 0.065, 0, 0, TAU); ctx.fill();
         ctx.fillStyle = '#c9d6e2'; ctx.beginPath(); ctx.arc(ex - 0.07, ey, 0.038, 0, TAU); ctx.arc(ex + 0.07, ey, 0.038, 0, TAU); ctx.fill();
-        if (gl > 0.02) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = gl; ctx.fillStyle = '#fff6dc'; ctx.beginPath(); ctx.arc(ex - 0.07, ey, 0.09, 0, TAU); ctx.arc(ex + 0.07, ey, 0.09, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+        if (gl > 0.02) { const gr = Math.max(0.09, env.px * 1.6); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = gl; ctx.fillStyle = '#fff6dc'; ctx.beginPath(); ctx.arc(ex - 0.07, ey, gr, 0, TAU); ctx.arc(ex + 0.07, ey, gr, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
       }
     }
     (o.breath || []).forEach((id) => { const a = sim.byId[id]; if (a && a.zone === 'boards') covBreath(ctx, env, a, env.t, 1); });
