@@ -31,6 +31,8 @@ const path = require('path');
       }
       if (!pick) { log.push('NO RIFLE for ' + M.id + ' (credits ' + d.credits + ', rank ' + CB.Test.rank() + ', owned ' + owned.join(',') + ')'); break; }
       if (pick.needPart && !d.parts[pick.needPart]) { const err = P.buy('part', pick.needPart); if (err) { log.push('CANNOT AFFORD ' + pick.needPart + ' for ' + M.id + ': ' + err); break; } }
+      // ammunition the job needs (armour-piercing rounds) has to be bought as well, like a player would
+      if (pick.cfg.ammo !== 'am_ball' && CB.PARTS.find((p) => p.id === pick.cfg.ammo).price > 0 && !d.parts[pick.cfg.ammo]) { const crBefore = d.credits, err = P.buy('part', pick.cfg.ammo); if (err) { log.push('CANNOT BUY ' + pick.cfg.ammo + ' for ' + M.id + ' (credits ' + crBefore + ', rank ' + CB.Test.rank() + '): ' + err); break; } log.push('  bought ' + pick.cfg.ammo + ' before ' + M.id + ' with ' + crBefore + ' credits at rank ' + CB.Test.rank()); }
       d.guns[pick.gid].cfg = Object.assign(d.guns[pick.gid].cfg, { muzzle: pick.cfg.muzzle, ammo: pick.cfg.ammo });
       d.equipped = pick.gid;
       const r = CB.Test.run(M.id, pick.gid, { cfg: d.guns[pick.gid].cfg, flags: d.flags, raw: true });
@@ -44,11 +46,11 @@ const path = require('path');
       click('next'); drain();
       log.push(M.id + ' ' + pick.gid + ' stars ' + r.res.stars + ' cr ' + d.credits + ' xp ' + d.xp + ' rank ' + CB.Test.rank() + (r.outcome ? ' outcome ' + r.outcome : '') + ' screen:' + (document.querySelector('.brief h2, .chhead h2') || {}).innerText);
     }
-    return { log, flags: d.flags, guns: Object.keys(d.guns), credits: d.credits, xp: d.xp, done: Object.keys(d.missions).filter((k) => d.missions[k].done).length, skins: Object.keys(d.skins).length, ending: d.seen.ending, epi: CB.Test.epi() };
+    return { log, flags: d.flags, guns: Object.keys(d.guns), credits: d.credits, xp: d.xp, done: Object.keys(d.missions).filter((k) => d.missions[k].done).length, total: CB.MISSIONS.length, skins: Object.keys(d.skins).length, ending: d.seen.ending, epi: CB.Test.epi() };
   }, mode);
   console.log(out.log.join('\n'));
   console.log(JSON.stringify({ done: out.done, flags: out.flags, guns: out.guns, credits: out.credits, xp: out.xp, skins: out.skins, ending: out.ending, epilogue: out.epi }, null, 1));
   if (errs.length) { console.log(errs.join('\n')); process.exitCode = 1; }
-  if (out.done !== 41) process.exitCode = 1;
+  if (out.done !== out.total) process.exitCode = 1;
   await browser.close();
 })();
