@@ -110,7 +110,7 @@ function pageLib() {
     miss_glass: one(1.6, () => X.impact('glass', 150, 0.05)), miss_wood: one(1.6, () => X.impact('wood', 150, 0.05)), miss_water: one(1.6, () => X.impact('water', 150, 0.05)), miss_snow: one(1.6, () => X.impact('snow', 150, 0.05)),
     // a fuel tank going up, near and far; thunder, close (twice, to hear two storms) and far
     explosion_80m: one(7, () => X.boom(80, 0.02)), explosion_400m: one(7, () => X.boom(400, 0.02)),
-    thunder_close: one(8, () => X.thunder(0.02)), thunder_close_2: one(8, () => { X.thunN = 1; X.later = () => {}; X.thunder(0.02); }),
+    thunder_close: one(8, () => X.thunder(0.02)), thunder_close_2: one(8, () => { X.get('thunder:close:1', () => SG.thunder('close', 2)); X.thunN = 0; X.thunder(0.02); }),
     thunder_far: one(9, () => X.thunder(0.02, true)),
     // the rifle's reference shot, for scale
     shot_c308_bare: one(3, () => X.shot({ k: 'fire', cal: 'c308', quiet: false, action: 'bolt', cycle: 1.45 })),
@@ -119,7 +119,7 @@ function pageLib() {
     dry_fire: one(0.5, () => X.dry()), charge: one(1.2, () => X.onEvent({ k: 'charge', dur: 0.85 }, { S: { refZ: 200 } })),
     // the world
     alarm_siren: one(7, () => X.siren(0.02)), bell_steel: one(3.5, () => X.bell(300, 0.02, 560)), crash_car: one(2.6, () => X.onEvent({ k: 'crash' }, { S: { refZ: 150 } })),
-    spark: one(1, () => X.onEvent({ k: 'spark' }, { S: { refZ: 150 } })), tyre: one(1.4, () => X.onEvent({ k: 'tyre' }, { S: { refZ: 150 } })), npc_shot: one(3, () => X.onEvent({ k: 'npcshot' }, { S: { refZ: 250 } })),
+    range_plate: one(3, () => X.onEvent({ k: 'ring', kind: 'bell' }, { S: { refZ: 300 }, M: { range: 0 } })), spark: one(1, () => X.onEvent({ k: 'spark' }, { S: { refZ: 150 } })), tyre: one(1.4, () => X.onEvent({ k: 'tyre' }, { S: { refZ: 150 } })), npc_shot: one(3, () => X.onEvent({ k: 'npcshot' }, { S: { refZ: 250 } })),
     // the interface
     ui_tap: one(0.4, () => X.ui('tap')), ui_back: one(0.4, () => X.ui('back')), ui_go: one(0.6, () => X.ui('go')), ui_deny: one(0.6, () => X.ui('deny')), ui_buy: one(0.6, () => X.ui('buy')),
     ui_equip: one(0.6, () => X.ui('equip')), ui_star: one(1.4, () => X.ui('star')), ui_tick: one(0.3, () => X.ui('tick')),

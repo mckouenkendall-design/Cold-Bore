@@ -310,9 +310,9 @@ const SG_DEV = {
   supl: { supp: 1, can: [3150, 4480, 6930], canT: 0.045, canG: 1.1, tock: 1080, tockT: 0.018, tockG: 0.45, blast: 0.46, T: 1.9, lp: 2700, gas: 0.36, fc: 0.72, sizzle: 0.16, crack: 1.2, whip: 2.1, body: 0.55, bodyLp: 0.55, sub: 0.8, ring: 0.6, slap: 0.42, tail: 0.3, far: 0.4, loud: -3.0 },
   suph: { supp: 1, can: [2240, 3370, 5260], canT: 0.09, canG: 0.85, tock: 640, tockT: 0.06, tockG: 0.8, blast: 0.16, T: 3.2, lp: 700, gas: 0.06, fc: 0.4, sizzle: 0.02, crack: 1.2, whip: 2.1, body: 0.52, bodyLp: 0.4, sub: 0.9, ring: 0.5, slap: 0.36, tail: 0.25, far: 0.32, loud: -5.0 },
   olcan: { supp: 1, can: [2180, 3270, 5130], canT: 0.085, canG: 1.3, tock: 900, rattle: 1, blast: 0.4, T: 3.0, lp: 1300, gas: 0.15, fc: 0.5, sizzle: 0.07, crack: 1.2, whip: 2.1, body: 0.85, bodyLp: 0.75, sub: 1.0, ring: 0.7, slap: 0.48, tail: 0.34, far: 0.45, loud: -3.0 },
-  int: { supp: 1, can: [1960, 2950, 4600], canT: 0.06, canG: 0.85, tock: 720, tockT: 0.04, blast: 0.24, T: 2.6, lp: 1000, gas: 0.1, fc: 0.45, sizzle: 0.04, crack: 1.2, whip: 2.1, body: 0.55, bodyLp: 0.5, sub: 0.82, ring: 0.55, slap: 0.4, tail: 0.28, far: 0.36, loud: -4.0 },
-  intLong: { supp: 1, can: [1280, 1980, 3130], canT: 0.11, canG: 0.72, tock: 500, blast: 0.14, T: 3.2, lp: 700, gas: 0.07, fc: 0.38, sizzle: 0.02, crack: 1.2, whip: 2.1, body: 0.8, bodyLp: 0.42, sub: 1.1, ring: 0.45, slap: 0.34, tail: 0.24, far: 0.3, loud: -5.0, tockT: 0.07, tockG: 1.3 },
-  intShort: { supp: 1, can: [2870, 4310, 6620], canT: 0.04, canG: 1.25, tock: 1050, tockT: 0.018, blast: 0.55, T: 1.8, lp: 2600, gas: 0.28, fc: 0.7, sizzle: 0.16, crack: 1.2, whip: 2.1, body: 0.66, bodyLp: 0.68, sub: 0.85, ring: 0.75, slap: 0.52, tail: 0.36, far: 0.46, loud: -1.0 },
+  int: { supp: 1, can: [1960, 2950, 4600], canT: 0.06, canG: 0.85, tock: 720, tockT: 0.04, blast: 0.24, T: 2.6, lp: 1000, gas: 0.1, fc: 0.45, sizzle: 0.04, crack: 1.2, whip: 2.1, body: 0.55, bodyLp: 0.5, sub: 0.82, ring: 0.55, slap: 0.4, tail: 0.28, far: 0.36, loud: -3.2 },
+  intLong: { supp: 1, can: [1280, 1980, 3130], canT: 0.11, canG: 0.72, tock: 500, blast: 0.14, T: 3.2, lp: 700, gas: 0.07, fc: 0.38, sizzle: 0.02, crack: 1.2, whip: 2.1, body: 0.8, bodyLp: 0.42, sub: 1.1, ring: 0.45, slap: 0.34, tail: 0.24, far: 0.3, loud: -4.2, tockT: 0.07, tockG: 1.3 },
+  intShort: { supp: 1, can: [2870, 4310, 6620], canT: 0.04, canG: 1.25, tock: 1050, tockT: 0.018, blast: 0.55, T: 1.8, lp: 2600, gas: 0.28, fc: 0.7, sizzle: 0.16, crack: 1.2, whip: 2.1, body: 0.66, bodyLp: 0.68, sub: 0.85, ring: 0.75, slap: 0.52, tail: 0.36, far: 0.46, loud: -0.2 },
 };
 SG.DEV = SG_DEV;
 // Where the shot is heard. slaps: the first echoes off nearby things [delay s, gain, top Hz, pan];
@@ -365,7 +365,7 @@ SG.spec = function (st, loc, refZ, ground) {
   let D = SG_DEV[dev]; const h = C.h;
   if (soft) D = Object.assign({}, D, { body: sgDv(D, 'body') * 0.85, sub: sgDv(D, 'sub') * 0.75, tail: sgDv(D, 'tail') * 0.7, slap: sgDv(D, 'slap') * 0.8 }); // a reduced load: less of everything
   if (sup && integral) { gas *= 1.25; loud += 1; }                         // a supersonic load in a built-in can
-  loud += -7 - 4 * (1 - h) + (D.loud || 0) + (!sup ? (D.supp ? -1.5 : -0.8) : 0);
+  loud += -7 - 3 * (1 - h) + (D.loud || 0) + (!sup ? (D.supp ? -1.5 : -0.8) : 0);
   if (st.cal === 'crail') loud = -6.8 + (D.loud || 0);
   const L = SG_LOC[loc] ? loc : 'valley';
   const far = refZ ? Math.round(clamp((2 * refZ) / SOUND, 0.4, 3.2) * 10) / 10 : 0;
@@ -569,8 +569,8 @@ SG.action = function (S, seed) {
   const rnd = sgRng(seed * 31 + 7), c = S.cycle, M = SG_BOLT[S.V.mech];
   if (S.coil) {
     const B = sgBuf(c * 0.85 + 0.3);
-    sgTone(B, { at: 0, f: 140, f1: 2600, glide: c * 0.4, att: c * 0.6, hold: c * 0.1, tau: 0.04, dur: 0.3, gain: 0.06, drive: 1.4, filt: [['lp', 4000, 0.7]] });
-    sgTone(B, { at: 0, f: 70, f1: 300, glide: c * 0.5, att: c * 0.6, hold: c * 0.1, tau: 0.05, dur: 0.3, gain: 0.08 });
+    sgTone(B, { at: 0, f: 140, f1: 2600, glide: c * 0.4, att: c * 0.6, hold: c * 0.1, tau: 0.04, dur: 0.3, gain: 0.03, drive: 1.4, filt: [['lp', 4000, 0.7]] });
+    sgTone(B, { at: 0, f: 70, f1: 300, glide: c * 0.5, att: c * 0.6, hold: c * 0.1, tau: 0.05, dur: 0.3, gain: 0.04 });
     sgClack(B, c * 0.78, 2900, 0.12, 0.03, (rnd() * 1e9) | 0);                                      // "ready"
     sgTone(B, { at: c * 0.78, f: 1760, att: 0.002, tau: 0.03, dur: 0.12, gain: 0.04 });
     B.at = c * 0.12; return sgFinish(B, { gain: 1.4, ceil: 0.9 });
@@ -835,6 +835,15 @@ SG.bell = function (f, seed) {
   sgModes(B, { modes: [[f * 0.5, 2.4, 0.5], [f, 1.8, 1], [f * 1.19, 1.3, 0.55], [f * 1.5, 1.1, 0.45], [f * 2.0, 0.8, 0.5], [f * 2.52, 0.55, 0.3], [f * 3.1, 0.4, 0.25], [f * 4.07, 0.25, 0.18]], gain: 0.2, seed: (rnd() * 1e9) | 0, spread: 0.003 });
   sgNoise(B, { filt: [['hp', 2500, 0.7]], att: 0.0002, tau: 0.003, dur: 0.02, gain: 0.4, seed: 3 });
   return sgFinish(B, { loud: -12, peakMax: 1.5 });
+};
+// a steel target plate hit by a bullet: a hard "tink" and a bright, uneven ring (a flat plate's
+// partials are far from whole multiples, which is what makes it ping rather than chime)
+SG.plate = function (seed) {
+  const B = sgBuf(2.6), rnd = sgRng((seed || 1) * 53), f = 780 * (0.94 + rnd() * 0.12);
+  sgNoise(B, { filt: [['hp', 3000, 0.7]], att: 0.0001, tau: 0.002, dur: 0.015, gain: 0.9, seed: 31 });
+  sgModes(B, { at: 0.0003, modes: [[f, 0.55, 1], [f * 1.59, 0.42, 0.8], [f * 2.14, 0.33, 0.6], [f * 2.3, 0.3, 0.45], [f * 2.65, 0.24, 0.5], [f * 3.16, 0.18, 0.35], [f * 3.5, 0.14, 0.3], [f * 4.15, 0.1, 0.25]], gain: 0.22, seed: (rnd() * 1e9) | 0, spread: 0.004 });
+  sgTone(B, { at: 0.001, f: 140, f1: 90, glide: 0.03, att: 0.001, tau: 0.03, dur: 0.15, gain: 0.25, drive: 1.5 });
+  return sgFinish(B, { loud: -11, peakMax: 1.8 });
 };
 // electricity: a lamp or a box arcing out
 SG.zap = function (seed) {

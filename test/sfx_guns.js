@@ -12,7 +12,7 @@
 // steps for the first 0.3 s, 50 ms steps after): diff = the average difference in dB between the
 // two maps, sim = how alike they are (100 = identical, 0 = 12 dB apart on average).
 // It fails if two set-ups sound nearly the same (see MIN below for exactly what that means
-// and why), if any shot is quieter than the floor (12 dB under the loudest rifle), if anything
+// and why), if any shot is quieter than the floor (10 dB under the loudest rifle), if anything
 // clips, or if a heavier calibre does not measure heavier (more low end, longer decay).
 // WAVs of every shot (report and action) go to shots/sfx/guns/, with summary.json.
 // usage: NODE_PATH=/opt/npm-tools/node_modules node test/sfx_guns.js
@@ -23,7 +23,7 @@ const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'shots', 'sfx', 'guns');
-const FLOOR = 12;   // dB: no shot may be quieter than the loudest rifle by more than this
+const FLOOR = 10;   // dB: no shot may be quieter than the loudest rifle by more than this
 
 function pageLib() {
   const X = CB.Sfx, SG = X.gen;

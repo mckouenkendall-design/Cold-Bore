@@ -227,13 +227,14 @@ Sfx.gunFor = function (e, sim) {
   return G;
 };
 Sfx.rep = function (G, k) { return Sfx.get(G.key + ':' + k, () => SG.report(G.spec, k + 1)); };
-// Get a mission's sounds ready as it starts: the rifle's first report now, the rest a piece at a
-// time over the next few frames, and whatever the mission will want (an explosion, thunder).
+// Get a mission's sounds ready as it starts, a piece at a time between frames (the rifle's report
+// first, ready about a tenth of a second in, long before the fade-in is over), and whatever the
+// mission will want (an explosion, thunder). A shot fired before its report is ready makes it there and then.
 Sfx.prepare = function (sim) {
   const X = Sfx; if (!sim || !sim.st) return;
   if (!X.ok) { X.pendingSim = sim; return; }
   const S = sim.S, G = X.gunFor({}, sim); X.loc = SG.locOf(S); X.gunNow = G;
-  X.rep(G, 0);
+  X.later(G.key + ':0', () => SG.report(G.spec, 1));
   X.later(G.key + ':1', () => SG.report(G.spec, 2));
   X.later(G.key + ':act', () => SG.action(G.spec, 1));
   X.later(G.key + ':rel:' + sim.st.reload.toFixed(2), () => SG.reload(G.spec, sim.st.reload, 1));
@@ -337,14 +338,13 @@ Sfx.voice = function (dist, at) { // a short alarmed shout, far off
 };
 // the alarm: a wailing siren across the scene
 Sfx.siren = function (at) { const X = Sfx; X.play(X.get('siren', () => SG.siren(6.5)), { at, gain: 0.9, lp: 6000, verb: 0.6 }); };
-// Thunder over the mission. Close (it covers a shot) unless told it is far. Three takes of each,
-// each played a little faster or slower, so no two storms roll the same.
+// Thunder over the mission. Close (it covers a shot) unless told it is far. Two takes of each,
+// taken in turn and each played a little faster or slower, so no two storms roll the same.
 Sfx.thunder = function (at, far) {
   const X = Sfx; if (!X.ok) return;
-  const kind = far ? 'far' : 'close', v = (X.thunN = ((X.thunN || 0) + 1) % 3);
-  let b = X.cache.get('thunder:' + kind + ':' + v);
-  if (!b) b = X.cache.get('thunder:' + kind + ':0') || X.get('thunder:' + kind + ':0', () => SG.thunder(kind, 1));
-  X.later('thunder:' + kind + ':' + ((v + 1) % 3), () => SG.thunder(kind, ((v + 1) % 3) + 1));
+  const kind = far ? 'far' : 'close', v = (X.thunN = (X.thunN || 0) + 1) % 2, key = (i) => 'thunder:' + kind + ':' + i;
+  const b = X.cache.get(key(v)) || X.cache.get(key(1 - v)) || X.get(key(0), () => SG.thunder(kind, 1));
+  X.later(key(1), () => SG.thunder(kind, 2));
   X.play(b, { at, rate: 0.92 + Math.random() * 0.16, gain: far ? 0.75 : 1 });
   if (!far) setTimeout(() => X.dip(0.5, 0.3), Math.max(0, at * 1000));
 };
@@ -948,12 +948,14 @@ Sfx.onEvent = function (e, sim) {
       break;
     case 'alarm': X.siren(back(Z)); break;
     case 'lampout': case 'zap': case 'spark': here(X.get('zap:' + ((Math.random() * 2) | 0), () => SG.zap(1 + ((Math.random() * 2) | 0))), 1.3, 0.3); if (e.k === 'lampout') X.glass(Z * 1.4, back(Z)); break;
-    case 'ring': X.bell(Z, back(Z), e.kind === 'horn' ? 300 : 560); break;
+    case 'ring': // a steel target on the range pings; a real bell or horn rings
+      if (sim.M && sim.M.range !== undefined && e.kind === 'bell') { const v = (Math.random() * 2) | 0; X.playFar(X.get('plate:' + v, () => SG.plate(v + 1)), Z, back(Z), 1.3, 0.3); } else X.bell(Z, back(Z), e.kind === 'horn' ? 300 : 560);
+      break;
     case 'smash': X.glass(Z, back(Z)); break;
     case 'clank': X.impact('metal', Z, back(Z)); break;
     case 'tyre': here(X.get('tyre', () => SG.tyre()), 1.3, 0.3); break;
     case 'steam': here(X.get('steam', () => SG.steam(5)), 1.2, 0.2); break;
-    case 'npcshot': here(X.get('npcshot:' + (X.loc || 'valley'), () => SG.npcShot(X.loc || 'valley', 3)), 1.4, 0.4); break;
+    case 'npcshot': here(X.get('npcshot:' + (X.loc || 'valley'), () => SG.npcShot(X.loc || 'valley', 3)), 0.85, 0.4); break;
     case 'duck': Sfx.tone({ at: back(Z), f: 1100, f1: 1900, dur: 0.09, gain: 0.12, type: 'square', lp: 3000 }); Sfx.tone({ at: back(Z) + 0.1, f: 1900, f1: 900, dur: 0.14, gain: 0.1, type: 'square', lp: 3000 }); X.ui('star'); break;
     case 'msg': if (e.who !== 'hint') X.ui('radio'); break;
     case 'flare': here(X.get('flare', () => SG.flare(5)), 1.2, 0.2); break;

@@ -136,7 +136,7 @@ domain, with its source and licence written next to it.
 
 Sound cannot be judged by a script, so the tests measure it instead: loudness the way the
 ear weighs it, peak, low end, brightness, decay, and a pitch-and-time comparison of every
-pair of rifle set-ups (none may be nearly the same, none may be more than 12 dB quieter
+pair of rifle set-ups (none may be nearly the same, none may be more than 10 dB quieter
 than the loudest rifle, nothing may clip, heavier calibres must measure heavier). They save
 WAV files in `shots/sfx/` (`shots/sfx/guns/` for every rifle set-up) to listen to. Nobody
 has listened to them yet.
