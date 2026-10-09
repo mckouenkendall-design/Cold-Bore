@@ -108,7 +108,7 @@ mission({
         routine: [['face', -1], ['wait', 150, 'type'], ['walk', -0.3], ['gone']], escapeText: 'He left the floor with the lift and the keys to the records room. Whatever was on those shelves stays there.' }),
       Object.assign(at(9, A.winX(3)), { id: 'c1', role: 'civ', face: 1, anim: 'type', look: { hair: 'bun', hairCol: '#3a2a20', dress: COL.teal }, routine: [['face', 1], ['wait', 999, 'type']] }),
       Object.assign(at(9, A.winX(5)), { id: 'c2', role: 'civ', face: -1, anim: 'type', look: { hair: 'short', hairCol: '#2a2019', coat: COL.tan, glasses: true }, routine: [['face', -1], ['wait', 999, 'type']] }),
-      Object.assign(at(9, -8), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', build: 'big' },
+      Object.assign(at(9, -8), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', build: 'big', gun: 'rifle' },
         routine: [['walk', -24.6], ['wait', 4, 'guard', 1], ['walk', -3.6], ['wait', 4, 'guard', -1], ['loop']] }),
       Object.assign(at(5, A.winX(4)), { id: 'c3', role: 'civ', face: -1, anim: 'type', look: { hair: 'short', coat: COL.olive }, routine: [['wait', 999, 'type', -1]] }),
       Object.assign(at(6, A.winX(5)), { id: 'c4', role: 'civ', look: { hair: 'long', dress: COL.wine }, routine: pace(A.winX(3) + 0.5, A.winX(6) - 0.5, 8, 6, 'phone') }),
@@ -408,7 +408,7 @@ mission({
       Object.assign(r(-17.3), { id: 'b1', role: 'civ', face: -1, look: { coat: COL.navy, hair: 'short', bag: 'case' }, routine: [['wait', 999, 'stand', -1]] }),
       Object.assign(r(-13.7), { id: 'b2', role: 'civ', face: -1, look: { dress: COL.wine, hair: 'bun', bag: 'cup' }, routine: [['wait', 999, 'drink', -1]] }),
       Object.assign(r(-12.6), { id: 'b3', role: 'civ', face: -1, look: { coat: COL.olive, hat: 'fedora', hatCol: '#2a2d33', build: 'big' }, routine: [['wait', 999, 'arms', -1]] }),
-      Object.assign(r(-5.6), { id: 'g1', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026', build: 'big' }, routine: [['wait', 6, 'guard', -1], ['walk', -16.3], ['wait', 6, 'guard', -1], ['walk', -5.6], ['loop']] }),
+      Object.assign(r(-5.6), { id: 'g1', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026', build: 'big', gun: 'rifle' }, routine: [['wait', 6, 'guard', -1], ['walk', -16.3], ['wait', 6, 'guard', -1], ['walk', -5.6], ['loop']] }),
       Object.assign(r(-3.3), { id: 'g2', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026' }, routine: [['wait', 999, 'arms', -1]] }),
       Object.assign(H.office('A', 7, -14), { id: 'k1', role: 'civ', look: { hat: 'cap', hatCol: '#3f6fb0', vest: '#3f6fb0' }, routine: [['wait', 6, 'sweep', 1], ['walk', -6], ['wait', 6, 'sweep', -1], ['walk', -20], ['loop']] }),
     ];

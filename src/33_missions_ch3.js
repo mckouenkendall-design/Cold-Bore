@@ -356,10 +356,10 @@ mission({
     const B = H.lodge;
     return [
       Object.assign(H.inLodge(1, 6, -0.15), { id: 'op', role: 'target', face: -1, anim: 'type', look: { phones: COL.red, hair: 'short', coat: '#5b6875' }, routine: [['wait', 9999, 'type', -1]], escapeText: 'The operator got to the set first. The helicopter is on its way.' }),
-      Object.assign(H.inLodge(1, 5, 0), { id: 'm2', role: 'guard', face: 1, anim: 'drink', look: { hat: 'beanie', hatCol: '#5a2a2a', coat: '#3a2f2a', build: 'big' },
+      Object.assign(H.inLodge(1, 5, 0), { id: 'm2', role: 'guard', face: 1, anim: 'drink', look: { hat: 'beanie', hatCol: '#5a2a2a', coat: '#3a2f2a', build: 'big', bag: 'cup' },
         routine: [['wait', 9, 'drink', 1], ['hide'], ['to', H.inLodge(0, 1, 0)], ['wait', 26], ['to', H.inLodge(1, 5, 0)], ['show'], ['wait', 8, 'drink', 1], ['loop', 1]] }),
-      Object.assign(H.deck(-31), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { hat: 'hood', hatCol: '#3b4654', coat: '#3b4654', long: true }, routine: [['wait', 4, 'guard', 1], ['walk', 4], ['wait', 5, 'guard', -1], ['walk', -31], ['loop']] }),
-      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'hood', hatCol: '#4a3f36', coat: '#4a3f36', long: true }, routine: [['wait', 5, 'guard', -1], ['walk', -30], ['wait', 5, 'guard', 1], ['walk', 30], ['loop']] }),
+      Object.assign(H.deck(-31), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { hat: 'hood', hatCol: '#3b4654', coat: '#3b4654', long: true, gun: 'rifle' }, routine: [['wait', 4, 'guard', 1], ['walk', 4], ['wait', 5, 'guard', -1], ['walk', -31], ['loop']] }),
+      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'hood', hatCol: '#4a3f36', coat: '#4a3f36', long: true, gun: 'rifle' }, routine: [['wait', 5, 'guard', -1], ['walk', -30], ['wait', 5, 'guard', 1], ['walk', 30], ['loop']] }),
     ];
   },
   triggers(H) {
@@ -401,7 +401,7 @@ mission({
   id: 'c3m6', ch: 3, title: 'First Light', range: 480,
   objective: 'Both of August\'s guards, deck and yard. Any alarm and he is gone before breakfast.',
   brief: 'Tomorrow August flies out, so today we take away the two men he trusts to stand over him. One walks the deck, one walks the yard. Both go this morning, and nobody shouts: if August hears a thing he will be over the pass by breakfast and we start again in another country. You have a choice of ground. The near ridge is a comfortable shot, but two pines stand in the way and a rifle can be heard from there. The far peak sees everything and hears nothing, and it is seven hundred metres in a crosswind. The chapel in the valley rings at first light. Use it.',
-  intel: ['Deck guard: big man, dark beanie. Yard guard: grey cap. Both carry rifles.', 'Near ridge, 480 m: a shot is heard unless the chapel bells are ringing. Two pines hide the right-hand end of the deck.', 'Far peak, 700 m: too far for a .308 to be heard, and nothing in the way. More wind.', 'The two guards can see each other, deck to yard, when they face one another within about 30 m.', 'A maid shakes out a cloth at the left end of the deck now and then. She is not part of this.'],
+  intel: ['Deck guard: big man, dark beanie. Yard guard: grey cap. Both carry rifles.', 'Near ridge, 480 m: a shot is heard unless the chapel bells are ringing. Two pines hide the right-hand end of the deck.', 'Far peak, 700 m: too far for a .308 to be heard, and nothing in the way. More wind.', 'The two guards can see each other, deck to yard, when they face one another within about 30 m.', 'A maid comes out to sweep the left end of the deck now and then. She is not part of this.'],
   wind: { v: 4, gust: 1 }, par: 2,
   rules: { kill: ['g1', 'g2'], strict: true, strictText: 'The alarm went up. August left by the back road before the sun cleared the ridge.' },
   sight: { yard: ['deck'], deck: ['yard'] },
@@ -420,9 +420,9 @@ mission({
   cast(H) {
     const home = H.inLodge(1, 0, 0);
     return [
-      Object.assign(H.deck(-29), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: { hat: 'beanie', hatCol: '#22252b', coat: '#2a333a', build: 'big', h: 1.05 },
+      Object.assign(H.deck(-29), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: { hat: 'beanie', hatCol: '#22252b', coat: '#2a333a', build: 'big', h: 1.05, gun: 'rifle' },
         routine: [['wait', 4, 'guard', -1], ['walk', -16], ['wait', 6, 'guard', 1], ['walk', 2.5], ['wait', 6, 'guard', 1], ['walk', -16], ['wait', 6, 'guard', -1], ['walk', -29], ['loop']] }),
-      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#9aa0a8', coat: '#4a3f36' },
+      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#9aa0a8', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 6, 'guard', -1], ['walk', -22], ['wait', 6, 'guard', 1], ['walk', 30], ['loop']] }),
       Object.assign({}, home, { id: 'maid', role: 'civ', hidden: true, face: 1, look: { hair: 'bun', dress: COL.navy, coat: '#e9e4d6' }, failText: 'You shot the maid. The contract is void, and August is awake.',
         routine: [['wait', 30], ['to', H.deck(-32)], ['show'], ['wait', 10, 'sweep', 1], ['hide'], ['to', home], ['wait', 36], ['loop', 1]] }),
@@ -472,12 +472,12 @@ mission({
     return [
       Object.assign(at(), { id: 'valet', role: 'civ', speed: 1.1, look: { hat: 'cap', hatCol: '#22252b', coat: '#3f8f4f', bag: 'duffel', bagCol: '#7b5a36' }, failText: 'That was the valet. Green coat, yes. White hair and a cane, no.',
         routine: [['wait', 3], ['show'], ['walk', 42.5], ['look', { bag: null }], ['wait', 999, 'work', 1]] }),
-      Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big' },
+      Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['wait', 5], ['show'], ['walk', 5], ['wait', 0.6, 'guard', -1], ['waitFor', 'aug_go1'], ['walk', 39], ['wait', 9, 'guard', 1], ['wait', 999, 'guard', -1]] }),
       Object.assign(at(), { id: 'august', role: 'target', speed: 0.8, look: { hair: 'white', coat: '#3f8f4f', long: true, bag: 'cane', h: 0.97 },
         routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]],
         flee: [['run', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
-      Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36' },
+      Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 10.4], ['show'], ['walk', -7.6], ['wait', 999, 'guard', 1]] }),
       Object.assign(H.yard(43), { id: 'pilot', role: 'civ', face: 1, anim: 'work', look: { hat: 'helmet', hatCol: '#ece8dc', vest: COL.orange }, flee: [['wait', 999, 'cower']], failText: 'You shot the pilot. He flies whoever pays. The contract is void.',
         routine: [['wait', 8.5, 'work', 1], ['veh', 'heli', 0]] }),

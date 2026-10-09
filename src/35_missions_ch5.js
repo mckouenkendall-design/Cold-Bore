@@ -53,7 +53,7 @@ mission({
       Object.assign(H.strip(-33), { id: 'w2', role: 'civ', face: -1, anim: 'work', look: Object.assign({ build: 'big' }, yardman), routine: [['wait', 999, 'work', -1]] }),
     ];
     if (!help) {
-      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big' }, routine: [['wait', 999, 'guard', 1]] });
+      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] });
       c.push(Object.assign(H.siding(48), { id: 'cop', role: 'vip', look: POLICE, failText: POLICE_FAIL, routine: pace(38, 52, 5, 4, 'stand') }));
     }
     return c;
@@ -128,10 +128,10 @@ mission({
       // the host and his guests
       Object.assign(H.lawn(2.6), { id: 'host', role: 'civ', face: 1, anim: 'talk', look: { coat: COL.cream, hair: 'white', tie: COL.red, bag: 'cup', build: 'big' }, failText: 'You shot the host. Aurel\'s lawyer was the one man at that party the papers would have named.', routine: [['wait', 999, 'talk', 1]] }),
       Object.assign(H.lawn(4.1), { id: 'gu1', role: 'civ', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#2a2019', dress: COL.wine, bag: 'cup' }, routine: [['wait', 999, 'drink', -1]] }),
-      Object.assign(H.lawn(-2.2), { id: 'gu2', role: 'civ', face: 1, anim: 'drink', look: { hat: 'sun', hatCol: '#efe6cf', dress: COL.sky }, routine: [['wait', 999, 'drink', 1]] }),
-      Object.assign(H.lawn(13.2), { id: 'gu3', role: 'civ', face: 1, anim: 'sitdrink', look: { coat: COL.tan, hair: 'short' }, routine: [['wait', 999, 'sitdrink', 1]] }),
+      Object.assign(H.lawn(-2.2), { id: 'gu2', role: 'civ', face: 1, anim: 'drink', look: { hat: 'sun', hatCol: '#efe6cf', dress: COL.sky, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
+      Object.assign(H.lawn(13.2), { id: 'gu3', role: 'civ', face: 1, anim: 'sitdrink', look: { coat: COL.tan, hair: 'short', bag: 'cup' }, routine: [['wait', 999, 'sitdrink', 1]] }),
       Object.assign(H.lawn(14.8), { id: 'gu4', role: 'civ', face: -1, anim: 'sit', look: { hair: 'bun', dress: COL.pink }, routine: [['wait', 999, 'sit', -1]] }),
-      Object.assign(H.lawn(-29.2), { id: 'gu5', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'sun', hatCol: '#e8dcc0', hatBand: COL.red, dress: COL.yellow }, routine: [['wait', 999, 'sitdrink', -1]] }),
+      Object.assign(H.lawn(-29.2), { id: 'gu5', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'sun', hatCol: '#e8dcc0', hatBand: COL.red, dress: COL.yellow, bag: 'cup' }, routine: [['wait', 999, 'sitdrink', -1]] }),
       Object.assign(H.lawn(-30.8), { id: 'gu6', role: 'civ', face: 1, anim: 'sitphone', look: { coat: COL.navy, glasses: true }, routine: [['wait', 999, 'sitphone', 1]] }),
       Object.assign(H.lawn(-21.5), { id: 'gu7', role: 'civ', face: -1, anim: 'stand', look: { hair: 'long', dress: COL.teal, hairCol: '#e0c070', bag: 'cup' }, routine: pace(-26, -20.5, 6, 5, 'drink') }),
       Object.assign(H.lawn(-3.6), { id: 'wt1', role: 'civ', look: { coat: '#f1ede2', hair: 'short', bag: 'box', bagCol: '#c9ced3' }, routine: [['wait', 3, 'work', 1], ['walk', 19.5], ['wait', 3, 'work', 1], ['walk', -3.6], ['loop']] }),
@@ -140,7 +140,7 @@ mission({
       Object.assign(H.lawn(-11.0), { id: 'bd2', role: 'civ', face: 1, anim: 'talk', look: { hat: 'beret', hatCol: '#7a2438', coat: '#22252b' }, routine: [['wait', 999, 'talk', 1]] }),
       Object.assign(H.lawn(-9.5), { id: 'bd3', role: 'civ', face: -1, anim: 'work', look: { hair: 'long', dress: '#22252b', bag: 'guitar', bagCol: '#7b5a36' }, routine: [['wait', 999, 'work', -1]] }),
     ];
-    if (f && f.savedBrandt) c.push(Object.assign(H.lawn(15.6), { id: 'brandt', role: 'vip', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#c2452d', dress: COL.teal, bag: 'paper' }, failText: 'You shot Nadia Brandt. She came to that party to help you.',
+    if (f && f.savedBrandt) c.push(Object.assign(H.lawn(15.6), { id: 'brandt', role: 'vip', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#c2452d', dress: COL.teal, bag: 'cup' }, failText: 'You shot Nadia Brandt. She came to that party to help you.',
       routine: [['wait', 2.8, 'drink', -1], ['wait', 3.4, 'point', -1], ['walk', 20.1], ['wait', 999, 'sitdrink', 1]] }));
     if (!help) {
       c.push(Object.assign(H.drive(30), { id: 'sec3', role: 'guard', look: { coat: suit, glasses: 'shades', build: 'big' }, routine: pace(17, 33, 5, 5, 'arms') }));
@@ -404,7 +404,7 @@ mission({
       Object.assign(H.study(19.4), { id: 'marlow', role: 'target', face: -1, anim: 'work', look: { coat: '#7c838c', long: true, hair: 'bun', hairCol: '#d3d7dc', glasses: true }, flee: leave(true),
         routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['wait', 5, 'work', 1], ['look', { bag: null }], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
           ['call', (sim, a) => { if (++loops >= 3) { sim.msg('Pip', 'That is the last of the files. She has her case. She is going to the car.'); sim.setRoutine(a, [['look', { bag: 'case' }], ['wait', 1.5, 'stand', 1]].concat(leave(false))); } }], ['loop']] }),
-      Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big' }, routine: pace(-6, 16, 4, 4, 'guard') }),
+      Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' }, routine: pace(-6, 16, 4, 4, 'guard') }),
       // the housekeeper, washing up in the kitchen. She has never heard of the Ledger.
       Object.assign(H.inWin(0, 1), { id: 'cook', role: 'civ', face: 1, anim: 'work', look: { hair: 'bun', hairCol: '#5a3a22', dress: COL.sky }, failText: 'You shot the housekeeper. She thought she worked for an insurance firm.', routine: pace(H.house.winX(1) - 0.5, H.house.winX(1) + 0.4, 6, 5, 'work') }),
     ];
@@ -487,7 +487,7 @@ mission({
       gun(Object.assign(H.inWin(H.b.cafe, 2, 1, -0.9), { id: 'gE', routine: [['waitFor', 'out'], ['wait', 4.2], ['show'], ['emit', 'show_gE'], ['walk', H.b.cafe.winX(1)], ['wait', 0.6, 'aim', -1], ['threat', 'v1', 6]] })),
       // bystanders: all of them more than a scream away from where the gunmen stand
       Object.assign(H.inWin(H.b.mill, 2, 2), { id: 'res', role: 'civ', face: -1, anim: 'work', look: { hair: 'white', dress: COL.wine }, routine: [['wait', 999, 'work', -1]] }),
-      Object.assign(H.street(187.2), { id: 'cf1', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'beret', hatCol: '#27365a', coat: COL.tan }, routine: [['wait', 999, 'sitdrink', -1]] }),
+      Object.assign(H.street(187.2), { id: 'cf1', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'beret', hatCol: '#27365a', coat: COL.tan, bag: 'cup' }, routine: [['wait', 999, 'sitdrink', -1]] }),
       Object.assign(H.street(192.8), { id: 'cf2', role: 'civ', face: 1, anim: 'sitphone', look: { hair: 'long', dress: COL.teal }, routine: [['wait', 999, 'sitphone', 1]] }),
       Object.assign(H.inWin(H.b.mill, 4, 4), { id: 'nb', role: 'civ', anim: 'phone', look: { hair: 'short', coat: COL.olive }, routine: pace(H.b.mill.winX(4) - 0.5, H.b.mill.winX(4) + 0.5, 7, 6, 'phone') }),
       Object.assign(H.street(110), { id: 'paper', role: 'civ', face: -1, speed: 1.25, look: { hat: 'cap', hatCol: '#5a4634', coat: COL.grey, bag: 'paper' }, routine: [['walk', 90], ['gone']] }),

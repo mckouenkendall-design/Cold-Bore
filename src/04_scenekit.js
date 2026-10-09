@@ -2543,6 +2543,55 @@ K.parked = function (S, P, kind, x, dir, col, o) {
   P.solid(x + (dir > 0 ? c.cab[0] : -c.cab[1]) * c.len, y + c.body, (c.cab[1] - c.cab[0]) * c.len, c.h - c.body, 'glasswall');
 };
 
+// ---- doors that open for people ------------------------------------------------
+// Scenes draw their doors shut, and the simulation simply hides a person who walks into a
+// door and shows one who comes out of it. Drawn on its own, that is somebody vanishing into a
+// closed door. K.swingDoor draws over a door: the inside (dark, or lit) and the leaf turned
+// back on its hinge, eased open and shut over a third of a second. Picture only: the
+// simulation never reads it.
+//   o = { H, x, y, w, h, open(sim), hinge, lit, col, glass, layer }
+//   H       the mission's handles; the mission keeps its simulation in H.sim (see start())
+//   open    true while the door should stand open
+//   hinge   -1 hinged on the left, 1 on the right, 0 a pair of doors opening from the middle
+//   lit     false for a dark inside, true (or a colour) for a lit one
+//   col     the colour of the door; glass: true for a glazed door
+K.swingDoor = function (S, P, o) {
+  const st = { k: 0, t: null }, hinge = o.hinge === undefined ? -1 : o.hinge;
+  P.add({ x0: o.x - 0.6, x1: o.x + o.w + 0.6, layer: o.layer === undefined ? 1 : o.layer, draw(ctx, env) {
+    const sim = o.H && o.H.sim; if (!sim) return;
+    const want = o.open(sim) ? 1 : 0;
+    if (st.t === null || env.t < st.t || env.t - st.t > 1) st.k = want; else st.k = approach(st.k, want, (env.t - st.t) / 0.33);
+    st.t = env.t;
+    const k = smooth(st.k); if (k < 0.01 || o.x > env.x1 || o.x + o.w < env.x0) return;
+    const x = o.x, y = o.y, w = o.w, h = o.h, s = env.s, cs = Math.cos(k * 1.35);
+    const base = o.col || '#4a3a2c', leaf = S.tone(base, P), dark = S.tone(darken(base, 0.45), P), edge = S.tone(lighten(base, 0.18), P);
+    R4(ctx, x, y, w, h, o.lit ? S.tone(o.lit === true ? '#efd29a' : o.lit, P, true) : S.tone('#0b0e13', P));
+    if (o.lit && s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, y, w, h * 0.12); } // the shade of the lintel on the lit floor inside
+    const leaves = hinge === 0 ? [[x, (w / 2) * cs, 1], [x + w - (w / 2) * cs, (w / 2) * cs, -1]] : hinge < 0 ? [[x, w * cs, 1]] : [[x + w - w * cs, w * cs, -1]];
+    leaves.forEach(([lx, lw, side]) => {
+      if (lw < env.px * 0.5) return;
+      R4(ctx, lx, y, lw, h, leaf);
+      if (o.glass && lw > 0.12 && s > 3) R4(ctx, lx + lw * 0.16, y + h * 0.3, lw * 0.68, h * 0.6, S.tone(S.pal.glass, P));
+      // the free edge of the leaf shows its thickness; the face darkens as it turns away from us
+      const fe = Math.max(0.035, env.px), ex = side > 0 ? lx + lw : lx - fe;
+      R4(ctx, ex, y, fe, h, edge);
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.35 * k).toFixed(3) + ')'; ctx.fillRect(lx, y, lw, h);
+      if (s > 8) R4(ctx, side > 0 ? lx + lw - Math.min(lw, 0.05) : lx, y, Math.min(lw, 0.05), h, dark);
+    });
+  } });
+};
+// Is anybody in `ids` going through a door at x right now? Somebody visible within `near`
+// metres of it, or somebody hidden there who is about to be shown.
+K.doorBusy = function (sim, ids, x, near, lead) {
+  for (let i = 0; i < ids.length; i++) {
+    const a = sim.byId[ids[i]]; if (!a || a.dead || a.gone || a.inVeh || Math.abs(a.x - x) > near) continue;
+    if (!a.hidden) return true;
+    const op = a.routine[a.pc];
+    if (op && op[0] === 'show' && a.wait < (lead === undefined ? 0.45 : lead) && !a.waitFor) return true;
+  }
+  return false;
+};
+
 // ---- assorted props -----------------------------------------------------------
 // A plain block: a wall, a roof, a crate, a stack.  New: o.plain = true leaves off the
 // light top edge and the shaded side that every block now gets.

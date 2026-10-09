@@ -261,17 +261,24 @@ mission({
     K.thing(H.S, H.PF, 'duck', 5.6, 15.4);
     H.room = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: 'b3:count', zone: 'b3:count', behind: true });
     H.out = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: null, zone: H.bal.zone, behind: false });
+    // the balcony door opens as the guard comes out to smoke and as he goes back in
+    const bd = H.b3.win(3, 4), bx = bd.x + bd.w / 2, inner = H.b3.winX(3) + 0.4;
+    K.swingDoor(H.S, H.PB, { H, x: bd.x, y: bd.y, w: bd.w, h: bd.h, hinge: -1, col: '#3a3f47', glass: true, open(sim) {
+      const g = sim.byId.g; if (!g || g.dead || g.gone || g.state !== 'calm') return false;
+      return g.zone === H.bal.zone ? g.goal !== null && Math.abs(g.x - bx) < 1.7 : g.room === 'b3:count' && g.x > inner && (g.goal === null || g.goal > inner);
+    } });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const B = H.b3;
     return [
       Object.assign(H.room(B.winX(2)), { id: 't', role: 'target', face: -1, anim: 'type', look: { hat: 'cap', hatCol: '#2f9a55', glasses: true },
         routine: [['wait', 15, 'type', -1], ['walk', B.winX(1)], ['wait', 4, 'work', -1], ['walk', B.winX(2)], ['loop']], escapeText: 'The bookkeeper went under the desk and the books went into the furnace.' }),
-      Object.assign(H.room(B.winX(3) - 0.5), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { coat: '#3a2f2a', build: 'big', hat: 'beanie' },
+      Object.assign(H.room(B.winX(3) - 0.5), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { coat: '#3a2f2a', build: 'big', hat: 'beanie', gun: 'rifle' },
         routine: [['walk', B.winX(1) - 0.8], ['wait', 3, 'guard', 1], ['walk', B.winX(3)], ['wait', 2, 'guard', -1], ['walk', B.winX(3) + 1.4], ['to', H.out(B.winX(4) - 1.0)], ['walk', B.winX(4) + 0.3], ['wait', 10.5, 'smoke', 1], ['walk', B.winX(4) - 1.0], ['to', H.room(B.winX(3) + 1.4)], ['loop']] }),
       Object.assign(H.inWin(H.b2, 2, 1), { id: 'c1', role: 'civ', anim: 'phone', look: { hair: 'long', dress: COL.wine }, routine: [['wait', 999, 'phone']] }),
-      Object.assign(H.inWin(H.b5, 3, 2), { id: 'c2', role: 'civ', anim: 'drink', look: { hair: 'short', coat: COL.olive }, routine: pace(H.b5.winX(2) - 1.2, H.b5.winX(2) + 0.4, 6, 5, 'drink') }),
+      Object.assign(H.inWin(H.b5, 3, 2), { id: 'c2', role: 'civ', anim: 'drink', look: { hair: 'short', coat: COL.olive, bag: 'cup' }, routine: pace(H.b5.winX(2) - 1.2, H.b5.winX(2) + 0.4, 6, 5, 'drink') }),
       Object.assign(H.street(-45), { id: 'c3', role: 'civ', look: { hat: 'beanie', bag: 'backpack' }, routine: stroll(47) }),
     ];
   },
@@ -304,7 +311,7 @@ mission({
       { id: 'drv', role: 'guard', look: { hat: 'cap' } },
       { id: 'dutch', role: 'target', look: { build: 'big', beard: '#9a9fa6', coat: '#15171b', long: true, scarf: COL.red, h: 1.08 },
         routine: [['walk', 2.2], ['wait', 11, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -9.5], ['emit', 'dutch_in'], ['veh', 'suv', 1]], escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
-      { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big' },
+      { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['walk', -0.8], ['wait', 12, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -11.5], ['veh', 'suv', 2]] },
       Object.assign(H.street(3.8), { id: 'sgt', role: 'civ', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, failText: 'You shot a police sergeant. Every officer in Port Calder is now looking for you.',
         routine: [['waitFor', 'arrived'], ['wait', 21.5, 'talk', -1], ['walk', -47], ['gone']] }),
