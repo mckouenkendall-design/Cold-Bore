@@ -517,27 +517,28 @@ textarea { display: block; width: 100%; height: 84px; margin: 0 0 8px; border-ra
 .gnote { margin-bottom: 9px; padding: 10px 13px; border-radius: 12px; border: 1px solid rgba(111, 182, 255, .55); background: rgba(111, 182, 255, .1); }
 .gnote b { display: block; font: 800 13.5px var(--head); letter-spacing: .1em; text-transform: uppercase; color: #cfe6ff; } .gnote span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
 
-/* the gun room: a wall of canvases you swipe along, a slim bar over the top */
-.scr.gunroom { padding: 0; background: #0c0805; overflow: hidden; }
+/* the gun room: a wall of canvases you swipe along, a slim bar over the top. A dark steel armoury,
+   so its bar, dots and buttons are slate and amber like the rest of the menus */
+.scr.gunroom { padding: 0; background: #07090d; overflow: hidden; }
 .gr-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 .gr-strip { position: absolute; left: 0; top: 0; bottom: 0; display: flex; transition: transform .38s cubic-bezier(.2, .8, .2, 1); will-change: transform; }
 .gr-sec { position: relative; flex: none; overflow: hidden; }
 .gr-sec canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .gr-hit { position: absolute; border-radius: 12px; }
-.gr-hit:active { background: rgba(255, 200, 120, .08); }
-.gr-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: var(--sat) calc(10px + var(--sar)) 14px calc(6px + var(--sal)); background: linear-gradient(rgba(8, 5, 3, .9), rgba(8, 5, 3, .55) 70%, rgba(8, 5, 3, 0)); pointer-events: none; }
+.gr-hit:active { background: rgba(255, 170, 60, .08); }
+.gr-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: var(--sat) calc(10px + var(--sar)) 14px calc(6px + var(--sal)); background: linear-gradient(rgba(4, 6, 9, .92), rgba(4, 6, 9, .55) 70%, rgba(4, 6, 9, 0)); pointer-events: none; }
 .gr-bar > * { pointer-events: auto; } .gr-bar .bar-t { pointer-events: none; }
-.gr-bar .eyebrow { margin: 0; color: #e8c27a; } .gr-bar h2 { font-size: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f3e6cc; }
+.gr-bar .eyebrow { margin: 0; color: var(--amber); } .gr-bar h2 { font-size: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .gr-pager { position: absolute; top: calc(var(--sat) + 3px); right: calc(10px + var(--sar)); display: flex; align-items: center; gap: 2px; }
-body.portrait .gr-pager { top: auto; right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 6px); padding: 0 6px; border-radius: 26px; background: rgba(8, 5, 3, .72); border: 1px solid rgba(232, 194, 122, .25); }
+body.portrait .gr-pager { top: auto; right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 6px); padding: 0 6px; border-radius: 26px; background: rgba(7, 9, 13, .8); border: 1px solid rgba(255, 170, 60, .3); }
 .gr-pager .gr-next svg { transform: scaleX(-1); }
 .gr-pager .ib.off { opacity: .25; pointer-events: none; }
 .gr-dots { display: flex; }
 .gr-dot { width: 16px; height: 44px; display: grid; place-items: center; }
-.gr-dot i { width: 8px; height: 8px; border-radius: 50%; background: rgba(243, 230, 204, .3); transition: all .2s; }
-.gr-dot.on i { background: #e8c27a; transform: scale(1.3); }
-.tabb.room { color: #c9a35e; }
-.gr-in { flex: none; margin-left: 12px; gap: 6px; border-color: rgba(201, 163, 94, .6); color: #f3e6cc; } .gr-in svg { width: 16px; height: 16px; color: #e8c27a; }
+.gr-dot i { width: 8px; height: 8px; border-radius: 50%; background: rgba(233, 228, 214, .28); transition: all .2s; }
+.gr-dot.on i { background: var(--amber); transform: scale(1.3); }
+.tabb.room { color: #aebccb; }
+.gr-in { flex: none; margin-left: 12px; gap: 6px; border-color: rgba(255, 170, 60, .5); color: var(--ink); } .gr-in svg { width: 16px; height: 16px; color: var(--amber); }
 
 /* narrow sideways screens: drop what is only nice to have */
 @media (max-width: 780px) {
@@ -632,7 +633,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 9:13 AM";
+const BUILD = "Oct 9, 2:24 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -29743,28 +29744,32 @@ UI.settings = function (fromTitle) {
 // ---------------------------------------------------------------------------
 // Menus, part 4: the gun room.
 //
-// A gunsmith's room at night. The rifle you have killed most with stands in a lit
-// glass case where you walk in; the rest hang on wall racks, grouped by kind, each
-// with its fitted parts and skin and a brass nameplate. Rifles you do not own yet
-// leave a chalk outline and a price tag, so the room reads as a collection to
-// finish. Swipe (or use the arrows) to walk along the wall. Tap a rifle to open its
-// bench. It is only a showcase: nothing in here is bought or upgraded, ever.
+// An armoury at night: blue-black steel, cool white LED light and the game's amber for the
+// small lit details. The rifle you have killed most with stands in a glass vitrine on a steel
+// plinth under a spotlight, where you walk in; the rest hang on lit pegboard panels, grouped
+// by kind, each with its fitted parts and skin and an engraved plate. Rifles you do not own
+// yet leave an etched outline and a tag on a ball chain, so the room reads as a collection to
+// finish. Swipe (or use the arrows) to walk along the wall. Tap a rifle to open its bench. It
+// is only a showcase: nothing in here is bought or upgraded, ever.
 //
-// Each stretch of wall is its own pair of canvases. The still room (wall, racks,
-// lamps, plates, and every rifle whose skin does not move) is drawn once. Only what
-// moves is drawn again, about thirty times a second and only while it is on screen:
-// dust in the spotlight, and rifles with skins that shimmer or glow.
+// Each stretch of wall is its own pair of canvases. The still room (wall, panels, lights,
+// plates, and every rifle whose skin does not move) is drawn once. Only what moves is drawn
+// again, about thirty times a second and only while it is on screen: dust in the spotlight,
+// and rifles with skins that shimmer or glow.
 // ---------------------------------------------------------------------------
 // Four racks of four, by kind. Two rows of two on a sideways phone keeps every rifle about
 // 300 px long with room under it for a bipod and a nameplate.
 const GR_RACKS = [
-  { name: 'Field rifles', sub: 'Wood and steel. Where every marksman starts.', guns: ['fenwick', 'kessler', 'marrow', 'ibex'] },
+  { name: 'Field rifles', sub: 'Simple, sturdy and accurate. Where every marksman starts.', guns: ['fenwick', 'kessler', 'marrow', 'ibex'] },
   { name: 'Marksman rifles', sub: 'Accurate, and ready for a second shot.', guns: ['lark', 'orlov', 'halden', 'corvid'] },
   { name: 'Long range', sub: 'For shots measured in kilometres.', guns: ['vantage', 'northwind', 'anvil', 'aria'] },
   { name: 'Special rounds', sub: 'Rimfire, subsonic and magnets. Each built for one job.', guns: ['ratter', 'whisper', 'hush', 'stormglass'] },
 ];
-const GR_SERIF = 'Georgia, "Iowan Old Style", "Times New Roman", serif';
 const GR_HEAD = '"Avenir Next Condensed", "DIN Condensed", "Roboto Condensed", "Arial Narrow", Arial, sans-serif';
+const GR_BODY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+// The light in here: cool white from the LEDs and the spotlight, amber for the accent strips.
+const grLed = (a) => 'rgba(226,236,250,' + a + ')';
+const grAmb = (a) => 'rgba(255,170,60,' + a + ')';
 
 // The racks, with any rifle the list above does not know about put on the rack for its kind.
 function grRacks() {
@@ -29779,71 +29784,214 @@ function grRound(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
   ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
 }
-function grText(ctx, s, x, y, font, col, align, glint) {
+function grText(ctx, s, x, y, font, col, align, under) {
   ctx.font = font; ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
-  if (glint) { ctx.fillStyle = glint; ctx.fillText(s, x, y + 0.9); } // the light catching the lower edge of an engraved letter
+  if (under) { ctx.fillStyle = under; ctx.fillText(s, x, y + 0.9); } // the shadow in the bottom of an engraved letter
   ctx.fillStyle = col; ctx.fillText(s, x, y);
 }
 // fit text into a width by stepping the size down
 function grFitFont(ctx, s, maxW, size, tmpl) { let f = size; ctx.font = tmpl.replace('%', f); while (f > 7 && ctx.measureText(s).width > maxW) { f -= 0.5; ctx.font = tmpl.replace('%', f); } return tmpl.replace('%', f); }
-// A brass plate with engraved lines: [{ s, font }]
-function grBrass(ctx, x, y, w, h, lines) {
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, '#ecd08a'); g.addColorStop(0.45, '#c39a48'); g.addColorStop(1, '#8e6b2a');
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; grRound(ctx, x + 1.5, y + 2.5, w, h, 3); ctx.fill();
-  ctx.fillStyle = g; grRound(ctx, x, y, w, h, 3); ctx.fill();
-  ctx.strokeStyle = '#5c4418'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,245,210,0.55)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(x + 3, y + 1.2); ctx.lineTo(x + w - 3, y + 1.2); ctx.stroke();
-  ctx.fillStyle = '#6b5020'; [x + 5, x + w - 5].forEach((sx) => { ctx.beginPath(); ctx.arc(sx, y + h / 2, 1.6, 0, TAU); ctx.fill(); });
-  const n = lines.length, lh = h / (n + 0.6);
-  lines.forEach((L, i) => { const f = grFitFont(ctx, L.s, w - 18, L.size, L.font); grText(ctx, L.s, x + w / 2, y + lh * (i + 0.8), f, '#3a2a0d', 'center', 'rgba(255,240,200,0.5)'); });
-}
-// A warm pool of lamp light on the wall.
-function grPool(ctx, x, y, rx, ry, a) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(1, ry / rx);
+// A soft oval of light, added on top of what is there.
+function grGlow(ctx, x, y, rx, ry, col, a) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(1, ry / rx); ctx.globalCompositeOperation = 'lighter';
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
-  g.addColorStop(0, 'rgba(255,190,120,' + a + ')'); g.addColorStop(0.45, 'rgba(255,165,90,' + a * 0.45 + ')'); g.addColorStop(1, 'rgba(255,150,80,0)');
-  ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g; ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+  g.addColorStop(0, col(a)); g.addColorStop(0.45, col(a * 0.4)); g.addColorStop(1, col(0));
+  ctx.fillStyle = g; ctx.fillRect(-rx, -rx, rx * 2, rx * 2);
+  ctx.restore();
+}
+// A socket-head bolt, seen face on.
+function grBolt(ctx, x, y, r) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.beginPath(); ctx.arc(x + 0.5, y + 0.8, r + 0.5, 0, TAU); ctx.fill();
+  const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.5, 0.2, x, y, r);
+  g.addColorStop(0, '#7d8895'); g.addColorStop(1, '#232a33');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.beginPath(); ctx.arc(x, y, r * 0.42, 0, TAU); ctx.fill();
+}
+// An engraved plate of black anodised aluminium: [{ s, size, font, col }]. Its left edge carries a
+// thin amber line, like the tags in the rest of the game.
+function grPlate(ctx, x, y, w, h, lines, accent) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; grRound(ctx, x + 1, y + 2.5, w, h, 3); ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#29313b'); g.addColorStop(0.5, '#1a2028'); g.addColorStop(1, '#12171d');
+  ctx.fillStyle = g; grRound(ctx, x, y, w, h, 3); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fillRect(x + 3, y + 0.9, w - 6, 0.8);
+  if (accent !== false) { ctx.fillStyle = accent || '#ffaa3c'; ctx.fillRect(x + 4, y + 4, 2, h - 8); }
+  const n = lines.length, lh = h / (n + 0.6);
+  lines.forEach((L, i) => { const f = grFitFont(ctx, L.s, w - 22, L.size, L.font); grText(ctx, L.s, x + w / 2 + 2, y + lh * (i + 0.8), f, L.col || '#eceff2', 'center', 'rgba(0,0,0,0.85)'); });
+}
+// A lit readout on the wall: a dark glass panel, a label and a big amber number.
+function grStat(ctx, x, y, w, h, label, value) {
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5;
+  ctx.fillStyle = '#0e1217'; grRound(ctx, x, y, w, h, 4); ctx.fill(); ctx.restore();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#1b222b'); g.addColorStop(1, '#0d1116');
+  ctx.fillStyle = g; grRound(ctx, x, y, w, h, 4); ctx.fill();
+  ctx.strokeStyle = 'rgba(160,180,205,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+  // an amber light along the top edge
+  ctx.fillStyle = '#ffb24d'; ctx.fillRect(x + 7, y, w - 14, 1.6);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const lg = ctx.createLinearGradient(0, y, 0, y + h * 0.55); lg.addColorStop(0, grAmb(0.16)); lg.addColorStop(1, grAmb(0));
+  ctx.fillStyle = lg; ctx.fillRect(x + 1, y + 1, w - 2, h * 0.55); ctx.restore();
+  grText(ctx, label, x + w / 2, y + h * 0.32, grFitFont(ctx, label, w - 14, 10, '700 %px ' + GR_HEAD), '#93a0ae');
+  ctx.save(); ctx.shadowColor = grAmb(0.6); ctx.shadowBlur = 10;
+  grText(ctx, value, x + w / 2, y + h * 0.67, grFitFont(ctx, value, w - 14, 23, '800 %px ' + GR_HEAD), '#ffb84d');
   ctx.restore();
 }
 
 // ---- the still room ---------------------------------------------------------------------------
-// Dark panelled wall, a moulding along the top, a skirting board and floor at the bottom.
+// Sheets of blue-black steel, bolted at the seams and brushed sideways; a kick plate at the foot
+// with an amber LED strip that washes the wall above it, and a dark floor that shines.
 function grWall(ctx, L, seed) {
-  const W = L.W, H = L.H, fy = L.floorY, R = makeRng(seed);
-  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#16100b'); bg.addColorStop(0.7, '#1d150e'); bg.addColorStop(1, '#0f0b07');
+  const W = L.W, H = L.H, fy = L.floorY, R = makeRng(seed), top = fy - 12;
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#10151c'); bg.addColorStop(0.7, '#0c1016'); bg.addColorStop(1, '#07090d');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-  // vertical boards, each a slightly different stain, with a little grain and a dark seam
-  const bw = 36;
-  for (let x = -Math.round(R.f() * bw); x < W; x += bw) {
-    ctx.fillStyle = mix('#231810', '#2e2015', R.f()); ctx.fillRect(x + 1, 0, bw - 1, fy);
-    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.8; ctx.beginPath();
-    for (let k = 0; k < 3; k++) { const gx = x + 6 + R.f() * (bw - 12), ph = R.f() * 6; ctx.moveTo(gx, 0); for (let y = 0; y <= fy; y += 18) ctx.lineTo(gx + Math.sin(y * 0.021 + ph) * 2.2, y); }
-    ctx.stroke();
-    if (R.f() < 0.35) { const ky = 30 + R.f() * (fy - 60), kx = x + 8 + R.f() * (bw - 16); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(kx, ky, 2.4, 4.5, 0, 0, TAU); ctx.fill(); }
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x, 0, 1.4, fy);
-    ctx.fillStyle = 'rgba(255,214,160,0.05)'; ctx.fillRect(x + 1.4, 0, 1, fy);
+  const sw = clamp(W / 3.4, 120, 240);
+  for (let x = -Math.round(R.f() * sw * 0.6); x < W; x += sw) {
+    ctx.fillStyle = R.f() < 0.5 ? 'rgba(255,255,255,' + (0.008 + R.f() * 0.016).toFixed(3) + ')' : 'rgba(0,0,0,' + (0.04 + R.f() * 0.08).toFixed(3) + ')';
+    ctx.fillRect(x, 0, sw, top);
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(x - 1, 0, 2.2, top);
+    ctx.fillStyle = 'rgba(200,215,235,0.08)'; ctx.fillRect(x + 1.2, 0, 1, top);
+    for (let y = 30; y < top - 16; y += 60) { grBolt(ctx, x - 7, y, 1.5); grBolt(ctx, x + 8, y, 1.5); }
   }
-  // a chair rail across the wall
-  const ry = L.railY;
-  if (ry) { ctx.fillStyle = '#3a2717'; ctx.fillRect(0, ry, W, 7); ctx.fillStyle = 'rgba(255,220,170,0.12)'; ctx.fillRect(0, ry, W, 1.2); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, ry + 7, W, 2); }
-  // skirting and floorboards
-  ctx.fillStyle = '#2b1d12'; ctx.fillRect(0, fy - 12, W, 12); ctx.fillStyle = 'rgba(255,220,170,0.12)'; ctx.fillRect(0, fy - 12, W, 1.2);
-  const fg = ctx.createLinearGradient(0, fy, 0, H); fg.addColorStop(0, '#22170e'); fg.addColorStop(1, '#0c0805');
-  ctx.fillStyle = fg; ctx.fillRect(0, fy, W, H - fy);
-  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1; ctx.beginPath();
-  for (let i = 1; i < 4; i++) { const y = fy + (H - fy) * (i / 4) * (i / 4) * 1.3; if (y < H) { ctx.moveTo(0, y); ctx.lineTo(W, y); } }
-  ctx.stroke();
+  // brushed grain
+  for (let i = 0, n = Math.round(W * 0.3); i < n; i++) {
+    ctx.fillStyle = R.f() < 0.5 ? 'rgba(255,255,255,0.022)' : 'rgba(0,0,0,0.16)';
+    ctx.fillRect(R.f() * W - 40, R.f() * top, 30 + R.f() * 140, 0.6);
+  }
+  // the amber strip and the light it throws up the wall
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const cg = ctx.createLinearGradient(0, top - 48, 0, top); cg.addColorStop(0, grAmb(0)); cg.addColorStop(1, grAmb(0.1));
+  ctx.fillStyle = cg; ctx.fillRect(0, top - 48, W, 48);
+  ctx.restore();
+  const kg = ctx.createLinearGradient(0, top, 0, fy); kg.addColorStop(0, '#1a2028'); kg.addColorStop(1, '#07090c');
+  ctx.fillStyle = kg; ctx.fillRect(0, top, W, 12);
+  ctx.fillStyle = '#ffc77e'; ctx.fillRect(0, top - 1.4, W, 1.4);
+  ctx.fillStyle = grAmb(0.4); ctx.fillRect(0, top - 3, W, 1.6);
+  if (fy < H) {
+    const fg = ctx.createLinearGradient(0, fy, 0, H); fg.addColorStop(0, '#0e1218'); fg.addColorStop(1, '#030405');
+    ctx.fillStyle = fg; ctx.fillRect(0, fy, W, H - fy);
+    ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0, fy, W, 1);
+    // the strip again, upside down in the polished floor
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const rh = Math.min(46, H - fy), rg = ctx.createLinearGradient(0, fy, 0, fy + rh); rg.addColorStop(0, grAmb(0.12)); rg.addColorStop(1, grAmb(0));
+    ctx.fillStyle = rg; ctx.fillRect(0, fy + 1, W, rh);
+    ctx.restore();
+  }
 }
-// darker towards the corners: the lamps only reach so far
+// darker towards the corners: the lights only reach so far
 function grVignette(ctx, L) {
   const g = ctx.createRadialGradient(L.W / 2, L.H * 0.48, Math.min(L.W, L.H) * 0.3, L.W / 2, L.H * 0.48, Math.max(L.W, L.H) * 0.75);
-  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.62)');
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.6)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, L.W, L.H);
+}
+// A pegboard panel, the kind armouries hang rifles on: perforated steel in a brushed frame,
+// standing a little off the wall, lit from the LED bar along its top.
+function grPegboard(ctx, x, y, w, h) {
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 7;
+  ctx.fillStyle = '#1b2027'; ctx.fillRect(x, y, w, h); ctx.restore();
+  const fg = ctx.createLinearGradient(0, y, 0, y + h); fg.addColorStop(0, '#68737f'); fg.addColorStop(0.06, '#3f4853'); fg.addColorStop(1, '#1f252c');
+  ctx.fillStyle = fg; ctx.fillRect(x, y, w, h);
+  const f = 4, ix = x + f, iy = y + f, iw = w - f * 2, ih = h - f * 2;
+  const bg = ctx.createLinearGradient(0, iy, 0, iy + ih); bg.addColorStop(0, '#343d48'); bg.addColorStop(0.55, '#29313a'); bg.addColorStop(1, '#20262e');
+  ctx.fillStyle = bg; ctx.fillRect(ix, iy, iw, ih);
+  // the light from the bar: a hot band just under it, then a wash fading down the board; and the
+  // two LED strips down the sides of the frame, grazing the board from the edges
+  ctx.save(); ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip();
+  grGlow(ctx, x + w / 2, iy, iw * 0.72, Math.min(ih * 0.95, iw * 1.1), grLed, 0.2);
+  grGlow(ctx, x + w / 2, iy, iw * 0.55, 30, grLed, 0.16);
+  ctx.globalCompositeOperation = 'lighter';
+  [[ix, 1], [ix + iw, -1]].forEach((e) => {
+    const sg = ctx.createLinearGradient(e[0], 0, e[0] + e[1] * 34, 0); sg.addColorStop(0, grLed(0.12)); sg.addColorStop(1, grLed(0));
+    ctx.fillStyle = sg; ctx.fillRect(e[1] > 0 ? e[0] : e[0] - 34, iy, 34, ih);
+  });
+  ctx.restore();
+  // the holes: dark, with the lower lip of each catching the light
+  const sp = 13, ox = ix + 6.5 + ((iw - 13) % sp) / 2, oy = iy + 8;
+  ctx.fillStyle = 'rgba(3,5,8,0.62)'; ctx.beginPath();
+  for (let hy = oy; hy < iy + ih - 5; hy += sp) for (let hx = ox; hx < ix + iw - 5; hx += sp) { ctx.moveTo(hx + 1.55, hy); ctx.arc(hx, hy, 1.55, 0, TAU); }
+  ctx.fill();
+  ctx.fillStyle = grLed(0.1); ctx.beginPath();
+  for (let hy = oy; hy < iy + ih - 5; hy += sp) for (let hx = ox; hx < ix + iw - 5; hx += sp) ctx.rect(hx - 1.1, hy + 1.35, 2.2, 0.7);
+  ctx.fill();
+  // edges: a bright top on the frame, a shadow where the board sits inside it
+  ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(x, y, w, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(ix, iy, iw, 1.2); ctx.fillRect(ix, iy, 1, ih);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(ix, iy + ih - 1, iw, 1);
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  [x + f / 2, x + w - f / 2].forEach((sx) => {
+    const lg = ctx.createLinearGradient(0, y + 8, 0, y + h - 8); lg.addColorStop(0, grLed(0.95)); lg.addColorStop(0.6, grLed(0.7)); lg.addColorStop(1, grLed(0.45));
+    ctx.fillStyle = lg; ctx.fillRect(sx - 0.7, y + 8, 1.4, h - 16);
+  });
+  [[ix + 5, iy + 5], [ix + iw - 5, iy + 5], [ix + 5, iy + ih - 5], [ix + iw - 5, iy + ih - 5]].forEach((p) => grBolt(ctx, p[0], p[1], 1.6));
+}
+// An LED light bar along the top of a panel: a slim black housing, the lit strip under it, and
+// the glow it spills.
+function grLedBar(ctx, cx, y, w) {
+  const x = cx - w / 2;
+  grGlow(ctx, cx, y + 3, w * 0.6, 22, grLed, 0.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; grRound(ctx, x + 1, y - 2, w, 8, 3); ctx.fill();
+  const hg = ctx.createLinearGradient(0, y - 4, 0, y + 4); hg.addColorStop(0, '#4a535e'); hg.addColorStop(0.5, '#1a1f26'); hg.addColorStop(1, '#0b0e12');
+  ctx.fillStyle = hg; grRound(ctx, x, y - 4, w, 8, 3); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(x + 3, y - 3.4, w - 6, 0.8);
+  ctx.fillStyle = '#f4f8ff'; ctx.fillRect(x + 5, y + 2.2, w - 10, 1.8);
+}
+// A rubber-dipped hook out of the pegboard, seen end on, with the rifle resting on it.
+function grHook(ctx, x, y) {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(x + 1.8, y + 6.5, 6.4, 3.6, 0, 0, TAU); ctx.fill();
+  const g = ctx.createRadialGradient(x - 1.8, y + 1.4, 0.4, x, y + 3, 6);
+  g.addColorStop(0, '#59626d'); g.addColorStop(0.55, '#1b1f25'); g.addColorStop(1, '#08090b');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y + 3.2, 5.4, 4.6, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = grAmb(0.9); ctx.lineWidth = 1.1; ctx.stroke();
+}
+// The outline of a rifle, etched into the board where it hangs: steel grey and cut a shade darker
+// for one that is not here yet, amber for the one that is out in the glass case.
+function grEtched(ctx, r, x, y, col, a, cut) {
+  const sil = grFlat(r, '#ffffff'), cv = document.createElement('canvas'); cv.width = sil.width; cv.height = sil.height;
+  const c = cv.getContext('2d'), k = 1.15 * r.dpr;
+  [[k, 0], [-k, 0], [0, k], [0, -k], [k * 0.7, k * 0.7], [-k * 0.7, k * 0.7], [k * 0.7, -k * 0.7], [-k * 0.7, -k * 0.7]].forEach((o) => c.drawImage(sil, o[0], o[1]));
+  c.globalCompositeOperation = 'destination-out'; c.drawImage(sil, 0, 0);
+  c.globalCompositeOperation = 'source-in'; c.fillStyle = col; c.fillRect(0, 0, cv.width, cv.height);
+  ctx.save();
+  if (cut) { ctx.globalAlpha = cut; ctx.drawImage(grFlat(r, '#05070a'), x, y, r.w, r.h); }
+  ctx.globalAlpha = a; ctx.drawImage(cv, x, y, r.w, r.h);
+  ctx.restore();
+}
+// A dog tag on a ball chain, hung from the hook: what it takes to get this rifle. Its price is
+// amber, and so is its edge, when you could buy it now. It swings in from the panel's edge (maxX).
+function grDogTag(ctx, px, py, l1, l2, can, maxX) {
+  const w = 68, h = 32, x = Math.min(px - 16, maxX - w - 4), y = py + 15, a = 0.08;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(a);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; grRound(ctx, 2, 3.5, w, h, 9); ctx.fill();
+  const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#47515d'); g.addColorStop(0.45, '#272e37'); g.addColorStop(1, '#191e25');
+  ctx.fillStyle = g; grRound(ctx, 0, 0, w, h, 9); ctx.fill();
+  ctx.strokeStyle = can ? grAmb(0.95) : 'rgba(196,210,226,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; grRound(ctx, 2.5, 2.5, w - 5, h - 5, 7); ctx.stroke();
+  ctx.fillStyle = '#06080b'; ctx.beginPath(); ctx.arc(8, 8, 2.3, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(205,216,230,0.55)'; ctx.lineWidth = 0.8; ctx.stroke();
+  grText(ctx, l1, w / 2 + 4, 11, grFitFont(ctx, l1, w - 18, 10, '800 %px ' + GR_HEAD), '#c7d1dc', 'center', 'rgba(0,0,0,0.9)');
+  grText(ctx, l2, w / 2 + 4, 22.5, grFitFont(ctx, l2, w - 16, 12, '800 %px ' + GR_HEAD), can ? '#ffb84d' : '#e6eaee', 'center', 'rgba(0,0,0,0.9)');
+  ctx.restore();
+  // the chain: little steel balls from the hook down to the hole
+  const hx = x + 8 * Math.cos(a) - 8 * Math.sin(a), hy = y + 8 * Math.sin(a) + 8 * Math.cos(a), qx = px - 5, qy = (py + hy) / 2 + 4;
+  const n = Math.max(4, Math.round(Math.hypot(hx - px, hy - py) / 2.4));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, mx = (1 - t) * (1 - t) * px + 2 * (1 - t) * t * qx + t * t * hx, my = (1 - t) * (1 - t) * (py + 3) + 2 * (1 - t) * t * qy + t * t * hy;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(mx + 0.5, my + 0.7, 1.05, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#a9b4c0'; ctx.beginPath(); ctx.arc(mx, my, 0.95, 0, TAU); ctx.fill();
+  }
+}
+// A small padlock with its status light: the case is locked.
+function grLock(ctx, x, y) {
+  ctx.strokeStyle = '#8994a1'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y - 3, 3.4, Math.PI, 0); ctx.lineTo(x + 3.4, y); ctx.moveTo(x - 3.4, y - 3); ctx.lineTo(x - 3.4, y); ctx.stroke();
+  const g = ctx.createLinearGradient(0, y - 1, 0, y + 7); g.addColorStop(0, '#9aa5b2'); g.addColorStop(1, '#4b5561');
+  ctx.fillStyle = g; grRound(ctx, x - 5.2, y - 0.5, 10.4, 8, 1.5); ctx.fill();
+  ctx.fillStyle = '#12161b'; ctx.beginPath(); ctx.arc(x, y + 2.6, 1.2, 0, TAU); ctx.fill(); ctx.fillRect(x - 0.5, y + 2.6, 1, 2.6);
+  grGlow(ctx, x, y + 15, 9, 9, grAmb, 0.55);
+  ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(x, y + 15, 1.6, 0, TAU); ctx.fill();
 }
 
 // A rifle drawn on its own, so its exact outline can be used for the shadow on the wall, the
-// pegs it rests on and the chalk outline of an empty slot.
+// hooks it rests on and the etched outline of an empty slot.
 function grRender(gunId, cfg, bw, bh, dpr, time) {
   const pad = 6, cv = document.createElement('canvas');
   cv.width = Math.ceil((bw + pad * 2) * dpr); cv.height = Math.ceil((bh + pad * 2) * dpr);
@@ -29871,70 +30019,6 @@ function grExtent(r, data) {
   while (t < H - 1 && !row(t)) t++;
   while (b > t && !row(b)) b--;
   return { top: t / r.dpr, bot: (b + 1) / r.dpr };
-}
-// A peg seen end on, sticking out of the upright, with the rifle resting on top of it.
-function grPeg(ctx, x, y) {
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.ellipse(x + 1.5, y + 6, 6, 3.2, 0, 0, TAU); ctx.fill();
-  const g = ctx.createRadialGradient(x - 1.6, y + 1.5, 0.5, x, y + 3, 6);
-  g.addColorStop(0, '#c08a55'); g.addColorStop(0.6, '#7a4f2c'); g.addColorStop(1, '#3d2614');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y + 3.2, 5.6, 4.6, 0, 0, TAU); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
-}
-// A walnut upright: the board the pegs stick out of.
-function grUpright(ctx, x, y0, y1) {
-  const w = 17, g = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
-  g.addColorStop(0, '#2a190d'); g.addColorStop(0.35, '#5b3a21'); g.addColorStop(0.7, '#4a2f1a'); g.addColorStop(1, '#22150a');
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; grRound(ctx, x - w / 2 + 3, y0 + 4, w, y1 - y0, 5); ctx.fill();
-  ctx.fillStyle = g; grRound(ctx, x - w / 2, y0, w, y1 - y0, 5); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.moveTo(x - 2.5, y0 + 10); ctx.lineTo(x - 2.5, y1 - 10); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,215,160,0.18)'; ctx.beginPath(); ctx.moveTo(x - 4.5, y0 + 6); ctx.lineTo(x - 4.5, y1 - 6); ctx.stroke();
-  ctx.fillStyle = '#7a5226'; [y0 + 7, y1 - 7].forEach((yy) => { ctx.beginPath(); ctx.arc(x, yy, 1.7, 0, TAU); ctx.fill(); });
-}
-// A brass picture light over a rack: the fitting, and the warm wash it throws down the wall.
-function grPictureLight(ctx, x, y, w, reach) {
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  const g = ctx.createLinearGradient(0, y, 0, y + reach);
-  g.addColorStop(0, 'rgba(255,186,110,0.24)'); g.addColorStop(0.35, 'rgba(255,170,95,0.1)'); g.addColorStop(1, 'rgba(255,160,90,0)');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - w * 0.32, y); ctx.lineTo(x + w * 0.32, y); ctx.lineTo(x + w * 0.62, y + reach); ctx.lineTo(x - w * 0.62, y + reach); ctx.closePath(); ctx.fill();
-  ctx.restore();
-  grPool(ctx, x, y + 4, w * 0.45, 26, 0.3);
-  ctx.fillStyle = '#5c4418'; ctx.fillRect(x - 2, y - 12, 4, 10);
-  const bg = ctx.createLinearGradient(0, y - 4, 0, y + 5); bg.addColorStop(0, '#f0d28a'); bg.addColorStop(1, '#7a5a20');
-  ctx.fillStyle = bg; grRound(ctx, x - w * 0.3, y - 4, w * 0.6, 8, 4); ctx.fill();
-  ctx.fillStyle = 'rgba(255,236,190,0.9)'; ctx.fillRect(x - w * 0.27, y + 3, w * 0.54, 1.5);
-}
-// A wall sconce: a small brass arm and a frosted shade, and its glow.
-function grSconce(ctx, x, y) {
-  grPool(ctx, x, y + 6, 120, 110, 0.32);
-  ctx.fillStyle = '#6b5020'; ctx.fillRect(x - 6, y + 10, 12, 3); ctx.fillRect(x - 1.5, y, 3, 12);
-  const g = ctx.createRadialGradient(x, y - 4, 1, x, y - 2, 11); g.addColorStop(0, '#fff3d6'); g.addColorStop(0.6, '#ffc77a'); g.addColorStop(1, '#b9752e');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x - 9, y + 1); ctx.lineTo(x - 5, y - 13); ctx.lineTo(x + 5, y - 13); ctx.lineTo(x + 9, y + 1); ctx.closePath(); ctx.fill();
-}
-// The chalk outline of a rifle that is not here yet, and a faint mark where it would hang.
-function grChalk(ctx, r, x, y) {
-  const sil = grFlat(r, '#ffffff'), cv = document.createElement('canvas'); cv.width = sil.width; cv.height = sil.height;
-  const c = cv.getContext('2d'), k = 1.3 * r.dpr;
-  [[k, 0], [-k, 0], [0, k], [0, -k], [k * 0.7, k * 0.7], [-k * 0.7, k * 0.7], [k * 0.7, -k * 0.7], [-k * 0.7, -k * 0.7]].forEach((o) => c.drawImage(sil, o[0], o[1]));
-  c.globalCompositeOperation = 'destination-out'; c.drawImage(sil, 0, 0);
-  // chalk is never a clean line: knock little gaps out of it
-  const R = makeRng(cv.width * 7 + cv.height); c.fillStyle = '#000';
-  for (let i = 0; i < cv.width * 0.6; i++) { c.globalAlpha = 0.4 + R.f() * 0.6; c.fillRect(R.f() * cv.width, R.f() * cv.height, 1 + R.f() * 2.5 * r.dpr, 1 + R.f() * 2 * r.dpr); }
-  c.globalAlpha = 1;
-  ctx.save(); ctx.globalAlpha = 0.05; ctx.drawImage(sil, x, y, r.w, r.h); ctx.globalAlpha = 0.42; ctx.drawImage(cv, x, y, r.w, r.h); ctx.restore();
-}
-// A paper price tag tied to a peg.
-function grTag(ctx, px, py, l1, l2, can) {
-  const w = 74, h = 32, x = px + 10, y = py + 12, a = -0.09;
-  ctx.strokeStyle = 'rgba(220,210,180,0.7)'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(px, py + 2); ctx.quadraticCurveTo(px + 6, py + 12, x + 7, y + 6); ctx.stroke();
-  ctx.save(); ctx.translate(x, y); ctx.rotate(a);
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; grRound(ctx, 2, 3, w, h, 3); ctx.fill();
-  ctx.fillStyle = can ? '#e6d9b0' : '#cfc4a6'; grRound(ctx, 0, 0, w, h, 3); ctx.fill();
-  ctx.fillStyle = 'rgba(80,60,30,0.25)'; ctx.fillRect(0, h - 3, w, 3);
-  ctx.fillStyle = '#2a1d10'; ctx.beginPath(); ctx.arc(7, 6, 2, 0, TAU); ctx.fill();
-  grText(ctx, l1, w / 2 + 4, 11, '800 10px ' + GR_HEAD, '#3b2a14');
-  grText(ctx, l2, w / 2 + 4, 23, grFitFont(ctx, l2, w - 14, 11, '700 %px ' + GR_SERIF), can ? '#7a3a10' : '#3b2a14');
-  ctx.restore();
 }
 
 // ---- layout -------------------------------------------------------------------------------------
@@ -29998,19 +30082,20 @@ function grSkinMoves(id, cfg) { return uiSkinMoves(SKIN_BY_ID[cfg.skin || 'facto
 function grNameplate(ctx, id, cx, y, maxW) {
   const g = GUN_BY_ID[id], s = (Save.data.stats.guns || {})[id] || { kills: 0, longest: 0 };
   const w = Math.min(maxW, 168), l2 = s.kills ? s.kills + (s.kills === 1 ? ' kill' : ' kills') + (s.longest ? '  ·  longest ' + s.longest + ' m' : '') : 'No kills yet';
-  grBrass(ctx, cx - w / 2, y, w, 27, [{ s: g.name.toUpperCase(), size: 10.5, font: '700 %px ' + GR_SERIF }, { s: l2, size: 9.5, font: 'italic 600 %px ' + GR_SERIF }]);
+  grPlate(ctx, cx - w / 2, y, w, 27, [{ s: g.name.toUpperCase(), size: 12, font: '800 %px ' + GR_HEAD }, { s: l2, size: 9.5, font: '600 %px ' + GR_BODY, col: '#9eabb9' }]);
 }
 UI.grPaintRack = function (G, S, ctx, si) {
   const L = G.L, d = Save.data, rank = rankOf(d.xp).n, fav = G.fav;
   const lay = grSlots(L, S);
   grWall(ctx, L, 31 + si * 17);
-  // the racks: a picture light over each column, then its two uprights
+  // the panels: one pegboard for each column, with its LED bar along the top
   for (let c = 0; c < lay.cols; c++) {
     const inCol = lay.slots.filter((s) => s.c === c); if (!inCol.length) continue;
-    const s0 = inCol[0], s1 = inCol[inCol.length - 1], cx = s0.cx, ux = s0.bw * 0.3;
-    grPictureLight(ctx, cx, Math.max(L.sf.t + 46, lay.top - 6), s0.bw, (s1.y0 + s1.h) - lay.top + 30);
-    S.ux = ux;
-    [cx - ux, cx + ux].forEach((x) => grUpright(ctx, x, s0.y0 + 4, s1.y0 + s1.h - 4));
+    const s0 = inCol[0], s1 = inCol[inCol.length - 1], cx = s0.cx, ly = Math.max(L.sf.t + 46, lay.top - 6);
+    const py = ly + 1, pb = Math.min(s1.y0 + s1.h + 4, L.floorY - 16);
+    grPegboard(ctx, s0.x0 + 2, py, s0.w - 4, pb - py);
+    grLedBar(ctx, cx, ly, Math.min(s0.w - 40, s0.bw * 0.78));
+    S.ux = s0.bw * 0.3;
   }
   // the rifles
   lay.slots.forEach((sl) => {
@@ -30025,28 +30110,28 @@ UI.grPaintRack = function (G, S, ctx, si) {
     sl.peg = pegs;
     if (own && sl.id !== fav) {
       const sh = grFlat(r, '#000');
-      [[3, 5, 0.16], [5, 8, 0.14], [8, 12, 0.1]].forEach((o) => { ctx.globalAlpha = o[2]; ctx.drawImage(sh, rx + o[0], ry + o[1], r.w, r.h); });
+      [[3, 5, 0.2], [5, 8, 0.16], [8, 12, 0.12]].forEach((o) => { ctx.globalAlpha = o[2]; ctx.drawImage(sh, rx + o[0], ry + o[1], r.w, r.h); });
       ctx.globalAlpha = 1;
-      pegs.forEach((p) => grPeg(ctx, p.x, p.y - 1));
+      pegs.forEach((p) => grHook(ctx, p.x, p.y - 1));
       if (grSkinMoves(sl.id, cfg)) S.anim.push({ id: sl.id, cfg, cx: sl.cx, cy: sl.cy, bw: sl.bw, bh: sl.bh });
       else ctx.drawImage(r.cv, rx, ry, r.w, r.h);
       grNameplate(ctx, sl.id, sl.cx, plateY, sl.w * 0.6);
-    } else if (own) { // this one is in the glass case: empty pegs, a cleaner patch of wall, and a note
-      ctx.save(); ctx.globalAlpha = 0.07; ctx.drawImage(grFlat(r, '#ffe2b8'), rx, ry, r.w, r.h); ctx.restore();
-      pegs.forEach((p) => grPeg(ctx, p.x, p.y - 1));
-      grBrass(ctx, sl.cx - 80, plateY, 160, 27, [{ s: g.name.toUpperCase(), size: 10.5, font: '700 %px ' + GR_SERIF }, { s: 'On show in the glass case', size: 9.5, font: 'italic 600 %px ' + GR_SERIF }]);
+    } else if (own) { // this one is in the glass case: empty hooks, its outline in amber, and a note
+      grEtched(ctx, r, rx, ry, '#ffaa3c', 0.4, 0);
+      pegs.forEach((p) => grHook(ctx, p.x, p.y - 1));
+      grPlate(ctx, sl.cx - 80, plateY, 160, 27, [{ s: g.name.toUpperCase(), size: 12, font: '800 %px ' + GR_HEAD }, { s: 'On show in the glass case', size: 9.5, font: '600 %px ' + GR_BODY, col: '#ffb84d' }]);
     } else {
-      grChalk(ctx, r, rx, ry);
-      pegs.forEach((p) => grPeg(ctx, p.x, p.y - 1));
+      grEtched(ctx, r, rx, ry, '#c4d4e6', 0.55, 0.28);
+      pegs.forEach((p) => grHook(ctx, p.x, p.y - 1));
       const special = !!g.special, can = !special && rank >= g.rank && d.credits >= g.price;
-      grTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : 'RANK ' + g.rank, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can);
-      grText(ctx, g.name.toUpperCase(), sl.cx - S.ux * 0.35, plateY + 12, '800 11.5px ' + GR_HEAD, 'rgba(230,222,200,0.4)');
+      grDogTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : 'RANK ' + g.rank, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can, sl.x0 + sl.w - 8);
+      grText(ctx, g.name.toUpperCase(), sl.cx - S.ux * 0.35, plateY + 12, '800 12px ' + GR_HEAD, 'rgba(206,220,236,0.5)');
     }
   });
   // an empty spot on a short rack: the rack's own plate
   if (lay.slots.length < lay.cols * lay.rows) {
     const c = lay.cols - 1, r = lay.rows - 1, x0 = L.left + c * (lay.colW + L.gap), y = lay.top + r * lay.rowH, w = Math.min(lay.colW * 0.7, 250);
-    grBrass(ctx, x0 + lay.colW / 2 - w / 2, y + lay.rowH / 2 - 22, w, 44, [{ s: S.name.toUpperCase(), size: 14, font: '700 %px ' + GR_SERIF }, { s: S.sub, size: 10, font: 'italic 600 %px ' + GR_SERIF }]);
+    grPlate(ctx, x0 + lay.colW / 2 - w / 2, y + lay.rowH / 2 - 22, w, 44, [{ s: S.name.toUpperCase(), size: 15, font: '800 %px ' + GR_HEAD }, { s: S.sub, size: 10, font: '600 %px ' + GR_BODY, col: '#9eabb9' }]);
   }
   grVignette(ctx, L);
   S.slots = lay.slots;
@@ -30054,79 +30139,133 @@ UI.grPaintRack = function (G, S, ctx, si) {
 UI.grPaintCase = function (G, S, ctx) {
   const L = G.L, d = Save.data, id = G.fav, cfg = gunCfg(id), g = GUN_BY_ID[id], B = grCaseBox(L), st = (d.stats.guns || {})[id] || { kills: 0, longest: 0 };
   grWall(ctx, L, 7);
-  // two sconces either side, far enough out not to fight the spotlight
-  if (!L.portrait) { grSconce(ctx, L.left + 52, L.top + 30); grSconce(ctx, L.right - 52, L.top + 30); }
-  // the spotlight: a fitting at the ceiling and a cone of light falling on the case
+  // the spotlight: a cone of cool light from the ceiling onto the case, with haze hanging in it
   const bx = L.W / 2, y0 = B.beamTop, y1 = B.y + B.h + B.plinth;
-  S.beam = { x: bx, y0: y0 + 10, y1: B.y + B.h, w0: 26, w1: B.w * 0.98 };
+  const lid = clamp(B.h * 0.045, 5, 8);
+  S.beam = { x: bx, y0: y0 + 14, y1: B.y - lid, w0: 22, w1: lerp(22, B.w * 1.16, (B.y - lid - y0 - 14) / (y1 - y0 - 14)) }; // the dust stays out of the sealed case
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
-  const bg = ctx.createLinearGradient(0, y0, 0, y1); bg.addColorStop(0, 'rgba(255,232,190,0.26)'); bg.addColorStop(0.6, 'rgba(255,214,160,0.1)'); bg.addColorStop(1, 'rgba(255,200,140,0.03)');
-  ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(bx - 13, y0 + 10); ctx.lineTo(bx + 13, y0 + 10); ctx.lineTo(bx + B.w * 0.56, y1); ctx.lineTo(bx - B.w * 0.56, y1); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx - 11, y0 + 14); ctx.lineTo(bx + 11, y0 + 14); ctx.lineTo(bx + B.w * 0.58, y1); ctx.lineTo(bx - B.w * 0.58, y1); ctx.closePath();
+  const bg = ctx.createLinearGradient(0, y0, 0, y1); bg.addColorStop(0, grLed(0.24)); bg.addColorStop(0.55, grLed(0.085)); bg.addColorStop(1, grLed(0.035));
+  ctx.fillStyle = bg; ctx.fill(); ctx.clip();
+  const HR = makeRng(23);
+  for (let k = 0; k < 10; k++) {
+    const v = HR.f(), yy = lerp(y0 + 30, y1, v), hw = lerp(11, B.w * 0.58, (yy - y0) / (y1 - y0)), xx = bx + HR.r(-0.75, 0.75) * hw, rr = Math.max(20, hw * HR.r(0.45, 0.9));
+    const hg = ctx.createRadialGradient(xx, yy, 0, xx, yy, rr); hg.addColorStop(0, grLed(0.05)); hg.addColorStop(1, grLed(0));
+    ctx.fillStyle = hg; ctx.fillRect(xx - rr, yy - rr, rr * 2, rr * 2);
+  }
   ctx.restore();
-  grPool(ctx, bx, L.floorY + 2, B.w * 0.62, 16, 0.42);
-  ctx.fillStyle = '#0c0a08'; ctx.fillRect(bx - 1.5, y0 - 30, 3, 32); const fg = ctx.createLinearGradient(bx - 14, 0, bx + 14, 0); fg.addColorStop(0, '#15120e'); fg.addColorStop(0.5, '#3a332a'); fg.addColorStop(1, '#100d0a');
-  ctx.fillStyle = fg; ctx.beginPath(); ctx.moveTo(bx - 9, y0); ctx.lineTo(bx + 9, y0); ctx.lineTo(bx + 14, y0 + 12); ctx.lineTo(bx - 14, y0 + 12); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#fff1d0'; ctx.beginPath(); ctx.ellipse(bx, y0 + 12, 12, 2.4, 0, 0, TAU); ctx.fill();
-  // the plinth: dark wood with a brass trim and the plaque
-  const px = B.x + B.w * 0.04, pw = B.w * 0.92, py = B.y + B.h;
-  const pg = ctx.createLinearGradient(px, 0, px + pw, 0); pg.addColorStop(0, '#1d130b'); pg.addColorStop(0.5, '#3f2915'); pg.addColorStop(1, '#1a1009');
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(px + 6, py + 8, pw, B.plinth);
-  ctx.fillStyle = pg; ctx.fillRect(px, py, pw, B.plinth);
-  ctx.fillStyle = 'rgba(255,220,170,0.1)'; ctx.fillRect(px, py + 10, pw, 1); ctx.fillRect(px + 8, py + 10, 1, B.plinth - 18); ctx.fillRect(px + pw - 9, py + 10, 1, B.plinth - 18);
-  const tg = ctx.createLinearGradient(0, py, 0, py + 7); tg.addColorStop(0, '#f0d28a'); tg.addColorStop(1, '#8a6626'); ctx.fillStyle = tg; ctx.fillRect(px - 4, py, pw + 8, 7);
+  grGlow(ctx, bx, L.floorY + 3, B.w * 0.64, 14, grLed, 0.32);
+  // the plinth: a block of matte black steel with a lit ledge, an amber strip under the ledge, the
+  // engraved plate, and a lock
+  const px = B.x + B.w * 0.04, pw = B.w * 0.92, py = B.y + B.h, ph = B.plinth;
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#0b0e12'; ctx.fillRect(px, py, pw, ph); ctx.restore();
+  const pg = ctx.createLinearGradient(px, 0, px + pw, 0); pg.addColorStop(0, '#0a0d11'); pg.addColorStop(0.5, '#1d242d'); pg.addColorStop(1, '#090c10');
+  ctx.fillStyle = pg; ctx.fillRect(px, py, pw, ph);
+  const pv = ctx.createLinearGradient(0, py, 0, py + ph); pv.addColorStop(0, 'rgba(0,0,0,0)'); pv.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = pv; ctx.fillRect(px, py, pw, ph);
+  [px + 10, px + pw - 11].forEach((x) => { ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(x, py + 16, 1, ph - 24); ctx.fillStyle = grLed(0.07); ctx.fillRect(x + 1, py + 16, 1, ph - 24); });
+  const lg = ctx.createLinearGradient(0, py, 0, py + 8); lg.addColorStop(0, '#76818e'); lg.addColorStop(0.3, '#3b444f'); lg.addColorStop(1, '#151a20');
+  ctx.fillStyle = lg; ctx.fillRect(px - 5, py, pw + 10, 8);
+  ctx.fillStyle = grLed(0.6); ctx.fillRect(px - 5, py, pw + 10, 1);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const ag = ctx.createLinearGradient(0, py + 8, 0, py + 26); ag.addColorStop(0, grAmb(0.2)); ag.addColorStop(1, grAmb(0));
+  ctx.fillStyle = ag; ctx.fillRect(px, py + 8, pw, 18); ctx.restore();
+  ctx.fillStyle = '#ffc77e'; ctx.fillRect(px + 2, py + 8, pw - 4, 1.3);
   const kills = st.kills ? 'Most kills: ' + st.kills : 'The rifle you carry. No kills yet.';
-  const plW = Math.min(pw * 0.7, 300), plH = Math.min(B.plinth - 22, 48);
-  grBrass(ctx, bx - plW / 2, py + 13 + (B.plinth - 22 - plH) / 2, plW, plH, [{ s: g.name.toUpperCase(), size: 15, font: '700 %px ' + GR_SERIF }, { s: kills + (st.kills && st.longest ? '  ·  longest ' + st.longest + ' m' : ''), size: 11.5, font: 'italic 600 %px ' + GR_SERIF }]);
-  // inside the case: deep red velvet, a light strip along the top, two brass cradles
-  const vg = ctx.createRadialGradient(bx, B.y + B.h * 0.45, 10, bx, B.y + B.h * 0.5, B.w * 0.62);
-  vg.addColorStop(0, '#6a1c22'); vg.addColorStop(0.7, '#3a0d12'); vg.addColorStop(1, '#1f060a');
+  const plW = Math.min(pw * 0.62, 290), plH = Math.min(ph - 24, 46), plY = py + 15 + (ph - 24 - plH) / 2;
+  grPlate(ctx, bx - plW / 2, plY, plW, plH, [{ s: g.name.toUpperCase(), size: 17, font: '800 %px ' + GR_HEAD }, { s: kills + (st.kills && st.longest ? '  ·  longest ' + st.longest + ' m' : ''), size: 11.5, font: '600 %px ' + GR_BODY, col: '#ffb84d' }]);
+  if ((pw - plW) / 2 > 34) grLock(ctx, bx + plW / 2 + (pw - plW) / 4, plY + plH / 2 - 8);
+  // inside the case: a dark backdrop lit up behind the rifle (so black metal stands out against
+  // it), a floor seen a little from above, and a downlight in the lid
+  const fh = clamp(B.h * 0.1, 9, 16), fl = B.y + B.h - fh;
+  const vg = ctx.createLinearGradient(0, B.y, 0, fl); vg.addColorStop(0, '#151b23'); vg.addColorStop(1, '#0b0f14');
   ctx.fillStyle = vg; ctx.fillRect(B.x, B.y, B.w, B.h);
-  const R = makeRng(99); ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let i = 0; i < 600; i++) ctx.fillRect(B.x + R.f() * B.w, B.y + R.f() * B.h, 1, 1);
-  ctx.save(); ctx.globalCompositeOperation = 'lighter'; const ig = ctx.createLinearGradient(0, B.y, 0, B.y + B.h * 0.7); ig.addColorStop(0, 'rgba(255,214,170,0.3)'); ig.addColorStop(1, 'rgba(255,200,150,0)'); ctx.fillStyle = ig; ctx.fillRect(B.x, B.y, B.w, B.h * 0.7); ctx.restore();
-  const bw = B.w - (L.portrait ? 30 : 54), bh = Math.min(B.h - 26, bw / 2.6), rx0 = bx, ry0 = B.y + B.h * 0.48;
+  ctx.save(); ctx.beginPath(); ctx.rect(B.x, B.y, B.w, B.h); ctx.clip();
+  const R = makeRng(99);
+  for (let k = 0; k < 500; k++) { ctx.fillStyle = R.f() < 0.5 ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.025)'; ctx.fillRect(B.x + R.f() * B.w, B.y + R.f() * B.h, 1, 1); }
+  grGlow(ctx, bx, B.y + B.h * 0.46, B.w * 0.5, B.h * 0.55, grLed, 0.26);
+  const ff = ctx.createLinearGradient(0, fl, 0, B.y + B.h); ff.addColorStop(0, '#1b222a'); ff.addColorStop(1, '#2b333d');
+  ctx.fillStyle = ff; ctx.fillRect(B.x, fl, B.w, fh);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(B.x, fl, B.w, 1);
+  grGlow(ctx, bx, fl + fh * 0.55, B.w * 0.42, fh * 0.6, grLed, 0.16);
+  ctx.globalCompositeOperation = 'lighter';
+  const ig = ctx.createLinearGradient(0, B.y, 0, B.y + B.h * 0.6); ig.addColorStop(0, grLed(0.2)); ig.addColorStop(1, grLed(0));
+  ctx.fillStyle = ig; ctx.fillRect(B.x, B.y, B.w, B.h * 0.6);
+  ctx.restore();
+  // the rifle on two steel posts with rubber cradles
+  const bw = B.w - (L.portrait ? 30 : 54), bh = Math.min(B.h - 26, bw / 2.6), rx0 = bx, ry0 = B.y + B.h * 0.46;
   const r = grRender(id, cfg, bw, bh, G.dpr, 1.3), rx = rx0 - r.w / 2, ry = ry0 - r.h / 2;
   const data = r.cv.getContext('2d').getImageData(0, 0, r.cv.width, r.cv.height).data;
-  const sh = grFlat(r, '#000'); [[4, 7, 0.22], [7, 11, 0.16]].forEach((o) => { ctx.globalAlpha = o[2]; ctx.drawImage(sh, rx + o[0], ry + o[1], r.w, r.h); }); ctx.globalAlpha = 1;
   [rx0 - bw * 0.27, rx0 + bw * 0.24].forEach((cx) => {
-    const u = grUnder(r, data, cx - rx), y = u === null ? ry0 + 8 : ry + u;
-    const cg = ctx.createLinearGradient(cx - 9, 0, cx + 9, 0); cg.addColorStop(0, '#7a5a20'); cg.addColorStop(0.5, '#f0d28a'); cg.addColorStop(1, '#6b4c18');
-    ctx.fillStyle = cg; ctx.fillRect(cx - 2.2, y, 4.4, B.y + B.h - y - 6); ctx.beginPath(); ctx.moveTo(cx - 10, y - 5); ctx.quadraticCurveTo(cx, y + 9, cx + 10, y - 5); ctx.lineTo(cx + 7, y - 5); ctx.quadraticCurveTo(cx, y + 4, cx - 7, y - 5); ctx.closePath(); ctx.fill();
-    ctx.fillRect(cx - 9, B.y + B.h - 7, 18, 4);
+    const u = grUnder(r, data, cx - rx), y = u === null ? ry0 + 8 : ry + u, fy = fl + fh * 0.55;
+    ctx.fillStyle = grLed(0.08); ctx.fillRect(cx - 1.8, fy + 2, 3.6, fh * 0.4); // the post, faintly, in the polished floor
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.ellipse(cx + 1, fy + 1, 9.5, 2.8, 0, 0, TAU); ctx.fill();
+    const dg = ctx.createLinearGradient(cx - 8, 0, cx + 8, 0); dg.addColorStop(0, '#3a434d'); dg.addColorStop(0.45, '#aeb8c4'); dg.addColorStop(1, '#2a3139');
+    ctx.fillStyle = dg; ctx.beginPath(); ctx.ellipse(cx, fy - 0.5, 8, 2.3, 0, 0, TAU); ctx.fill();
+    const cg = ctx.createLinearGradient(cx - 2, 0, cx + 2, 0); cg.addColorStop(0, '#4b5560'); cg.addColorStop(0.45, '#e4eaf1'); cg.addColorStop(1, '#38414b');
+    ctx.fillStyle = cg; ctx.fillRect(cx - 1.8, y + 2, 3.6, fy - y - 2);
+    ctx.fillStyle = '#14171c'; ctx.beginPath(); ctx.moveTo(cx - 10, y - 5); ctx.quadraticCurveTo(cx, y + 10, cx + 10, y - 5); ctx.lineTo(cx + 7, y - 5); ctx.quadraticCurveTo(cx, y + 4, cx - 7, y - 5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffaa3c'; ctx.fillRect(cx - 2.6, y + 3.4, 5.2, 1.4);
   });
+  const sh = grFlat(r, '#000'); [[4, 7, 0.26], [7, 11, 0.18]].forEach((o) => { ctx.globalAlpha = o[2]; ctx.drawImage(sh, rx + o[0], ry + o[1], r.w, r.h); }); ctx.globalAlpha = 1;
   S.caseRifle = { id, cfg, cx: rx0, cy: ry0, bw, bh };
   S.box = B;
-  if (grSkinMoves(id, cfg)) S.anim.push(S.caseRifle);
-  else { ctx.drawImage(r.cv, rx, ry, r.w, r.h); UI.grGlass(ctx, B); }
-  // the frame of the case
-  ctx.strokeStyle = '#2a2016'; ctx.lineWidth = 4; ctx.strokeRect(B.x, B.y, B.w, B.h);
-  ctx.strokeStyle = 'rgba(240,210,140,0.55)'; ctx.lineWidth = 1; ctx.strokeRect(B.x - 2, B.y - 2, B.w + 4, B.h + 4);
-  ctx.fillStyle = '#2a2016'; ctx.fillRect(B.x - 6, B.y - 8, B.w + 12, 7);
-  ctx.fillStyle = 'rgba(255,230,180,0.3)'; ctx.fillRect(B.x - 6, B.y - 8, B.w + 12, 1.2);
-  // the collection on the wall either side (above the case when upright)
+  const moves = grSkinMoves(id, cfg);
+  if (moves) S.anim.push(S.caseRifle); else ctx.drawImage(r.cv, rx, ry, r.w, r.h);
+  // an amber strip along the front of the case floor, lighting the rifle from below
+  ctx.save(); ctx.beginPath(); ctx.rect(B.x, B.y, B.w, B.h); ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+  const ug = ctx.createLinearGradient(0, B.y + B.h - 4, 0, B.y + B.h - 30); ug.addColorStop(0, grAmb(0.16)); ug.addColorStop(1, grAmb(0));
+  ctx.fillStyle = ug; ctx.fillRect(B.x, B.y + B.h - 30, B.w, 26); ctx.restore();
+  ctx.fillStyle = '#ffc77e'; ctx.fillRect(B.x + 6, B.y + B.h - 5.5, B.w - 12, 1.3);
+  if (!moves) UI.grGlass(ctx, B);
+  // the glass box: edges with the faint green of thick glass, a lid catching the spotlight, and a
+  // black channel it stands in
+  ctx.beginPath(); ctx.moveTo(B.x, B.y); ctx.lineTo(B.x + lid * 1.6, B.y - lid); ctx.lineTo(B.x + B.w - lid * 1.6, B.y - lid); ctx.lineTo(B.x + B.w, B.y); ctx.closePath();
+  ctx.fillStyle = 'rgba(190,225,235,0.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(190,235,230,0.38)'; ctx.lineWidth = 1; ctx.stroke();
+  grGlow(ctx, bx, B.y - lid * 0.5, Math.min(110, B.w * 0.26), lid * 0.9, grLed, 0.5);
+  [B.x, B.x + B.w].forEach((x) => {
+    const eg = ctx.createLinearGradient(0, B.y, 0, B.y + B.h); eg.addColorStop(0, 'rgba(200,245,238,0.6)'); eg.addColorStop(1, 'rgba(170,225,220,0.22)');
+    ctx.fillStyle = eg; ctx.fillRect(x - 1, B.y, 2, B.h);
+    ctx.fillStyle = 'rgba(170,225,220,0.1)'; ctx.fillRect(x + (x === B.x ? 2 : -4), B.y, 2, B.h);
+  });
+  ctx.fillStyle = 'rgba(235,248,255,0.55)'; ctx.fillRect(B.x, B.y - 0.5, B.w, 1.2);
+  const chg = ctx.createLinearGradient(0, B.y + B.h - 3, 0, B.y + B.h + 3); chg.addColorStop(0, '#4b5560'); chg.addColorStop(0.35, '#151a20'); chg.addColorStop(1, '#07090c');
+  ctx.fillStyle = chg; ctx.fillRect(B.x - 3, B.y + B.h - 3, B.w + 6, 6);
+  // the light fitting: a black can on a stem from the ceiling, its lens glowing
+  ctx.fillStyle = '#05070a'; ctx.fillRect(bx - 1.5, Math.max(0, y0 - 40), 3, y0 - Math.max(0, y0 - 40));
+  const fg = ctx.createLinearGradient(bx - 12, 0, bx + 12, 0); fg.addColorStop(0, '#0b0e12'); fg.addColorStop(0.4, '#48525d'); fg.addColorStop(1, '#0a0d10');
+  ctx.fillStyle = fg; grRound(ctx, bx - 11, y0 - 8, 22, 22, 3); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; [y0 - 3, y0 + 2].forEach((yy) => ctx.fillRect(bx - 11, yy, 22, 1));
+  grGlow(ctx, bx, y0 + 14, 40, 16, grLed, 0.6);
+  ctx.fillStyle = '#f5f9ff'; ctx.beginPath(); ctx.ellipse(bx, y0 + 14, 10, 2.4, 0, 0, TAU); ctx.fill();
+  // the collection on readouts either side (above the case when upright)
   const owned = Object.keys(d.guns).length, all = GUNS.length;
   const tk = Object.keys(d.stats.guns || {}).reduce((n, k) => n + (d.stats.guns[k].kills || 0), 0);
   const lw = L.portrait ? (L.right - L.left) * 0.42 : Math.min(118, B.x - L.left - 12), lh = 58;
   const ly = L.portrait ? L.top + 34 : B.y + 18, lx1 = L.portrait ? L.left : L.left + 4, lx2 = L.portrait ? L.right - lw : L.right - lw - 4;
   if (lw > 80) {
-    grBrass(ctx, lx1, ly, lw, lh, [{ s: 'THE COLLECTION', size: 9, font: '700 %px ' + GR_HEAD }, { s: owned + ' of ' + all, size: 19, font: '700 %px ' + GR_SERIF }]);
-    grBrass(ctx, lx2, ly, lw, lh, [{ s: 'ALL KILLS', size: 9, font: '700 %px ' + GR_HEAD }, { s: String(tk), size: 19, font: '700 %px ' + GR_SERIF }]);
-    if (!L.portrait && d.stats.longest) grBrass(ctx, lx2, ly + lh + 12, lw, lh, [{ s: 'LONGEST SHOT', size: 9, font: '700 %px ' + GR_HEAD }, { s: d.stats.longest + ' m', size: 19, font: '700 %px ' + GR_SERIF }]);
+    grStat(ctx, lx1, ly, lw, lh, 'THE COLLECTION', owned + ' of ' + all);
+    grStat(ctx, lx2, ly, lw, lh, 'ALL KILLS', String(tk));
+    if (!L.portrait && d.stats.longest) grStat(ctx, lx2, ly + lh + 12, lw, lh, 'LONGEST SHOT', d.stats.longest + ' m');
   }
   grVignette(ctx, L);
   // dust in the beam, made once and then moved
   const DR = makeRng(5); S.dust = [];
-  for (let i = 0; i < 64; i++) S.dust.push({ u: DR.r(-1, 1), v: DR.f(), sp: DR.r(0.012, 0.04), ph: DR.r(0, 6), sw: DR.r(0.02, 0.07), r: DR.r(0.5, 1.6), tw: DR.r(1, 3) });
+  for (let i = 0, n = clamp(Math.round((S.beam.y1 - S.beam.y0) / 4), 24, 64); i < n; i++) S.dust.push({ u: DR.r(-1, 1), v: DR.f(), sp: DR.r(0.012, 0.04), ph: DR.r(0, 6), sw: DR.r(0.02, 0.07), r: DR.r(0.5, 1.6), tw: DR.r(1, 3) });
 };
-// The glass: faint, with two slanted reflections and a bright top edge. Drawn over the rifle.
+// The front glass: a faint tint, slanted reflections, a sheen in the top corner and a bright top
+// edge. Drawn over the rifle.
 UI.grGlass = function (ctx, B) {
   ctx.save(); ctx.beginPath(); ctx.rect(B.x, B.y, B.w, B.h); ctx.clip();
-  ctx.fillStyle = 'rgba(190,215,235,0.05)'; ctx.fillRect(B.x, B.y, B.w, B.h);
+  ctx.fillStyle = 'rgba(170,205,225,0.045)'; ctx.fillRect(B.x, B.y, B.w, B.h);
   ctx.globalCompositeOperation = 'lighter';
-  [[0.12, 0.09, 0.11], [0.2, 0.035, 0.07], [0.7, 0.06, 0.06]].forEach((q) => {
+  [[0.1, 0.1, 0.075], [0.215, 0.032, 0.06], [0.71, 0.065, 0.05]].forEach((q) => {
     const x = B.x + B.w * q[0], w = B.w * q[1];
-    ctx.fillStyle = 'rgba(220,235,255,' + q[2] + ')'; ctx.beginPath(); ctx.moveTo(x + B.h * 0.5, B.y); ctx.lineTo(x + B.h * 0.5 + w, B.y); ctx.lineTo(x + w, B.y + B.h); ctx.lineTo(x, B.y + B.h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(215,232,250,' + q[2] + ')'; ctx.beginPath(); ctx.moveTo(x + B.h * 0.5, B.y); ctx.lineTo(x + B.h * 0.5 + w, B.y); ctx.lineTo(x + w, B.y + B.h); ctx.lineTo(x, B.y + B.h); ctx.closePath(); ctx.fill();
   });
-  ctx.fillStyle = 'rgba(255,240,210,0.35)'; ctx.fillRect(B.x, B.y, B.w, 1.5);
+  const sg = ctx.createLinearGradient(B.x, B.y, B.x + B.w * 0.35, B.y + B.h * 0.7); sg.addColorStop(0, 'rgba(215,232,250,0.07)'); sg.addColorStop(1, 'rgba(215,232,250,0)');
+  ctx.fillStyle = sg; ctx.fillRect(B.x, B.y, B.w, B.h);
   ctx.restore();
 };
 
@@ -30146,7 +30285,7 @@ UI.grFx = function (G, i, t) {
       const u = clamp(p.u + Math.sin(t * 0.5 + p.ph) * p.sw, -1, 1);
       const a = (1 - u * u) * smooth(v * 6) * smooth((1 - v) * 4) * (0.45 + 0.55 * Math.abs(Math.sin(t * p.tw * 0.5 + p.ph)));
       if (a < 0.03) continue;
-      ctx.fillStyle = 'rgba(255,238,205,' + (a * 0.85).toFixed(3) + ')';
+      ctx.fillStyle = 'rgba(228,238,252,' + (a * 0.85).toFixed(3) + ')';
       ctx.beginPath(); ctx.arc(B.x + u * hw, lerp(B.y0, B.y1, v), p.r, 0, TAU); ctx.fill();
     }
     ctx.restore();
