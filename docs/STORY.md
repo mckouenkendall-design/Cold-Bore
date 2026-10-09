@@ -47,7 +47,7 @@ A mission that reads a flag must work for both values (use `testFlags`).
 |---|---|---|---|---|
 | 1 Cold Start | Brickworks streets | 140 to 170 m | calm | identify, witnesses, lamps, noise cover, accidents, cars, rooms, positions |
 | 2 Harbour Lights | the docks | 180 to 320 m | 2 to 5 m/s | wind hold, protect someone, boats, sabotage with no deaths, first choice |
-| 3 High Country | Ashlock mountains | 350 to 700 m | 0 to 6 m/s | bullet drop and reading the reticle, long flight time, convoys |
+| 3 High Country | Ashlock mountains | 350 to 700 m | 0 to 6 m/s | bullet drop and reading the reticle, long flight time, convoys, shooting through thin cover |
 | 4 Glass Towers | downtown at night | 250 to 500 m | 1 to 4 m/s | glass, fuse boxes and cameras, crowded identification, second choice |
 | 5 Dead Letters | rail yard, estate, bridge | 400 to 800 m | 2 to 6 m/s | everything combined, allies, third choice |
 | 6 Harrow Ridge | snow, the proving ground | 800 to 1400 m | 3 to 8 m/s | extreme range, counter-sniper, the last two choices |
@@ -60,6 +60,29 @@ Rifle reach, for choosing `range`: Ratter 170, Whisper 260, Hush 300, Kessler
 500, Lark 520, Fenwick 600, Orlov 700, Corvid 750, Halden 850, Marrow 950, Ibex
 1000, Vantage 1150, Northwind 1400, Anvil 1600, Aria 1900, Stormglass 2200.
 The player always owns the Fenwick, and is given the Stormglass after c4m6.
+
+## Shooting through cover (armour-piercing contracts)
+
+Three contracts, one each in chapters 3, 4 and 5, can only be done by putting
+the round through something thin: planks, a car door, a tin shutter. They need
+armour-piercing rounds (`needs: { pen: 1.4 }`), which Pip sells from rank 4 for
+1500 credits. They are kept sparse on purpose: a small, readable skill check,
+not a new way to play.
+
+- Every rifle except the Ratter, Lark and Whisper reaches punch 1.4 with
+  armour-piercing rounds fitted (the Aria, the Anvil and the Stormglass need
+  nothing). The loadout screen says which: "This job needs armour-piercing
+  rounds" or "Not enough punch for this job, even with armour-piercing rounds".
+- When a player can have them: rank 4 comes at c2m3 at the latest (one star on
+  every contract, no challenges). Played in order that way, a player reaches
+  the first of them (c3m8) at rank 5 with about 22,000 credits; one who buys
+  the dearest rifle every time still has about 7,000.
+- Each one also teaches a way of finding a target you cannot see whole: breath
+  and binoculars behind boards, a head showing in a window above a door, legs
+  under a shutter.
+
+The new contracts have ids c3m8, c4m8 and c5m8 but are played where the story
+puts them (`follows:` in the mission).
 
 ## Chapter 2: HARBOUR LIGHTS (ids c2m1 to c2m7)
 
@@ -96,7 +119,7 @@ lamps; fuel barrels; a fuse box; a buoy bell). Dusk, night, rain and fog.
    Marlow avoids the question. `after`: Maeve is gone and August has fled to
    the mountains.
 
-## Chapter 3: HIGH COUNTRY (ids c3m1 to c3m7)
+## Chapter 3: HIGH COUNTRY (ids c3m1 to c3m8; c3m8 is played third)
 
 August Calloway's lodge in the Ashlocks. Location: `SCN.valley` (far peaks,
 pine hills, a big timber lodge with a deck, windows and chimney smoke; a
@@ -110,6 +133,13 @@ dawn, snow. This chapter teaches drop and wind: write the hints carefully.
 2. **c3m2 Crosswind** (450 m, wind 5 steady). A lookout in the hunting tower
    and a cook nearby who must not be hit. Teach wind hold; the flag and the
    chimney smoke show direction and strength.
+   **c3m8 Boarded Up** (470 m, dawn, wind 3, armour-piercing). The lodge has
+   learned from the tower: the new lookout stands behind old fence boards
+   nailed over its front. Ordinary rounds stop in the planks. He is found by
+   his breath in the cold air and the glint of his binoculars between the
+   boards; his chest is half a metre lower. The cook (from c3m2) brings soup up
+   and must be clear. Challenge: take him while he sits at the radio, behind
+   the old parapet.
 3. **c3m3 The Gondola** (500 m, wind 2). The target rides a cable car with a
    bodyguard. It moves slowly and stops at a pylon for a few seconds. Drop,
    lead and glass together.
@@ -130,7 +160,7 @@ dawn, snow. This chapter teaches drop and wind: write the hints carefully.
    August's accounts. The Calloways were paying nobody for protection. Someone
    was paying the Ledger to remove them. The name on the page is Aurel.
 
-## Chapter 4: GLASS TOWERS (ids c4m1 to c4m7)
+## Chapter 4: GLASS TOWERS (ids c4m1 to c4m8; c4m8 is played fourth)
 
 Downtown Port Calder at night. The Ledger's targets stop looking like
 criminals. Location: `SCN.towers` (glass office towers with floor-to-ceiling
@@ -145,6 +175,13 @@ a window-cleaning cradle, neon, a far skyline). Cameras and fuse boxes.
    glows; night vision helps).
 3. **c4m3 The Reception** (320 m, wind 3). A rooftop party. A chain of clues
    picks out the target among a dozen guests. Fireworks give cover.
+   **c4m8 Wrong Way Round** (330 m, night, wind 2, armour-piercing).
+   Councillor Edwin Rusk chairs the harbour board, which votes on the Aurel
+   bid for the port; Marlow calls that a coincidence. His car was armoured
+   backwards: glass that stops anything, doors of thin steel. He is seen
+   through the rear window and shot through the rear door below it. A round
+   on the glass warns him and the car leaves. An Aurel lawyer at the kerb is
+   the witness to wait out. Challenge: take him before the car stops.
 4. **c4m4 Scaffold** (400 m, wind 4, accident only). A target who inspects his
    building site at night: a crane girder, workers who must not be hurt.
 5. **c4m5 The Journalist** (380 m). **Choice.** Marlow orders the death of
@@ -162,7 +199,7 @@ a window-cleaning cradle, neon, a far skyline). Cameras and fuse boxes.
    car: several gunmen appear one after another from different places, each
    with a countdown. Marlow speaks to you directly for the last time.
 
-## Chapter 5: DEAD LETTERS (ids c5m1 to c5m7)
+## Chapter 5: DEAD LETTERS (ids c5m1 to c5m8; c5m8 is played fourth)
 
 Kestrel, Pip and (if she has any reason to trust you) Varga against Aurel and
 what is left of the Ledger. Locations: `SCN.yard` (a rail yard with freight
@@ -180,6 +217,14 @@ extra people who must not be hit.
    watching. If `savedBrandt`, Brandt is among the guests and tips you off.
 3. **c5m3 The Quartermaster** (420 m, night, `noKills`). The Ledger's armoury
    boat on the river. Sink it (fuel) with the crew ashore.
+   **c5m8 Feet First** (420 m, night, rail yard, armour-piercing). Somebody
+   told Aurel the boat was sinking before it hit the bottom: a radio listener
+   in a tin lock-up in Calder Yard, who has been hearing Pip too. His shutter
+   is half up, so only legs show in the lit gap: his long grey coat hem, the
+   tea lady's skirt (she must not be hit), his minder's plain trousers. Wait
+   for the tea lady to leave and the minder to step out to smoke, then shoot
+   through the tin a metre and a quarter above his shoes. Challenge: a head
+   shot through the shutter.
 4. **c5m4 Bridge Toll** (700 m, wind 5, time limit). A prisoner van crosses the
    bridge with escorts. Stop it and deal with the guards before they turn on
    the prisoner. The prisoner is Reyes if `sparedReyes`, otherwise a records
