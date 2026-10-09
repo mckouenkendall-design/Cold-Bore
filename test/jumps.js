@@ -32,7 +32,9 @@ const path = require('path');
       return () => {
         for (let i = 0; i < sim.actors.length; i++) {
           const a = sim.actors[i], v = seen(a), p = prev.get(a);
-          const now = { x: a.x, y: a.y, z: a.plane ? a.plane.z : 0, v, pc: a.pc, anim: a.anim };
+          // somebody in a vehicle is drawn in their seat (a.x and a.y only catch up a step later)
+          const sv = a.inVeh, sc = sv && sv.def, sx = sc ? sv.x + sv.dir * sc.seats[a.seat] * sc.len : a.x, sy = sc ? sv.y + (sc.body + sc.h) / 2 - 1.2 : a.y;
+          const now = { x: sx, y: sy, z: sv ? sv.plane.z : a.plane ? a.plane.z : 0, v, pc: a.pc, anim: a.anim };
           if (p && p.v && v && !(p.v === 'car' && v === 'car')) {
             const sp = Math.max(1, a.speed || 1), lim = 4.3 * sp * dt * 1.4 + 0.012;
             let dx = Math.abs(now.x - p.x), dy = Math.abs(now.y - p.y);

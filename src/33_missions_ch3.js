@@ -59,13 +59,11 @@ function c3Door(H, ids, near) {
   K.swingDoor(H.S, B.P, { H, x: dx - 1.05, y: 0.14, w: 2.1, h: 2.41, hinge: 0, col: '#3a2a20', open: (sim) => K.doorBusy(sim, ids, dx, near || 1.6) });
 }
 
-// Take someone out of a vehicle and stand them on the road (used when the
-// convoy is stopped).
-function c3Out(sim, H, id, x) {
+// Take someone out of a vehicle (used when the convoy is stopped): they step out of their
+// door onto the road, on this side, and then go about `routine`.
+function c3Out(sim, H, id, routine) {
   const a = sim.byId[id]; if (!a || a.dead || a.gone || !a.inVeh) return null;
-  const v = a.inVeh; if (v.seats[a.seat] === id) v.seats[a.seat] = null;
-  a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; a.state = 'calm'; a.susp = 0;
-  sim.place(a, H.road(x));
+  a.susp = 0; sim.setRoutine(a, routine); sim.getOut(a, H.road(0));
   return a;
 }
 
@@ -258,16 +256,14 @@ function c3Halt(sim, H, why) {
   const crew = (front.seats || []).filter((id) => id && sim.alive(id) && id !== 't');
   sim.after(2.4, () => {
     if (sim.alarmT !== null) return;
-    crew.forEach((id, i) => { const seat = sim.byId[id].seat, a = c3Out(sim, H, id, front.x + 1.2 - i * 1.6); if (!a) return;
-      sim.setRoutine(a, [['walk', spot + i * 1.3], ['wait', 21, i ? 'work' : 'kneel', -1], ['walk', front.x + 1.2 - i * 1.6], ['veh', front.id, seat]]); });
+    crew.forEach((id, i) => { const seat = sim.byId[id].seat; c3Out(sim, H, id, [['walk', spot + i * 1.3], ['wait', 21, i ? 'work' : 'kneel', -1], ['veh', front.id, seat]]); });
   });
   // the banker gets out of his own car to see what the delay is
   const tv = sim.byId.rear;
   if (tv.gone || tv.wrecked || (why === 'logs' && tv.x < lx - 4)) return;
-  sim.after(5.2, () => {
+  sim.after(4.7, () => {
     if (sim.alarmT !== null) return;
-    const a = c3Out(sim, H, 't', tv.x + 0.4); if (!a) return;
-    sim.setRoutine(a, [['walk', tv.x - tv.def.len / 2 - 2.3], ['wait', 15, 'phone', -1], ['walk', tv.x + 0.4], ['veh', 'rear', 1], ['emit', 'c3back']]);
+    c3Out(sim, H, 't', [['walk', tv.x - tv.def.len / 2 - 2.3], ['wait', 15, 'phone', -1], ['veh', 'rear', 1], ['emit', 'c3back']]);
   });
   sim.after(31, () => { if (sim.alarmT === null) { if (H.logs) H.logs.logs.cleared = true; sim.emit('c3go'); } });
 }
@@ -543,28 +539,29 @@ mission({
   },
   start(sim, H) { H.sim = sim; },
   cast(H) {
-    const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true });
+    const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true }), cabin = (seat) => doorX('chopper', H.pad.x, -1, seat);
     return [
       Object.assign(at(), { id: 'valet', role: 'civ', speed: 1.1, look: { hat: 'cap', hatCol: '#22252b', coat: '#3f8f4f', bag: 'duffel', bagCol: '#7b5a36' }, failText: 'That was the valet. Green coat, yes. White hair and a cane, no.',
         routine: [['wait', 3], ['show'], ['walk', 42.5], ['look', { bag: null }], ['wait', 999, 'work', 1]] }),
       Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['wait', 5], ['show'], ['walk', 5], ['wait', 0.6, 'guard', -1], ['waitFor', 'aug_go1'], ['walk', 39], ['wait', 9, 'guard', 1], ['wait', 999, 'guard', -1]] }),
       Object.assign(at(), { id: 'august', role: 'target', speed: 0.8, look: { hair: 'white', coat: '#3f8f4f', long: true, bag: 'cane', h: 0.97 },
-        routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]],
-        flee: [['run', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
+        routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', cabin(1)], ['emit', 'boarded'], ['veh', 'heli', 1]],
+        flee: [['run', cabin(1)], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
       Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 10.4], ['show'], ['walk', -7.6], ['wait', 999, 'guard', 1]] }),
       Object.assign(H.yard(43), { id: 'pilot', role: 'civ', face: 1, anim: 'work', look: { hat: 'helmet', hatCol: '#ece8dc', vest: COL.orange }, flee: [['wait', 999, 'cower']], failText: 'You shot the pilot. He flies whoever pays. The contract is void.',
-        routine: [['wait', 8.5, 'work', 1], ['veh', 'heli', 0]] }),
+        routine: [['wait', 5.9, 'work', 1], ['walk', cabin(0)], ['veh', 'heli', 0]] }),
       Object.assign(H.road(H.gate.x + 2.6, { zone: 'gate' }), { id: 'gg', role: 'guard', face: -1, anim: 'arms', look: { hat: 'peaked', hatCol: '#27365a', coat: '#39404a' }, routine: [['wait', 999, 'arms', -1]] }),
+      // she gets out of her car on this side and walks round its nose to stand at the gate
       { id: 'varga', role: 'vip', eyes: 1.6, look: { hair: 'bun', hairCol: '#2a2019', glasses: true, coat: '#6f5f4c', long: true }, failText: 'You shot Detective Varga. The Ledger has cut you loose.',
-        routine: [['wait', 1.5, 'stand', 1], ['wait', 999, 'look', 1]] },
+        routine: [['walk', H.gate.x - 1.1], ['wait', 999, 'look', 1]] },
     ];
   },
   vehicles(H) {
     return [
       { id: 'heli', kind: 'chopper', plane: H.PD, x: H.pad.x, y: 0, dir: -1, col: '#e4e0d4', seats: [null, null], yFn: () => H.lift || 0, routine: [['waitFor', 'boarded'], ['wait', 3.2], ['emit', 'liftoff'], ['wait', 4.2], ['gone']] },
-      { id: 'vcar', kind: 'sedan', plane: H.PR, x: -128, y: H.roadY, dir: 1, col: '#3a3f49', seats: ['varga'], routine: [['wait', 6], ['drive', H.gate.x - 4.6, 7], ['wait', 1.4], ['out', 'varga', 3.5, 'gate', H.PR, H.roadY], ['emit', 'varga_here']] },
+      { id: 'vcar', kind: 'sedan', plane: H.PR, x: -128, y: H.roadY, dir: 1, col: '#3a3f49', seats: ['varga'], routine: [['wait', 6], ['drive', H.gate.x - 4.6, 7], ['wait', 1.4], ['out', 'varga', H.road(0, { zone: 'gate' })], ['emit', 'varga_here']] },
     ];
   },
   tick(sim, H, dt) {

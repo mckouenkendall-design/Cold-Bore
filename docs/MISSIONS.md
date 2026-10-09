@@ -180,15 +180,44 @@ hands drive sleep`.
 Routine steps:
 `['walk', x, speedMul?]`, `['run', x]`, `['wait', seconds, anim?, face?]`,
 `['anim', name]`, `['face', dir]`, `['hide']`, `['show']`, `['to', placement]`
-(jump to another place, for example room to balcony), `['emit', 'event']`,
+(jump to another place: only where nobody can see it happen, see below),
+`['step', placement]` and `['rise', placement]` (change plane without a jump,
+see below), `['emit', 'event']`,
 `['waitFor', 'event']`, `['say', 'text', seconds]`, `['loop', index?]`,
 `['gone']` (leave the scene), `['look', {...}]` (change appearance, for example
 hand over a bag), `['threat', victimId, seconds]` (draws a pistol; after the
 countdown the victim is shot, which fails a protect mission), `['veh', vehId,
-seat]` (get in; put any `emit` BEFORE this step), `['call', fn(sim, actor)]`,
+seat]` (get in: they walk to the door of that seat and climb in; put any `emit`
+BEFORE this step, nothing after it runs), `['call', fn(sim, actor)]`,
 `['speed', v]`, `['role', r]`. Helpers: `pace(x0, x1, wait0, wait1, anim)`,
 `stroll(toX)`, `passersBy(H, {every, ban})` (a trigger that keeps spawning
-walkers).
+walkers), `doorX(kind, x, dir, seat)` (where a seat's door is on a vehicle
+standing at x).
+
+**Nobody may jump.** `node test/jumps.js` plays every mission and lists anyone
+who moves on screen further between two frames than they could walk. The usual
+causes and their cures:
+- Changing plane. Seen from up high, the same ground is lower on the screen on a
+  nearer plane, so `['to', ...]` from a room to the terrace in front of it, or
+  from the road to the pavement, is a jump. Use `['step', placement]`: they
+  change plane at the spot that looks the same from the shooter, and the
+  difference in height goes as they walk on, so on screen they walk down off
+  the kerb or out of the door. The walk that follows is taken a touch faster or
+  slower so they still arrive when they would have. Going the other way, into a
+  room or up onto something drawn behind them, put `['rise', placement]` before
+  the walk to the doorway and `['step', placement]` after it: they stay on
+  their own plane and climb as they walk up to it. Do the change where nothing
+  on the nearer plane (a car, a wall) is drawn over them.
+- Getting into a vehicle: `['veh', ...]` walks them to the door first (on
+  whatever plane they are on, the spot that lines up with the seat) and lets
+  them climb in, so walk them close to `doorX(...)` first or allow for the extra
+  seconds.
+- Getting out: the vehicle step `['out', actorId, placement]`, or
+  `sim.getOut(actor, placement)` from a script. They come out of the door at
+  their seat and stand up there, then their own routine walks them on. Left
+  out, placement is the vehicle's own plane: they stand in front of it.
+  (`getOut` takes an optional `{ x, y }` for a back door. Set a new routine
+  BEFORE calling it: it adds a short pause for standing up.)
 
 Set `yFn: (x) => height` on a person or vehicle that walks on a slope.
 
@@ -200,8 +229,8 @@ Set `yFn: (x) => height` on a person or vehicle that walks on a slope.
 ```
 Kinds: `sedan suv limo van truck pickup boat train` (see `CARS`; add your own
 with a `draw` function for things like gondolas or helicopters). Steps:
-`drive x speed`, `wait`, `waitFor`, `emit`, `gone`, `brake`, `out actorId dx
-zone plane y`, `call`, `loop`. Passengers are seen and hit through the windows
+`drive x speed`, `wait`, `waitFor`, `emit`, `gone`, `brake`, `out actorId
+placement?` (see above), `call`, `loop`. Passengers are seen and hit through the windows
 (glass applies). A flat tyre stops the car (`stopped:<id>` event). Shooting
 the driver stops it too.
 
@@ -214,7 +243,9 @@ Things scripts can call: `sim.msg(who, text)`, `sim.emit(name)`,
 `sim.did(name)`, `sim.after(seconds, fn)`, `sim.cover(seconds, name)`,
 `sim.covered()`, `sim.setRoutine(id, routine)`, `sim.addActor(def)`,
 `sim.addVehicle(def)`, `sim.raiseAlarm(by, delay)`, `sim.fail(code, text)`,
-`sim.place(actor, placement)`, `sim.noise(x, y, plane, kind, radius)`,
+`sim.place(actor, placement)`, `sim.getOut(actor, placement, door)`,
+`sim.ease(actor, fromHeight, toHeight, { time })` (a short climb or drop
+in place, for example jumping down from a van), `sim.noise(x, y, plane, kind, radius)`,
 `sim.byId[id]`, `sim.kills`, `sim.stats`, `sim.alarmT`, `sim.t`, `sim.S`.
 
 Events emitted for you: `dead:<id>`, `gone:<id>`, `alarm`, `obj:<objectId>`,

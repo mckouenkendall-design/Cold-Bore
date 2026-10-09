@@ -13,6 +13,7 @@ const CH5_FLAGS = [{}, { sparedReyes: true }, { savedBrandt: true }, { sparedRey
 const POLICE = { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' };
 const POLICE_FAIL = 'You shot a police officer. Detective Varga will never stop looking for you now.';
 
+const C5M1_CAR = 15.51; // where the fixer's car stops: his door is at 16
 mission({
   id: 'c5m1', ch: 5, title: 'Dead Drop', range: 450,
   objective: 'The fixer in the pale coat. After the clerk has gone, and with nobody the wiser.',
@@ -55,7 +56,7 @@ mission({
     const c = [
       { id: 'drv', role: 'guard', look: { hat: 'cap', hatCol: '#1d2026' } },
       { id: 'fixer', role: 'target', look: { coat: '#e3dcc6', long: true, hat: 'cap', hatCol: '#8a8f96', build: 'big' }, escapeText: 'The fixer drove out of the yard with the papers on the seat beside him.',
-        routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', 16.2], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
+        routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', doorX('suv', C5M1_CAR, -1, 1)], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
       Object.assign(H.strip(3.2), { id: 'clerk', role: 'civ', face: 1, look: { build: 'thin', glasses: true, coat: COL.brown, hair: 'short', hairCol: '#3a2a20', bag: 'case', bagCol: '#7b5a36' }, failText: 'You shot the clerk. He was the only one who knew where the copies are.',
         routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: null }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
       Object.assign(H.inBox(-1.5), { id: 'sigman', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
@@ -63,17 +64,18 @@ mission({
       Object.assign(H.strip(-33), { id: 'w2', role: 'civ', face: -1, anim: 'work', look: Object.assign({ build: 'big' }, yardman), routine: [['wait', 999, 'work', -1]] }),
     ];
     if (!help) {
-      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] });
+      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['walk', 22], ['wait', 999, 'guard', 1]] });
       c.push(Object.assign(H.siding(48), { id: 'cop', role: 'vip', look: POLICE, failText: POLICE_FAIL, routine: pace(38, 52, 5, 4, 'stand') }));
     }
     return c;
   },
   vehicles(H, f) {
-    const out = [['out', 'fixer', -2.6, 'meet', H.PM, 0]];
-    if (!vargaHelps(f)) out.push(['out', 'bg', 3.4, 'meet', H.PM, 0]);
+    // they get out on this side: the fixer walks off to the meeting, his minder round the back of the car
+    const out = [['out', 'fixer', H.strip(20)]];
+    if (!vargaHelps(f)) out.push(['out', 'bg', H.strip(20)]);
     return [
       { id: 'car', kind: 'suv', plane: H.PM, x: 88, y: 0, dir: -1, col: '#101216', seats: vargaHelps(f) ? ['drv', 'fixer'] : ['drv', 'fixer', 'bg'],
-        routine: [['wait', 3], ['drive', 18.6, 9], ['emit', 'arrived'], ['wait', 0.8]].concat(out, [['waitFor', 'fixer_in'], ['wait', 1.4], ['drive', 130, 10], ['gone']]) },
+        routine: [['wait', 2.66], ['drive', C5M1_CAR, 9], ['emit', 'arrived'], ['wait', 0.35]].concat(out, [['waitFor', 'fixer_in'], ['wait', 1.4], ['drive', 130, 10], ['gone']]) },
       H.n1.veh, H.f1.veh, H.n2.veh,
     ];
   },
@@ -319,7 +321,7 @@ mission({
     'You need a rifle that reaches 700 m, such as the Orlov SVK. The prisoner sits behind the barred window of the GREY van, and the traffic constable and the man on the far kerb are innocent.',
     'The freight train below covers your shots from about 8 seconds in. The convoy drives in from the left and stops at the toll about 24 seconds in.',
     'Within 5 seconds of that stop, shoot the front (right-hand) tyre of the grey van. A flat keeps it on the bridge.',
-    'The escorts get out and walk to the back of the van. Shoot each one as soon as he stands still there (about 27 to 34 seconds in), before his countdown ends.',
+    'The escorts get out and walk to the back of the van. Shoot each one as soon as he stands still there (about 29 to 34 seconds in), before his countdown ends.',
     'HOLD reads about 6.8 up (almost 5 m) and 1.9 left (about 1.4 m). On the Orlov\'s scope, put the V-shaped mark labelled 7 on the target, then shift your aim left by about 2 of the small side marks.',
     'The wind blows left to right and the bullet takes over a second to land, so only shoot men who are standing still. You have spare rounds: if you miss, fire again at once.',
   ],
@@ -369,19 +371,22 @@ mission({
     const halt = (sim) => { ['lead', 'tail'].forEach((id) => { const v = sim.byId[id]; if (!v || v.gone || v.flatTire) return; v.routine = [['brake']]; v.pc = 0; v.goal = null; v.wait = 0; v.waitFor = null; }); };
     const dismount = (sim) => {
       const vx = sim.byId.van.x;
-      const out = (id, veh, dx) => { const a = sim.byId[id], v = sim.byId[veh]; if (!a || a.dead || !v || v.gone || a.inVeh !== v) return null; a.inVeh = null; a.hidden = false; v.seats[a.seat] = null; sim.place(a, H.deck(v.x + dx)); a.anim = a.idle = 'stand'; a.state = 'alert'; return a; };
-      const g1 = out('g1', 'lead', -3.4), g3 = out('g3', 'tail', 3.4);
-      if (g1) sim.setRoutine(g1, [['speed', 1.2], ['walk', vx - 4.4], ['wait', 0.6, 'aimrifle', 1], ['threat', 'pris', 8]], true);
-      if (g3) sim.setRoutine(g3, [['walk', vx - 6.0], ['wait', 9, 'guard', 1], ['threat', 'pris', 8]], true);
+      // each steps out of his door onto the kerb on this side and walks briskly to the van's back doors
+      const out = (id, veh, routine) => { const a = sim.byId[id], v = sim.byId[veh]; if (!a || a.dead || !v || v.gone || a.inVeh !== v) return null; sim.setRoutine(a, routine, true); a.state = 'alert'; sim.getOut(a, H.deck(0)); return a; };
+      const g1 = out('g1', 'lead', [['speed', 1.45], ['walk', vx - 4.4], ['wait', 0.6, 'aimrifle', 1], ['threat', 'pris', 8]]);
+      const g3 = out('g3', 'tail', [['speed', 1.2], ['walk', vx - 6.0], ['wait', 6.93, 'guard', 1], ['threat', 'pris', 8]]);
       if (g1 || g3) sim.msg('Pip', 'They are out and heading for the back doors. Each one who gets there is a countdown.');
     };
     const t = [H.frt.trig, standFast(['g1', 'g3']),
       { at: 0, do(sim) { H.vanRef.v = sim.byId.van; } },
       hint(1.5, 'The convoy comes from the left and stops at the toll on the right. Wait for the freight train: its noise is your cover. Then flatten a tyre on the grey van.', 11),
       onEv('at_toll', (sim) => { if (!sim.byId.van.flatTire) { H.barrier.up = true; sim.emit('barrier_up'); sim.msg('Pip', 'The barrier is up. They are moving.'); } }, 5.5),
-      onEv('flat:van', halt), onEv('crash:van', halt), onEv('stopped:van', dismount, 1.0),
+      onEv('flat:van', halt), onEv('crash:van', halt), onEv('stopped:van', dismount, 0.3),
       onEv('gone:van', (sim) => sim.fail('escaped', 'The van reached the far bank with him still inside it.', 0.6)),
-      { when: (sim) => !!sim.winAt, do(sim) { const p = sim.byId.pris, v = sim.byId.van; if (p.dead) return; p.inVeh = null; p.hidden = false; v.seats[1] = null; sim.place(p, H.deck(v.x - 4.6)); p.anim = p.idle = 'stand'; sim.setRoutine(p, [['wait', 0.8, 'hands', -1], ['run', v.x - 70], ['gone']]);
+      // he climbs through to the back doors (out of sight behind the bars), jumps down and runs for it
+      { when: (sim) => !!sim.winAt, do(sim) { const p = sim.byId.pris, v = sim.byId.van; if (p.dead || p.inVeh !== v) return;
+        sim.setRoutine(p, [['wait', 0.4], ['call', (s, a) => s.ease(a, 0.7, 0, { time: 0.3 })], ['show'], ['wait', 0.8, 'hands', -1], ['step', H.deck(0)], ['run', v.x - 70], ['gone']]);
+        sim.getOut(p, null, { x: v.x - v.dir * (v.def.len / 2 + 0.35), y: v.y }); p.hidden = true;
         sim.msg(vargaHelps(f) ? 'Varga' : 'Pip', vargaHelps(f) ? 'I see him. He is running to my car. That was well done, whoever you are today.' : 'He is out and running. I have the van waiting at the bank. Come home.'); } },
     ];
     if (vargaHelps(f)) t.push(say(4, 'Varga', 'Varga. I pulled their rear car over at the junction. I am half a minute behind the van. Stop it on the bridge.'));
@@ -458,26 +463,32 @@ mission({
   },
   start(sim, H) { H.sim = sim; },
   cast(H, f) {
-    const door = H.lawn(23.75), inDoor = H.study(23.75);
+    // Her study (plane PH), the terrace (PG) and the drive (PD) are each about 15 m nearer than
+    // the last. She goes between them at the study door and just left of her car, with a 'step'
+    // or a 'rise' (src/05_sim.js), so on screen she walks down out of the door, down off the
+    // terrace and round the back of the car to its door, and the same way back.
+    const door = H.lawn(23.75), inDoor = H.study(23.75), off = H.lawn(29), drive = H.drive(29), carDoor = doorX('sedan', 34, 1, 0);
     const atRadio = (sim, a) => {
       if (sim.radioDown) { sim.setRoutine(a, [['wait', 999, 'sit', 1]], true); return; }
       sim.msg('Pip', 'She is on the radio, calling for a car. Kill it now or she is gone.');
       sim.setRoutine(a, [['wait', 7, 'phone', -1], ['call', (s) => { if (!s.radioDown && !s.winAt) s.fail('escaped', 'Marlow got through on the radio. Aurel\'s people lifted her off the terrace within the hour.', 1.0); }], ['wait', 999, 'sit', 1]], true);
     };
-    const toRadio = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['to', inDoor], [mv, 19.4], ['call', atRadio]]; };
+    const toRadio = (run) => { const mv = run ? 'run' : 'walk'; return [['rise', inDoor], [mv, 23.75], ['step', inDoor], [mv, 19.4], ['call', atRadio]]; };
+    // from the car's door back up onto the terrace (clear of the car before she climbs)
+    const fromCar = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 31.2], ['rise', off], [mv, 29], ['step', off]].concat(toRadio(run)); };
     const atCar = (run) => (sim, a) => {
       const v = sim.byId.mcar;
       if (!v.flatTire) { sim.setRoutine(a, [['emit', 'marlow_in'], ['veh', 'mcar', 0]], true); return; }
       sim.bubble(a, '!', 2);
-      sim.setRoutine(a, [['wait', 2.2, 'kneel', 1], ['to', H.lawn(33.3)]].concat(toRadio(run)), true);
+      sim.setRoutine(a, [['wait', 2.2, 'kneel', 1]].concat(fromCar(run)), true);
     };
-    const leave = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['to', door], [mv, 33.3], ['to', H.drive(33.3)], ['call', atCar(run)]]; };
-    H.toRadio = toRadio;
+    const leave = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['step', door], [mv, 29], ['step', drive, 2.6], [mv, carDoor], ['call', atCar(run)]]; };
+    H.fromCar = fromCar;
     let loops = 0;
     const c = [
       Object.assign(H.study(19.4), { id: 'marlow', role: 'target', face: -1, anim: 'work', look: { coat: '#7c838c', long: true, hair: 'bun', hairCol: '#d3d7dc', glasses: true }, flee: leave(true),
         // (the files go into the fire as she reaches it; the flare is drawn from H.burnT)
-        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
+        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['step', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['rise', inDoor], ['walk', 23.75], ['step', inDoor], ['walk', 19.4],
           ['call', (sim, a) => { if (++loops >= 3) { sim.msg('Pip', 'That is the last of the files. She has her case. She is going to the car.'); sim.setRoutine(a, [['look', { bag: 'case' }], ['wait', 1.5, 'stand', 1]].concat(leave(false))); } }], ['loop']] }),
       Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' }, routine: pace(-6, 16, 4, 4, 'guard') }),
       // the housekeeper, washing up in the kitchen. She has never heard of the Ledger.
@@ -497,9 +508,9 @@ mission({
       hint(1.5, 'This one is your choice. Shoot Marlow, or leave her stranded: flatten a tyre on the pale car and break her radio (the set on her desk, or the dish on the tower). Fire inside the thunder.', 12),
       onEv('gone:mcar', (sim) => sim.fail('escaped', 'Marlow drove out of the gate with her case on the seat beside her. Nobody will find her now.', 0.6)),
       // if the tyre goes while she is already in the car, she gets out and tries the radio
-      { when: (sim) => { const v = sim.byId.mcar, a = sim.byId.marlow; return !!v.flatTire && a.inVeh === v && v.v < 0.2 && !a.dead; }, do(sim) { const v = sim.byId.mcar, a = sim.byId.marlow; a.inVeh = null; a.hidden = false; v.seats[0] = null; sim.place(a, H.drive(v.x - 1.4)); a.anim = a.idle = 'stand'; sim.setRoutine(a, [['wait', 1.2, 'stand', 1], ['walk', 33.3], ['to', H.lawn(33.3)]].concat(H.toRadio(false)), true); } },
+      { when: (sim) => { const v = sim.byId.mcar, a = sim.byId.marlow; return !!v.flatTire && a.inVeh === v && v.v < 0.2 && !a.dead; }, do(sim) { const a = sim.byId.marlow; sim.setRoutine(a, [['wait', 0.75, 'stand', 1]].concat(H.fromCar(false)), true); sim.getOut(a, H.drive(0)); } },
       onEv('flat:mcar', (sim) => { const g = sim.byId.g2; if (g && !g.dead && g.state === 'calm') { sim.bubble(g, '?', 2); sim.setRoutine(g, [['wait', 1], ['walk', 36.7], ['wait', 5, 'kneel', -1], ['call', (s) => s.raiseAlarm('guard', 0)]]); } }),
-      { when: (sim) => !!sim.winAt && !sim.byId.marlow.dead, do(sim) { const a = sim.byId.marlow; if (!a.inVeh && a.plane !== H.PD) sim.setRoutine(a, a.behind ? [['walk', 23.75], ['to', H.lawn(23.75)], ['walk', 25.2], ['wait', 99, 'sit', 1]] : [['walk', 25.2], ['wait', 99, 'sit', 1]], true);
+      { when: (sim) => !!sim.winAt && !sim.byId.marlow.dead, do(sim) { const a = sim.byId.marlow; if (!a.inVeh && a.plane !== H.PD) sim.setRoutine(a, a.behind ? [['walk', 23.75], ['step', H.lawn(23.75)], ['walk', 25.2], ['wait', 99, 'sit', 1]] : [['walk', 25.2], ['wait', 99, 'sit', 1]], true);
         sim.msg(vargaHelps(f) ? 'Varga' : 'Pip', vargaHelps(f) ? 'No car and no radio. She is not going anywhere. I am on the hill road now. Thank you.' : 'No car, no radio. I have just told the police where to find her. Varga can work out the rest.'); } },
     ];
     if (vargaHelps(f)) t.push(say(3, 'Varga', 'Varga. If she is breathing when I get there, I can put all of it in front of a judge. Her car and her radio. But it is your choice, Kestrel, not mine.'));
