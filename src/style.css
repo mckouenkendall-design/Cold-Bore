@@ -583,6 +583,7 @@ body.portrait .cgrid { grid-template-columns: 1fr; } body.portrait .cc-t i { dis
 body.portrait .cacheopen { width: calc(100% - 32px); max-width: 420px; }
 body.portrait .howbtn { padding: 0 9px; gap: 5px; font-size: 11px; letter-spacing: .05em; } body.portrait .howbtn svg { width: 15px; height: 15px; }
 body.portrait .brief .bar > .stars { display: none; } body.portrait .brief .bar .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.portrait .brief .bar h2 { font-size: 18px; white-space: normal; }
 body.portrait .showhow .cta { margin-top: 10px; }
 body.portrait .co-card { flex-direction: column; } body.portrait .co-pic { flex: none; height: 120px; min-height: 0; }
 body.portrait #toast { top: calc(64px + var(--sat)); }
