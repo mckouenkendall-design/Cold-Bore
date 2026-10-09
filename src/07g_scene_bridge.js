@@ -42,6 +42,9 @@ K.shore = function (S, P, o) {
   P.groundFn = (x) => { const dry = x < xl || x > xr; P._gm = dry ? 'hard' : 'water'; return dry ? qy : 0; };
   Object.defineProperty(P, 'groundMat', { get() { return P._gm; }, set() {}, configurable: true });
   (S._brWater = S._brWater || []).push(P);
+  // what lies on a paved quay, picked once: oil stains, tyre marks, drain covers, patched slabs
+  const pv = [], stainC = 'rgba(20,18,16,0.22)', tyreC = 'rgba(20,18,16,0.16)', patchC = S.tone(lighten(o.col || '#6b6660', 0.06), P), grate = S.tone('#2a2826', P);
+  if (o.pave) { const D = makeRng(Math.round(P.z * 3) + 4447); for (let sg = -1; sg <= 1; sg += 2) { const e = sg < 0 ? xl : xr; if (Math.abs(e) > 1e5) continue; for (let i = 0; i < 30; i++) pv.push([e - sg * D.r(3, 150), qy - D.r(1.0, 7.5), D.i(0, 3), D.r(0.8, 2.6)]); } }
   // the lights of a far bank, shining in the water near it
   const glints = [];
   if (o.glints) { const D = makeRng(Math.round(P.z) + 77); for (let i = 0; i < 70; i++) { const nearBank = i < 46, x = nearBank ? (i % 2 ? xl + D.r(1, 70) : xr - D.r(1, 70)) : D.r(xl, xr); if (x < xl || x > xr) continue; glints.push([x, D.r(0.3, 4), D.r(0.6, 2.2), D.f() * TAU, D.chance(0.25)]); } }
@@ -87,6 +90,25 @@ K.shore = function (S, P, o) {
         const pts = []; for (let k = 1; k < 9; k++) { const yy = qy - 0.35 - k * k * 0.55 - k * 0.5; if (yy < env.y0) break; pts.push(la, yy, lb, yy); }
         if (s > 2) pts.push(la, qy - 2.0, lb, qy - 2.0, la, qy - 2.5, lb, qy - 2.5);
         ydLines(ctx, env, pts, landD, 0.06);
+        if (s > 4.5) { // the joints between slabs, wider apart nearer the shooter, staggered row to row
+          const pj = []; let prev = qy - 0.35;
+          for (let k = 1; k < 9; k++) { const yy = qy - 0.35 - k * k * 0.55 - k * 0.5; if (prev < env.y0) break; const sp = 1.4 + k * 0.9; if (sp * s < 7) { prev = yy; continue; }
+            for (let x = Math.floor(Math.max(la, env.x0) / sp) * sp + (k % 2) * sp * 0.5; x < Math.min(lb, env.x1); x += sp) pj.push(x, prev, x, yy);
+            prev = yy; }
+          ydLines(ctx, env, pj, landD, 0.035);
+        }
+        if (s > 2.2) { // stains, tyre marks, a drain cover now and then, a newer slab: all flat on the ground
+          for (let pass = 0; pass < 4; pass++) {
+            ctx.fillStyle = pass === 0 ? stainC : pass === 1 ? tyreC : pass === 2 ? patchC : grate; ctx.beginPath();
+            for (let i = 0; i < pv.length; i++) { const q = pv[i]; if (q[2] !== pass || q[0] < la - 4 || q[0] > lb + 4 || q[0] < env.x0 - 4 || q[0] > env.x1 + 4 || q[1] < env.y0) continue;
+              if (pass === 0) { ctx.moveTo(q[0] + q[3], q[1]); ctx.ellipse(q[0], q[1], q[3], 0.1 + q[3] * 0.04, 0, 0, TAU); }
+              else if (pass === 1) { ctx.rect(q[0], q[1], q[3] * 2.4, 0.07); ctx.rect(q[0] + 0.3, q[1] - 0.32, q[3] * 2.4, 0.07); }
+              else if (pass === 2) ctx.rect(q[0], q[1], q[3] * 0.9, 0.3);
+              else if (s > 4) ctx.rect(q[0], q[1], 0.55, 0.14); }
+            ctx.fill();
+          }
+          if (s > 9) { const pts = []; for (let i = 0; i < pv.length; i++) { const q = pv[i]; if (q[2] !== 3 || q[0] < la || q[0] > lb) continue; for (let j = 1; j < 5; j++) pts.push(q[0] + j * 0.11, q[1] + 0.02, q[0] + j * 0.11, q[1] + 0.12); } ydLines(ctx, env, pts, landD, 0.025); }
+        }
         if (s > 1.5) { ctx.fillStyle = mix(land, S.tone(S.pal.skyBot, P), 0.35); ctx.beginPath(); for (let i = 0; i < 24; i++) { const px = (sg < 0 ? edge - 6 : edge + 6) - sg * ydHash(i, 3) * 150, py = qy - 1.2 - ydHash(i, 5) * 8; if (px < la || px > lb || py < env.y0) continue; ctx.moveTo(px + 1.2, py); ctx.ellipse(px, py, 0.6 + ydHash(i, 7) * 1.4, 0.12, 0, 0, TAU); } ctx.fill(); }
       }
       R4(ctx, wx, -0.2, 1.1, qy + 0.2, wall);
