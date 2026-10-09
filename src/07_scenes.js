@@ -528,6 +528,7 @@ SCN.street = function (o) {
     const B = K.building(S, PB, Object.assign({ x, id: 'b' + (i + 1), seed: (o.seed || 3) * 13 + i * 7, dish: i % 2 === 0 ? 0.42 + i * 0.07 : undefined }, bd));
     H.b.push(B); H['b' + (i + 1)] = B; x += bd.w + (o.gap || 0);
   });
+  const rowEnd = PB.items[PB.items.length - 1]; H.dress = [];   // where the detail layer for the walls goes, and what stands along their foot
   // dressing along the foot of the row and on its walls. All of it sits on the building
   // plane, seven metres behind anyone on the pavement.
   const DR = makeRng((o.seed || 3) * 977 + 31), inks = ['#b3312b', '#27457a', '#2f6b4a', '#8a6a2a', '#5a3a6a'], papers = ['#e9dcc0', '#f1ede2', '#e8c98a', '#cfe0e8'], words = ['DANCE', 'VOTE', 'BOXING', 'SALE', 'CIRCUS', 'ROOMS', 'JAZZ', 'LOST DOG'];
@@ -537,7 +538,7 @@ SCN.street = function (o) {
       const piers = []; for (let c = 1; c < B.cols; c++) if (bd.door === undefined || (c !== bd.door && c !== bd.door + 1)) piers.push(B.x + c * pw);
       const kinds = ['box', 'bike', 'bin', 'poster', 'poster', 'tag', 'hydrant', 'poster'];
       piers.forEach((px0) => {
-        const k = DR.pick(kinds), u = DR.f();
+        const k = DR.pick(kinds), u = DR.f(); H.dress.push([k, px0, u]);
         if (k === 'box' && u < 0.6) K.postBox(S, PB, px0);
         else if (k === 'bike' && u < 0.75) K.bicycle(S, PB, px0, { col: DR.pick(['#2f6b4a', '#27457a', '#8a2a2a', '#2a2e36']), flip: DR.chance(0.5) });
         else if (k === 'bin') { K.bin(S, PB, px0 - 0.3); if (u > 0.5) K.bin(S, PB, px0 + 0.42, { col: '#6f7a6a' }); }
@@ -550,7 +551,7 @@ SCN.street = function (o) {
     } else {
       // outside a shop: produce crates under the window, a bill or two on the pilaster
       if (String(bd.shop.sign || '').indexOf('DELI') >= 0) { const cx = B.x + 1.2; PB.add({ x0: cx - 0.2, x1: cx + 3.6, layer: 0, draw(ctx, env) { if (env.s < 7) return; const wd = S.tone('#8a6a45', PB), wd2 = S.tone('#6b5034', PB), fr = ['#d9482b', '#e8a23a', '#7fae45', '#b56bb0']; for (let k = 0; k < 4; k++) { const bx = cx + k * 0.82; R4(ctx, bx, 0, 0.74, 0.3, wd); R4(ctx, bx, 0.12, 0.74, 0.03, wd2); if (env.s > 14) { ctx.fillStyle = S.tone(fr[k], PB); ctx.beginPath(); for (let q = 0; q < 5; q++) { ctx.moveTo(bx + 0.12 + q * 0.13 + 0.075, 0.32 + (q % 2) * 0.035); ctx.arc(bx + 0.12 + q * 0.13, 0.32 + (q % 2) * 0.035, 0.075, 0, TAU); } ctx.fill(); } } } }); }
-      else if (DR.chance(0.7)) K.bin(S, PB, B.x + B.w - 0.5 - (bd.shop.door ? 2.3 : 0), { col: '#6f7a6a' });
+      else if (DR.chance(0.7)) { const bx = B.x + B.w - 0.5 - (bd.shop.door ? 2.3 : 0); K.bin(S, PB, bx, { col: '#6f7a6a' }); H.dress.push(['bin', bx, 0]); }
     }
   });
   const PS = S.plane(z, 'street');
@@ -578,7 +579,361 @@ SCN.street = function (o) {
   H.street = (xx, extra) => Object.assign({ plane: PS, x: xx, y: 0, zone: 'street', behind: false, room: null }, extra || {});
   H.inWin = (B, f, c, dx, extra) => { const op = B.win(f, c); return Object.assign({ plane: B.P, x: B.winX(c) + (dx || 0), y: B.floorY(f), room: op.room, zone: op.room, behind: true }, extra || {}); };
   H.onRoof = (B, xx, extra) => Object.assign({ plane: B.P, x: xx, y: B.roofY, room: B.roofRoom, zone: B.roofRoom, behind: true }, extra || {});
+  stDetail(S, H, { styles, rowEnd, seed: o.seed || 3 });
   return H;
 };
+
+// ---- a lived-in street ----------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco) and a few cheap moving
+// things. On the row: soot and rain run down from the cornices, salt bleeds from the string
+// courses, damp rises at the foot of the walls, cracks step out from the window corners; old
+// repairs, tie plates, rust under the air conditioners, a cable or two, a dish, a bell panel by
+// the door, a weed on a cornice, and a hotel sign on a pier. On the ground: litter, gum, stains
+// and leaves on the pavements and in the gutters, tar seams and skid marks on the road, a waste
+// lot past each end of the row, and after dark the light of the shop windows lying on the
+// paving. Moving: pigeons on the cornices, steam from the laundry vent, a sheet of newspaper
+// blowing along the road, the sign's tubes stuttering at night. All of it is painted on a wall
+// that already hides what is behind it, lies flat on the ground, or sits low in the lots seven
+// metres behind the pavement; nothing is solid or shootable.
+// How the ground of plane P lies as seen from the eye: card height of a point dz in front of it.
+function stEye(D, P) {
+  const e = D.env ? kxSee(D.env, P) : null, eyr = e && e.ok ? Math.max(4, e.ey - (P.groundY || 0)) : 16, d = e && e.ok ? P.z - e.ez : P.z;
+  return { eyr, d, tilt: eyr / d, hOf: (dz) => (eyr * dz) / Math.max(1, d - dz) };
+}
+// A flat patch lying on the ground: a squashed wobbly oval, judged for size by its width.
+function stFlat(D, R, x, y, rx, ry, hex, a) {
+  const p = [], ph = R.r(0, TAU);
+  for (let i = 0; i < 7; i++) { const an = ph + (i / 7) * TAU, r = R.r(0.75, 1.15); p.push(x + Math.cos(an) * rx * r, y + Math.sin(an) * ry * r); }
+  D.poly(p, hex, a, rx * 1.4);
+}
+// Rubbish trodden into a pavement or blown along a road, between card heights yA (far) and
+// yB (near): scraps of paper, cans and cups, leaves, gum, cigarette ends. sq is how flat a
+// thing lying down looks from up here; dens is pieces to the metre.
+function stLitter(D, R, x0, x1, yA, yB, sq, dens) {
+  const paper = ['#ebe6d8', '#d8cdaa', '#c9d3da'], tin = ['#9aa3ab', '#3b6ea5', '#c9a24a', '#2f6b4a'], leaf = ['#7a5a32', '#94683a', '#5d4a2a'];
+  for (let i = 0, n = Math.round((x1 - x0) * dens); i < n; i++) {
+    const x = R.r(x0, x1), y = R.r(yB, yA), k = R.f();
+    if (k < 0.2) { D.at = 5; const w = R.r(0.16, 0.34), h = Math.max(0.03, w * sq * R.r(0.8, 1.5)); D.poly([x, y, x + w, y + h * 0.15, x + w * 0.85, y + h, x + w * 0.1, y + h * 0.85], R.pick(paper), 0.9, w); }
+    else if (k < 0.28) { D.at = 10; D.poly([x, y, x + 0.13, y, x + 0.13, y + 0.065, x, y + 0.065], R.pick(tin), 1, 0.13); D.pass = 1; D.poly([x, y + 0.045, x + 0.13, y + 0.045, x + 0.13, y + 0.06, x, y + 0.06], '#ffffff', 0.35, 0.13); D.pass = 0; }
+    else if (k < 0.33) { D.at = 10; D.poly([x, y, x + 0.07, y, x + 0.085, y + 0.11, x - 0.015, y + 0.11], '#f1ede2', 1, 0.11); }
+    else if (k < 0.55) { D.at = 10; const l = R.r(0.07, 0.13), hh = Math.max(0.012, l * sq * 0.7); D.poly([x, y, x + l * 0.5, y + hh, x + l, y, x + l * 0.5, y - hh], R.pick(leaf), 0.9, l); }
+    else if (k < 0.8) { D.at = 20; stFlat(D, R, x, y, R.r(0.035, 0.06), 0.012 + sq * 0.03, '#2b2d30', 0.4); }
+    else { D.at = 40; D.poly([x, y, x + 0.045, y, x + 0.045, y + 0.014, x, y + 0.014], '#e6dcc4', 1, 0.05); }
+  }
+  D.at = 0;
+}
+// Weather and wear on the faces of a row of K.building walls Bs standing on plane P, as one
+// static layer drawn just after the item o.after: soot or rain running down from the
+// cornices, salt or grime under the string courses, damp at the foot, cracks from the window
+// corners, old repairs, tie plates, rust under the air conditioners, a cable, a dish, a bell
+// panel, weeds at the foot and a buddleia on a cornice. All of it keeps off the windows, doors,
+// shop fronts and fixings already on the walls. o.birds: where pigeons sit (the cornice is
+// whitened under them). Returns clear(x0, y0, x1, y1): whether that box of wall is free.
+function stFacade(S, P, Bs, o) {
+  const birds = o.birds || [];
+  // what must stay clear on the faces: windows, doors, shop fronts, and the pipes,
+  // vents, alarm boxes and air conditioners already fixed to the walls
+  const obs = [];
+  Bs.forEach((B) => {
+    for (const k in B.wins) { const op = B.wins[k]; obs.push([op.x - 0.2, op.y - 0.18, op.x + op.w + 0.2, op.y + op.h + 0.32]); }
+    if (B.shop) obs.push([B.x - 0.05, B.base - 1, B.x + B.w + 0.05, B.base + B.fh + 0.6]);
+    if (B.doorC !== undefined && !B.shop) {
+      if (B.doorOp) { const d = B.doorOp; obs.push([d.x - 0.42, B.base - 1, d.x + d.w + 0.82, d.y + d.h + 0.5]); }
+      else { const cx = B.winX(B.doorC); obs.push([cx - 0.85, B.base - 1, cx + 1.45, B.base + 3.1]); }
+    }
+    (B.pipes || []).forEach((px) => obs.push([px - 0.2, B.base - 1, px + 0.2, B.roofY]));
+    (B.vents || []).forEach((v) => obs.push([v[0] - 0.06, v[1] - (v[2] ? 0.75 : 0.06), v[0] + 0.4, v[1] + 0.32]));
+    if (B.alarm) obs.push([B.alarm.x - 0.06, B.alarm.y - 0.06, B.alarm.x + 0.42, B.alarm.y + 0.36]);
+    (B.acs || []).forEach((op) => obs.push([op.x + 0.1, op.y - 0.8, op.x + 1.2, op.y]));
+  });
+  // how far down from (x, y) the wall is clear, a strip hw either side; and whether a box is clear
+  const roomDown = (x, y, hw) => { let d = y - 0.62; for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x + hw < o[0] || x - hw > o[2]) continue; if (y > o[1] && y < o[3]) return 0; if (o[3] <= y) d = Math.min(d, y - o[3]); } return d; };
+  const clear = (x0, y0, x1, y1) => { for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x1 > o[0] && x0 < o[2] && y1 > o[1] && y0 < o[3]) return false; } return true; };
+  K.deco(S, P, { after: o.after, seed: o.seed }, (D, R) => {
+    const soot = '#1a1512', salt = '#f0eadc', wash = '#20242a', rust = '#7a3c1e', iron = '#24211f', cab = '#1f2227', green = '#3c4a32';
+    const streak = (x, y, w, l, hex, a) => D.poly([x - w / 2, y, x + w / 2, y, x + w * 0.4, y - l * 0.55, x + w * 0.2, y - l, x - w * 0.12, y - l * 0.96, x - w * 0.36, y - l * 0.5], hex, a, w);
+    Bs.forEach((B) => {
+      if (B.kStyle === 'glass') return;
+      const brick = B.kStyle === 'brick', x0 = B.x, x1 = B.x + B.w, top = B.roofY - 0.18, pw = B.w / B.cols;
+      // soot (on brick) or rain (on cast concrete) running down from under the cornice
+      D.at = 5;
+      for (let i = 0, n = Math.round(B.w * 0.9); i < n; i++) {
+        const w = R.r(0.06, 0.2), x = R.r(x0 + 0.35, x1 - 0.5), l = Math.min(R.r(0.8, brick ? 2.6 : 5), roomDown(x, top, w / 2) - 0.05);
+        if (l > w * 3) streak(x, top, w, l, brick ? soot : wash, brick ? 0.13 : 0.15);
+      }
+      // salt bleeding out under each string course, or the grime that gathers under it
+      for (let f = 1; f < B.floors; f++) {
+        const y = B.floorY(f) - 0.11;
+        for (let i = 0, n = Math.round(B.w * 0.35); i < n; i++) {
+          const w = R.r(0.05, 0.16), x = R.r(x0 + 0.3, x1 - 0.4), l = Math.min(R.r(0.3, brick ? 0.9 : 1.6), roomDown(x, y, w / 2) - 0.05);
+          if (l > w * 3) streak(x, y, w, l, brick ? salt : wash, brick ? 0.12 : 0.11);
+        }
+      }
+      if (!brick) {
+        // long rain marks down the piers of cast concrete, rust weeping from its tie bolts, a spalled patch
+        for (let c = 0; c <= B.cols; c++) {
+          const px = c === 0 ? x0 + 0.6 : c === B.cols ? x1 - 1.15 : x0 + c * pw;
+          for (let k = 0; k < 2; k++) { const x = px + R.r(-0.32, 0.32), w = R.r(0.12, 0.3), l = roomDown(x, top, w / 2) * R.r(0.4, 0.95); if (l > 0.6) streak(x, top, w, l, wash, 0.1); }
+        }
+        for (let i = 0; i < 2; i++) {
+          const x = x0 + R.i(1, Math.max(1, B.cols - 1)) * pw + R.r(-0.3, 0.3), y = B.floorY(R.i(1, B.floors - 1)) + R.r(0.4, 2.4);
+          if (!clear(x - 0.34, y - 0.26, x + 0.34, y + 0.26)) continue;
+          D.at = 10; KW.blob(D, R, x, y, R.r(0.18, 0.3), R.r(0.12, 0.2), '#ffffff', 0.14, 0.35);
+          D.pass = 1; D.seg(x - 0.14, y + 0.04, x + 0.15, y + 0.05, 0.025, '#2a1a12', 0.85); D.seg(x - 0.12, y - 0.05, x + 0.13, y - 0.05, 0.025, '#2a1a12', 0.85); D.pass = 0;
+          const l = Math.min(R.r(0.5, 1.2), roomDown(x, y - 0.15, 0.05)); if (l > 0.2) streak(x, y - 0.15, 0.14, l, rust, 0.28);
+        }
+        D.at = 20;
+        for (let f = 0; f < B.floors; f++) for (let c = 0; c <= B.cols; c++) for (let k = 0; k < 2; k++) {
+          if (R.f() > 0.25) continue;
+          const mx = x0 + c * pw + (R.chance(0.5) ? 0.205 : -0.205), hy = B.floorY(f) + B.fh * (0.14 + k * 0.72), l = Math.min(R.r(0.15, 0.55), roomDown(mx, hy, 0.03));
+          if (l > 0.1 && mx > x0 + 0.1 && mx < x1 - 0.1) streak(mx, hy, 0.05, l, rust, 0.3);
+        }
+      }
+      // cracks running out from the corners of a few windows: stepping along the joints in brick
+      D.at = 14;
+      for (const key in B.wins) {
+        const op = B.wins[key]; if (op.door || R.f() > 0.3) continue;
+        const sx = R.chance(0.5) ? -1 : 1, sy = R.chance(0.6) ? 1 : -1, cx = sx < 0 ? op.x - 0.16 : op.x + op.w + 0.16, cy = sy > 0 ? op.y + op.h + 0.23 : op.y - 0.06;
+        const p = [cx, cy]; let px = cx, py = cy;
+        if (brick) for (let j = 0, n = R.i(4, 9); j < n; j++) { px += sx * R.pick([0.1125, 0.225, 0.1125]); p.push(px, py); py += sy * 0.075; p.push(px, py); }
+        else for (let j = 0; j < 5; j++) { px += sx * R.r(0.04, 0.16); py += sy * R.r(0.07, 0.17); p.push(px, py); }
+        if (clear(px - 0.02, py - 0.02, px + 0.02, py + 0.02)) D.line(p, 0.022, brick ? '#1c1512' : '#1a1d22', 0.55);
+      }
+      // damp rising at the foot of the wall, with a tide line of salt on brick, green on concrete
+      D.at = 5;
+      { const yb = B.base + 0.57; let seg = null;
+        const flush = () => {
+          if (seg && seg.length >= 6) { const n = seg.length; D.poly(seg.concat([seg[n - 2], yb, seg[0], yb]), brick ? '#1e1915' : green, brick ? 0.18 : 0.2, 0.3); if (brick) { D.pass = 1; D.line(seg, 0.03, salt, 0.14); D.pass = 0; } }
+          seg = null;
+        };
+        const ph = R.r(0, TAU), ph2 = R.r(0, TAU), hb = brick ? R.r(0.2, 0.3) : R.r(0.14, 0.22);
+        for (let x = x0 + 0.05; x <= x1 - 0.04; x += 0.25) {
+          let hm = 0.5;
+          for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x > o[0] - 0.04 && x < o[2] + 0.04 && o[1] < yb + 0.9) hm = Math.min(hm, o[1] - yb + 0.08); }
+          if (hm < 0.1) { flush(); continue; }
+          (seg = seg || []).push(x, yb + Math.min(hm, hb * (1 + 0.22 * Math.sin(x * 1.1 + ph) + 0.1 * Math.sin(x * 3.3 + ph2))));
+        }
+        flush();
+      }
+      // weeds where the paving meets the wall
+      D.at = 10;
+      for (let i = 0, n = Math.round(B.w * 0.25); i < n; i++) { const x = R.r(x0 + 0.3, x1 - 0.3); if (clear(x - 0.15, 0, x + 0.15, 0.3)) KC.tuft(D, R, x, 0, R.r(0.1, 0.24), R.chance(0.5) ? '#55683a' : '#6b7448'); }
+      // old repairs: a stepped patch of newer brick, or fresh render
+      for (let i = 0, n = R.i(2, 4); i < n; i++) {
+        const w = R.r(0.5, 1.3), h = R.r(0.3, 0.75), x = Math.round(R.r(x0 + 0.5, x1 - w - 0.6) / 0.1125) * 0.1125, y = Math.round(R.r(B.base + 1.2, top - h - 0.4) / 0.075) * 0.075;
+        if (!clear(x - 0.12, y, x + w + 0.12, y + h)) continue;
+        if (brick) {
+          const rows = Math.max(2, Math.round(h / 0.15)), p = [];
+          for (let r = 0; r < rows; r++) { const xr = x + w + (r % 2 ? 0.1125 : 0); p.push(xr, y + r * 0.15, xr, y + (r + 1) * 0.15); }
+          for (let r = rows - 1; r >= 0; r--) { const xl = x + (r % 2 ? 0.1125 : 0); p.push(xl, y + (r + 1) * 0.15, xl, y + r * 0.15); }
+          D.poly(p, R.chance(0.5) ? '#000000' : '#ffffff', 0.08, Math.min(w, h));
+        } else KW.blob(D, R, x + w / 2, y + h / 2, w / 2, h / 2, '#ffffff', 0.09, 0.2);
+      }
+      // iron tie plates at each floor up one pier, each weeping a little rust
+      if (brick && B.cols > 1 && R.chance(0.7)) {
+        const px = x0 + R.i(1, B.cols - 1) * pw;
+        for (let f = 1; f < B.floors; f++) {
+          const y = B.floorY(f) + 0.34; if (!clear(px - 0.2, y - 0.16, px + 0.2, y + 0.16)) continue;
+          D.at = 10; streak(px + 0.02, y - 0.06, 0.09, R.r(0.25, 0.65), rust, 0.28);
+          D.at = 12; D.pass = 1; D.seg(px - 0.12, y - 0.08, px + 0.12, y + 0.08, 0.04, iron, 0.8); D.seg(px - 0.12, y + 0.08, px + 0.12, y - 0.08, 0.04, iron, 0.8); D.ell(px, y, 0.045, 0.045, iron, 0.9); D.pass = 0;
+        }
+      }
+      // rust run down from the brackets of the air conditioners
+      D.at = 10;
+      (B.acs || []).forEach((op) => { for (const sx of [op.x + 0.32, op.x + 0.98]) { const l = Math.min(R.r(0.4, 1.2), roomDown(sx, op.y - 0.82, 0.04)); if (l > 0.12) streak(sx, op.y - 0.75, 0.07, l + 0.07, rust, 0.22); } });
+      // a television cable down a pier from the roof and in at a window
+      if (brick && B.cols > 2 && B.floors > 3 && R.chance(0.65)) {
+        const c = R.i(1, B.cols - 1), side = R.chance(0.5) ? -1 : 1, px = x0 + c * pw + side * 0.42, f = R.i(1, B.floors - 2), yE = B.floorY(f) + 1.7, wl = B.win(f, side < 0 ? c - 1 : c);
+        if (wl && clear(px - 0.04, yE - 0.04, px + 0.04, top - 0.1)) {
+          D.at = 10; D.line([px, top - 0.05, px, yE, side < 0 ? wl.x + wl.w + 0.03 : wl.x - 0.03, yE], 0.03, cab, 0.9);
+          D.at = 30; for (let y = top - 0.5; y > yE + 0.2; y -= 0.65) D.rect(px - 0.025, y, 0.05, 0.035, cab);
+        }
+      }
+      // pigeons have whitened the cornice where they sit
+      D.at = 10;
+      birds.forEach((b) => { if (b[0] < x0 || b[0] > x1) return; for (let k = 0; k < 3; k++) { const x = b[0] + R.r(-0.35, 0.35), l = Math.min(R.r(0.12, 0.5), roomDown(x, B.roofY - 0.15, 0.03)); if (l > 0.08) streak(x, B.roofY - 0.15, R.r(0.04, 0.09), l, '#ecebe4', 0.4); } });
+    });
+    // a dish bolted to a pier on one building, its cable run in at the window below
+    { const cands = Bs.filter((B) => B.kStyle === 'brick' && B.floors >= 4 && B.cols > 2);
+      if (cands.length) {
+        const B = cands[R.i(0, cands.length - 1)], px = B.x + R.i(1, B.cols - 1) * (B.w / B.cols) + 0.3, y = B.floorY(B.floors - 2) + 1.5;
+        if (clear(px - 0.4, y - 0.42, px + 0.5, y + 0.36)) {
+          D.at = 6; D.rect(px - 0.05, y - 0.32, 0.1, 0.5, '#3a3f48'); D.ell(px + 0.04, y, 0.27, 0.31, '#c9ced3');
+          D.pass = 1; D.ell(px + 0.08, y + 0.01, 0.19, 0.23, '#a7aeb5'); D.seg(px + 0.06, y - 0.02, px + 0.4, y - 0.08, 0.03, '#2a2e36'); D.rect(px + 0.37, y - 0.13, 0.08, 0.08, '#2a2e36'); D.pass = 0;
+          D.at = 10; const l = roomDown(px, y - 0.34, 0.03); D.line([px, y - 0.32, px, y - 0.32 - Math.min(1.2, l * 0.9)], 0.025, cab, 0.9);
+        }
+      } }
+    // a bell panel beside each street door
+    Bs.forEach((B) => {
+      if (!B.doorOp) return; const d = B.doorOp, bx = d.x - 0.72, by = B.base + 1.2; if (!clear(bx - 0.02, by, bx + 0.22, by + 0.36)) return;
+      D.at = 10; D.rect(bx + 0.02, by, 0.16, 0.3, '#5d636b'); D.pass = 1; D.at = 20; for (let k = 0; k < 4; k++) D.poly([bx + 0.06, by + 0.04 + k * 0.055, bx + 0.14, by + 0.04 + k * 0.055, bx + 0.14, by + 0.07 + k * 0.055, bx + 0.06, by + 0.07 + k * 0.055], '#c9b98a', 1, 0.08); D.pass = 0;
+    });
+    // a buddleia rooted in the joint above a cornice, as they do
+    { const B = Bs[R.i(0, Bs.length - 1)], bx = B.x + B.w * R.r(0.3, 0.75), by = B.roofY + 0.16;
+      if (B.kStyle !== 'glass' && clear(bx - 0.45, by, bx + 0.45, by + 0.5)) {
+        D.at = 6; KW.blob(D, R, bx, by + 0.03, 0.22, 0.06, '#3c4a32', 0.6, 0.3);
+        const tips = []; for (let k = 0; k < 5; k++) { const tx = bx + (k - 2) * 0.1 + R.r(-0.05, 0.05), ty = by + R.r(0.22, 0.42); D.seg(bx + (k - 2) * 0.02, by, tx, ty, 0.025, '#4a5a34'); tips.push([tx, ty]); }
+        D.pass = 1; tips.forEach((t) => { D.ell(t[0], t[1] - 0.04, 0.09, 0.045, '#56723c'); D.ell(t[0] - 0.05, t[1] - 0.12, 0.07, 0.035, '#4c6635'); });
+        D.pass = 2; for (let k = 0; k < 3; k++) { const t = tips[k * 2]; D.ell(t[0] + 0.02, t[1] + 0.06, 0.03, 0.07, '#8a5aa8'); } D.pass = 0;
+      } }
+  });
+  return clear;
+}
+function stDetail(S, H, q) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
+  const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
+  // where the pigeons sit on the cornices (and so where the cornice is whitened under them)
+  const birds = [];
+  { const R = makeRng(5131 + seed * 7); H.b.forEach((B) => { if (B.kStyle === 'glass') return; for (let i = 0, n = R.i(0, 3); i < n; i++) birds.push([B.x + R.r(0.8, B.w - 1.4), B.roofY + 0.16, R.r(0, 20), R.chance(0.5) ? 1 : -1]); }); }
+
+  const clear = stFacade(S, PB, H.b, { after: q.rowEnd, seed: 5101 + seed, birds });
+
+  // ---- the pavement along the row, and the lots past its ends ----
+  K.deco(S, PB, { ground: true, seed: 5121 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    stLitter(D, R, -75, 75, -0.03, -bd, sq, 1.1);
+    // stains and spilt rubbish round the bins, wet under the deli's crates
+    (H.dress || []).forEach((d) => {
+      if (d[0] !== 'bin') return;
+      D.at = 5; stFlat(D, R, d[1] + R.r(-0.2, 0.3), -bd * R.r(0.15, 0.35), R.r(0.5, 0.9), Math.max(0.05, 0.8 * sq), '#000000', 0.1);
+      stLitter(D, R, d[1] - 0.8, d[1] + 1.2, -0.03, -bd * 0.6, sq, 4);
+    });
+    // the bare ground of a waste lot past each end of the row: cinders, rubble, weeds, an old tyre or two
+    let trolley = 1, mattress = 1;
+    for (const side of [-1, 1]) {
+      const a = side > 0 ? rowX1 + 0.5 : rowX0 - 0.5, b = a + side * 26, lo = Math.min(a, b), hi = Math.max(a, b);
+      D.at = 0;
+      const edge = [hi, -0.02, lo, -0.02]; for (let x = lo; x <= hi; x += R.r(0.5, 1.4)) edge.push(x, -bd * R.r(0.3, 0.55)); edge.push(hi, -bd * 0.4);
+      D.poly(edge, '#4a4038', 0.55, 2);
+      for (let x = lo + 0.6; x < hi - 0.6; x += R.r(1.1, 2.8)) {
+        const y = -R.r(0.04, bd * 0.42), k = R.f();
+        if (k < 0.45) { // a heap of broken brick and plaster
+          const w = R.r(0.8, 2), h = R.r(0.15, 0.4); D.at = 5; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.7, x - w * 0.05, y + h, x + w * 0.25, y + h * 0.8, x + w / 2, y], '#6e665e', 1, h);
+          D.pass = 1; D.at = 14; for (let j = 0; j < 4; j++) D.rect(x + R.r(-w * 0.35, w * 0.3), y + R.r(0.02, h * 0.6), 0.2, 0.07, R.chance(0.6) ? '#8a5444' : '#b9b0a2'); D.pass = 0;
+        } else if (k < 0.8) { D.at = 8; KC.tuft(D, R, x, y, R.r(0.2, 0.5), R.chance(0.5) ? '#55683a' : '#77744a'); }
+        else if (k < 0.88) { D.at = 8; KC.tyres(D, x, y, R.i(1, 2), 0.3); }
+        else if (k < 0.94 && mattress) { // a mattress dumped flat, stained, its ticking striped
+          mattress = 0; D.at = 6; D.rect(x - 0.9, y, 1.8, 0.14, '#a59d8e'); D.pass = 1; D.at = 14; for (let j = 0; j < 6; j++) D.rect(x - 0.85 + j * 0.3, y + 0.02, 0.05, 0.1, '#6f7f92', 0.6); D.ell(x + 0.3, y + 0.08, 0.3, 0.05, '#5a4a32', 0.4); D.rect(x - 0.9, y, 1.8, 0.04, '#000000', 0.2); D.pass = 0;
+        } else if (trolley) { // a shopping trolley on its side
+          trolley = 0;
+          D.at = 10; D.line([x - 0.45, y + 0.05, x + 0.4, y + 0.05, x + 0.45, y + 0.5, x - 0.4, y + 0.45, x - 0.45, y + 0.05], 0.03, '#9aa3ab', 0.9);
+          D.at = 20; for (let j = 1; j < 5; j++) D.seg(x - 0.45 + j * 0.17, y + 0.05, x - 0.43 + j * 0.17, y + 0.47, 0.015, '#9aa3ab', 0.8);
+          D.at = 10; D.ell(x - 0.35, y + 0.02, 0.06, 0.06, '#24272c'); D.ell(x + 0.3, y + 0.02, 0.06, 0.06, '#24272c');
+        }
+      }
+    }
+    // after dark the lit shop windows lay their light on the paving, and in the wet it runs towards you
+    if (night) H.b.forEach((B) => {
+      const r = B.shop && S.rooms[B.shop.room]; if (!r || !r.lit) return;
+      const sx = B.shop.x, sw = B.shop.w; D.lit = true; D.at = 0;
+      for (let k = 0; k < 3; k++) { const fl = 0.3 + k * 0.5, dep = bd * (0.3 + k * 0.28); D.poly([sx + 0.1 + k * 0.4, -0.01, sx + sw - 0.1 - k * 0.4, -0.01, sx + sw - 0.3 + fl, -dep, sx + 0.3 - fl, -dep], '#ffdfa0', 0.07, 1); }
+      if (wet) for (let i = 0, n = Math.round(sw * 1.5); i < n; i++) { const x = R.r(sx + 0.2, sx + sw - 0.2), l = bd * R.r(0.4, 0.95); D.poly([x - 0.05, -0.01, x + 0.05, -0.01, x + 0.02, -l, x - 0.02, -l], '#ffe6b0', 0.15, 0.1); }
+      D.lit = false;
+    });
+  });
+
+  // ---- the pavement on the street side and the far gutter ----
+  K.deco(S, PS, { ground: true, seed: 5141 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), gy = -(hk + face), sq = Math.max(0.12, E.tilt * 1.5), rb = E.hOf(7);
+    stLitter(D, R, -75, 75, -0.02, -hk * 0.9, sq, 0.7);
+    // leaves and rubbish drifted against the kerb
+    const leaf = ['#7a5a32', '#94683a', '#5d4a2a', '#a07a3a'], paper = ['#ebe6d8', '#d8cdaa'];
+    for (let x = -75; x < 75; x += R.r(0.8, 4.5)) for (let k = 0, n = R.i(2, 6); k < n; k++) {
+      const lx = x + R.r(0, 1.3), ly = gy - R.r(0.005, 0.05);
+      if (R.f() < 0.8) { D.at = 8; const l = R.r(0.08, 0.15); D.poly([lx, ly, lx + l * 0.5, ly + 0.012, lx + l, ly, lx + l * 0.5, ly - 0.012], R.pick(leaf), 0.95, l); }
+      else { D.at = 5; D.poly([lx, ly, lx + 0.26, ly + 0.005, lx + 0.24, ly + 0.03, lx + 0.02, ly + 0.026], R.pick(paper), 0.9, 0.26); }
+    }
+    D.at = 0;
+    if (gy - 0.03 > -rb) stLitter(D, R, -75, 75, gy - 0.03, -rb * 0.97, sq, 0.25);
+  });
+
+  // ---- the road and the near pavement ----
+  K.deco(S, PR, { ground: true, seed: 5151 + seed }, (D, R) => {
+    const near = 5.3;
+    // tar run into old cracks: glossy black seams wandering across the lanes
+    D.at = 5;
+    for (let i = 0; i < 16; i++) { let x = R.r(-75, 70), y = -R.r(0.3, near - 0.4); const p = [x, y]; for (let j = 0; j < 7; j++) { x += R.r(0.5, 1.4); y = clamp(y + R.r(-0.25, 0.25), -near + 0.25, -0.2); p.push(x, y); } D.line(p, 0.05, '#121418', 0.5); }
+    // rubber left by hard braking, two tyres' worth at a time
+    for (let i = 0; i < 4; i++) { const x = R.r(-45, 40), y = -R.pick([1.1, 3.3]) + R.r(-0.4, 0.4), l = R.r(3, 7); for (const dy of [0, -0.42]) D.poly([x, y + dy, x + l, y + dy + 0.02, x + l * 0.98, y + dy - 0.05, x, y + dy - 0.07], '#0e1013', 0.16, 0.5); }
+    // leaves and rubbish in the near gutter, and trodden into the near pavement
+    const leaf = ['#7a5a32', '#94683a', '#5d4a2a', '#a07a3a'];
+    for (let x = -75; x < 75; x += R.r(0.8, 4)) for (let k = 0, n = R.i(2, 5); k < n; k++) { const lx = x + R.r(0, 1.3), ly = -near + R.r(0.03, 0.22), l = R.r(0.08, 0.15); D.at = 8; D.poly([lx, ly, lx + l * 0.5, ly + 0.025, lx + l, ly, lx + l * 0.5, ly - 0.025], R.pick(leaf), 0.95, l); }
+    stLitter(D, R, -75, 75, -near - 0.35, -near - 5, 0.22, 0.9);
+    stLitter(D, R, -75, 75, -0.15, -near + 0.3, 0.16, 0.12);
+  });
+
+  // ---- pigeons on the cornices, by day ----
+  if (S.pal.dark < 0.45 && !wet && birds.length) {
+    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB);
+    PB.add({ x0: rowX0 - 1, x1: rowX1 + 1, layer: 0, draw(ctx, env) {
+      if (env.s < 7) return;
+      const t = env.t, st = [];
+      for (let i = 0; i < birds.length; i++) {
+        const b = birds[i]; if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
+        // every few seconds each one pecks, turns about, or gives a little hop
+        const cyc = (t + b[2]) / 3.7, c = Math.floor(cyc), u = cyc - c, hk = kxH(c, b[2]), dir = hk > 0.5 ? b[3] : -b[3];
+        const hop = hk > 0.82 && u < 0.2 ? Math.sin((u / 0.2) * Math.PI) * 0.12 : 0, peck = hk > 0.3 && hk < 0.7 && u > 0.4 && u < 0.6 ? Math.sin(((u - 0.4) / 0.2) * Math.PI) : 0;
+        st.push([b[0], b[1] + hop, dir, peck]);
+      }
+      if (!st.length) return;
+      ctx.fillStyle = body; ctx.beginPath();
+      for (const [x, y, d] of st) { ctx.moveTo(x + 0.15, y + 0.1); ctx.ellipse(x, y + 0.1, 0.15, 0.085, -0.15 * d, 0, TAU); ctx.moveTo(x - d * 0.1, y + 0.13); ctx.lineTo(x - d * 0.28, y + 0.07); ctx.lineTo(x - d * 0.26, y + 0.12); ctx.closePath(); }
+      ctx.fill();
+      ctx.fillStyle = head; ctx.beginPath();
+      for (const [x, y, d, p] of st) { const hx = x + d * (0.13 + p * 0.06), hy = y + 0.22 - p * 0.13; ctx.moveTo(hx + 0.05, hy); ctx.arc(hx, hy, 0.05, 0, TAU); ctx.moveTo(x + d * 0.04, y + 0.12); ctx.lineTo(hx, hy - 0.03); ctx.lineTo(hx - d * 0.04, hy + 0.02); ctx.closePath(); }
+      ctx.fill();
+      if (env.s > 16) { ctx.fillStyle = dk; ctx.beginPath(); for (const [x, y, d, p] of st) { const hx = x + d * (0.13 + p * 0.06), hy = y + 0.22 - p * 0.13; ctx.moveTo(hx + d * 0.04, hy + 0.005); ctx.lineTo(hx + d * 0.1, hy - 0.015); ctx.lineTo(hx + d * 0.04, hy - 0.02); ctx.closePath(); ctx.rect(x - 0.03, y, 0.015, 0.03); ctx.rect(x + 0.02, y, 0.015, 0.03); } ctx.fill(); }
+    } });
+  }
+
+  // ---- a hotel sign fixed flat to a pier of the last building, its tubes lit after dark ----
+  { const B = last, R = makeRng(5171 + seed);
+    let sx = null; const sh = 3.3, sy = B.floorY(1) + 0.55;
+    if (!B.shop && B.floors >= 4 && B.kStyle !== 'glass') for (let c = 1; c < B.cols && sx === null; c++) { const px = B.x + c * (B.w / B.cols); if (clear(px - 0.5, sy - 0.1, px + 0.5, sy + sh + 0.1)) sx = px; }
+    if (sx !== null) {
+      const brd = S.tone('#5a1e1c', PB), brdK = S.tone('#20262c', PB), trim = S.tone('#c9b98a', PB), letD = S.tone('#efe4c8', PB), neon = '#ff6a48', ph = R.r(0, 50), word = 'HOTEL';
+      PB.add({ x0: sx - 1.5, x1: sx + 1.5, layer: 0, draw(ctx, env) {
+        const s = env.s, on = S.pal.dark > 0.3;
+        R4(ctx, sx - 0.4, sy, 0.8, sh, on ? brdK : brd);
+        if (s > 6) { R4(ctx, sx - 0.5, sy + sh - 0.12, 1.0, 0.07, brdK); R4(ctx, sx - 0.5, sy + 0.08, 1.0, 0.07, brdK); ctx.strokeStyle = trim; ctx.lineWidth = Math.max(0.025, env.px * 0.6); ctx.strokeRect(sx - 0.33, sy + 0.07, 0.66, sh - 0.14); }
+        // mostly steady, a stutter every few seconds, and the T that never quite took
+        let flick = 1, dead = 1;
+        if (on) { const t = env.t + ph, cyc = Math.floor(t / 4.7), u = t / 4.7 - cyc, hk = kxH(cyc, ph); if (u > 0.85 && hk > 0.4) flick = Math.sin(t * 57) > 0.2 ? 1 : 0.35; dead = Math.sin(t * 23) > 0.6 || (hk < 0.3 && u < 0.3) ? 0.25 : 1; }
+        if (on && s > 2) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.32 * flick * S.pal.dark; ctx.drawImage(kxBlob(neon), sx - 1.1, sy - 0.3, 2.2, sh + 0.6); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+        for (let i = 0; i < word.length; i++) {
+          const a = on ? flick * (i === 2 ? dead : 1) : 1; if (a < 0.3 && on) { env.text(ctx, word[i], sx, sy + sh - 0.64 * (i + 1) - 0.02, 0.52, S.tone('#5a2a24', PB), 'center'); continue; }
+          ctx.globalAlpha = a; env.text(ctx, word[i], sx, sy + sh - 0.64 * (i + 1) - 0.02, 0.52, on ? '#ffd8c8' : letD, 'center'); ctx.globalAlpha = 1;
+        }
+      } });
+    }
+  }
+
+  // ---- steam from the laundry's vent, drifting up the pier beside it ----
+  H.b.forEach((B, i) => {
+    const sd = q.styles[i] && q.styles[i].shop; if (!sd || String(sd.sign || '').toUpperCase().indexOf('LAUNDRY') < 0) return;
+    const vx = B.x + 0.62, vy = B.base + B.fh + 0.25, sc = S.tone('#f4f6f7', PB), gr = S.tone('#3a3f47', PB), gr2 = S.tone('#5d636c', PB);
+    PB.add({ x0: vx - 1.5, x1: vx + 1.5, layer: 0, draw(ctx, env) {
+      if (env.s < 4) return;
+      R4(ctx, vx - 0.17, vy - 0.1, 0.34, 0.22, gr);
+      if (env.s > 14) { ctx.fillStyle = gr2; ctx.beginPath(); for (let k = 0; k < 4; k++) ctx.rect(vx - 0.14, vy - 0.07 + k * 0.05, 0.28, 0.02); ctx.fill(); }
+      for (let k = 0; k < 7; k++) { const u = (env.t * 0.3 + k / 7) % 1, r = 0.12 + u * 0.26; kxPuff(ctx, sc, vx - u * 0.3 + Math.sin(u * 7 + k) * 0.05, vy + 0.1 + u * 1.4, r * 1.25, r, 0.5 * (1 - u) * Math.min(1, u * 6)); }
+    } });
+  });
+
+  // ---- a sheet of newspaper blowing along the road, when it is dry ----
+  if (!wet) {
+    const pc = S.tone('#e4dfd0', PR), pk = S.tone('#8d8a80', PR);
+    PR.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+      if (env.s < 3) return;
+      const t = env.t, w = env.wind || 1, dir = w >= 0 ? 1 : -1, sp = 0.6 + Math.min(2, Math.abs(w)) * 0.35, run = 150;
+      const g = t * sp + Math.sin(t * 0.6) * 1.8 + Math.sin(t * 1.7) * 0.4, xx = -75 + (((g % run) + run) % run), x = dir * xx;
+      if (x < env.x0 - 1 || x > env.x1 + 1) return;
+      const y = -0.6 - Math.sin(t * 0.37) * 0.25, lift = Math.max(0, Math.sin(t * 2.3 + Math.sin(t))) * 0.22, fl = Math.cos(t * 3.1), hw = 0.3 * (0.35 + 0.65 * Math.abs(fl)), hh = 0.05 + lift * 0.6;
+      R4(ctx, x - 0.25, y - 0.015, 0.5, 0.025, 'rgba(0,0,0,0.14)');
+      poly(ctx, [x - hw, y + lift, x + hw, y + lift + 0.03, x + hw * 0.85, y + lift + hh, x - hw * 0.9, y + lift + hh * 0.8], pc);
+      if (env.s > 14 && hh > 0.07) { ctx.fillStyle = pk; for (let k = 1; k < 4; k++) ctx.fillRect(x - hw * 0.7, y + lift + (hh * k) / 4, hw * 1.3, Math.max(0.008, env.px * 0.5)); }
+    } });
+  }
+}
 
 CB.SCN = SCN;

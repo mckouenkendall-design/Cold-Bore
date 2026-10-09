@@ -1010,8 +1010,229 @@ SCN.yard = function (o) {
     const hides = (x) => [q.at + (190 + dir * x) / sp, q.at + (190 + L + dir * x) / sp];
     return { veh, trig, t0, t1, hides };
   };
+  ydDetail(S, H);
   return H;
 };
+
+// ---- the lived-in yard ------------------------------------------------------------
+// Detail for looks only, added after everything else and drawn from the scene kit's static
+// layers (K.deco), so a few fills a frame carry all of it. The rules it keeps:
+//   - on the ground strips it lies flat, inside the band of ground each plane really shows
+//     (seen from the grain elevator 30 m up, a nearer plane's ground covers the rest);
+//   - anything that stands up is low and stands either on the far planes behind everybody
+//     (the tower and shed rows) or against a wall that already hides what is behind it;
+//   - nothing goes on the strip itself (where people walk) except flat things on its ground.
+// Nothing here is shootable, and nothing is added to a mission's random streams.
+// The band of ground a plane shows, from its ground line down: [eye height x gap to the next
+// nearer plane / that plane's distance], worked out for the grain elevator.
+function ydBand(P, Pn) { return 30 * (P.z - Pn.z) / Pn.z; }
+// Flat things on a strip of cinder ground: patches of darker and paler cinder, oil, ash, bits
+// of scrap, lost plates and bolts, a dropped sleeper or two, old tyres, and weeds. tilt is how
+// much a metre of depth shows as height here. o.weeds, o.scrap and o.patch scale how much.
+function ydStrew(D, R, x0, x1, band, gc, tilt, o) {
+  o = o || {};
+  const dk = darken(gc, 0.42), dk2 = darken(gc, 0.65), lt = lighten(gc, 0.22), rust = '#8a4a2a', rust2 = '#a8653a', iron = '#1e2024', wood = '#3e3128', wood2 = '#6a5544';
+  const top = -0.04, bot = -band + 0.05, n = (x1 - x0) / 10, fa = Math.min(band, 6) / 3, sq = Math.max(tilt * 1.6, 0.09);   // seen this low a puddle is a sliver: drawn a little rounder so it reads
+  // big soft patches of darker cinder and paler ash, and the black of spilt oil
+  for (let i = 0; i < n * 4 * fa * (o.patch || 1); i++) { const rx = R.r(0.8, 3.2), y = R.r(bot + rx * sq, top - rx * sq * 0.5); KW.blob(D, R, R.r(x0, x1), y, rx, Math.max(0.04, rx * sq * R.r(0.8, 1.3)), R.chance(0.6) ? dk : lt, R.r(0.28, 0.45), 0.2); }
+  for (let i = 0; i < n * 1.2 * fa; i++) { const rx = R.r(0.3, 1.2), y = R.r(bot + 0.1, top - 0.05); D.ell(R.r(x0, x1), y, rx, Math.max(0.03, rx * sq * 0.9), dk2, R.r(0.4, 0.6)); }
+  D.pass = 1;
+  // scrap: rusty offcuts, chair plates, a coil of wire, bolts
+  for (let i = 0; i < n * 3 * fa * (o.scrap || 1); i++) {
+    const x = R.r(x0, x1), y = R.r(bot + 0.05, top - 0.02), k = R.f();
+    if (k < 0.45) D.rect(x, y, R.r(0.2, 0.8), R.r(0.05, 0.1), R.chance(0.6) ? rust : rust2, 0.95);
+    else if (k < 0.75) D.rect(x, y, R.r(0.14, 0.3), R.r(0.05, 0.08), iron, 0.95);
+    else if (k < 0.85) D.seg(x, y, x + R.r(0.4, 1.2), y + R.r(-0.04, 0.04), 0.035, iron, 0.9);
+    else D.ell(x, y, R.r(0.14, 0.28), Math.max(0.035, 0.2 * sq), iron, 0.9);
+  }
+  // an old sleeper or two thrown down, and tyres lying flat
+  for (let i = 0; i < n * 0.8 * (o.scrap || 1); i++) { const x = R.r(x0, x1), y = R.r(bot + 0.15, top - 0.1), l = R.r(1.8, 2.6); D.poly([x, y, x + l, y + R.r(-0.04, 0.04), x + l + 0.05, y + 0.1, x + 0.05, y + 0.1], wood); D.pass = 2; D.rect(x, y + 0.075, l, 0.025, wood2, 0.8); D.pass = 1; }
+  for (let i = 0; i < n * 0.35 * (o.scrap || 1); i++) { const x = R.r(x0, x1), y = R.r(bot + 0.2, top - 0.1), r = R.r(0.32, 0.42), ry = Math.max(0.07, r * sq * 1.6); D.ell(x, y, r, ry, '#16171a'); D.pass = 2; D.ell(x, y + ry * 0.1, r * 0.52, ry * 0.5, dk2); D.pass = 1; }
+  // weeds, and here and there the pink spikes of willowherb (only where the ground is deep enough to stand them on)
+  D.pass = 3;
+  const wN = n * 5 * fa * (o.weeds || 1);
+  for (let i = 0; i < wN; i++) {
+    const x = R.r(x0, x1), y = R.r(bot + 0.08, top - 0.02), h = Math.min(R.r(0.18, 0.45), 0.2 - y);   // never more than a hand above the ground line
+    KC.tuft(D, R, x, y, h, R.chance(0.5) ? '#64803f' : '#7d8a46');
+    const sh = h * R.r(1.4, 2.0);
+    if (h > 0.3 && sh < -y && R.chance(0.25)) { D.poly([x - 0.02, y, x + 0.02, y, x + 0.01, y + sh, x - 0.01, y + sh], '#4d5a36', 0.95, 0.03); D.pass = 4; for (let k = 0; k < 4; k++) D.ell(x + R.r(-0.03, 0.03), y + sh * (0.6 + k * 0.1), 0.05, 0.04, '#b0577a', 0.95); D.pass = 3; }
+  }
+  D.pass = 0;
+}
+function ydDetail(S, H) {
+  const night = S.pal.dark > 0.5;
+  // ---- the ground strips, nearest first ----
+  const strips = [
+    [H.PN, null, 14, '#3b4038', { weeds: 1.6, scrap: 1.4, patch: 0.8 }],
+    [H.PY, H.PN, 0, '#4a4a44', { weeds: 1.1, scrap: 1.7 }],
+    [H.PT0, H.PY, 0, '#5f5850', { weeds: 0.7, scrap: 1.3 }],
+    [H.PM, H.PT1, 0, '#746a60', { weeds: 0.5, scrap: 0.6 }],
+    [H.PW, H.PSd, 0, '#5a5450', { scrap: 1.4 }],
+    [H.PSh, H.PW, 0, '#55504e', { scrap: 1.2 }],
+  ];
+  strips.forEach((q, i) => {
+    const P = q[0], band = q[1] ? ydBand(P, q[1]) : q[2], tilt = 30 / P.z;
+    K.deco(S, P, { ground: true, seed: 7310 + i * 19 }, (D, R) => {
+      // (drawn with the ground itself, so the tracks laid on a strip go over the top of it)
+      ydStrew(D, R, -175, 175, band, q[3], tilt, q[4]);
+      if (P === H.PY) { // at the foot of the fence: a line of weeds, rubbish blown against the mesh
+        D.pass = 2; for (let x = -120; x < 120; x += R.r(0.7, 2.4)) KC.tuft(D, R, x, -0.03, R.r(0.18, 0.42), R.chance(0.5) ? '#64803f' : '#7d8a46');
+        for (let x = -118; x < 118; x += R.r(4, 14)) { D.rect(x, -0.02, R.r(0.2, 0.5), R.r(0.1, 0.25), R.pick(['#c9c4b4', '#8f9aa4', '#6e7f5a']), 0.85); }
+        // coal spilt along the old siding outside the fence, and ash in the four-foot
+        D.pass = 0; for (let x = -150; x < 150; x += R.r(2.5, 7)) KW.blob(D, R, x, -3.6 - R.r(0.1, 0.5), R.r(0.4, 1.6), R.r(0.04, 0.1), '#1b1b1f', R.r(0.3, 0.5), 0.4);
+      }
+      if (P === H.PN) { // broken concrete slabs with their cracks, and brick ends from the sheds
+        D.pass = 0;
+        for (let x = -160; x < 160; x += R.r(9, 26)) { const w = R.r(2, 5), y = -R.r(2, 12), h = w * tilt * R.r(1.2, 1.8), c = '#5e6058'; D.poly([x, y, x + w, y + R.r(-0.1, 0.1), x + w - R.r(0, 0.4), y + h, x + R.r(0, 0.4), y + h], c, 0.9); D.pass = 1; D.seg(x + w * 0.3, y + h * 0.1, x + w * 0.55, y + h * 0.9, 0.03, '#2a2c2a', 0.7); D.rect(x, y - 0.06, w, 0.06, '#1c1e1c', 0.4); D.pass = 0; }
+        // heaps of rubble from a shed that came down: a low mound, brick ends and lumps of concrete
+        for (let x = -165 + R.r(0, 20); x < 165; x += R.r(22, 48)) {
+          const y = -R.r(3, 12), w = R.r(2.5, 5), h = R.r(0.35, 0.7);
+          D.pass = 1; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.7, x, y + h, x + w * 0.35, y + h * 0.6, x + w / 2, y], '#3a3433');
+          D.pass = 2; for (let i = 0; i < 14; i++) { const u = R.r(-0.45, 0.45), bx = x + u * w, by = y + R.r(0, h * (1 - Math.abs(u) * 1.8)); D.rect(bx, by, R.r(0.2, 0.3), R.r(0.08, 0.11), R.pick(['#7a4a3c', '#6a3e32', '#8a5a48', '#6c6c66', '#55524e']), 0.95); }
+        }
+        // buddleia, the purple weed that grows out of every railway yard, in clumps
+        for (let x = -165 + R.r(0, 10); x < 165; x += R.r(9, 24)) {
+          const y = -R.r(1.6, 13), h = R.r(0.6, 1.1);
+          D.pass = 2; KC.bush(D, R, x, y, h * 1.4, h, '#4a5a3a');
+          D.pass = 4; for (let i = 0; i < 5; i++) { const fx = x + R.r(-h * 0.6, h * 0.6), fy = y + h * R.r(0.7, 1.05); D.poly([fx - 0.05, fy, fx + 0.05, fy, fx + R.r(-0.06, 0.06), fy + R.r(0.22, 0.34)], '#8a5a9a', 0.95, 0.06); }
+        }
+        D.pass = 0;
+      }
+      if (P === H.PT0 || P === H.PT1) { // concrete cable troughs along the line, in lengths
+        const y = P === H.PT0 ? -1.12 : -1.1;
+        // long runs with a gap here and there where a lid is missing; the joints only when close
+        for (let x = -170; x < 170;) { const l = R.r(12, 40); D.pass = 1; D.rect(x, y, l, 0.1, '#8d877c'); D.pass = 2; D.rect(x, y + 0.085, l, 0.015, '#a8a294', 0.8); x += l + R.r(0.8, 2.5); }
+        D.pass = 2; D.at = 30; for (let x = -170; x < 170; x += 1.0) D.rect(x, y, 0.03, 0.1, '#5c5850', 0.8); D.at = 0;
+        D.pass = 0;
+      }
+    });
+  });
+
+  // ---- the back of the yard, out towards the works: a fan of sidings full of wagons ----
+  // It lies on the works plane's own ground, which fills a wide band of the picture behind the
+  // sheds. Each row is worked out at a real distance and drawn where it would be seen from 30 m up.
+  const masts = [], MR = makeRng(7392), Zi = H.PI.z;
+  for (const zr of [1150, 960, 810, 690]) for (let x = -700 + MR.r(0, 140); x < 700; x += MR.r(110, 260)) masts.push([x * Zi / zr, 30 * (1 - Zi / zr), Zi / zr]);
+  K.deco(S, H.PI, { ground: true, seed: 7391 }, (D, R) => {
+    // Far off, each row of wagons reads as one colour, paler and bluer the further it is: so a
+    // row costs four fills (bed, underframes, bodies, the light along the tops), not one a wagon.
+    const Z = H.PI.z, rows = [1150, 1000, 880, 780, 700, 630];                   // far rows first, so nearer wagons stand in front
+    for (let ri = 0; ri < rows.length; ri++) {
+      const zr = rows[ri], k = Z / zr, yg = 30 * (1 - k), p0 = ri * 3, far = 1 - ri / (rows.length - 1);
+      const body = mix(ri % 2 ? '#5a3c32' : '#4a4c54', '#8a8090', far * 0.35), top = lighten(body, 0.2), under = mix('#16171b', '#5a5560', far * 0.4);
+      D.pass = p0; D.rect(-900, yg - 0.5 * k, 1800, 0.62 * k, '#2e2a2e', 0.45);          // the stone bed
+      D.pass = p0 + 2; D.rect(-900, yg - 0.05 * k, 1800, Math.max(0.06, 0.06 * k), top, 0.6);  // a rail catching the light
+      // strings of wagons standing in the siding, with gaps where a shunter has taken some away
+      for (let x = -880 + R.r(0, 60); x < 880;) {
+        const n = R.i(2, 9), kind = R.f(), L = 16.4 * k, h = 3.2 * k;
+        if (R.chance(0.35)) { x += R.r(30, 120) * k; continue; }
+        for (let i = 0; i < n; i++) {
+          const wx = x + i * (L + 1.0 * k), y1 = yg + 0.8 * k;
+          D.pass = p0 + 1; D.rect(wx, yg + 0.25 * k, L, 0.55 * k, under);                 // underframe and wheels as one
+          if (kind < 0.55) { D.rect(wx, y1, L, h, body); D.pass = p0 + 2; D.rect(wx, y1 + h - 0.25 * k, L, 0.25 * k, top); }
+          else if (kind < 0.8) { const r = h * 0.48; D.rect(wx + r, y1 + h / 2 - r, L - 2 * r, 2 * r, body); D.ell(wx + r, y1 + h / 2, r, r, body); D.ell(wx + L - r, y1 + h / 2, r, r, body); D.pass = p0 + 2; D.rect(wx + r, y1 + h / 2 + r * 0.5, L - 2 * r, r * 0.25, top); }
+          else { D.rect(wx, y1, L, 0.3 * k, under); D.rect(wx + 0.3 * k, y1 + 0.3 * k, L * 0.48, 2.6 * k, body); D.pass = p0 + 2; D.rect(wx + L * 0.51, y1 + 0.3 * k, L * 0.47, 2.6 * k, top); }
+        }
+        x += n * (L + 1.0 * k) + R.r(10, 80) * k;
+      }
+      // a platelayers' hut by the line now and then
+      D.pass = p0 + 1;
+      for (let x = -880 + R.r(0, 200); x < 880; x += R.r(160, 360)) { D.rect(x, yg - 0.7 * k, 4 * k, 2.6 * k, body); D.poly([x - 0.3 * k, yg + 1.9 * k, x + 4.3 * k, yg + 1.9 * k, x + 2 * k, yg + 2.9 * k], under); }
+    }
+    // lamp masts over the sidings
+    D.pass = 99;
+    for (const m of masts) { const x = m[0], yg = m[1], k = m[2]; D.rect(x, yg - 0.6 * k, 0.35 * k, 14 * k, '#26262c'); D.rect(x - 1 * k, yg + 13.4 * k, 2.35 * k, 0.6 * k, '#26262c'); if (S.pal.dark > 0.25) { D.lit = true; D.rect(x - 0.8 * k, yg + 13.1 * k, 1.95 * k, 0.35 * k, '#ffe7b3'); D.lit = false; } }
+    D.pass = 0;
+  });
+  if (S.pal.dark > 0.25) H.PI.add({ x0: -1600, x1: 1600, layer: 2, draw(ctx, env) { // and their light, soft in the haze
+    if (env.s < 0.6) return;
+    for (const m of masts) { const x = m[0], y = m[1] + 13.3 * m[2]; if (x < env.x0 - 12 || x > env.x1 + 12 || y < env.y0 - 12 || y > env.y1 + 12) continue; kxGlow(ctx, '#ffe2a8', x + 0.2 * m[2], y, 7 * m[2], 0.35 * S.pal.dark + 0.08); }
+  } });
+  // ---- scrap against the far planes, behind everybody ----
+  // on the tower plane, between the water tower and the hoppers: a heap of scrap, wheelsets,
+  // bent rail and a stack of old tyres, with a torn tarpaulin over part of it that lifts in the wind
+  K.deco(S, H.PW, { seed: 7411 }, (D, R) => {
+    const x0 = -24, x1 = -9;
+    const p = [x0, 0]; for (let x = x0 + 0.4; x < x1; x += R.r(0.35, 0.8)) { const u = (x - x0) / (x1 - x0); p.push(x, Math.sin(u * Math.PI) * R.r(1.0, 1.7) + 0.1); } p.push(x1, 0);
+    D.poly(p, '#3a3230');
+    D.pass = 1;
+    for (let i = 0; i < 26; i++) { const u = R.f(), x = lerp(x0 + 0.6, x1 - 0.6, u), y = Math.sin(u * Math.PI) * R.r(0.2, 1.1), l = R.r(0.5, 2.2), an = R.r(-0.6, 0.6); D.seg(x, y, x + Math.cos(an) * l, y + Math.sin(an) * l, R.r(0.05, 0.12), R.pick(['#6e4430', '#4a4f56', '#8a5a3a', '#2a2c30']), 0.95); }
+    for (let i = 0; i < 9; i++) { const u = R.r(0.15, 0.85), x = lerp(x0, x1, u), y = Math.sin(u * Math.PI) * R.r(0.3, 1.0); D.rect(x, y, R.r(0.4, 1.1), R.r(0.2, 0.5), R.pick(['#5a3a2a', '#4a4f56', '#6e4430']), 0.95); }
+    // a pair of old wheelsets standing on a length of rail at its foot
+    D.pass = 2; D.rect(x1 + 0.5, 0, 6, 0.1, '#6e5a4a');
+    for (const wx of [x1 + 1.6, x1 + 4.3]) { D.ell(wx, 0.5, 0.46, 0.46, '#26282d'); D.pass = 3; D.ell(wx, 0.5, 0.3, 0.3, '#3e4148'); D.ell(wx, 0.5, 0.08, 0.08, '#1a1b1f'); D.pass = 2; }
+    D.rect(x1 + 1.6, 0.46, 2.7, 0.08, '#2a2c30');
+    // tyres stacked at the other end
+    D.pass = 2; KC.tyres(D, x0 - 1.4, 0, 4, 0.42); KC.tyres(D, x0 - 2.5, 0, 2, 0.42);
+  });
+  { // the tarpaulin: one corner pinned under the scrap, the loose end lifting and dropping
+    const P = H.PW, tc = S.tone('#3f5a4a', P), tc2 = S.tone('#2f4438', P);
+    P.add({ x0: -22, x1: -12, layer: 0, draw(ctx, env) {
+      if (env.s < 2 || 2 < env.y0 || 0 > env.y1) return;
+      const w = env.wind || 0, t = env.t, lift = 0.25 + 0.2 * Math.sin(t * 2.3) * Math.abs(w) * 0.25 + 0.08 * Math.sin(t * 5.1), dir = w < 0 ? -1 : 1;
+      const ex = -15.4 + dir * 0.6, ey = 1.35 + lift;
+      poly(ctx, [-20.2, 1.15, -17.8, 1.6, -16.2, 1.5, ex, ey, -15.6, 1.05 + lift * 0.4, -19.6, 0.75], tc);
+      if (env.s > 5) poly(ctx, [-17.8, 1.6, -16.2, 1.5, ex, ey, -16.6, 1.32], tc2);
+    } });
+  }
+  // coal spilt on the ground round the coaling stage (under the track, so it goes with the ground)
+  K.deco(S, H.PSh, { ground: true, seed: 7437 }, (D, R) => {
+    for (let i = 0; i < 30; i++) KW.blob(D, R, R.r(-38, -6), -R.r(0.1, 2.6), R.r(0.4, 1.8), R.r(0.05, 0.14), '#141418', R.r(0.35, 0.6), 0.4);
+    D.pass = 1; for (let i = 0; i < 40; i++) D.rect(R.r(-38, -8), -R.r(0.05, 2.5), 0.12, 0.05, '#34343c', 0.9);
+  });
+  // ---- weathering on the engine sheds and the roofs near the eye ----
+  const shedWear = (x, w, h) => K.deco(S, H.PSh, { seed: 7451 + Math.round(x) }, (D, R) => {
+    const n = Math.max(2, Math.floor(w / 13)), bw = w / n;
+    KW.moss(D, R, x, x + w, 0.45, 0.16, '#3c5236', 0.8);                 // green creeping up from the ground
+    KW.grime(D, R, x, x + w, 0, 1.4, '#1e1a1a', 0.3);
+    KW.streaks(D, R, x + 0.3, x + w - 0.3, h - 0.5, '#d8d0bc', { per: 0.35, len: [0.8, 2.8], w: [0.08, 0.2], a: 0.22 });   // lime washed out of the mortar
+    KW.streaks(D, R, x + 0.3, x + w - 0.3, h - 0.5, '#4a2e22', { per: 0.25, len: [1, 3], w: [0.06, 0.14], a: 0.3 });
+    D.pass = 1;
+    for (let i = 0; i < n; i++) { // panes gone from the glazed side of each roof tooth
+      const cx = x + (i + 0.5) * bw, gx0 = cx - bw / 2 + 0.4, gw = (bw - 1.0) / 6;
+      for (let q = 1; q < 6; q++) { if (R.f() > 0.32) continue; const gx = gx0 + q * gw, gh = 2.7 * (q / 6); const y0 = h + 0.1 + R.r(0, gh * 0.5); D.rect(gx + 0.04, y0, gw - 0.08, Math.min(R.r(0.4, 0.9), h + 0.1 + gh - y0 - 0.05), '#121418', 0.9); }
+      // the wet stain at the foot of each down pipe
+      KW.blob(D, R, cx - bw / 2 + 0.57, 0.5, 0.3, 0.5, '#1e1a1a', 0.3, 0.3);
+    }
+    D.pass = 0;
+  });
+  shedWear(-96, 70, 9); shedWear(30, 44, 7.5);
+  // on the shed plane: sleepers and a wheelset on a stub of track by the left shed, and coal
+  // spilt round the coaling stage
+  K.deco(S, H.PSh, { seed: 7433 }, (D, R) => {
+    for (let k = 0; k < 4; k++) for (let j = 0; j < 4 - k; j++) { const bx = -84 + j * 2.7 + k * 1.35; D.rect(bx, k * 0.26, 2.6, 0.23, k % 2 ? '#4d3f33' : '#3a2f28'); D.pass = 1; D.rect(bx, k * 0.26, 0.12, 0.23, '#231c17'); D.rect(bx + 2.48, k * 0.26, 0.12, 0.23, '#231c17'); D.pass = 0; }
+    D.rect(-70, 0, 9, 0.12, '#6e5a4a'); for (const wx of [-68, -64.2]) { D.ell(wx, 0.55, 0.5, 0.5, '#26282d'); D.pass = 1; D.ell(wx, 0.55, 0.32, 0.32, '#3e4148'); D.pass = 0; } D.rect(-68, 0.5, 3.8, 0.1, '#2a2c30');
+    // the steam pipe that leaks at the foot of the left shed
+    D.pass = 1; D.rect(-57.2, 0.42, 2.2, 0.13, '#2a2c30'); D.rect(-55.5, 0.42, 0.16, 0.32, '#2a2c30'); D.rect(-55.58, 0.7, 0.32, 0.06, '#3e4148'); D.pass = 0;
+    // a row of oil drums against the right shed, the paint long gone to rust
+    for (let i = 0; i < 4; i++) { const dx = 33 + i * 0.68; D.rect(dx, 0, 0.6, 0.9, i % 3 ? '#3f4a52' : '#6e4430'); D.pass = 1; D.rect(dx, 0.28, 0.6, 0.05, '#2a2e36'); D.rect(dx, 0.6, 0.6, 0.05, '#2a2e36'); KW.streaks(D, R, dx, dx + 0.6, 0.9, '#6a4832', { n: 2, len: [0.2, 0.6], w: [0.04, 0.08], a: 0.5 }); D.pass = 0; }
+  });
+
+  // the warehouse roofs below the line of sight: rust under the gutters, a patched sheet or two
+  K.deco(S, H.PN, { seed: 7477 }, (D, R) => {
+    for (const r of [[-150, 62, 4.2], [-80, 44, 3.4], [22, 52, 4.0], [82, 70, 3.2]]) {
+      KW.streaks(D, R, r[0] + 0.3, r[0] + r[1] - 0.3, r[2] - 0.3, '#6a4030', { per: 0.45, len: [0.5, 2.2], w: [0.08, 0.22], a: 0.4 });
+      KW.grime(D, R, r[0], r[0] + r[1], 0, 0.6, '#151714', 0.35);
+      for (let i = 0; i < r[1] / 9; i++) { const px = R.r(r[0] + 1, r[0] + r[1] - 3), pw = R.r(1.2, 2.6); D.rect(px, R.r(0.4, r[2] * 0.4), pw, R.r(0.8, r[2] * 0.5), R.chance(0.5) ? '#5a5a62' : '#3c3a44', 0.75); }
+    }
+  });
+
+  // ---- lineside: boards on posts by the spare road, thin enough to see past ----
+  { const P = H.PT0, post = S.tone('#2a2e36', P), white = S.tone('#e8e4d6', P), ink = S.tone('#15171c', P), yel = S.tone('#e2b33c', P);
+    const boards = [[-36, '10'], [12, 'W'], [44, '15']];
+    P.add({ x0: -40, x1: 48, layer: 0, draw(ctx, env) {
+      if (env.s < 2.5 || 1.8 < env.y0 || -1.2 > env.y1) return;
+      for (const b of boards) { if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue; R4(ctx, b[0] - 0.04, -1.25, 0.08, 1.9, post); R4(ctx, b[0] - 0.3, 0.3, 0.6, 0.42, b[1] === 'W' ? white : yel); if (env.s > 7) env.text(ctx, b[1], b[0], 0.38, 0.3, ink, 'center'); }
+    } });
+  }
+  // ---- small motion: steam from a leaking pipe at the foot of the left shed ----
+  { const P = H.PSh;
+    P.add({ x0: -60, x1: -50, layer: 0, draw(ctx, env) {
+      if (env.s < 1.5 || 6 < env.y0 || 0 > env.y1) return;
+      ydSmoke(ctx, env, -55.4, 0.6, night ? 'rgb(120,126,140)' : 'rgb(214,210,212)', 5, 4.5, 0.15, 0.9, 0.22, 0.32, (env.wind || 0) * 1.6, 0.4);
+    } });
+  }
+}
 
 // a small pitched slate roof, drawn in front
 function P_roof(S, P, x, y, w, col) {
