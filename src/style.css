@@ -107,7 +107,9 @@ body:not(.touch) #stage.aiming { cursor: none; }
 /* ---------- guided run: the coach's card, and the button it is asking for ---------- */
 .h-coach { position: absolute; display: none; pointer-events: none; padding: 6px 11px 7px; border-radius: 11px; background: rgba(10, 14, 20, .84); border: 1px solid rgba(255, 170, 60, .55); border-left: 4px solid var(--amber); }
 body.guided .h-coach { display: block; }
-body.guided.landscape .h-obj { visibility: hidden; }
+body.guided.landscape .h-obj, body.guided.coach-top .h-obj { visibility: hidden; }
+body.coach-top .h-coach { padding: 4px 10px 5px; } body.coach-top .h-coach .cc-hd { font-size: 16px; } body.coach-top .h-coach.fire .cc-hd { font-size: 19px; }
+body.coach-top .h-coach .cc-tx { font-size: 12px; -webkit-line-clamp: 2; }
 .h-coach .cc-eb { font: 700 9.5px var(--head); letter-spacing: .18em; text-transform: uppercase; color: var(--amber); opacity: .9; }
 .h-coach .cc-hd { font: 800 19px/1.1 var(--head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); margin-top: 1px; }
 .h-coach .cc-hd em { font: 700 17px var(--mono); font-style: normal; color: var(--amber2); margin-left: 6px; }

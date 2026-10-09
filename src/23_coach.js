@@ -217,6 +217,9 @@ Coach.prototype.shotStep = function (o, S, el) {
     o.kind = 'flight'; o.head = 'ROUND ON ITS WAY'; o.text = ''; o.target = C.mark(T, false);
     return false;
   }
+  if (!T && k === 'shootPt' && el <= 60) { // the bot waits for its point to exist (a car to stop, say)
+    o.kind = 'wait'; o.head = 'WAIT'; o.text = 'Wait for the right moment.'; return false;
+  }
   if (!T) { C.next(); return true; }  // already down, already broken, or not there
   if (T.kind === 'person' && T.hidden) {
     if (el > 60) { C.next(); return true; }
@@ -305,9 +308,17 @@ Coach.prototype.draw = function (V, rt) {
   }
   ctx.restore();
 };
+// The part of the picture that is not under the controls. Sideways, the zoom slider runs down the
+// left and the fire, breath and reload buttons fill the bottom right, so a bracket out there would
+// be hidden: those count as off the picture and get an arrow instead.
+Coach.prototype.clear = function (V) {
+  const sf = Game.safe || { l: 0, r: 0 };
+  return { x0: sf.l + 70, x1: V.W - sf.r - 150, y0: 56, y1: V.H - 52 };
+};
 Coach.prototype.onScreen = function (V, x, y, pad) {
   if (V.round) return Math.hypot(x - V.cx, y - V.cy) < V.R - pad;
-  return x > pad && x < V.W - pad && y > pad && y < V.H - pad;
+  const c = this.clear(V);
+  return x > c.x0 + pad && x < c.x1 - pad && y > c.y0 + pad && y < c.y1 - pad;
 };
 Coach.prototype.label = function (ctx, s, x, y, col, size) {
   ctx.font = '800 ' + size + 'px "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", Arial, sans-serif';
@@ -343,8 +354,9 @@ Coach.prototype.drawArrow = function (ctx, V, tx, ty, col, lab) {
   const cx = V.cx, cy = V.cy, dx = tx - cx, dy = ty - cy, ang = Math.atan2(dy, dx);
   let px, py;
   if (V.round) { const r = V.R - 30; px = cx + Math.cos(ang) * r; py = cy + Math.sin(ang) * r; }
-  else {
-    const hw = V.W / 2 - 92, hh = V.H / 2 - 78, k = Math.min(Math.abs(hw / (dx || 1e-6)), Math.abs(hh / (dy || 1e-6)));
+  else { // on the edge of the clear part of the picture, along the line from the centre to the target
+    const c = this.clear(V), ex = dx > 0 ? c.x1 - 26 - cx : cx - c.x0 - 26, ey = dy > 0 ? c.y1 - 26 - cy : cy - c.y0 - 26;
+    const k = Math.min(Math.abs(ex / (dx || 1e-6)), Math.abs(ey / (dy || 1e-6)));
     px = cx + dx * k; py = cy + dy * k;
   }
   ctx.save(); ctx.translate(px, py); ctx.rotate(ang);

@@ -74,14 +74,17 @@ Game.placeHud = function () {
   const P = (e, o) => { for (const k in o) e.style[k] = typeof o[k] === 'number' ? o[k] + 'px' : o[k]; };
   if (G.mode === 'portrait') {
     const sb = V.cy + V.R; // bottom of the scope
+    const small = Hh < 720;
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
-    P(h.pills, { left: 0, right: 0, top: V.cy - V.R + 10, width: 'auto' });
-    // on a guided run the coach's card sits under the read-outs and the radio moves down below it
-    P(h.coach, { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
-    P(h.msg, { left: 12, right: 12, top: sb + (G.coach ? 150 : 64), width: 'auto', bottom: 'auto' });
+    // On a guided run the coach's card sits under the read-outs and the radio moves down below it.
+    // On a short phone there is no room down there, so the card takes the objective's place at the top.
+    const top = small && G.coach;
+    P(h.pills, { left: 0, right: 0, top: top ? G.safe.t + 96 : V.cy - V.R + 10, width: 'auto' });
+    P(h.coach, top ? { left: 58, right: 8, top: G.safe.t + 6, width: 'auto', bottom: 'auto' } : { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
+    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 64), width: 'auto', bottom: 'auto' });
+    document.body.classList.toggle('coach-top', !!top);
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
-    const small = Hh < 720;
     document.body.classList.toggle('short', small);
     if (small) {
       P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
@@ -97,7 +100,7 @@ Game.placeHud = function () {
   } else {
     // Sideways: the picture is the whole screen. Read-outs sit along the bottom between the
     // thumbs, zoom under the left thumb, fire under the right, messages top right.
-    document.body.classList.remove('short');
+    document.body.classList.remove('short'); document.body.classList.remove('coach-top');
     const sf = G.safe, L = sf.l, Rt = sf.r, B = Math.min(sf.b, 14), small = Hh < 430;
     const fire = small ? 104 : 118, br = small ? 76 : 84, rl = small ? 56 : 62;
     P(h.fire, { right: Rt + 16, bottom: B + 16, width: fire, height: fire, left: 'auto', top: 'auto' });
