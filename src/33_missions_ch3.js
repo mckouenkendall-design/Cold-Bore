@@ -145,13 +145,17 @@ mission({
   cast(H) {
     const T = H.tower, B = H.lodge;
     const stairTop = { plane: H.PD, x: T.stairTop, y: T.floor, zone: 'yard', room: null, behind: false };
+    // The cook walks along the hide to its corner post before he steps out onto the stair (and back the same way),
+    // so he never jumps between the two. Two metres each way: his waits are shortened to match, so he keeps his times.
+    const inHide = T.stairTop - T.x, step = inHide / 1.3;
     const watch = []; for (let i = 0; i < 10; i++) watch.push(['wait', 9, 'look', -1], ['wait', 7, 'look', 1]);
     return [
       Object.assign(T.place(-0.6), { id: 't', role: 'target', face: -1, anim: 'look', look: { hat: 'cap', hatCol: '#4a5a3a', coat: '#55653c', beard: '#5a4634' },
         routine: watch.concat([['hide'], ['gone']]), escapeText: 'His watch ended and he climbed down to sleep. The next man up there will be fresher.' }),
       Object.assign(T.place(0), { id: 'cook', role: 'civ', face: -1, anim: 'talk', yFn: T.stairY, look: { hat: 'tophat', hatCol: '#f4f1e6', coat: '#f4f1e6', long: true, bag: 'cup' },
         failText: 'That was the cook. He made soup for a living. The contract is void.',
-        routine: [['wait', 15, 'talk', -1], ['to', stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', B.winX(B.door) - 1.5], ['hide'], ['wait', 9], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', T.place(0)], ['loop']] }),
+        routine: [['wait', 15 - step, 'talk', -1], ['walk', T.stairTop], ['to', stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', B.winX(B.door) - 1.5], ['hide'], ['wait', 9 - step], ['show'],
+          ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', T.place(inHide)], ['walk', T.x], ['loop']] }),
     ];
   },
   onAlarm(sim) { const t = sim.byId.t; if (t && !t.dead) t.escapeText = 'The lookout dropped behind the boards and got on his radio. The whole valley knows about you now.'; },
@@ -629,8 +633,9 @@ mission({
         escapeText: 'He heard the round hit the boards, went down the back of the tower like a squirrel, and the lodge knows somebody is on the mountain.' }),
       Object.assign(inn(0.9), { id: 'cook', role: 'civ', face: -1, anim: 'talk', yFn: T.stairY, look: { hat: 'tophat', hatCol: '#f4f1e6', coat: '#f4f1e6', long: true, bag: 'cup' },
         failText: 'That was the cook. Twice now he has climbed that tower with soup, and this time he did not come down. The contract is void.',
-        routine: [['wait', 12, 'talk', -1], ['walk', T.x + edge], ['to', stairTop], ['emit', 'cook_down'], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', door - 1.5], ['hide'], ['look', { bag: null }], ['wait', 16],
-          ['look', { bag: 'cup' }], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['to', inn(edge)], ['walk', T.x + 0.9], ['loop']] }),
+        // (he steps between the hide and the stair behind the end of the boards, at one spot, so he never jumps)
+        routine: [['wait', 12, 'talk', -1], ['walk', T.x + edge], ['to', Object.assign({}, stairTop, { x: T.x + edge })], ['emit', 'cook_down'], ['walk', T.stairTop], ['speed', 0.55], ['walk', T.stairFoot], ['speed', 1], ['walk', door - 1.5], ['hide'], ['look', { bag: null }], ['wait', 16],
+          ['look', { bag: 'cup' }], ['show'], ['walk', T.stairFoot], ['speed', 0.55], ['walk', T.stairTop], ['speed', 1], ['walk', T.x + edge], ['to', inn(edge)], ['walk', T.x + 0.9], ['loop']] }),
       Object.assign(H.yard(door + 3), { id: 'c1', role: 'civ', face: 1, anim: 'work', look: { hat: 'cap', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
         routine: [['wait', 6, 'work', 1], ['walk', door + 9], ['wait', 5, 'work', 1], ['walk', door + 3], ['loop']] }),
     ];

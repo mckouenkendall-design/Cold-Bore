@@ -725,11 +725,14 @@ mission({
         flee: [['run', L.x0 + 0.8], ['hide'], ['gone']],
         escapeText: 'He was out through the little door at the back before the echo came back. Aurel will be listening from somewhere else by morning.' }),
       Object.assign(inn(L.s1 - 0.8), { id: 'mind', role: 'guard', face: -1, anim: 'guard', look: { coat: '#22262d', hat: 'beanie', hatCol: '#1d2026', build: 'big' },
-        routine: [['wait', 6, 'guard', -1], ['walk', L.x0 + 1.0], ['wait', 5, 'guard', 1], ['walk', L.s1 - 0.5], ['wait', 3, 'guard', 1], ['to', out(L.s1 + 0.1)], ['walk', L.x1 + 1.8], ['wait', 16, 'smoke', 1],
-          ['walk', L.s1 + 0.1], ['to', inn(L.s1 - 0.1)], ['walk', L.s1 - 0.8], ['loop']] }),
+        // (in and out of the lock-up he changes from one to the other behind the tin wall at the end of the shutter,
+        // where he stands, so his feet never jump; the wait is shortened by the extra steps, keeping his times)
+        routine: [['wait', 6, 'guard', -1], ['walk', L.x0 + 1.0], ['wait', 5, 'guard', 1], ['walk', L.s1 - 0.5], ['wait', 3 - 0.6 / 1.3, 'guard', 1], ['walk', L.s1 + 0.1], ['to', out(L.s1 + 0.1)], ['walk', L.x1 + 1.8], ['wait', 16 - 0.2 / 1.3, 'smoke', 1],
+          ['walk', L.s1 + 0.1], ['to', inn(L.s1 + 0.1)], ['walk', L.s1 - 0.8], ['loop']] }),
       Object.assign(out(L.x0 - 8), { id: 'tea', role: 'civ', hidden: true, face: 1, look: { dress: COL.wine, coat: '#c9b48a', hair: 'bun', hairCol: '#9aa0a8', bag: 'cup' },
         failText: 'You shot the tea lady. Nine years she has carried tea to that lock-up, and she never once asked what the radios were for.',
-        routine: [['wait', 4], ['show'], ['walk', L.s0 - 0.1], ['to', inn(L.s0 + 0.1)], ['walk', L.x0 + 3.0], ['wait', 8, 'talk', -1], ['walk', L.s0 + 0.1], ['to', out(L.s0 - 0.1)], ['walk', L.x0 - 8], ['hide'], ['wait', 34], ['show'], ['loop', 2]] }),
+        // (she goes in and comes out behind the tin wall beside the shutter, at one spot, so she never jumps)
+        routine: [['wait', 4], ['show'], ['walk', L.s0 - 0.1], ['to', inn(L.s0 - 0.1)], ['walk', L.x0 + 3.0], ['wait', 8 - 0.2 / 1.3, 'talk', -1], ['walk', L.s0 - 0.1], ['to', out(L.s0 - 0.1)], ['walk', L.x0 - 8], ['hide'], ['wait', 34 - 0.2 / 1.3], ['show'], ['loop', 2]] }),
       Object.assign(H.inBox(-1.5), { id: 'sig', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
     ];
   },

@@ -340,14 +340,21 @@ mission({
     const stair = (f) => ['call', (sim, a) => { a.yFn = (x) => F.floorY(f) + clamp((x - xa) / (xb - xa), 0, 1) * F.fh; }];
     const landing = (f) => ['call', (sim, a) => { a.yFn = null; a.y = F.floorY(f); }];
     const climb = (f) => [['walk', xa], stair(f), ['speed', 0.75], ['walk', xb], ['speed', 1], landing(f + 1)];
+    // Up the drop ladder at the foot of the fire escape (drawn by K.fireEscape at its left end) to the first
+    // landing, hand over hand, instead of appearing there. It takes him a second longer than the old jump did,
+    // so he stands a second less at her window: the pistol still comes up when it always did.
+    const lx = fx - 0.78, up = 2.6;
+    const ladder = [['walk', lx], ['wait', 0.3, 'stand', -1],
+      ['call', (sim, a) => { a.flee = [['wait', 0.7, 'cower'], ['gone']]; const t0 = sim.t, y0 = a.y, y1 = F.floorY(1); a.yFn = () => lerp(y0, y1, clamp((sim.t - t0) / up, 0, 1)); }],
+      ['wait', up, 'climb', -1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.escape(1, lx - fx)); }], ['wait', 0.2, 'stand']];
     return [
       Object.assign(H.flat(4, 2, 0.8), { id: 'brandt', role: 'target', face: -1, anim: 'type', look: { hair: 'long', hairCol: '#2a2019', glasses: true, coat: '#3f7a6a' }, routine: [['face', -1], ['wait', 999, 'type']] }),
       // A professional: noise does not rattle him. If he is only winged he gives up and gets out of sight
       // (round the corner from the pavement, through the nearest window from the stairs), unless he
       // already has the pistol up, in which case he fires first.
       Object.assign(H.near(-25.5), { id: 'mask', role: 'hostile', state: 'alert', calmOnAlarm: true, hidden: true, look: { coat: '#15171b', long: true, hat: 'beanie', hatCol: '#15171b', mask: '#2a2e36' }, flee: [['run', -26.4], ['gone']],
-        routine: [['wait', 13], ['show'], ['emit', 'mask_seen'], ['walk', fx + 0.9], ['wait', 1.6, 'stand', -1], ['to', H.escape(1, 0.9)], ['call', (sim, a) => { a.flee = [['wait', 0.7, 'cower'], ['gone']]; }], ['wait', 0.5, 'stand']]
-          .concat(climb(1), climb(2), climb(3), [['emit', 'mask_top'], ['walk', fx + 0.45], ['wait', 2.4, 'stand', -1], ['threat', 'brandt', 7]]) }),
+        routine: [['wait', 13], ['show'], ['emit', 'mask_seen']]
+          .concat(ladder, climb(1), climb(2), climb(3), [['emit', 'mask_top'], ['walk', fx + 0.45], ['wait', 1.4, 'stand', -1], ['threat', 'brandt', 7]]) }),
       Object.assign(H.flat(3, 1), { id: 'n1', role: 'civ', face: 1, look: { hair: 'white', coat: COL.wine, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
       Object.assign(H.flat(2, 0), { id: 'n2', role: 'civ', look: { hair: 'short', coat: COL.olive }, routine: pace(F.winX(0) - 0.5, F.winX(0) + 0.5, 7, 6, 'phone') }),
       Object.assign(H.flat(5, 0), { id: 'n3', role: 'civ', face: 1, look: { hair: 'bun', dress: COL.navy, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
