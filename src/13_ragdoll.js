@@ -237,7 +237,7 @@ function rdInit(A, R) {
   if (!E.seat && /^(sit|type|drive|sleep)/.test(A.deathPose || '')) { E.seat = { x0: -0.28, x1: 0.36, top: 0.41 }; E.back = -0.14; if (A.deathPose === 'type' && !E.desk) E.desk = { x0: 0.3, x1: 1.15, top: 0.75 }; }
   const N3 = RD_N * 3;
   const s = { t: 0, p: new Float64Array(N3), o: new Float64Array(N3), z0: new Float64Array(RD_N), w: new Float64Array(RD_N), r: new Float64Array(RD_N), lo: new Float64Array(RD_NL), hi: new Float64Array(RD_NL),
-    cn: new Float64Array(RD_N), Uc: [0, 1, 0], Sc: [0, 0, f], Fc: [f, 0, 0], Up: [0, 1, 0], Sp: [0, 0, f], Fp: [f, 0, 0], f, sc, W,
+    cn: new Float64Array(RD_N), gnd: new Uint8Array(RD_N), Uc: [0, 1, 0], Sc: [0, 0, f], Fc: [f, 0, 0], Up: [0, 1, 0], Sp: [0, 0, f], Fp: [f, 0, 0], f, sc, W,
     sleep: false, quiet: 0, landT: null, landV: 0, out: null, crush: null, lean: 0, legSide: 0.45, toneK: 0, toneT: 0.1, toneL: null, carF: null };
   const t0 = A.deathAt || 0, ph = A.deathPh || 0, dt = 1 / 60, J0 = rdLivingPose(A, t0, ph);
   rdFromPose(J0, f, sc, W, s.p);
@@ -378,15 +378,21 @@ function rdStep(R) {
   rdTone(s); rdFlat(s);
   for (let it = 0; it < RD_ITER; it++) {
     rdLinks(s);
-    if (!(it & 1)) { rdFrames(s); rdLimits(s); } // the joints every other pass: they change slowly
+    if (!(it & 1)) { rdFrames(s); rdLimits(s); rdSelf(s); } // the joints every other pass: they change slowly
     rdCollide(s, R.env);
   }
   rdFriction(s, R.env);
+  for (let i = 0; i < RD_N; i++) s.gnd[i] = s.cn[i] > 0 ? 1 : 0; // what lies on the floor (for the joint limits next step)
   // A step may lose energy (the floor, friction, the joints) but never gain it: when the many
   // little corrections disagree they can push a body about, and a dead body does not bounce.
-  let ke = 0, pe = 0;
-  for (let i = 0; i < RD_N * 3; i += 3) { const m = 1 / w[i / 3], vx = p[i] - o[i], vy = p[i + 1] - o[i + 1], vz = p[i + 2] - o[i + 2]; ke += m * 0.5 * (vx * vx + vy * vy + vz * vz); pe += m * (9.81 * h2 * p[i + 1] - ax * h2 * p[i]); }
-  if (ke > 1e-12 && ke + pe > e0) {
+  let ke = 0, pe = 0, peo = 0;
+  for (let i = 0; i < RD_N * 3; i += 3) { const m = 1 / w[i / 3], vx = p[i] - o[i], vy = p[i + 1] - o[i + 1], vz = p[i + 2] - o[i + 2]; ke += m * 0.5 * (vx * vx + vy * vy + vz * vz); pe += m * (9.81 * h2 * p[i + 1] - ax * h2 * p[i]); peo += m * (9.81 * h2 * o[i + 1] - ax * h2 * o[i]); }
+  if (pe > e0 && pe > peo) {
+    // the corrections lifted the body higher than its movement could carry it (a joint at its
+    // limit pressed against the floor would jack the hips up): take back the lift and stop it
+    const k = clamp((e0 - peo) / (pe - peo), 0, 1);
+    for (let i = 0; i < RD_N * 3; i++) { p[i] = o[i] + (p[i] - o[i]) * k; o[i] = p[i]; }
+  } else if (ke > 1e-12 && ke + pe > e0) {
     const k = Math.sqrt(clamp((e0 - pe) / ke, 0, 1));
     for (let i = 0; i < RD_N * 3; i++) o[i] = p[i] - (p[i] - o[i]) * k;
   }
@@ -428,12 +434,37 @@ function rdWrap(a, lo, hi) {
   return dLo < dHi ? lo : hi;
 }
 // Move the end c of a segment from j to where it should be (n, already the segment's length),
-// sharing the move with j so the push and its answer balance. c2 hangs below c and goes with it.
-function rdPut(p, j, c, c2, nx, ny, nz, share) {
-  const j3 = j * 3, c3 = c * 3, ex = p[j3] + nx - p[c3], ey = p[j3 + 1] + ny - p[c3 + 1], ez = p[j3 + 2] + nz - p[c3 + 2], b = 1 - share;
-  p[c3] += ex * share; p[c3 + 1] += ey * share; p[c3 + 2] += ez * share;
-  if (c2 >= 0) { const q = c2 * 3; p[q] += ex * share; p[q + 1] += ey * share; p[q + 2] += ez * share; }
-  p[j3] -= ex * b; p[j3 + 1] -= ey * b; p[j3 + 2] -= ez * b;
+// sharing the move with j so the push and its answer balance. c2 hangs below c and turns with
+// it, so a limb swung by its hip or shoulder keeps the bend in its knee or elbow. A limit turns
+// a limb only so far in one pass, and never presses a point that lies on the floor down into
+// it: the floor would push back, and a limit fighting the floor jacks the whole body up.
+const RD_SWING = 0.12, RD_SWING_C = Math.cos(RD_SWING);
+function rdPut(s, j, c, c2, nx, ny, nz, share) {
+  const p = s.p, gnd = s.gnd;
+  const j3 = j * 3, c3 = c * 3, cx = p[c3] - p[j3], cy = p[c3 + 1] - p[j3 + 1], cz = p[c3 + 2] - p[j3 + 2], L2 = cx * cx + cy * cy + cz * cz;
+  if (L2 < 1e-12) return;
+  let ca = (cx * nx + cy * ny + cz * nz) / L2;
+  if (ca < RD_SWING_C) {
+    const t = RD_SWING / Math.acos(clamp(ca, -1, 1));
+    nx = cx + (nx - cx) * t; ny = cy + (ny - cy) * t; nz = cz + (nz - cz) * t;
+    const k = Math.sqrt(L2 / (nx * nx + ny * ny + nz * nz || 1)); nx *= k; ny *= k; nz *= k;
+    ca = (cx * nx + cy * ny + cz * nz) / L2;
+  }
+  const ex = p[j3] + nx - p[c3], ey = p[j3 + 1] + ny - p[c3 + 1], ez = p[j3 + 2] + nz - p[c3 + 2], b = 1 - share;
+  if (c2 >= 0) {
+    // turn c2 about j the same way (the axis is c x n)
+    let ax = cy * nz - cz * ny, ay = cz * nx - cx * nz, az = cx * ny - cy * nx; const al = Math.sqrt(ax * ax + ay * ay + az * az), q = c2 * 3;
+    if (al > 1e-12) {
+      ax /= al; ay /= al; az /= al; const sn = al / L2, cs = ca;
+      const fx = p[q] - p[j3], fy = p[q + 1] - p[j3 + 1], fz = p[q + 2] - p[j3 + 2], kf = ax * fx + ay * fy + az * fz;
+      const tx = fx * cs + (ay * fz - az * fy) * sn + ax * kf * (1 - cs), ty = fy * cs + (az * fx - ax * fz) * sn + ay * kf * (1 - cs), tz = fz * cs + (ax * fy - ay * fx) * sn + az * kf * (1 - cs);
+      const dy = (ty - fy) * share;
+      p[q] += (tx - fx) * share; p[q + 1] += gnd[c2] && dy < 0 ? 0 : dy; p[q + 2] += (tz - fz) * share;
+    }
+  }
+  const ey2 = (gnd[c] && ey < 0) || (gnd[j] && ey > 0) ? 0 : ey; // the push and its answer go together
+  p[c3] += ex * share; p[c3 + 1] += ey2 * share; p[c3 + 2] += ez * share;
+  p[j3] -= ex * b; p[j3 + 1] -= ey2 * b; p[j3 + 2] -= ez * b;
 }
 // A ball joint (hip, shoulder): the limb may swing forward and back between lo and hi (0 is
 // straight down the trunk, positive is forward) and only so far out to the side.
@@ -446,7 +477,7 @@ function rdBall(s, j, c, c2, U, S, F, lo, hi, side, share) {
   if (Math.abs(cs) > side * L) { cs = (cs < 0 ? -side : side) * L; moved = true; }
   if (!moved) return;
   const nx = -U[0] * nd + F[0] * nf + S[0] * cs, ny = -U[1] * nd + F[1] * nf + S[1] * cs, nz = -U[2] * nd + F[2] * nf + S[2] * cs, k = L / (Math.sqrt(nx * nx + ny * ny + nz * nz) || 1);
-  rdPut(p, j, c, c2, nx * k, ny * k, nz * k, share);
+  rdPut(s, j, c, c2, nx * k, ny * k, nz * k, share);
 }
 // A hinge (knee, elbow): the lower part may turn between lo and hi from the line of the upper
 // part (a, j), about the trunk's side axis; positive is forward when the limb hangs down.
@@ -462,20 +493,37 @@ function rdHinge(s, a, j, c, S, lo, hi, side, share) {
   if (Math.abs(ck) > side * L) { ck = (ck < 0 ? -side : side) * L; moved = true; }
   if (!moved) return;
   const nx = ux * cu + vx * cv + kx * ck, ny = uy * cu + vy * cv + ky * ck, nz = uz * cu + vz * cv + kz * ck, k = L / (Math.sqrt(nx * nx + ny * ny + nz * nz) || 1);
-  rdPut(p, j, c, -1, nx * k, ny * k, nz * k, share);
+  rdPut(s, j, c, -1, nx * k, ny * k, nz * k, share);
 }
 function rdLimits(s) {
-  const ls = s.legSide;
+  const ls = s.legSide, hi = 2.55 + (ls - 0.45) * 1.25;
   // hips: thighs swing forward a long way and back a little, and (once down) flop out to the side
-  rdBall(s, RD_HPL, RD_KNL, RD_FTL, s.Up, s.Sp, s.Fp, -0.9, 2.55, ls, 0.8); rdBall(s, RD_HPR, RD_KNR, RD_FTR, s.Up, s.Sp, s.Fp, -0.9, 2.55, ls, 0.8);
-  // knees bend backward only
-  rdHinge(s, RD_HPL, RD_KNL, RD_FTL, s.Sp, -2.55, 0, 0.25, 0.64); rdHinge(s, RD_HPR, RD_KNR, RD_FTR, s.Sp, -2.55, 0, 0.25, 0.64);
+  // or end up tucked under the body (a limit held hard against the floor would prop the hips up)
+  rdBall(s, RD_HPL, RD_KNL, RD_FTL, s.Up, s.Sp, s.Fp, -0.9, hi, ls, 0.8); rdBall(s, RD_HPR, RD_KNR, RD_FTR, s.Up, s.Sp, s.Fp, -0.9, hi, ls, 0.8);
+  // knees bend backward only, as far as sitting back on the heels
+  rdHinge(s, RD_HPL, RD_KNL, RD_FTL, s.Sp, -2.8, 0, 0.25, 0.64); rdHinge(s, RD_HPR, RD_KNR, RD_FTR, s.Sp, -2.8, 0, 0.25, 0.64);
   // shoulders reach most ways but not far behind the back
   rdBall(s, RD_SHL, RD_ELL, RD_HAL, s.Uc, s.Sc, s.Fc, -1.1, 3.35, 0.85, 0.9); rdBall(s, RD_SHR, RD_ELR, RD_HAR, s.Uc, s.Sc, s.Fc, -1.1, 3.35, 0.85, 0.9);
   // elbows bend forward only
   rdHinge(s, RD_SHL, RD_ELL, RD_HAL, s.Sc, 0, 2.6, 0.35, 0.58); rdHinge(s, RD_SHR, RD_ELR, RD_HAR, s.Sc, 0, 2.6, 0.35, 0.58);
   // the neck: chin to chest, a little way back, hardly at all to the side
   rdNeck(s);
+}
+// The body against itself: knees and feet cannot pass through the chest and head, so a body
+// that folds forward rests on its knees instead of folding flat through them.
+const RD_SELF_A = [RD_KNL, RD_KNR], RD_SELF_B = [RD_SHL, RD_SHR, RD_FR, RD_HEAD];
+function rdSelf(s) {
+  const p = s.p, w = s.w, r = s.r;
+  for (let a = 0; a < RD_SELF_A.length; a++) {
+    const i = RD_SELF_A[a], i3 = i * 3;
+    for (let b = 0; b < 4; b++) {
+      const j = RD_SELF_B[b], j3 = j * 3, dx = p[j3] - p[i3], dy = p[j3 + 1] - p[i3 + 1], dz = p[j3 + 2] - p[i3 + 2], d2 = dx * dx + dy * dy + dz * dz, m = r[i] + r[j];
+      if (d2 >= m * m || d2 < 1e-10) continue;
+      const d = Math.sqrt(d2), wi = w[i], wj = w[j], k = (m - d) / (d * (wi + wj));
+      p[i3] -= dx * k * wi; p[i3 + 1] -= dy * k * wi; p[i3 + 2] -= dz * k * wi;
+      p[j3] += dx * k * wj; p[j3 + 1] += dy * k * wj; p[j3 + 2] += dz * k * wj;
+    }
+  }
 }
 function rdNeck(s) {
   const p = s.p, U = s.Uc, S = s.Sc, F = s.Fc, sc = s.sc;
@@ -553,6 +601,12 @@ function rdFriction(s, E) {
     const q = i * 3, dx = p[q] - o[q], dz = p[q + 2] - o[q + 2], d = Math.sqrt(dx * dx + dz * dz); if (d < 1e-9) continue;
     const k = Math.min(1, ((i === RD_HAL || i === RD_HAR || i === RD_ELL || i === RD_ELR ? 0.4 : 1) * mu * cn[i] + 0.00004) / d); // a limp arm slides easily
     p[q] -= dx * k; p[q + 2] -= dz * k;
+  }
+  // a body sliding toward the furthest it may go (RD_SLIDE) is slowed on the way, not stopped dead there
+  const hx = (p[6] + p[9]) / 2, ex = Math.abs(hx) - 0.55;
+  if (ex > 0 && !E.car) {
+    const k = Math.min(1, ex / 0.65), kk = 0.12 * k * k, sg = hx > 0 ? 1 : -1;
+    for (let i = 0; i < RD_N * 3; i += 3) { const dx = p[i] - o[i]; if (dx * sg > 0) p[i] -= dx * kk; }
   }
 }
 // Note when the body hits the ground and when it has stopped moving.

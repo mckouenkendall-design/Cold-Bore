@@ -2,7 +2,9 @@
 // poses and places. Each row is one death; the columns are moments after it. Under each
 // scope-view picture (side on, as the scope sees it) a thin stick figure shows the same body
 // from beside the line of fire (z across, as the kill camera sees it), to check the push.
-//   usage: node test/ragdoll.js [sheet,...|all] [dpr]     sheets: calibre pose place other bench
+//   usage: node test/ragdoll.js [sheet,...|all] [dpr]     sheets: calibre pose place other scan worst bench
+//   scan: 288 deaths mid-stride, no pictures; counts bodies whose hips climb after they are down.
+//   worst: the ten worst of those as a sheet.
 // Pictures go in shots/rd_<sheet>.png.
 const { chromium } = require('playwright');
 const path = require('path');
@@ -58,6 +60,30 @@ function pageMain(name) {
     add('shot by a guard (npc)', { how: 'npc' });
     add('fenwick torso, gore off', { gore: false });
   }
+  if (name === 'scan' || name === 'worst') {
+    // Many deaths, no pictures: does any body climb back up after it is down, or end up
+    // folded in a way a body cannot fold? (rounds x parts x walking, running, standing x stride)
+    // 'worst' draws the worst of them as a sheet.
+    const found = [], v = (P, i) => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+    let n = 0, worstRise = 0, worstFold = 0;
+    ['ratter', 'fenwick', 'anvil'].forEach((g) => ['head', 'torso'].forEach((part) => ['walk', 'run', 'stand'].forEach((mv) => [-1, 1].forEach((face) => {
+      for (let k = 0; k < 8; k++) {
+        const sp = mv === 'run' ? 4.3 : mv === 'walk' ? 1.3 : 0, label = g + ' ' + part + ', ' + mv + ' ' + (face < 0 ? 'left' : 'right') + ', stride ' + k;
+        const o = { gun: g, part, a: { id: 'scan ' + label, anim: mv, vx: sp * face, face, ph: k * 0.785, running: mv === 'run' }, moving: sp > 0, dir: (k % 3 - 1) * 0.05 }, a = make(o);
+        let low = 9, rise = 0, fold = 0;
+        for (let f = 1; f <= 180; f++) {
+          a.deadT = f / 60; fig.actorJoints(a); const s = a.rd.s, P = s.p, hy = (P[7] + P[10]) / 2;
+          if (s.landT !== null && s.t > s.landT + 0.1) { low = Math.min(low, hy); rise = Math.max(rise, hy - low); }
+          const hm = [(P[6] + P[9]) / 2, hy, (P[8] + P[11]) / 2], sp3 = v(P, 15), U = [sp3[0] - hm[0], sp3[1] - hm[1], sp3[2] - hm[2]];
+          [[2, 10], [3, 12]].forEach(([h, kn]) => { const th = [P[kn * 3] - P[h * 3], P[kn * 3 + 1] - P[h * 3 + 1], P[kn * 3 + 2] - P[h * 3 + 2]], d = -(th[0] * U[0] + th[1] * U[1] + th[2] * U[2]) / (Math.hypot(...th) * Math.hypot(...U) || 1); fold = Math.max(fold, Math.acos(Math.max(-1, Math.min(1, d))) * 57.3); });
+        }
+        n++; worstRise = Math.max(worstRise, rise); worstFold = Math.max(worstFold, fold);
+        if (rise > 0.2) found.push({ label: label + ': hips rose ' + rise.toFixed(2) + ' m, fold ' + fold.toFixed(0), o, score: rise });
+      }
+    }))));
+    if (name === 'scan') return { bench: { deaths: n, 'worst rise after landing (m)': +worstRise.toFixed(2), 'worst hip fold (deg)': +worstFold.toFixed(0), bad: found.length, list: found.slice(0, 30).map((f) => f.label) } };
+    found.sort((p, q) => q.score - p.score).slice(0, 10).forEach((f) => add(f.label, f.o));
+  }
   if (name === 'bench') {
     // How long one moving body costs per frame (a sixtieth of a second of falling), in microseconds.
     // The machine may be busy with other work, so each figure is the best of several short runs.
@@ -78,10 +104,11 @@ function pageMain(name) {
     });
     return { bench: out };
   }
-  const T = [0, 0.08, 0.16, 0.25, 0.35, 0.5, 0.7, 1.0, 1.5, 4];
+  const T = name === 'worst' ?[0, 0.16, 0.3, 0.45, 0.6, 0.8, 1.0, 1.3, 1.8, 4] : [0, 0.08, 0.16, 0.25, 0.35, 0.5, 0.7, 1.0, 1.5, 4];
   const cw = 98, ch = 132, lab = 14, W = cw * T.length + 8, H = rows.length * (ch + lab) + 8, dpr = window.devicePixelRatio || 1;
-  document.body.innerHTML = ''; document.body.style.cssText = 'margin:0;background:#20242b;';
-  const cv = document.createElement('canvas'); cv.width = W * dpr; cv.height = H * dpr; cv.style.cssText = 'width:' + W + 'px;height:' + H + 'px;display:block'; document.body.appendChild(cv);
+  // drawn on a sheet laid over the game (taking the game's page apart upsets its own timers)
+  const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;background:#20242b;'; document.body.appendChild(host);
+  const cv = document.createElement('canvas'); cv.width = W * dpr; cv.height = H * dpr; cv.style.cssText = 'width:' + W + 'px;height:' + H + 'px;display:block'; host.appendChild(cv);
   const ctx = cv.getContext('2d');
   const pal = { ink: '#13161b', rim: 'rgba(255,255,255,0.55)', dark: 0 };
   let err = '';
