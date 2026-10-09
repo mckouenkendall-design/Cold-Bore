@@ -605,3 +605,9 @@ body.short .h-ammo { text-align: left; } body.short .h-ammo .pips { justify-cont
 body.landscape.touch .hintbox, body.landscape.touch .radio { font-size: 12px; line-height: 1.25; padding: 5px 9px; }
 body.landscape.touch .h-strip .cell { padding: 3px 7px 4px; }
 body.short .h-fire { font-size: 16px; } body.short .h-breath { font-size: 9.5px; }
+
+/* Tester mode (temporary): a small reminder at the top of every menu that this is not the real save */
+body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; inset: 0; z-index: 60; pointer-events: none; border: 2px solid rgba(255, 170, 60, .75);
+  display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 calc(var(--sar, 0px) + 10px) 2px 0; box-sizing: border-box;
+  font: 700 8.5px var(--head); letter-spacing: .18em; color: rgba(255, 170, 60, .9); text-shadow: 0 1px 2px #000; }
+.tester-group { border: 1px dashed rgba(255, 170, 60, .55); border-radius: 12px; padding: 8px 10px; }

@@ -126,6 +126,12 @@ UI.settings = function (fromTitle) {
   const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
   const body = `<div class="scroll">
     <div class="setcols">
+    <div class="setgroup tester-group"><div class="eyebrow">Tester mode (temporary)</div>
+      <button class="setrow" data-a="tester"><div><b>Unlock everything</b><i>${CB.Tester.on
+        ? 'On. Every rifle, part, scope, skin and contract is open, with a million credits and some caches. Your real progress is set aside and comes back exactly as it was when you switch this off.'
+        : 'Opens every rifle, part, scope, skin and contract, so you can try it all early. Your real progress is set aside, untouched, until you switch it off. Nothing you do while it is on counts toward it.'}</i></div><span class="sw ${CB.Tester.on ? 'on' : ''}"><i></i></span></button>
+      ${CB.Tester.on ? '<button class="setrow" data-a="testerAgain"><div><b>Start the tester save again</b><i>Throws away stars and loadouts made in tester mode and makes a fresh copy of your real progress with everything unlocked.</i></div><span class="arrow">&rsaquo;</span></button>' : ''}
+    </div>
     <div class="setgroup"><div class="eyebrow">Aiming</div>
       ${sld('sens', 'Drag speed', 0.25, 1.4, 0.05, 'How far the scope moves when you drag. Lower is finer.')}
       ${tog('invert', 'Reverse the drag', 'Off: the view follows your finger. On: the crosshair follows your finger.')}
@@ -139,8 +145,8 @@ UI.settings = function (fromTitle) {
     <div class="setgroup"><div class="eyebrow">Picture</div>${tog('lowRes', 'Lighter graphics', 'Draws the picture with fewer dots, which is easier on the phone. Try this if the scope feels choppy.')}</div>
     <div class="setgroup"><div class="eyebrow">Your progress</div>
       <button class="setrow" data-a="how"><div><b>How to play</b><i>Controls, the numbers under the scope, and how to run the game full screen.</i></div><span class="arrow">&rsaquo;</span></button>
-      <button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
-      <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>
+      ${CB.Tester.on ? '<p class="dim">Backing up and erasing are switched off while tester mode is on, so they can only ever touch your real save.</p>' : `<button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
+      <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>`}
     </div>
     </div>
     <p class="fine">Cold Bore. No ads, no real money, no accounts. Progress is stored only in this browser on this device${Save.ok ? '' : ' (this browser is currently refusing to store it, so it will be lost when the tab closes)'}. Sound is generated live, so there is nothing to download.</p>
@@ -148,6 +154,14 @@ UI.settings = function (fromTitle) {
   const h = {
     tog(ds) { s[ds.k] = !s[ds.k]; Save.write(); if (ds.k === 'lowRes') Game.resize(); UI.keepScroll(); UI.settings(fromTitle); },
     assist(ds) { s.assist = ds.v; Save.write(); UI.keepScroll(); UI.settings(fromTitle); },
+    // tester mode (temporary): switch saves, then forget every picture and choice the menus were holding
+    tester() {
+      const on = !CB.Tester.on; CB.Tester.set(on);
+      UI._chSet = false; UI.chapter = 1; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.shown = {}; Sfx.setVolumes();
+      UI.keepScroll(); UI.settings(fromTitle);
+      UI.toast(on ? 'Tester mode on: everything is unlocked.' : 'Tester mode off: your real progress is back.', 'good');
+    },
+    testerAgain() { CB.Tester.restart(); UI._chSet = false; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.keepScroll(); UI.settings(fromTitle); UI.toast('Fresh tester save made.', 'good'); },
     how() { UI.howTo(); },
     back() { UI.title(); },
     export() {

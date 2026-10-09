@@ -622,6 +622,12 @@ body.landscape.touch .hintbox, body.landscape.touch .radio { font-size: 12px; li
 body.landscape.touch .h-strip .cell { padding: 3px 7px 4px; }
 body.short .h-fire { font-size: 16px; } body.short .h-breath { font-size: 9.5px; }
 
+/* Tester mode (temporary): a small reminder at the top of every menu that this is not the real save */
+body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; inset: 0; z-index: 60; pointer-events: none; border: 2px solid rgba(255, 170, 60, .75);
+  display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 calc(var(--sar, 0px) + 10px) 2px 0; box-sizing: border-box;
+  font: 700 8.5px var(--head); letter-spacing: .18em; color: rgba(255, 170, 60, .9); text-shadow: 0 1px 2px #000; }
+.tester-group { border: 1px dashed rgba(255, 170, 60, .55); border-radius: 12px; padding: 8px 10px; }
+
 </style>
 </head>
 <body>
@@ -17408,6 +17414,108 @@ function rankOf(xp) { let r = RANKS[0]; for (let i = 0; i < RANKS.length; i++) i
 function nextRank(xp) { for (let i = 0; i < RANKS.length; i++) if (xp < RANKS[i].xp) return RANKS[i]; return null; }
 
 
+// ===== 09b_tester.js =====
+// ---------------------------------------------------------------------------
+// TESTER MODE. Temporary: Kendall asked for it to try everything early, and it
+// is to be removed before the game is finished. To remove it: delete this
+// file, the "Tester mode" group in UI.settings (42_ui_results.js), the
+// `Save.data.tester` line in Progress.missionOpen (39_progress.js) and the
+// body.tester rules in style.css.
+//
+// Switching it on puts the real save aside, untouched, and loads a separate
+// tester save in which every rifle, part, scope, skin and contract is open,
+// with plenty of credits and a few caches. Switching it off brings the real
+// save back exactly as it was. The two never mix, except the settings (sound,
+// aiming help and so on), which follow you across so you do not set them twice.
+// ---------------------------------------------------------------------------
+const Tester = CB.Tester = { on: false, real: null };
+const TESTER_KEY = 'coldbore.save.tester.v1', TESTER_MODE_KEY = 'coldbore.tester.on';
+
+// Everything the tester save should have. Run on every load, so anything added
+// to the game later turns up in the tester save too.
+Tester.grantAll = function (d) {
+  GUNS.forEach((g) => { if (!d.guns[g.id]) d.guns[g.id] = { cfg: defaultConfig(g.id) }; });
+  PARTS.forEach((p) => { if (p.price > 0) d.parts[p.id] = 1; });
+  SCOPES.forEach((s) => { d.scopes[s.id] = 1; });
+  if (!d.skinSeen) d.skinSeen = {};
+  SKINS.forEach((s) => { d.skins[s.id] = 1; if (!d.testerSeeded) d.skinSeen[s.id] = 1; });
+  d.xp = Math.max(d.xp || 0, RANKS[RANKS.length - 1].xp);
+  d.credits = Math.max(d.credits || 0, 1000000);
+  if (!d.testerSeeded) { d.caches.push('field', 'field', 'sealed', 'sealed', 'vault', 'vault'); d.testerSeeded = 1; }
+  d.tester = true;
+  return d;
+};
+// Fill in anything an older tester save is missing, the same way Save.load does for the real one.
+function testerFill(d) {
+  const f = Save.fresh();
+  for (const k in f) if (d[k] === undefined) d[k] = f[k];
+  for (const k in f.settings) if (d.settings[k] === undefined) d.settings[k] = f.settings[k];
+  for (const k in f.stats) if (d.stats[k] === undefined) d.stats[k] = f.stats[k];
+  return d;
+}
+const testerGet = (k) => { try { return window.localStorage.getItem(k); } catch (e) { return null; } };
+const testerSet = (k, v) => { try { window.localStorage.setItem(k, v); return true; } catch (e) { return false; } };
+const copyOf = (o) => JSON.parse(JSON.stringify(o));
+
+// A tester save made from a copy of the real one, so stars, choices and settings look familiar.
+Tester.fromReal = function () { return Tester.grantAll(testerFill(copyOf(Tester.real))); };
+// carrySettings: when switching on, bring the real save's settings across.
+Tester.enter = function (carrySettings) {
+  let t = null;
+  try { const raw = testerGet(TESTER_KEY); if (raw) t = JSON.parse(raw); } catch (e) { t = null; }
+  t = t && t.v === 1 ? Tester.grantAll(testerFill(t)) : Tester.fromReal();
+  if (carrySettings) Object.assign(t.settings, Tester.real.settings);
+  Save.data = t; Tester.on = true;
+  document.body.classList.add('tester');
+};
+
+const realLoad = Save.load, realWrite = Save.write, realReset = Save.reset;
+Save.load = function () {
+  realLoad();
+  Tester.real = Save.data; Tester.on = false;
+  document.body.classList.remove('tester');
+  if (testerGet(TESTER_MODE_KEY) === '1') Tester.enter();
+  return Save.data;
+};
+Save.write = function () {
+  if (!Tester.on) return realWrite();
+  Save.ok = testerSet(TESTER_KEY, JSON.stringify(Save.data));
+};
+// "Erase everything" in tester mode starts the tester save again; the real save is not touched.
+Save.reset = function () { if (Tester.on) Tester.restart(); else realReset(); };
+
+// Switch tester mode on or off. Returns nothing; the caller redraws the screen.
+Tester.set = function (on) {
+  if (on && !Tester.on) {
+    realWrite();
+    Tester.real = Save.data;
+    testerSet(TESTER_MODE_KEY, '1');
+    Tester.enter(true);
+    Save.write();
+  } else if (!on && Tester.on) {
+    Save.write();
+    const settings = Object.assign({}, Save.data.settings);
+    Tester.on = false;
+    testerSet(TESTER_MODE_KEY, '0');
+    document.body.classList.remove('tester');
+    // read the real save back from storage; if storage is refused, use the copy held in memory
+    const keep = Tester.real;
+    if (testerGet(SAVE_KEY) !== null || !keep) realLoad(); else Save.data = keep;
+    Tester.real = Save.data;
+    Save.data.settings = Object.assign(Save.data.settings, settings);
+    realWrite();
+  }
+};
+// Throw the tester save away and make a new one from the real save as it is now.
+Tester.restart = function () {
+  if (!Tester.on) return;
+  const settings = Object.assign({}, Save.data.settings);
+  Save.data = Tester.fromReal();
+  Object.assign(Save.data.settings, settings);
+  Save.write();
+};
+
+
 // ===== 10_sfx.js =====
 // ---------------------------------------------------------------------------
 // Sound. Everything is generated in code with the Web Audio API: there are no
@@ -28374,7 +28482,7 @@ Progress.favourite = function () {
   return best || (d.guns[d.equipped] ? d.equipped : Object.keys(d.guns)[0]);
 };
 Progress.missionOpen = function (M) {
-  if (CB.debug) return true;
+  if (CB.debug || Save.data.tester) return true; // tester mode (temporary): every contract open
   const i = MISSIONS.indexOf(M);
   if (i <= 0) return true;
   // a contract already finished stays open, even if a newer one has since been slotted in before it
@@ -29573,6 +29681,12 @@ UI.settings = function (fromTitle) {
   const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
   const body = `<div class="scroll">
     <div class="setcols">
+    <div class="setgroup tester-group"><div class="eyebrow">Tester mode (temporary)</div>
+      <button class="setrow" data-a="tester"><div><b>Unlock everything</b><i>${CB.Tester.on
+        ? 'On. Every rifle, part, scope, skin and contract is open, with a million credits and some caches. Your real progress is set aside and comes back exactly as it was when you switch this off.'
+        : 'Opens every rifle, part, scope, skin and contract, so you can try it all early. Your real progress is set aside, untouched, until you switch it off. Nothing you do while it is on counts toward it.'}</i></div><span class="sw ${CB.Tester.on ? 'on' : ''}"><i></i></span></button>
+      ${CB.Tester.on ? '<button class="setrow" data-a="testerAgain"><div><b>Start the tester save again</b><i>Throws away stars and loadouts made in tester mode and makes a fresh copy of your real progress with everything unlocked.</i></div><span class="arrow">&rsaquo;</span></button>' : ''}
+    </div>
     <div class="setgroup"><div class="eyebrow">Aiming</div>
       ${sld('sens', 'Drag speed', 0.25, 1.4, 0.05, 'How far the scope moves when you drag. Lower is finer.')}
       ${tog('invert', 'Reverse the drag', 'Off: the view follows your finger. On: the crosshair follows your finger.')}
@@ -29586,8 +29700,8 @@ UI.settings = function (fromTitle) {
     <div class="setgroup"><div class="eyebrow">Picture</div>${tog('lowRes', 'Lighter graphics', 'Draws the picture with fewer dots, which is easier on the phone. Try this if the scope feels choppy.')}</div>
     <div class="setgroup"><div class="eyebrow">Your progress</div>
       <button class="setrow" data-a="how"><div><b>How to play</b><i>Controls, the numbers under the scope, and how to run the game full screen.</i></div><span class="arrow">&rsaquo;</span></button>
-      <button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
-      <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>
+      ${CB.Tester.on ? '<p class="dim">Backing up and erasing are switched off while tester mode is on, so they can only ever touch your real save.</p>' : `<button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
+      <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>`}
     </div>
     </div>
     <p class="fine">Cold Bore. No ads, no real money, no accounts. Progress is stored only in this browser on this device${Save.ok ? '' : ' (this browser is currently refusing to store it, so it will be lost when the tab closes)'}. Sound is generated live, so there is nothing to download.</p>
@@ -29595,6 +29709,14 @@ UI.settings = function (fromTitle) {
   const h = {
     tog(ds) { s[ds.k] = !s[ds.k]; Save.write(); if (ds.k === 'lowRes') Game.resize(); UI.keepScroll(); UI.settings(fromTitle); },
     assist(ds) { s.assist = ds.v; Save.write(); UI.keepScroll(); UI.settings(fromTitle); },
+    // tester mode (temporary): switch saves, then forget every picture and choice the menus were holding
+    tester() {
+      const on = !CB.Tester.on; CB.Tester.set(on);
+      UI._chSet = false; UI.chapter = 1; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.shown = {}; Sfx.setVolumes();
+      UI.keepScroll(); UI.settings(fromTitle);
+      UI.toast(on ? 'Tester mode on: everything is unlocked.' : 'Tester mode off: your real progress is back.', 'good');
+    },
+    testerAgain() { CB.Tester.restart(); UI._chSet = false; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.keepScroll(); UI.settings(fromTitle); UI.toast('Fresh tester save made.', 'good'); },
     how() { UI.howTo(); },
     back() { UI.title(); },
     export() {

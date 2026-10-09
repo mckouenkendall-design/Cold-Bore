@@ -48,7 +48,7 @@ Progress.favourite = function () {
   return best || (d.guns[d.equipped] ? d.equipped : Object.keys(d.guns)[0]);
 };
 Progress.missionOpen = function (M) {
-  if (CB.debug) return true;
+  if (CB.debug || Save.data.tester) return true; // tester mode (temporary): every contract open
   const i = MISSIONS.indexOf(M);
   if (i <= 0) return true;
   // a contract already finished stays open, even if a newer one has since been slotted in before it

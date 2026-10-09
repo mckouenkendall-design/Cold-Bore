@@ -34,6 +34,15 @@ Hold the phone sideways. Phone: drag anywhere to aim, zoom slider on the left (o
 FIRE, RELOAD. Computer: mouse to aim, wheel to zoom, left click to fire, Shift
 to hold breath, R to reload, Q and E for the zero dial, Esc for the notebook.
 
+## Tester mode (temporary)
+
+Settings has a "Tester mode" switch that opens every rifle, part, scope, skin and contract
+in a separate tester save. The real save is set aside untouched and comes back when the
+switch goes off. It is there for trying things early and is meant to be removed before
+the game is finished: delete `src/09b_tester.js`, the "Tester mode" group in `UI.settings`
+(`src/42_ui_results.js`), the `Save.data.tester` check in `Progress.missionOpen`
+(`src/39_progress.js`) and the `body.tester` rules at the end of `src/style.css`.
+
 ## Build
 
 `index.html` is generated. Edit the files in `src/` and run:
@@ -90,6 +99,7 @@ ORACLE=1 node test/matrix.js all 1        # also checks every shot prediction
 node test/guided.js all 1       # a bot that only follows the coach 3-stars every mission
 node test/guidecheck.js         # checks the written walkthroughs
 node test/notebook.js           # notebook scrolls by touch, messages close on a tap
+node test/tester.js             # tester mode unlocks everything and gives the real save back
 node test/gunroom.js            # the gun room at several sizes
 node test/ragdoll.js calibre    # contact sheets of falling bodies
 node test/sfx.js                # renders every new sound offline, saves WAVs in shots/sfx/
