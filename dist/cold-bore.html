@@ -651,7 +651,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 3:47 PM";
+const BUILD = "Oct 9, 3:57 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -11580,6 +11580,7 @@ SCN.valley = function (o) {
   K.ground(S, PD, { col: meadow, edge: snowy ? '#ffffff' : '#9cc078' });
   H.deckX0 = dx0; H.deckX1 = dx1;
   const padX = 49, doorX = B.winX(B.door), towerX = o.towerX === undefined ? -64 : o.towerX, gateX = o.gateX === undefined ? -62 : o.gateX;
+  let turfItem = null;      // (the meadow detail is drawn just after it)
   {
     const T = (hex, self) => S.tone(hex, PD, self);
     const wood = T('#7a5234'), wood2 = T('#5a3c26'), wood3 = T('#8f6744'), rail = T('#3e2b1d'), pathC = T(snowy ? '#d5dde5' : '#b9b09a'), pathL = T(snowy ? '#e3e9ee' : '#c9c1ad'), pathD = T(snowy ? '#b9c3cc' : '#8f8873'), worn = T(snowy ? '#d9e0e7' : darken(meadow, 0.13));
@@ -11593,7 +11594,7 @@ SCN.valley = function (o) {
     for (let i = 0; i < 150; i++) peb.push([D.r(-44, 68), D.r(-1.45, -0.6), D.r(0.03, 0.06), D.chance(0.5) ? 0 : 1]);
     peb.sort((a, b) => a[0] - b[0]);
     for (let i = 0; i < 9; i++) { const x = D.r(-140, 140), y = D.r(-8, -2.4); if (!offGrass(x, y) && Math.abs(x - padX) > 14) rocks.push([x, y, D.r(0.35, 0.8)]); }
-    PD.add({ x0: -4000, x1: 4000, layer: 0, draw(ctx, env) { // paths, paving and the meadow's own texture
+    turfItem = PD.add({ x0: -4000, x1: 4000, layer: 0, draw(ctx, env) { // paths, paving and the meadow's own texture
       const s = env.s;
       turf(ctx, env);
       // a trodden line out to the hunting tower
@@ -11872,8 +11873,135 @@ SCN.valley = function (o) {
     PS.solid(tx - w * 0.95, by + h * 0.12, w * 1.9, h * 0.3, 'wood'); PS.solid(tx - w * 0.68, by + h * 0.42, w * 1.36, h * 0.25, 'wood'); PS.solid(tx - w * 0.3, by + h * 0.67, w * 0.6, h * 0.2, 'wood'); PS.solid(tx - h * 0.018, by - 60, h * 0.036, 60 + h * 0.14, 'wood');
     return { x: tx, top: by + h, w, plane: PS };
   };
+  vlyDetail(S, H, { snowy, meadow, padX, sunD, E, dx0, dx1, stairW, turfItem });
   return H;
 };
+
+// ---- a lived-in valley -------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): molehills, drifts of
+// flowers and a worn track in the meadow (footprints and ski tracks when it has snowed),
+// weather on the lodge's stone and logs, a bench, churns and skis against its wall, scrub and
+// rocks on the slope, and a wooden trough with water running into it. Everything lies on the
+// ground, stands against a wall, or (the trough) stands low on the yard behind whoever passes;
+// nothing is shootable or solid, and nothing touches a mission's random streams.
+function vlyDetail(S, H, q) {
+  const snowy = q.snowy, PD = H.PD, PL = H.PL, B = H.lodge, padX = q.padX, sunD = q.sunD;
+  const tilt = q.E / H.zD;                             // how much a metre of depth shows as height on the yard
+  const offPath = (x, y) => !((y > -1.8 && y < -0.25 && x > -59 && x < 71) || (Math.pow((x - padX) / 11.6, 2) + Math.pow((y + 1.5) / 1.9, 2) < 1));
+  // ---- the meadow in front of the lodge ----
+  K.deco(S, PD, { after: q.turfItem, seed: 3301 }, (D, R) => {   // over the grass, under the deck and whoever walks there
+    if (!snowy) {
+      // darker clover and longer grass, in soft drifts
+      for (let i = 0; i < 26; i++) { const rx = R.r(1.5, 4.5); KW.blob(D, R, R.r(-150, 150), -R.r(1.9, 8), rx, Math.max(0.12, rx * tilt * 1.4), darken(q.meadow, 0.12), 0.45, 0.25); }
+      // the track the fuel truck has worn up to the helicopter pad: two ruts of flattened, yellowed grass
+      const rut = (dy) => { const p = []; for (let k = 0; k <= 16; k++) { const u = k / 16, x = lerp(150, padX + 8, u), y = lerp(-7.2, -2.3, Math.pow(u, 0.8)) + Math.sin(u * 5) * 0.12 + dy; p.push(x, y); } D.line(p, 0.2, mix(q.meadow, '#c9b98a', 0.45), 0.7); };
+      rut(0); rut(-0.24);
+      D.pass = 1;
+      // the kitchen garden at the end of the lodge: dug beds of dark earth, rows of greens, a cane row
+      const gx0 = -57, gx1 = -45, gy = -2.5;
+      for (let b = 0; b < 3; b++) {
+        const y0 = gy - b * 0.72, y1 = y0 - 0.5;
+        D.rect(gx0, y1, gx1 - gx0, 0.5, '#4a3a2a');
+        D.pass = 2; for (let x = gx0 + 0.25; x < gx1 - 0.1; x += 0.42) D.ell(x, y0 - 0.12, 0.17, 0.09, b === 1 ? '#5c8a3a' : '#4f7a3a'); D.pass = 1;
+        if (b === 0) { D.pass = 2; for (let x = gx0 + 0.3; x < gx1; x += 0.8) D.seg(x, y0 - 0.12, x + 0.05, y0 + 0.9, 0.03, '#8a7448'); D.pass = 1; }
+      }
+      D.rect(gx0 - 0.1, gy - 2.0, 0.06, 1.95, '#5a4634'); D.rect(gx1 + 0.04, gy - 2.0, 0.06, 1.95, '#5a4634');
+      // a wheelbarrow left by the beds
+      D.pass = 2; D.poly([gx1 + 0.5, gy - 0.6, gx1 + 1.6, gy - 0.6, gx1 + 1.8, gy - 0.15, gx1 + 0.35, gy - 0.15], '#3d6a8a'); D.ell(gx1 + 0.55, gy - 0.72, 0.16, 0.16, '#1f2227'); D.seg(gx1 + 1.6, gy - 0.3, gx1 + 2.4, gy - 0.45, 0.04, '#5a4634'); D.pass = 1;
+      // molehills: a little heap of dark earth with its crumbly top
+      for (let i = 0; i < 60; i++) {
+        const x = R.r(-150, 150), y = -R.r(1.9, 8), w = R.r(0.55, 0.95), h = w * R.r(0.3, 0.42); if (!offPath(x, y) || (x > gx0 - 1 && x < gx1 + 3 && y > gy - 2.2)) continue;
+        D.poly([x - w / 2, y, x - w * 0.25, y + h * 0.75, x, y + h, x + w * 0.28, y + h * 0.7, x + w / 2, y], '#5a4632');
+        D.pass = 2; D.ell(x - w * 0.08, y + h * 0.82, w * 0.22, h * 0.18, '#7a6446', 0.9); D.pass = 1;
+      }
+      // drifts of flowers, each of one kind: white daisies, buttercups, clover, gentians
+      const kinds = ['#f4f1e4', '#f1d24a', '#c58ad6', '#5f84d6'];
+      for (let i = 0; i < 34; i++) {
+        const cx = R.r(-150, 150), cy = -R.r(2.0, 8), c = R.pick(kinds), n = R.i(5, 11);
+        for (let k = 0; k < n; k++) { const fx = cx + R.gauss() * 0.9, fy = cy + R.gauss() * 0.25; if (offPath(fx, fy) && fy < -0.4) D.ell(fx, fy, 0.075, 0.06, c); }
+      }
+    } else {
+      // when it has snowed: the trodden tracks of the morning, ski tracks across the yard, and the
+      // blue of shadow along the drifts the wind has left
+      const shade = '#a9b6c6', print = '#9aa8b8';
+      for (let i = 0; i < 18; i++) { const x = R.r(-150, 150), y = -R.r(2, 8), l = R.r(4, 12); D.poly([x - l / 2, y, x, y + R.r(0.08, 0.14), x + l / 2, y, x, y - 0.03], shade, 0.55, 0.1); }
+      const trail = (pts, every) => { // footprints, left and right, along a line of points
+        for (let k = 0; k + 3 < pts.length; k += 2) { const ax = pts[k], ay = pts[k + 1], bx = pts[k + 2], by = pts[k + 3], d = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(d / every)); for (let j = 0; j < n; j++) { const u = j / n, side = j % 2 ? 0.06 : -0.06; D.ell(lerp(ax, bx, u), lerp(ay, by, u) + side, 0.09, 0.04, print, 0.85); } }
+      };
+      const dxF = q.dx1 + q.stairW;
+      trail([dxF - 0.5, -0.4, dxF + 4, -2.2, dxF + 2, -4.2, dxF + 9, -6.6], 0.45);
+      trail([B.winX(B.door), -0.3, B.winX(B.door) + 3, -1.1, 18, -0.9, 18.6, -0.25], 0.45);
+      trail([-43, -1.0, -50, -1.4, -57, -0.6], 0.45);
+      for (const dy of [0, -0.12]) { const p = []; for (let x = -150; x <= 150; x += 10) p.push(x, -5.3 + Math.sin(x * 0.03) * 0.9 + dy); D.line(p, 0.035, print, 0.8); }
+    }
+    // the wet patch round the trough, and the stones it stands on
+    D.pass = 3; KW.blob(D, R, 32.2, -0.2, 2.0, 0.16, snowy ? '#b9c6d2' : '#3e5a3a', 0.6, 0.2);
+  });
+
+  // ---- the trough: a hollowed log on stone feet, fed by a spout on a post ----
+  { const tx = 31, tw = 2.6, th = 0.62;
+    K.deco(S, PD, { seed: 3311 }, (D) => {
+      D.rect(tx + 0.2, 0, 0.36, 0.14, '#8d8a80'); D.rect(tx + tw - 0.56, 0, 0.36, 0.14, '#8d8a80');
+      D.rect(tx, 0.12, tw, th, '#6e4a2e'); D.rect(tx + tw - 0.05, 0.12, 0.28, 1.45, '#5a3c26');     // the log, and the post at its end
+      D.pass = 1; D.rect(tx, 0.12 + th - 0.08, tw, 0.08, '#8a6544'); D.rect(tx + 0.05, 0.16, tw - 0.1, 0.05, '#4a3220', 0.8);
+      D.rect(tx + 0.3, 0.3, 0.9, 0.025, '#4a3220', 0.7); D.rect(tx + 1.4, 0.45, 0.8, 0.025, '#4a3220', 0.7);
+      D.rect(tx + tw - 0.4, 1.27, 0.38, 0.07, '#2a2e36');                                             // the iron spout
+      if (snowy) { D.pass = 2; D.rect(tx - 0.04, 0.12 + th, tw + 0.08, 0.1, '#f4f7fa'); D.rect(tx + tw - 0.08, 1.57, 0.34, 0.1, '#f4f7fa'); }
+    });
+    const water = S.tone(snowy ? '#cfe0ee' : '#bfe3f2', PD, true), sheen = S.tone('#e9f6fb', PD, true);
+    PD.add({ x0: tx - 0.5, x1: tx + tw + 0.5, layer: 0, draw(ctx, env) {
+      if (env.s < 4 || 1.6 < env.y0 || 0 > env.y1) return;
+      const t = env.t, sx = tx + tw - 0.38, wob = Math.sin(t * 9) * 0.008;
+      // the stream falls in a gentle curve, the wind bends it a little
+      ctx.strokeStyle = water; ctx.lineWidth = Math.max(0.03, env.px); ctx.beginPath(); ctx.moveTo(sx, 1.29); ctx.quadraticCurveTo(sx - 0.12 + wob + (env.wind || 0) * 0.004, 1.2, sx - 0.16 + wob, 0.12 + th - 0.04); ctx.stroke();
+      if (env.s > 9) { // the surface, and rings where it lands
+        R4(ctx, tx + 0.06, 0.12 + th - 0.1, tw - 0.12, 0.04, water);
+        const u = (t * 1.6) % 1; ctx.strokeStyle = sheen; ctx.globalAlpha = 1 - u; ctx.lineWidth = Math.max(0.015, env.px * 0.7); ctx.beginPath(); ctx.ellipse(sx - 0.16, 0.12 + th - 0.08, 0.08 + u * 0.35, 0.02 + u * 0.03, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    } });
+  }
+
+  // ---- the lodge: weather on stone and logs, and what stands against the wall ----
+  K.deco(S, PL, { seed: 3321 }, (D, R) => {
+    const x0 = B.x, x1 = B.x + B.w, fh = B.fh, wins = Object.keys(B.wins).map((k) => B.wins[k]);
+    // lichen on the stone of the ground floor, and green creeping up from the ground
+    for (let i = 0; i < 70; i++) { const x = R.r(x0 + 0.2, x1 - 0.2), y = R.r(0.25, fh - 0.4); if (wins.some((op) => x > op.x - 0.3 && x < op.x + op.w + 0.3 && y > op.y - 0.2 && y < op.y + op.h + 0.3)) continue; D.ell(x, y, R.r(0.05, 0.14), R.r(0.04, 0.09), snowy ? '#b8c2b4' : '#a8b38a', 0.6); }
+    if (!snowy) KW.moss(D, R, x0, x1, 0.2, 0.12, '#5f7048', 0.7);
+    // under each window sill: the stain the rain has washed down; under the flower boxes, darker water marks on the logs
+    for (const op of wins) {
+      if (op.f === 0) KW.streaks(D, R, op.x + 0.05, op.x + op.w - 0.05, op.y - 0.13, '#4a463e', { n: 3, len: [0.35, 0.9], w: [0.06, 0.14], a: 0.28 });
+      else if (op.f === 2 && !snowy) KW.streaks(D, R, op.x, op.x + op.w, op.y - 0.34, '#3a2414', { n: 3, len: [0.5, 1.3], w: [0.06, 0.14], a: 0.3 });
+    }
+    // the logs are bleached paler low down where the sun gets at them, and darker under the eaves
+    D.rect(x0, fh + 0.2, B.w, 1.1, '#e8d8b8', 0.08); D.rect(x0, B.roofY - 1.9, B.w, 1.2, '#2a1a10', 0.1);
+    // rust weeping from the lantern bracket by the door
+    const dx = B.winX(B.door); KW.streaks(D, R, dx + 1.66, dx + 1.82, 1.92, '#7a4a2a', { n: 2, len: [0.4, 0.7], w: [0.04, 0.07], a: 0.4 });
+    // a bench under a window, two milk churns, skis and poles leaning by the door
+    D.pass = 1;
+    const bx = B.winX(5) - 1.2;
+    D.rect(bx, 0.42, 2.4, 0.08, '#6e4a2e'); D.rect(bx + 0.15, 0, 0.1, 0.42, '#5a3c26'); D.rect(bx + 2.15, 0, 0.1, 0.42, '#5a3c26'); D.rect(bx, 0.5, 2.4, 0.03, '#8a6544');
+    for (const cx of [B.winX(4) + 1.35, B.winX(4) + 1.85]) { D.rect(cx - 0.17, 0, 0.34, 0.5, '#9aa3a8'); D.rect(cx - 0.12, 0.5, 0.24, 0.12, '#9aa3a8'); D.rect(cx - 0.15, 0.62, 0.3, 0.05, '#7d868c'); D.pass = 2; D.rect(cx - 0.17, 0.16, 0.34, 0.03, '#7d868c'); D.rect(cx - 0.17 + (sunD > 0 ? 0.24 : 0), 0, 0.1, 0.5, '#c4ccd0', 0.6); D.pass = 1; }
+    const sk = B.winX(2) + 1.05;
+    for (let k = 0; k < 2; k++) { const kx = sk + k * 0.16; D.poly([kx, 0, kx + 0.08, 0, kx + 0.34, 1.75, kx + 0.27, 1.78], k ? '#b8372d' : '#2f4a7a'); }
+    D.seg(sk + 0.45, 0, sk + 0.62, 1.3, 0.025, '#2a2e36'); D.seg(sk + 0.55, 0, sk + 0.7, 1.28, 0.025, '#2a2e36');
+    if (snowy) { // snow banked against the foot of the wall
+      D.pass = 3; for (let x = x0 - 0.5; x < x1 + 0.5; x += R.r(1.6, 2.8)) { const r = R.r(1.3, 2.2); D.ell(x, 0.0, r, R.r(0.16, 0.3), '#f4f7fa'); }
+    }
+  });
+
+  // ---- the slope below the yard: scrub and rocks among the grass ----
+  const PSL = H.PSL, hA = PSL.heightAt;
+  K.deco(S, PSL, { seed: 3331 }, (D, R) => {
+    for (let i = 0; i < 46; i++) {
+      const x = R.r(-160, 160), d = R.r(1.2, 8.5), y = hA(x) - d, w = R.r(0.9, 2.2), h = Math.min(w * R.r(0.4, 0.6), d * 0.6);
+      if (Math.abs(x + 98) < 6) continue;                                                       // not in the brook
+      if (snowy) { D.ell(x, y + h * 0.3, w * 0.55, h * 0.45, '#e9eef3'); D.pass = 1; D.ell(x + sunD * w * 0.1, y + h * 0.6, w * 0.3, h * 0.2, '#ffffff', 0.9); D.rect(x - w * 0.4, y, w * 0.8, h * 0.12, '#b9c3cc', 0.7); D.pass = 0; continue; }
+      KC.bush(D, R, x, y, w, h, R.chance(0.6) ? '#2f4a32' : '#3d5a36');
+      if (R.chance(0.35)) { D.pass = 2; for (let k = 0; k < 6; k++) D.ell(x + R.r(-w * 0.4, w * 0.4), y + h * R.r(0.5, 0.95), 0.07, 0.06, '#d0507a'); D.pass = 0; }   // alpenrose in flower
+    }
+    for (let i = 0; i < 22; i++) { const x = R.r(-160, 160), d = R.r(1.5, 9), y = hA(x) - d, w = R.r(0.5, 1.4); KC.rock(D, R, x, y, w, Math.min(w * 0.55, d * 0.5), snowy ? '#9aa4ae' : '#8b8f8c'); if (snowy) { D.pass = 2; D.ell(x, y + w * 0.5, w * 0.4, w * 0.12, '#f4f7fa'); D.pass = 0; } }
+  });
+}
 
 // ---- thin cover, hung in front of what it hides -----------------------------------------------
 // Used by the three armour-piercing contracts (c3m8, c4m8, c5m8). A bullet tests the people on a
