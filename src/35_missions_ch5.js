@@ -37,8 +37,11 @@ mission({
     H.n1 = H.train({ id: 'n1', track: 'near', at: 9, dir: 1, speed: 14, col: '#3d5a80', seed: 0 });
     H.f1 = H.train({ id: 'f1', track: 'far', at: 33, dir: -1, speed: 12, col: '#7a3a2e', seed: 1 });
     H.n2 = H.train({ id: 'n2', track: 'near', at: 40.5, dir: 1, speed: 14, col: '#3f5a48', seed: 2 });
+    // money for paper: the clerk hands over his case and walks off with an envelope of cash
+    K.heldEnvelope(H.S, H.PM, { H, who: (sim) => (sim.did('deal') ? 'clerk' : null) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const help = vargaHelps(f);
     const yardman = { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' };
@@ -47,7 +50,7 @@ mission({
       { id: 'fixer', role: 'target', look: { coat: '#e3dcc6', long: true, hat: 'cap', hatCol: '#8a8f96', build: 'big' }, escapeText: 'The fixer drove out of the yard with the papers on the seat beside him.',
         routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', 16.2], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
       Object.assign(H.strip(3.2), { id: 'clerk', role: 'civ', face: 1, look: { build: 'thin', glasses: true, coat: COL.brown, hair: 'short', hairCol: '#3a2a20', bag: 'case', bagCol: '#7b5a36' }, failText: 'You shot the clerk. He was the only one who knew where the copies are.',
-        routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: 'paper' }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
+        routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: null }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
       Object.assign(H.inBox(-1.5), { id: 'sigman', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
       Object.assign(H.siding(-24), { id: 'w1', role: 'civ', look: yardman, routine: pace(-36, -22, 6, 7, 'work') }),
       Object.assign(H.strip(-33), { id: 'w2', role: 'civ', face: -1, anim: 'work', look: Object.assign({ build: 'big' }, yardman), routine: [['wait', 999, 'work', -1]] }),

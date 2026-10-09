@@ -143,29 +143,6 @@ mission({
 // crosses: on screen he walks smoothly down and round, with no jump.
 const C1M5_KZ = 153 / 160, C1M5_LIFT = 14.64 * (1 - C1M5_KZ); // eye height (15 m, tipped down at the car) times the depth step
 const C1M5_KERB = -1.1, C1M5_KERB_R = C1M5_KERB * C1M5_KZ, C1M5_NOSE = -2.35, C1M5_DOOR = -3.63;
-// Drawn in the near hand of whoever has it (H.env.who). Inside a car only the part that shows
-// through that person's window is drawn, like the person.
-function c1m5Envelope(ctx, env, H, P) {
-  const sim = H.sim, who = H.env.who; if (!sim || !who || env.s < 2.2) return;
-  const a = sim.byId[who]; if (!a || a.gone || a.hidden || a.plane !== P) return;
-  const J = actorJoints(a), hx = a.x + J.haR[0], hy = a.y + J.haR[1];
-  if (hx < env.x0 - 1 || hx > env.x1 + 1) return;
-  ctx.save();
-  const v = a.inVeh;
-  if (v) {
-    const c = v.def, lx = c.seats[a.seat] * c.len; let wi = -1;
-    for (let w = 0; w < c.win.length; w++) if (lx >= c.win[w][0] * c.len - 0.05 && lx <= c.win[w][1] * c.len + 0.05) wi = w;
-    if (wi < 0) { ctx.restore(); return; }
-    ctx.beginPath(); ctx.rect(v.x + v.dir * c.win[wi][v.dir > 0 ? 0 : 1] * c.len, v.y + c.body + 0.06, (c.win[wi][1] - c.win[wi][0]) * c.len, c.h - c.body - 0.2); ctx.clip();
-  }
-  // it lies along the forearm, a little past the fingers
-  ctx.translate(hx, hy); ctx.rotate(Math.atan2(J.haR[1] - J.elR[1], J.haR[0] - J.elR[0]));
-  const S = H.S, paper = S.tone('#efe6cf', P), fold = S.tone('#9c8d70', P);
-  R4(ctx, -0.04, -0.06, 0.24, 0.12, paper);
-  if (env.s > 9) { ctx.strokeStyle = fold; ctx.lineWidth = Math.max(0.008, env.px * 0.7); ctx.beginPath(); ctx.moveTo(-0.04, -0.06); ctx.lineTo(0.06, 0); ctx.lineTo(-0.04, 0.06); ctx.stroke(); }
-  if (env.s > 5) { ctx.fillStyle = S.tone('#13161b', P); ctx.beginPath(); ctx.arc(0, 0, 0.032, 0, TAU); ctx.fill(); } // the fingers round it
-  ctx.restore();
-}
 // The runner has reached the driver's window (called from his routine). Who does what, and
 // when, from here: the driver takes the envelope, looks at it and passes it back over his
 // shoulder; the lawyer takes it, reads it and puts it away. Every beat checks that nothing has
@@ -201,7 +178,7 @@ mission({
     const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] });
     K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42);
     H.env = { who: 'c1' };
-    [H.PS, H.PR].forEach((P) => P.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) { c1m5Envelope(ctx, env, H, P); } }));
+    [H.PS, H.PR].forEach((P) => K.heldEnvelope(H.S, P, { H, who: () => H.env.who })); // in the hand of whoever has it
     return H;
   },
   start(sim, H) { H.sim = sim; },

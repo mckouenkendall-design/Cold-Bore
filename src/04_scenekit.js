@@ -2612,6 +2612,35 @@ K.doorBusy = function (sim, ids, x, near, lead) {
   return false;
 };
 
+// ---- an envelope in somebody's hand ----------------------------------------------
+// The figures have no envelope to carry, so a mission that hands one about draws it here: in
+// the near hand of whoever o.who(sim) names (an actor id, or null for nobody), lying along the
+// forearm a little past the fingers. Inside a car only the part that shows through that
+// person's window is drawn, as with the person. One item per plane the holder may be on.
+//   o = { H, who(sim), col }
+K.heldEnvelope = function (S, P, o) {
+  const paper = S.tone(o.col || '#efe6cf', P), fold = S.tone(darken(o.col || '#efe6cf', 0.38), P), ink = S.tone('#13161b', P);
+  P.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) {
+    const sim = o.H && o.H.sim, who = sim && o.who(sim); if (!who || env.s < 2.2) return;
+    const a = sim.byId[who]; if (!a || a.gone || a.hidden || a.plane !== P) return;
+    const J = actorJoints(a), hx = a.x + J.haR[0], hy = a.y + J.haR[1];
+    if (hx < env.x0 - 1 || hx > env.x1 + 1) return;
+    ctx.save();
+    const v = a.inVeh;
+    if (v) {
+      const c = v.def, lx = c.seats[a.seat] * c.len; let wi = -1;
+      for (let w = 0; w < c.win.length; w++) if (lx >= c.win[w][0] * c.len - 0.05 && lx <= c.win[w][1] * c.len + 0.05) wi = w;
+      if (wi < 0) { ctx.restore(); return; }
+      ctx.beginPath(); ctx.rect(v.x + v.dir * c.win[wi][v.dir > 0 ? 0 : 1] * c.len, v.y + c.body + 0.06, (c.win[wi][1] - c.win[wi][0]) * c.len, c.h - c.body - 0.2); ctx.clip();
+    }
+    ctx.translate(hx, hy); ctx.rotate(Math.atan2(J.haR[1] - J.elR[1], J.haR[0] - J.elR[0]));
+    R4(ctx, -0.04, -0.06, 0.24, 0.12, paper);
+    if (env.s > 9) { ctx.strokeStyle = fold; ctx.lineWidth = Math.max(0.008, env.px * 0.7); ctx.beginPath(); ctx.moveTo(-0.04, -0.06); ctx.lineTo(0.06, 0); ctx.lineTo(-0.04, 0.06); ctx.stroke(); }
+    if (env.s > 5) { ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(0, 0, 0.032, 0, TAU); ctx.fill(); } // the fingers round it
+    ctx.restore();
+  } });
+};
+
 // ---- a worker's power tool -------------------------------------------------------
 // Some missions offer the noise of a jackhammer or a chainsaw as cover. This puts the tool in
 // the worker's hands and makes it run exactly while that cover runs: the jackhammer chatters
