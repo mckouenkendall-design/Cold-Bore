@@ -13,6 +13,7 @@
 //   CFG='{"muzzle":"mz_supl"}' parts to fit to the rifle
 //   SKIP=2.5                  call skip() this many seconds into the film
 //   NAME=tag                  extra tag in the file names
+//   BEATS=1                   print each sound beat the film sends (film time, beat, rate, what it adds)
 //   RESIZE=3                  turn the screen round this many seconds into the film
 //   VANTAGE=1                 shooting position, for missions that offer more than one
 //   DPR=1.5                   device pixel ratio
@@ -77,6 +78,9 @@ const fs = require('fs');
       // for comparison: what the ordinary scope picture costs to draw here, at the widest and the closest zoom
       const tScope = (z) => { const z0 = s.sh.zoom; s.sh.zoom = z; const t0 = performance.now(); for (let i = 0; i < 20; i++) G.view.draw(s, 1 / 60, 1 / 60); s.sh.zoom = z0; return +((performance.now() - t0) / 20).toFixed(2); };
       const scopeMs = [tScope(s.st.zoomMin), tScope(s.st.zoomMax)];
+      // every sound beat the film sends, with the film's time and speed
+      window.__beats = []; const kc0 = CB.Sfx.kc;
+      CB.Sfx.kc = function (st, o) { const x = {}; if (o) ['mat', 'bone', 'organ', 'key', 'size', 'spray', 'len'].forEach((k) => { if (o[k] !== undefined) x[k] = o[k]; }); window.__beats.push([+KC.T.toFixed(2), st, o ? +(+o.rate).toFixed(3) : null, JSON.stringify(x)]); return kc0.call(this, st, o); };
       G.fire();
       return { scopeMs, dist: +(p.z - s.eye0.z).toFixed(0), tof: +sol.tof.toFixed(3), synced: !!(G.oracle && G.oracle.synced), anim: t.anim, moving: vx, inVeh: !!t.inVeh, behind: !!t.behind, face: t.face, pen: s.st.pen, pal: s.S.time, t: +s.t.toFixed(2), look: t.look };
     }, { tid, part, at: +(E.AT || 0.8), until: E.UNTIL || (E.EMIT ? 's.did("' + E.EMIT + '") && s.t - s.emitted["' + E.EMIT + '"] > ' + (+(E.AFTER || 0)) : ''), pre: E.PRE || '' });
@@ -125,6 +129,7 @@ const fs = require('fs');
     console.log('  draw ms per frame (headless): ' + JSON.stringify(tm.draw) + '  slowest [stage, ms, flight share, film s]: ' + JSON.stringify(tm.slow) + (E.ALL ? '\n' + tm.all1 : ''));
     console.log('  time contract: went backwards ' + tm.back + ' times; first at or past the hit at film ' + tm.firstPastT + ' s by ' + tm.pastBy + ' s; kill seen in the world by film ' + tm.killSeenT + ' s');
     console.log('  hand-back: ' + JSON.stringify(endState) + '  results screen: ' + (res ? (resWin ? 'yes, contract complete' : 'yes, FAILED contract') : 'NO'));
+    if (E.BEATS) console.log('  sound beats [film s, beat, rate, extra]: ' + (await page.evaluate(() => JSON.stringify(window.__beats || []))));
     if (E.KILLCAM === '0') { if (started) { console.log('  FAIL: the kill camera ran although it is switched off'); bad++; } }
     else if (!started || filmEnd === null) bad++;
     if (!res || !resWin || tm.back) bad++;

@@ -656,7 +656,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 4:13 PM";
+const BUILD = "Oct 9, 4:36 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -18202,13 +18202,14 @@ Sfx.work = function () {
   if (X.jobs.length) X.jobT = setTimeout(X.work, 12);
 };
 // Play a buffer. o: at (s from now), gain, rate (below 1 is slower, lower and longer), dest,
-// lp (Hz: dull it), pan, verb (echo send), fadeAt/fade (start fading out at, over fade s).
+// lp (Hz: dull it), hp (Hz: thin out its deepest part), pan, verb (echo send), fadeAt/fade (start fading out at, over fade s).
 Sfx.play = function (buf, o) {
   const X = Sfx; if (!X.ok || !buf) return null; o = o || {};
   const ac = X.ac, t = ac.currentTime + Math.max(0, o.at || 0), s = ac.createBufferSource();
   s.buffer = buf; if (o.rate) s.playbackRate.value = o.rate;
   let node = s;
   if (o.lp && o.lp < 17500) { const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; f.Q.value = 0.6; node.connect(f); node = f; }
+  if (o.hp) { const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = o.hp; f.Q.value = 0.7; node.connect(f); node = f; }
   const g = ac.createGain(), gv = o.gain === undefined ? 1 : o.gain; g.gain.value = gv; node.connect(g);
   if (o.fadeAt !== undefined) { g.gain.setValueAtTime(gv, t + o.fadeAt); g.gain.setTargetAtTime(0.0001, t + o.fadeAt, (o.fade || 0.5) / 3); }
   let end = g;
@@ -18271,7 +18272,10 @@ Sfx.prepare = function (sim) {
   ['body', 'head', 'wound'].forEach((k) => X.later('confirm:' + k + ':0', () => SG.confirm(k, 1)));
   X.later('imp:flesh:0', () => SG.impact('flesh', 1)); X.later('imp:' + X.impMat(S.groundMat) + ':0', () => SG.impact(X.impMat(S.groundMat), 1));
   if ((S.objects || []).some((o) => o.kind === 'barrel' || o.kind === 'tank')) X.later('boom:' + X.loc + ':0', () => SG.boom(X.loc, 1));
-  if (S.weather === 'storm' || S.weather === 'rain') { X.later('thunder:close:0', () => SG.thunder('close', 1)); X.later('thunder:far:0', () => SG.thunder('far', 1)); }
+  // thunder: in a storm, or when the mission brings it in as cover (its triggers call sim.cover(.., 'thunder'))
+  const thunder = (sim.triggers || []).some((t) => typeof t.do === 'function' && String(t.do).indexOf("'thunder'") >= 0);
+  if (thunder || S.weather === 'storm') X.later('thunder:close:0', () => SG.thunder('close', 1));
+  if (S.weather === 'storm') X.later('thunder:far:0', () => SG.thunder('far', 1));
 };
 // A shot. The report (two takes of it, played in turn, each a hair different in pitch and level
 // so no two shots are exactly alike), a semi-automatic's action already inside it, a bolt worked
@@ -18451,7 +18455,7 @@ function kcPT(rate) {
   return { r, h, p: Math.sqrt(h), p2: Math.pow(h, 0.25), t: Math.pow(h, -0.6) };
 }
 const kcBedLvl = (r) => 0.02 + 0.12 * Math.pow(1 - clamp(r, 0, 1), 1.5);
-const kcBedCut = (r) => 120 + 1300 * r * r;
+const kcBedCut = (r) => 170 + 1300 * r * r;
 const kcSubCal = { c300s: 1, c9s: 1, c22: 1 };
 Sfx.kc = function (stage, o) {
   const X = Sfx; if (!X.ok) return;
@@ -18460,7 +18464,7 @@ Sfx.kc = function (stage, o) {
 Sfx.kcOpen = function () {
   const X = Sfx, ac = X.ac;
   if (X.kcS && X.kcS.on) X.kcClose(false);
-  const out = ac.createGain(); out.gain.value = 0.7; out.connect(X.near); // about as loud as a real shot at its peak
+  const out = ac.createGain(); out.gain.value = 0.82; out.connect(X.near); // about as loud as a real shot at its peak
   Sfx.hold(X.kcVerbG.gain, ac.currentTime); X.kcVerbG.gain.setTargetAtTime(0.5, ac.currentTime, 0.01); // open the echo
   X.kcS = { on: true, t0: ac.currentTime, last: ac.currentTime, film: false, out, srcs: [], recent: [], next: 0, gore: true, bed: null, bedR: -1, wh: null, whR: -1, near: false, tear: null, hb: null, ring: null, slowLen: 4 };
   return X.kcS;
@@ -18511,18 +18515,26 @@ function kcSlot(S, now) {
   S.recent.push(now); S.next = now + at + 0.024;
   return { at, k: 1 / Math.sqrt(1 + 0.6 * n), lite: n >= 3 };
 }
-// the low bed: a rumble of brown noise and a held sub tone, with a triangle an octave up for a phone
+// The bed: what slowed time sounds like under everything. A dark rumble, a band of pressure in the
+// low middle (where a phone can play it, so it is never mud), a held sub tone and a triangle an
+// octave up.
 function kcBed(S, P) {
   const X = Sfx, ac = X.ac, now = ac.currentTime;
   const src = ac.createBufferSource(); src.buffer = X.brown; src.loop = true;
   const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = kcBedCut(P.r); f.Q.value = 0.9;
+  const bg = ac.createGain(); bg.gain.value = 0.5;
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 50; hp.Q.value = 0.6;
+  const w = ac.createBufferSource(); w.buffer = X.white; w.loop = true;
+  const wf = ac.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 340; wf.Q.value = 0.8;
+  const wl = ac.createBiquadFilter(); wl.type = 'lowpass'; wl.frequency.value = 900; wl.Q.value = 0.6;
+  const wg = ac.createGain(); wg.gain.value = 1.7;
   const sub = ac.createOscillator(); sub.frequency.value = 41;
   const tri = ac.createOscillator(); tri.type = 'triangle'; tri.frequency.value = 82;
-  const sg = ac.createGain(); sg.gain.value = 0.35; const tg = ac.createGain(); tg.gain.value = 0.06;
+  const sg = ac.createGain(); sg.gain.value = 0.12; const tg = ac.createGain(); tg.gain.value = 0.05;
   const g = ac.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.setTargetAtTime(kcBedLvl(P.r), now, 0.12);
-  src.connect(f); f.connect(g); sub.connect(sg); sg.connect(g); tri.connect(tg); tg.connect(g); g.connect(S.out);
-  src.start(now, Math.random() * 2); sub.start(now); tri.start(now);
-  Sfx.kcKeep(S, src); Sfx.kcKeep(S, sub); Sfx.kcKeep(S, tri);
+  src.connect(hp); hp.connect(f); f.connect(bg); bg.connect(g); w.connect(wf); wf.connect(wl); wl.connect(wg); wg.connect(g); sub.connect(sg); sg.connect(g); tri.connect(tg); tg.connect(g); g.connect(S.out);
+  src.start(now, Math.random() * 2); w.start(now, Math.random() * 1.5); sub.start(now); tri.start(now);
+  Sfx.kcKeep(S, src); Sfx.kcKeep(S, w); Sfx.kcKeep(S, sub); Sfx.kcKeep(S, tri);
   S.bed = { f, g }; S.bedR = P.r;
 }
 // The heartbeat: one oscillator whose loudness and pitch are moved for each "lub-dub", kept a
@@ -18530,20 +18542,22 @@ function kcBed(S, P) {
 // for good when the round goes through the heart.
 function kcHeartStart(S, t0) {
   const ac = Sfx.ac, o = ac.createOscillator(), lp = ac.createBiquadFilter(), g = ac.createGain();
-  o.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 340; g.gain.value = 0.0001;
-  o.connect(lp); lp.connect(g); g.connect(S.out);
-  o.start(t0); Sfx.kcKeep(S, o);
-  S.hb = { o, g, next: t0, period: 1.05, stop: false };
+  o.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 420; g.gain.value = 0.0001;
+  const o2 = ac.createOscillator(), g2 = ac.createGain(); o2.type = 'triangle'; g2.gain.value = 0.45;
+  o.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(S.out);
+  o.start(t0); o2.start(t0); Sfx.kcKeep(S, o); Sfx.kcKeep(S, o2);
+  S.hb = { o, o2, g, next: t0, period: 1.05, stop: false };
   kcHeartRun(S, ac.currentTime);
 }
 function kcHeartRun(S, now) {
   const H = S.hb; if (!H || H.stop) return;
   while (H.next < now + 1.6) {
     const t = Math.max(H.next, now + 0.01);
-    [[0, 0.44, 66, 42, 0.13], [0.19, 0.32, 58, 38, 0.15]].forEach((b) => {
+    [[0, 0.34, 66, 42, 0.13], [0.19, 0.25, 58, 38, 0.15]].forEach((b) => {
       const s = t + b[0];
       H.g.gain.setValueAtTime(0.0001, s); H.g.gain.exponentialRampToValueAtTime(b[1], s + 0.012); H.g.gain.exponentialRampToValueAtTime(0.0001, s + b[4]);
       H.o.frequency.setValueAtTime(b[2], s); H.o.frequency.exponentialRampToValueAtTime(b[3], s + b[4]);
+      H.o2.frequency.setValueAtTime(b[2] * 2, s); H.o2.frequency.exponentialRampToValueAtTime(b[3] * 2, s + b[4]);
     });
     H.next = t + H.period;
   }
@@ -18551,7 +18565,7 @@ function kcHeartRun(S, now) {
 function kcHeartStop(S, t) {
   const H = S.hb; if (!H || H.stop) return; H.stop = true;
   H.g.gain.cancelScheduledValues(t); H.g.gain.setValueAtTime(0.0001, t);
-  try { H.o.stop(t + 0.05); } catch (e) { /* already stopped */ }
+  try { H.o.stop(t + 0.05); H.o2.stop(t + 0.05); } catch (e) { /* already stopped */ }
 }
 // a faint ringing in the ears while time is deep in slow motion
 function kcRing(S, len) {
@@ -18589,12 +18603,15 @@ function kcTear(S, P, k, wet, at) {
   const X = Sfx, ac = X.ac, t = ac.currentTime + at, len = clamp((S.slowLen || 4) - 1.6, 1.2, 3.2);
   if (S.tear) kcStopTear(S, t);
   const b = ac.createBufferSource(); b.buffer = X.brown; b.loop = true;
-  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = Math.max(95, 270 * P.p); f.Q.value = 1.2;
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = Math.max(190, 420 * P.p); f.Q.value = 1.1;
+  const b2 = ac.createBufferSource(); b2.buffer = X.white; b2.loop = true;
+  const f3 = ac.createBiquadFilter(); f3.type = 'bandpass'; f3.frequency.value = 680 * P.p2; f3.Q.value = 1.6;
+  const g3 = ac.createGain(); g3.gain.value = 0.55;
   const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime((0.6 + 0.4 * wet) * k, t + 0.03 * P.t); g.gain.setTargetAtTime(0.0001, t + len, 0.15);
   const am = ac.createGain(); am.gain.value = 0;
   const r = ac.createBufferSource(); r.buffer = X.rough; r.loop = true; r.playbackRate.value = 1.3 * P.p;
-  r.connect(am.gain); b.connect(f); f.connect(g); g.connect(am); am.connect(S.out);
-  const srcs = [b, r];
+  r.connect(am.gain); b.connect(f); f.connect(g); b2.connect(f3); f3.connect(g3); g3.connect(g); g.connect(am); am.connect(S.out);
+  const srcs = [b, r, b2];
   if (wet > 0) { // a wet sizzle riding on the tear
     const w = ac.createBufferSource(); w.buffer = X.white; w.loop = true;
     const f2 = ac.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 850 * P.p2; f2.Q.value = 2.4;
@@ -18653,8 +18670,9 @@ Sfx.kcBeat = function (stage, o) {
       // it), the ears start to ring, and the heart slows; it holds until 'resume'
       S.slowLen = clamp(+o.len || 4, 1.5, 8); S.slowT = now;
       n({ type: 'bandpass', f: 2600, f1: 170, sweep: 0.7, q: 1.1, att: 0.03, dur: 0.8, gain: 0.17, verb: 0.4 });
-      t({ f: 96, f1: 31, sweep: 0.65, att: 0.008, dur: 1.2, gain: 0.34 });
-      t({ type: 'triangle', f: 192, f1: 62, sweep: 0.55, att: 0.008, dur: 0.6, gain: 0.12, lp: 800 });
+      t({ f: 96, f1: 31, sweep: 0.65, att: 0.008, dur: 1.2, gain: 0.18 });
+      t({ type: 'triangle', f: 192, f1: 90, sweep: 0.55, att: 0.008, dur: 0.7, gain: 0.2, lp: 900 });
+      n({ type: 'bandpass', f: 640, f1: 190, sweep: 0.5, q: 0.9, att: 0.01, dur: 0.75, gain: 0.14, verb: 0.4 });
       kcRing(S, S.slowLen);
       if (S.hb) S.hb.period = 1.35;
       if (S.wh) { const w = S.wh; Sfx.hold(w.f.frequency, now); w.f.frequency.setTargetAtTime(420, now, 0.3); }
@@ -18666,7 +18684,8 @@ Sfx.kcBeat = function (stage, o) {
       Sfx.hold(w.g.gain, now); w.g.gain.setTargetAtTime(0.19 * k, now, 0.17);
       Sfx.hold(w.f.frequency, now); w.f.frequency.setTargetAtTime(1500 * p2, now, 0.22);
       w.lfo.frequency.setTargetAtTime(15 * p, now, 0.2);
-      t({ f: Math.max(36, 80 * p), f1: 40, att: 0.4, dur: 0.12, gain: 0.15 * k });                              // the air pushed ahead of it
+      t({ f: Math.max(36, 80 * p), f1: 40, att: 0.4, dur: 0.12, gain: 0.09 * k });                              // the air pushed ahead of it
+      n({ type: 'bandpass', f: 380 * p2, f1: 700 * p2, sweep: 0.45, q: 1.2, att: 0.42, dur: 0.08, gain: 0.08 * k });
       if (!S.sub) n({ type: 'bandpass', f: 3600 * p2, f1: 5200 * p2, sweep: 0.45, q: 2, att: 0.45, dur: 0.05, gain: 0.05 * k }); // its shock wave hissing
       break;
     }
@@ -18698,13 +18717,14 @@ Sfx.kcBeat = function (stage, o) {
     case 'enter': {
       kcCutWhoosh(S, now + at);
       const head = o.part === 'head';
-      // the player's own kill confirm, slowed: the same hit heard in the scope, an octave down
+      // the player's own kill confirm, slowed: the same hit heard in the scope, a fifth down
       const cb = X.get('confirm:' + (head ? 'head' : 'body') + ':0', () => SG.confirm(head ? 'head' : 'body', 1));
-      X.kcKeep(S, X.play(cb, { at, dest: S.out, rate: Math.max(0.45, p), gain: 0.85 * k, verb: 0.35, vbus: X.kcVerb }));
-      n({ type: 'bandpass', f: (head ? 2100 : 1500) * p2, q: 1.1, att: 0.0005, dur: 0.03 * T, gain: (head ? 0.38 : 0.34) * k }); // the slap of skin
+      X.kcKeep(S, X.play(cb, { at, dest: S.out, rate: Math.max(0.62, p), hp: 110, gain: 1.3 * k, verb: 0.35, vbus: X.kcVerb }));
+      n({ type: 'bandpass', f: (head ? 2100 : 1500) * p2, q: 1.1, att: 0.0005, dur: 0.035 * T, gain: (head ? 0.5 : 0.46) * k }); // the slap of skin
       n({ type: 'lowpass', f: 1100 * p, f1: 140, att: 0.001, dur: 0.14 * T, gain: (head ? 0.34 : 0.44) * k });                  // the punch
-      t({ f: Math.max(40, 105 * p), f1: 30, dur: 0.32 * T, gain: 0.5 * k });                                                    // deep impact
-      t({ type: 'triangle', f: Math.max(110, 230 * p), f1: 80, dur: 0.14 * T, gain: 0.2 * k, lp: 900 });                       // (heard on a phone)
+      t({ f: Math.max(46, 105 * p), f1: 34, dur: 0.3 * T, gain: 0.2 * k });                                                     // deep impact
+      t({ type: 'triangle', f: Math.max(120, 230 * p), f1: 90, dur: 0.16 * T, gain: 0.28 * k, lp: 1000 });                     // (heard on a phone)
+      n({ type: 'bandpass', f: 520 * p2, f1: 240 * p2, q: 1.1, att: 0.002, dur: 0.24 * T, gain: 0.38 * k });                    // the body taking it
       if (wet > 0) {
         n({ at: 0.004, type: 'bandpass', f: 1100 * p2, f1: 320 * p2, sweep: 0.12 * T, q: 4.5, att: 0.002, dur: 0.16 * T, gain: 0.26 * k * wet }); // squelch
         if (!lite) n({ at: 0.04 * T, type: 'bandpass', f: 700 * p2, f1: 250 * p2, q: 5, att: 0.003, dur: 0.12 * T, gain: 0.15 * k * wet });
@@ -18723,7 +18743,7 @@ Sfx.kcBeat = function (stage, o) {
       } else if (b === 'spine') {
         n({ type: 'bandpass', f: 1700 * p2, q: 2, att: 0.0005, dur: 0.025 * T, gain: 0.44 * k });
         if (!lite) [0.02, 0.05].forEach((d) => n({ at: d * T, type: 'highpass', f: 2200 * p2, att: 0.0004, dur: 0.01 * T, gain: 0.15 * k }));
-        t({ f: Math.max(60, 160 * p), f1: 45, dur: 0.15 * T, gain: 0.34 * k });
+        t({ f: Math.max(60, 160 * p), f1: 45, dur: 0.15 * T, gain: 0.22 * k });
         t({ type: 'triangle', f: Math.max(110, 260 * p), f1: 90, dur: 0.08 * T, gain: 0.12 * k, lp: 1000 });
       } else if (b === 'limb') {
         n({ type: 'bandpass', f: 2000 * p2, q: 3, att: 0.0005, dur: 0.02 * T, gain: 0.38 * k });
@@ -18740,8 +18760,8 @@ Sfx.kcBeat = function (stage, o) {
       if (!gore) break;
       const id = o.organ || 'gut', key = !!o.key, g = k * (key ? 1.2 : 0.75);
       if (id === 'heart') {
-        t({ f: Math.max(40, 82 * p), f1: 30, att: 0.004, dur: 0.55 * T, gain: 0.44 * g });                    // it bursts: a deep thump
-        t({ type: 'triangle', f: Math.max(90, 170 * p), f1: 66, dur: 0.25 * T, gain: 0.16 * g, lp: 900 });
+        t({ f: Math.max(40, 82 * p), f1: 30, att: 0.004, dur: 0.55 * T, gain: 0.26 * g });                    // it bursts: a deep thump
+        t({ type: 'triangle', f: Math.max(110, 170 * p), f1: 80, dur: 0.28 * T, gain: 0.24 * g, lp: 1000 });
         n({ type: 'bandpass', f: 650 * p2, f1: 210 * p2, sweep: 0.2 * T, q: 3.2, att: 0.004, dur: 0.35 * T, gain: 0.3 * g }); // the squelch
         n({ at: 0.03 * T, type: 'lowpass', f: 900 * p, f1: 180, att: 0.01, dur: 0.4 * T, gain: 0.16 * g, brown: true });
         kcHeartStop(S, now + at + 0.04);                                                                       // and the heartbeat stops
@@ -18753,18 +18773,19 @@ Sfx.kcBeat = function (stage, o) {
         n({ at: 0.006, type: 'bandpass', f: 900 * p2, f1: 300 * p2, q: 4, att: 0.003, dur: 0.22 * T, gain: 0.26 * g });
       } else if (id === 'liver') { // dense and heavy
         n({ type: 'bandpass', f: 380 * p2, f1: 160 * p2, q: 4, att: 0.003, dur: 0.3 * T, gain: 0.32 * g });
-        t({ f: Math.max(50, 120 * p), f1: 45, dur: 0.18 * T, gain: 0.24 * g });
+        t({ f: Math.max(50, 120 * p), f1: 45, dur: 0.18 * T, gain: 0.16 * g });
       } else { // stomach, gut, kidneys: a wet burble
         n({ type: 'bandpass', f: 760 * p2, f1: 260 * p2, q: 4, att: 0.003, dur: 0.24 * T, gain: 0.26 * g });
         if (!lite) for (let i = 0; i < 3; i++) n({ at: (0.05 + rnd() * 0.25) * T, type: 'bandpass', f: (500 + rnd() * 500) * p2, q: 6, att: 0.002, dur: 0.05 * T, gain: 0.08 * g });
       }
-      if (key) { t({ f: Math.max(34, 58 * p), f1: 26, att: 0.01, dur: 0.7 * T, gain: 0.28 * k, verb: 0.5 }); n({ type: 'lowpass', f: 420, att: 0.02, dur: 0.6 * T, gain: 0.1 * k, brown: true, verb: 0.6 }); } // the moment the film names it
+      if (key) { t({ f: Math.max(34, 58 * p), f1: 26, att: 0.01, dur: 0.7 * T, gain: 0.14 * k, verb: 0.5 }); n({ type: 'bandpass', f: 260, f1: 150, q: 0.9, att: 0.01, dur: 0.6 * T, gain: 0.2 * k, verb: 0.6 }); } // the moment the film names it
       break;
     }
     case 'exit': {
       const sz = clamp(o.size === undefined ? 0.6 : +o.size, 0, 1);
       kcStopTear(S, now + at);
-      t({ f: Math.max(60, 150 * p), f1: 45, dur: 0.1 * T, gain: (0.26 + 0.18 * sz) * k });                     // the round breaking out
+      t({ f: Math.max(60, 150 * p), f1: 45, dur: 0.1 * T, gain: (0.3 + 0.22 * sz) * k });                      // the round breaking out
+      n({ type: 'bandpass', f: 900 * p2, f1: 400 * p2, q: 1, att: 0.002, dur: 0.12 * T, gain: (0.22 + 0.2 * sz) * k });  // a punch out of the far side
       t({ type: 'triangle', f: Math.max(110, 260 * p), f1: 90, dur: 0.07 * T, gain: (0.08 + 0.06 * sz) * k, lp: 900 });
       n({ type: 'bandpass', f: 1800 * p2, f1: 900 * p2, q: 0.7, att: 0.01 * T, dur: (0.25 + 0.35 * sz) * T, gain: (0.12 + 0.18 * sz) * k * (0.5 + 0.5 * (wet || 0.4)), verb: 0.25 }); // the spray, a hiss
       if (wet > 0) {
@@ -18778,9 +18799,9 @@ Sfx.kcBeat = function (stage, o) {
       // time rushing back: a rise in pitch and a swell over about a second, the ringing gone
       kcRingStop(S, now);
       if (S.hb) S.hb.period = 0.85;
-      n({ type: 'bandpass', f: 200, f1: 3600, sweep: 1.0, q: 1.0, att: 0.85, dur: 0.12, gain: 0.13 });
-      t({ f: 34, f1: 82, sweep: 0.9, att: 0.8, dur: 0.15, gain: 0.18 });
-      t({ type: 'triangle', f: 68, f1: 164, sweep: 0.9, att: 0.8, dur: 0.12, gain: 0.06, lp: 900 });
+      n({ type: 'bandpass', f: 200, f1: 3600, sweep: 1.0, q: 1.0, att: 0.85, dur: 0.12, gain: 0.2 });
+      t({ f: 34, f1: 82, sweep: 0.9, att: 0.8, dur: 0.15, gain: 0.12 });
+      t({ type: 'triangle', f: 90, f1: 220, sweep: 0.9, att: 0.8, dur: 0.12, gain: 0.1, lp: 1000 });
       break;
     }
     case 'fall': {
@@ -19699,7 +19720,7 @@ SG.impact = function (mat, seed, wet) {
     sgNoise(B, { filt: [['bp', hd ? 1900 : 1100, 1.4]], att: 0.0003, tau: 0.006, dur: 0.04, gain: hd ? 0.9 : 0.6, seed: nx() });
     sgNoise(B, { at: 0.001, filt: [['lp', 800, 0.8, 0, 180, 0.04]], att: 0.0008, tau: 0.03, dur: 0.18, gain: 1.2, seed: nx() });
     sgTone(B, { at: 0.001, f: 135, f1: 60, glide: 0.04, att: 0.0015, tau: 0.05, dur: 0.3, gain: 0.55, drive: 1.6 });
-    if (wet) { sgNoise(B, { at: 0.005, filt: [['bp', 950, 3.5, 0, 380, 0.05]], att: 0.002, tau: 0.035, dur: 0.18, gain: 0.6, seed: nx() }); for (let i = 0; i < 5; i++) sgNoise(B, { at: 0.08 + rnd() * 0.4, filt: [['bp', 1400 + rnd() * 1800, 6]], att: 0.0006, tau: 0.004, dur: 0.02, gain: 0.12 + rnd() * 0.1, width: 0.8, seed: nx() }); }
+    if (wet) { sgNoise(B, { at: 0.005, filt: [['bp', 950, 3.5, 0, 380, 0.05]], att: 0.002, tau: 0.04, dur: 0.2, gain: 1.0, seed: nx() }); for (let i = 0; i < 7; i++) sgNoise(B, { at: 0.08 + rnd() * 0.4, filt: [['bp', 1400 + rnd() * 1800, 6]], att: 0.0006, tau: 0.004, dur: 0.02, gain: 0.16 + rnd() * 0.1, width: 0.8, seed: nx() }); }
   } else if (mat === 'metal') { // a hard "pank" with a ricochet whining away
     const f = 1700 + rnd() * 1500;
     sgNoise(B, { filt: [['hp', 3000, 0.7]], att: 0.0001, tau: 0.002, dur: 0.015, gain: 0.9, seed: nx() });
@@ -19777,12 +19798,12 @@ SG.thunder = function (kind, seed) {
     const nT = 260 + Math.floor(rnd() * 120), span = 0.28 + rnd() * 0.2;
     for (let i = 0; i < nT; i++) {
       const u = i / nT, t = span * Math.pow(u, 1.7) + rnd() * 0.004, g = (0.25 + 0.75 * rnd()) * Math.pow(1 - u, 0.6);
-      sgNwave(B, { at: t, len: 0.00012 + rnd() * 0.0005, gain: 0.5 * g, pan: rnd() * 1.4 - 0.7, filt: [['hp', 500 + rnd() * 900, 0.7]] });
+      sgNwave(B, { at: t, len: 0.00012 + rnd() * 0.0005, gain: 1.0 * g, pan: rnd() * 1.4 - 0.7, filt: [['hp', 500 + rnd() * 900, 0.7]] });
     }
-    sgNoise(B, { filt: [['hp', 1200, 0.7], ['lp', 9000, 0.7]], att: 0.002, hold: span * 0.4, tau: span * 0.35, dur: span * 1.5, roll: [130, 0.95], gain: 0.55, width: 0.8, seed: nx() });
-    sgNoise(B, { at: 0.01, filt: [['bp', 2400, 0.8, 0, 700, span]], att: 0.005, hold: span * 0.3, tau: span * 0.4, dur: span * 2, roll: [45, 0.9], gain: 0.5, width: 0.8, seed: nx() });
-    t0 = 0.06 + rnd() * 0.06;
-    sgBlast(B, { at: t0, T: 0.018 + rnd() * 0.008, b: 1.1, gain: 1.2, filt: [['lp', 1800, 0.7]] });                                     // the main boom
+    sgNoise(B, { filt: [['hp', 1200, 0.7], ['lp', 9000, 0.7]], att: 0.002, hold: span * 0.4, tau: span * 0.35, dur: span * 1.5, roll: [130, 0.95], gain: 0.95, width: 0.8, seed: nx() });
+    sgNoise(B, { at: 0.01, filt: [['bp', 2400, 0.8, 0, 700, span]], att: 0.005, hold: span * 0.3, tau: span * 0.4, dur: span * 2, roll: [45, 0.9], gain: 0.8, width: 0.8, seed: nx() });
+    t0 = 0.1 + rnd() * 0.08;
+    sgBlast(B, { at: t0, T: 0.018 + rnd() * 0.008, b: 1.1, gain: 1.0, filt: [['lp', 1800, 0.7]] });                                     // the main boom
     sgTone(B, { at: t0, f: 58, f1: 26, glide: 0.3, att: 0.006, tau: 0.55, dur: 3, gain: 0.8, drive: 2 });
     sgNoise(B, { at: t0, filt: [['lp', 1600, 0.7, 0, 200, 0.4]], att: 0.004, tau: 0.25, dur: 1.4, gain: 0.9, width: 0.6, seed: nx() });
   }
@@ -19791,7 +19812,7 @@ SG.thunder = function (kind, seed) {
   for (let i = 0; i < nP; i++) {
     const t = t0 + (close ? 0.15 : 0.2) + Math.pow(i / nP, 1.2) * spanP * (0.8 + rnd() * 0.3), g = (close ? 1.1 : 0.9) * (0.5 + rnd() * 0.5) * (1 - 0.55 * (i / nP)), f = (close ? 380 : 260) * (0.6 + rnd() * 0.7);
     sgNoise(B, { at: t, brown: true, filt: [['lp', f, 0.7, 0, f * 0.6, 1.5], ['hp', 28, 0.6]], att: 0.15 + rnd() * 0.45, tau: 0.35 + rnd() * 0.5, dur: 2.5, roll: [2 + rnd() * 4, 0.7], gain: g, pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() });
-    if (rnd() < 0.6) sgNoise(B, { at: t + 0.05, filt: [['bp', 500 + rnd() * 700, 1.2]], att: 0.08, tau: 0.15 + rnd() * 0.2, dur: 1, roll: [18, 0.85], gain: g * (close ? 0.18 : 0.08), pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() }); // a crackle inside the peal
+    if (rnd() < 0.6) sgNoise(B, { at: t + 0.05, filt: [['bp', 500 + rnd() * 700, 1.2], ['lp', close ? 6000 : 1100, 0.7]], att: 0.08, tau: 0.15 + rnd() * 0.2, dur: 1, roll: [18, 0.85], gain: g * (close ? 0.18 : 0.08), pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() }); // a crackle inside the peal
   }
   sgTone(B, { at: t0 + 0.2, f: 42, f1: 30, glide: 1, att: 0.4, tau: 1.2, dur: 5, gain: close ? 0.35 : 0.3, drive: 1.5 });
   return sgFinish(B, { loud: close ? -5.5 : -13, peakMax: 2.4, span: 3 });

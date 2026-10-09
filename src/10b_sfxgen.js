@@ -706,7 +706,7 @@ SG.impact = function (mat, seed, wet) {
     sgNoise(B, { filt: [['bp', hd ? 1900 : 1100, 1.4]], att: 0.0003, tau: 0.006, dur: 0.04, gain: hd ? 0.9 : 0.6, seed: nx() });
     sgNoise(B, { at: 0.001, filt: [['lp', 800, 0.8, 0, 180, 0.04]], att: 0.0008, tau: 0.03, dur: 0.18, gain: 1.2, seed: nx() });
     sgTone(B, { at: 0.001, f: 135, f1: 60, glide: 0.04, att: 0.0015, tau: 0.05, dur: 0.3, gain: 0.55, drive: 1.6 });
-    if (wet) { sgNoise(B, { at: 0.005, filt: [['bp', 950, 3.5, 0, 380, 0.05]], att: 0.002, tau: 0.035, dur: 0.18, gain: 0.6, seed: nx() }); for (let i = 0; i < 5; i++) sgNoise(B, { at: 0.08 + rnd() * 0.4, filt: [['bp', 1400 + rnd() * 1800, 6]], att: 0.0006, tau: 0.004, dur: 0.02, gain: 0.12 + rnd() * 0.1, width: 0.8, seed: nx() }); }
+    if (wet) { sgNoise(B, { at: 0.005, filt: [['bp', 950, 3.5, 0, 380, 0.05]], att: 0.002, tau: 0.04, dur: 0.2, gain: 1.0, seed: nx() }); for (let i = 0; i < 7; i++) sgNoise(B, { at: 0.08 + rnd() * 0.4, filt: [['bp', 1400 + rnd() * 1800, 6]], att: 0.0006, tau: 0.004, dur: 0.02, gain: 0.16 + rnd() * 0.1, width: 0.8, seed: nx() }); }
   } else if (mat === 'metal') { // a hard "pank" with a ricochet whining away
     const f = 1700 + rnd() * 1500;
     sgNoise(B, { filt: [['hp', 3000, 0.7]], att: 0.0001, tau: 0.002, dur: 0.015, gain: 0.9, seed: nx() });
@@ -784,12 +784,12 @@ SG.thunder = function (kind, seed) {
     const nT = 260 + Math.floor(rnd() * 120), span = 0.28 + rnd() * 0.2;
     for (let i = 0; i < nT; i++) {
       const u = i / nT, t = span * Math.pow(u, 1.7) + rnd() * 0.004, g = (0.25 + 0.75 * rnd()) * Math.pow(1 - u, 0.6);
-      sgNwave(B, { at: t, len: 0.00012 + rnd() * 0.0005, gain: 0.5 * g, pan: rnd() * 1.4 - 0.7, filt: [['hp', 500 + rnd() * 900, 0.7]] });
+      sgNwave(B, { at: t, len: 0.00012 + rnd() * 0.0005, gain: 1.0 * g, pan: rnd() * 1.4 - 0.7, filt: [['hp', 500 + rnd() * 900, 0.7]] });
     }
-    sgNoise(B, { filt: [['hp', 1200, 0.7], ['lp', 9000, 0.7]], att: 0.002, hold: span * 0.4, tau: span * 0.35, dur: span * 1.5, roll: [130, 0.95], gain: 0.55, width: 0.8, seed: nx() });
-    sgNoise(B, { at: 0.01, filt: [['bp', 2400, 0.8, 0, 700, span]], att: 0.005, hold: span * 0.3, tau: span * 0.4, dur: span * 2, roll: [45, 0.9], gain: 0.5, width: 0.8, seed: nx() });
-    t0 = 0.06 + rnd() * 0.06;
-    sgBlast(B, { at: t0, T: 0.018 + rnd() * 0.008, b: 1.1, gain: 1.2, filt: [['lp', 1800, 0.7]] });                                     // the main boom
+    sgNoise(B, { filt: [['hp', 1200, 0.7], ['lp', 9000, 0.7]], att: 0.002, hold: span * 0.4, tau: span * 0.35, dur: span * 1.5, roll: [130, 0.95], gain: 0.95, width: 0.8, seed: nx() });
+    sgNoise(B, { at: 0.01, filt: [['bp', 2400, 0.8, 0, 700, span]], att: 0.005, hold: span * 0.3, tau: span * 0.4, dur: span * 2, roll: [45, 0.9], gain: 0.8, width: 0.8, seed: nx() });
+    t0 = 0.1 + rnd() * 0.08;
+    sgBlast(B, { at: t0, T: 0.018 + rnd() * 0.008, b: 1.1, gain: 1.0, filt: [['lp', 1800, 0.7]] });                                     // the main boom
     sgTone(B, { at: t0, f: 58, f1: 26, glide: 0.3, att: 0.006, tau: 0.55, dur: 3, gain: 0.8, drive: 2 });
     sgNoise(B, { at: t0, filt: [['lp', 1600, 0.7, 0, 200, 0.4]], att: 0.004, tau: 0.25, dur: 1.4, gain: 0.9, width: 0.6, seed: nx() });
   }
@@ -798,7 +798,7 @@ SG.thunder = function (kind, seed) {
   for (let i = 0; i < nP; i++) {
     const t = t0 + (close ? 0.15 : 0.2) + Math.pow(i / nP, 1.2) * spanP * (0.8 + rnd() * 0.3), g = (close ? 1.1 : 0.9) * (0.5 + rnd() * 0.5) * (1 - 0.55 * (i / nP)), f = (close ? 380 : 260) * (0.6 + rnd() * 0.7);
     sgNoise(B, { at: t, brown: true, filt: [['lp', f, 0.7, 0, f * 0.6, 1.5], ['hp', 28, 0.6]], att: 0.15 + rnd() * 0.45, tau: 0.35 + rnd() * 0.5, dur: 2.5, roll: [2 + rnd() * 4, 0.7], gain: g, pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() });
-    if (rnd() < 0.6) sgNoise(B, { at: t + 0.05, filt: [['bp', 500 + rnd() * 700, 1.2]], att: 0.08, tau: 0.15 + rnd() * 0.2, dur: 1, roll: [18, 0.85], gain: g * (close ? 0.18 : 0.08), pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() }); // a crackle inside the peal
+    if (rnd() < 0.6) sgNoise(B, { at: t + 0.05, filt: [['bp', 500 + rnd() * 700, 1.2], ['lp', close ? 6000 : 1100, 0.7]], att: 0.08, tau: 0.15 + rnd() * 0.2, dur: 1, roll: [18, 0.85], gain: g * (close ? 0.18 : 0.08), pan: rnd() * 1.2 - 0.6, width: 0.9, seed: nx() }); // a crackle inside the peal
   }
   sgTone(B, { at: t0 + 0.2, f: 42, f1: 30, glide: 1, att: 0.4, tau: 1.2, dur: 5, gain: close ? 0.35 : 0.3, drive: 1.5 });
   return sgFinish(B, { loud: close ? -5.5 : -13, peakMax: 2.4, span: 3 });
