@@ -414,4 +414,4 @@ function statBars(st) {
   };
 }
 
-CB.GUNS = GUNS; CB.SCOPES = SCOPES; CB.PARTS = PARTS; CB.buildStats = buildStats;
+CB.GUNS = GUNS; CB.SCOPES = SCOPES; CB.PARTS = PARTS; CB.buildStats = buildStats; CB.partFits = partFits; CB.scopeFits = scopeFits; CB.statBars = statBars;
