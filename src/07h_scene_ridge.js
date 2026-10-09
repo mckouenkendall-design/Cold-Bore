@@ -1734,5 +1734,82 @@ SCN.ridge = function (o) {
   H.yard = spot(PM, 'yard'); H.back = spot(PB, 'back'); H.rear = spot(PRr, 'rear'); H.front = spot(PF, 'front'); H.road = spot(PA, 'road');
   H.onPad = (x, extra) => Object.assign({ plane: PM, x, y: 0, zone: 'pad', room: null, behind: false }, extra || {});
   H.milOf = (z, y) => ((y - E) / d(z)) * 1000;
+  rgDetail(S, H, { bands: { PRr: band(zRr, zB), PB: band(zB, zc), PM: band(zc, zF), PF: band(zF, zA), PA: 30 }, snowC });
   return H;
 };
+
+// ---- a compound that people live in -----------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): rocks and dead scrub
+// through the snow, an old fence line and fox tracks on the approach, a snowmobile's loops
+// round the yard, soot on the snow by the generator and the fuel tanks, a tarpaulin over
+// stores against the back bunker, and far off a herdsman's hut with its smoke. Everything
+// lies in the snow, sits against a wall that already hides what is behind it, or stands on
+// the face of a hill below its crest; nothing is solid or shootable.
+function rgDetail(S, H, q) {
+  const L = rgSun(S), snowC = q.snowC, sh = mix(snowC, '#6f86a8', 0.34), dusk = S.pal.dark > 0.3;
+  const rock = '#59636f', rockD = '#3f4852', stalk = '#4a3e34';
+  // rocks and dead scrub through the snow on a strip of ground (band deep), avoiding the strip's top metre
+  const strew = (D, R, band, nR, nS, x0, x1) => {
+    for (let i = 0; i < nR; i++) {
+      const x = R.r(x0, x1), y = -R.r(1.2, band - 0.5), w = R.r(0.6, 2.2), h = w * R.r(0.25, 0.45);
+      D.pass = 0; D.ell(x + L.side * w * 0.4, y - 0.02, w * 0.75, h * 0.25, sh, 0.6);           // its blue shadow
+      D.pass = 1; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.8, x + w * 0.1, y + h, x + w * 0.45, y + h * 0.6, x + w / 2, y], R.chance(0.5) ? rock : rockD);
+      D.pass = 2; D.poly([x - w * 0.38, y + h * 0.7, x + w * 0.1, y + h * 1.06, x + w * 0.4, y + h * 0.66, x + w * 0.05, y + h * 0.82], '#f4f7fa');   // the snow lying on top
+    }
+    D.pass = 1;
+    for (let i = 0; i < nS; i++) {
+      const x = R.r(x0, x1), y = -R.r(1, band - 0.3), n = R.i(3, 7);
+      for (let k = 0; k < n; k++) { const lx = x + R.r(-0.3, 0.3), h = R.r(0.3, 0.9); D.seg(lx, y, lx + R.r(-0.25, 0.25), y + h, 0.05, stalk, 0.85); }
+    }
+    D.pass = 0;
+  };
+  // ---- the approach: rocks, scrub, an old fence line half buried, a fox's line of prints ----
+  K.deco(S, H.PA, { ground: true, seed: 6101 }, (D, R) => {
+    strew(D, R, q.bands.PA, 46, 36, -130, 130);
+    const fy = -11.5;
+    D.pass = 1; for (let x = -128; x < 128; x += R.r(3.2, 4.2)) { if (R.chance(0.12)) continue; const lean = R.r(-0.12, 0.12), h = R.r(0.7, 1.1); D.seg(x, fy, x + lean, fy + h, 0.14, '#5a4634'); D.pass = 2; D.rect(x - 0.1 + lean, fy + h, 0.2, 0.08, '#f4f7fa'); D.ell(x, fy, 0.35, 0.08, '#f4f7fa'); D.pass = 1; }
+    const wire = []; for (let x = -128; x < 128; x += 2) wire.push(x, fy + 0.75 + Math.sin(x * 0.7) * 0.06 - Math.abs(Math.sin(x * 0.42)) * 0.12); D.line(wire, 0.02, '#3a3f47', 0.7);
+    // a fox crossing: small prints in a wandering single line
+    let fx = -120, fyy = -20; D.pass = 2;
+    while (fx < 120) { fx += R.r(0.55, 0.75); fyy = clamp(fyy + R.r(-0.35, 0.35), -27, -3); D.ell(fx, fyy, 0.06, 0.03, sh, 0.85); }
+    D.pass = 0;
+  });
+  // ---- the front row and the yard: rocks and scrub at the edges, a snowmobile's loops ----
+  K.deco(S, H.PF, { ground: true, seed: 6111 }, (D, R) => { strew(D, R, q.bands.PF, 22, 18, -120, 120); });
+  K.deco(S, H.PM, { ground: true, seed: 6121 }, (D, R) => {
+    const b = q.bands.PM;
+    for (const off of [0, -0.14]) { // two runner lines, swinging out round the yard and back
+      const p = []; for (let k = 0; k <= 60; k++) { const u = k / 60, x = lerp(-70, 30, u) + Math.sin(u * 7) * 8, y = -b * (0.35 + 0.25 * Math.sin(u * 5 + 1)) + off; p.push(x, y); }
+      D.line(p, 0.09, sh, 0.7);
+    }
+    strew(D, R, b, 10, 10, -110, -60); strew(D, R, b, 10, 10, 80, 120);
+  });
+  // ---- the back row: soot on the snow by the generator and the tanks ----
+  K.deco(S, H.PB, { ground: true, seed: 6131 }, (D, R) => {
+    for (let i = 0; i < 14; i++) KW.blob(D, R, -30 + R.r(-3, 4), -R.r(0.2, 1.6), R.r(0.6, 1.8), R.r(0.08, 0.2), '#3a3e46', R.r(0.2, 0.4), 0.3);
+    for (let i = 0; i < 10; i++) KW.blob(D, R, R.r(40, 60), -R.r(0.2, 1.4), R.r(0.6, 1.6), R.r(0.08, 0.18), '#2a2e36', R.r(0.25, 0.45), 0.3);
+    strew(D, R, q.bands.PB, 8, 10, -110, -40); strew(D, R, q.bands.PB, 8, 10, 66, 120);
+  });
+  // ---- stores under a tarpaulin against the back bunker, and spare tyres ----
+  const b1 = H.b1;
+  K.deco(S, H.PB, { seed: 6141 }, (D, R) => {
+    const x0 = b1.x + b1.w - 4.4, w = 2.6, h = 1.1;
+    D.poly([x0, 0, x0 + w, 0, x0 + w - 0.1, h * 0.8, x0 + w * 0.7, h, x0 + w * 0.3, h * 0.96, x0 + 0.08, h * 0.75], '#4f5a3e');
+    D.pass = 1; D.seg(x0 + 0.2, 0.05, x0 + w * 0.4, h * 0.95, 0.03, '#2a2e2a', 0.8); D.seg(x0 + w - 0.2, 0.05, x0 + w * 0.6, h * 0.98, 0.03, '#2a2e2a', 0.8); D.rect(x0 + 0.05, h * 0.3, w - 0.1, 0.03, '#2a2e2a', 0.6);
+    D.pass = 2; D.poly([x0 + 0.1, h * 0.76, x0 + w * 0.3, h * 1.04, x0 + w * 0.7, h * 1.08, x0 + w - 0.1, h * 0.82, x0 + w * 0.5, h * 0.92], '#f4f7fa');
+    D.pass = 0; KC.tyres(D, x0 + w + 0.9, 0, 3, 0.4); D.pass = 3; D.ell(x0 + w + 0.9, 3 * 0.4 * 0.62 + 0.03, 0.42, 0.07, '#f4f7fa'); D.pass = 0;
+  });
+  // ---- far off: a herdsman's hut on the hill behind the compound, its stove smoking ----
+  const PV = H.PV, hA = PV.heightAt, huts = [-118, 126];
+  K.deco(S, PV, { seed: 6151 }, (D) => {
+    for (const hx of huts) {
+      const y = hA(hx) - 4.2;     // the hut sits on the face of the hill, its roof below the crest
+      D.rect(hx - 2, y, 4, 2.2, '#5a4a3c'); D.poly([hx - 2.5, y + 2.2, hx + 2.5, y + 2.2, hx, y + 3.4], '#f4f7fa'); D.rect(hx + 0.9, y + 2.4, 0.3, 0.8, '#2a2e36');
+      D.pass = 1; D.rect(hx - 1.2, y + 0.9, 0.7, 0.6, dusk ? '#ffd98a' : '#2a2420'); D.rect(hx + 0.2, y, 0.8, 1.6, '#3a2e24'); D.pass = 0;
+    }
+  });
+  PV.add({ x0: -130, x1: 140, layer: 0, draw(ctx, env) {
+    if (env.s < 0.7) return;
+    for (const hx of huts) { if (hx < env.x0 - 15 || hx > env.x1 + 15) continue; rgSmoke(ctx, env, hx + 1.05, hA(hx) - 4.2 + 3.3, { n: 5, rise: 5, speed: 0.22, r0: 0.25, r1: 1.4, a: 0.35, col: S.tone('#9aa3ad', PV), lean: 1.2, ph: hx * 0.07 }); }
+  } });
+}
