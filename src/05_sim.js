@@ -870,6 +870,56 @@ Sim.prototype.rangeAt = function (ax, ay) {
   }
   return null;
 };
+// Where a round fired right now would actually land. The aim pip used to be drawn with the
+// drop for whatever sat under the CROSSHAIR, but the bullet lands at the pip, which is lower and
+// often on something nearer or further away. So the pip jumped about as the crosshair crossed
+// things at different distances. This follows the bullet's own curve out through the scene
+// (the same order of checks as a real round, without changing anything) and returns the first
+// thing it meets, with the drop and drift at that distance. Display only: no gameplay reads it.
+Sim.prototype.impactAt = function (ax, ay) {
+  const sim = this, S = sim.S, st = sim.st, e = sim.eye(), w = sim.wind(), zA = sim.sh.zeroAng, planes = S.planes;
+  const at = (d) => { const dp = Bal.dope(st, zA, d, w); return { d, dp, x: e.x + ((ax + dp.driftMil) / 1000) * d, y: e.y + ((ay - dp.dropMil) / 1000) * d }; };
+  const done = (c, what) => ({ d: c.d, x: c.x, y: c.y, up: c.dp.dropMil, right: -c.dp.driftMil, tof: c.dp.tof, ok: c.dp.reached, what });
+  let prev = null, walls = 0;
+  for (let i = planes.length - 1; i >= 0; i--) {
+    const P = planes[i], d = P.z - e.z; if (d <= 1) continue;
+    const c = at(d);
+    if (!c.dp.reached) return null; // falls short before it gets this far
+    const x = c.x, y = c.y;
+    // the ground between the last plane and this one
+    if (P.groundY !== undefined) {
+      const gy = P.groundFn ? P.groundFn(x) : P.groundY;
+      if (y < gy) {
+        if (!prev || prev.y <= gy) return done(c, 'ground');
+        const f = clamp((prev.y - gy) / (prev.y - y), 0, 1);
+        return done(at(lerp(prev.d, d, f)), 'ground');
+      }
+    }
+    for (let j = 0; j < S.objects.length; j++) { const o = S.objects[j]; if (o.plane !== P || o.r <= 0 || o.gone || (!o.alive && !o.rehit) || o.pass) continue; if (o.w ? (x >= o.x - o.w / 2 && x <= o.x + o.w / 2 && y >= o.y - o.h / 2 && y <= o.y + o.h / 2) : Math.hypot(x - o.x, y - o.y) <= o.r) return done(c, 'object'); }
+    for (let j = 0; j < sim.actors.length; j++) { const a = sim.actors[j]; if (a.plane !== P || a.dead || a.gone || a.hidden || a.behind || a.inVeh) continue; if (Math.abs(x - a.x) > 1.3 || y < a.y - 0.2 || y > a.y + 2.4) continue; if (figHit(actorJoints(a), x - a.x, y - a.y)) return done(c, 'person'); }
+    for (let j = 0; j < sim.vehicles.length; j++) { const v = sim.vehicles[j]; if (v.plane !== P || v.gone) continue; const lx = (x - v.x) * v.dir, ly = y - v.y; if (lx >= -v.def.len / 2 && lx <= v.def.len / 2 && ly >= 0 && ly <= v.def.h) return done(c, 'vehicle'); }
+    for (let j = 0; j < S.props.length; j++) { const p2 = S.props[j]; if (p2.plane === P && !p2.gone && x >= p2.x - p2.w / 2 && x <= p2.x + p2.w / 2 && y >= p2.y && y <= p2.y + p2.h) return done(c, 'prop'); }
+    let inOpen = null;
+    for (let j = 0; j < P.openings.length; j++) { const op = P.openings[j]; if (x >= op.x && x <= op.x + op.w && y >= op.y && y <= op.y + op.h) { inOpen = op; break; } }
+    if (inOpen) {
+      for (let j = 0; j < sim.actors.length; j++) { const a = sim.actors[j]; if (a.plane !== P || a.dead || a.gone || a.hidden || !a.behind || a.room !== inOpen.room || a.inVeh) continue; if (Math.abs(x - a.x) <= 1.3 && figHit(actorJoints(a), x - a.x, y - a.y)) return done(c, 'person'); }
+      if (!inOpen.through) return done(c, 'room');
+      prev = c; continue;
+    }
+    let stop = false;
+    for (let j = 0; j < P.solids.length; j++) {
+      const s2 = P.solids[j]; if (x < s2.x || x > s2.x + s2.w || y < s2.y || y > s2.y + s2.h) continue;
+      const m = s2.mat;
+      if (m === 'leaf' || m === 'grid' || m === 'glasswall') continue;
+      if ((m === 'thin' || m === 'wood') && st.pen >= 1.4) continue;
+      if (m === 'wall' && st.pen >= 3 && walls < 1) { walls++; continue; }
+      stop = true; break;
+    }
+    if (stop) return done(c, 'cover');
+    prev = c;
+  }
+  return null;
+};
 // The correction for a shot at the thing under the crosshair, given the
 // current wind and zero. up > 0 means hold high; right > 0 means hold right.
 Sim.prototype.holdFor = function (d, dy) {

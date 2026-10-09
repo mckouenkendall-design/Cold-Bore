@@ -177,7 +177,7 @@ Game.start = function (missionId, opts) {
   G.oracle = null;
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
-  G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.rangeInfo = null; G.view.bdcCache = null;
+  G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -344,6 +344,14 @@ Game.bindInput = function () {
     e.preventDefault();
   });
   const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null; };
+  // a quick tap on a radio message or a hint closes it early (a drag that starts there still aims)
+  let tap = null;
+  h.msg.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
+  h.msg.addEventListener('pointerup', (e) => {
+    const T = tap; tap = null;
+    if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
+    if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+  });
   stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
   document.addEventListener('pointerlockchange', () => { G.locked = document.pointerLockElement === stage; if (!G.locked && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && G.wasLocked) G.pause(true); G.wasLocked = G.locked; });
   stage.addEventListener('wheel', (e) => { if (G.state !== 'mission' || G.paused) return; e.preventDefault(); G.zoomBy(e.deltaY < 0 ? 1.14 : 1 / 1.14); }, { passive: false });

@@ -36,13 +36,13 @@ function figPose(anim, t, ph, A) {
   switch (anim) {
     case 'walk':
       p.tL = 0.46 * s; p.tR = -0.46 * s;
-      p.kL = 0.08 + 0.6 * Math.max(0, -c); p.kR = 0.08 + 0.6 * Math.max(0, c);
+      p.kL = 0.08 + 0.6 * Math.max(0, c); p.kR = 0.08 + 0.6 * Math.max(0, -c); // the knee bends while the leg swings forward (foot in the air), not while it pushes back
       p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28;
       p.hy = FIG.hip - 0.035 * Math.abs(s); p.lean = 0.05;
       break;
     case 'run': case 'panic':
       p.tL = 0.85 * s; p.tR = -0.85 * s;
-      p.kL = 0.2 + 1.15 * Math.max(0, -c); p.kR = 0.2 + 1.15 * Math.max(0, c);
+      p.kL = 0.2 + 1.15 * Math.max(0, c); p.kR = 0.2 + 1.15 * Math.max(0, -c);
       p.hy = FIG.hip - 0.07 * Math.abs(s) - 0.03; p.lean = 0.24;
       if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }

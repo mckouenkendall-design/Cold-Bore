@@ -63,6 +63,9 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .radio { background: rgba(14, 18, 24, .86); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 6px 10px; font-size: 13.5px; line-height: 1.3; transition: opacity .5s; animation: slide .25s ease-out; }
 .radio b { font-family: var(--head); letter-spacing: .14em; font-size: 10.5px; color: var(--amber); display: block; text-transform: uppercase; }
 .radio.out, .hintbox.out { opacity: 0; }
+/* a tap on a message closes it; a drag that starts on one still aims */
+.h-msg .radio, .h-msg .hintbox { pointer-events: auto; position: relative; padding-right: 24px; }
+.h-msg .radio::after, .h-msg .hintbox::after { content: '\00d7'; position: absolute; top: 3px; right: 7px; font-size: 14px; line-height: 1; opacity: .55; }
 @keyframes slide { from { opacity: 0; transform: translateY(6px); } }
 .hintbox { transition: opacity .5s; animation: slide .25s ease-out; background: rgba(255, 170, 60, .12); border: 1px dashed rgba(255, 170, 60, .6); color: var(--amber2); border-radius: 9px; padding: 7px 10px; font-size: 13px; line-height: 1.3; }
 .h-ctl { position: absolute; pointer-events: auto; border-radius: 50%; display: grid; place-items: center; text-align: center; font-family: var(--head); font-weight: 700; letter-spacing: .12em; touch-action: none; }
@@ -109,7 +112,10 @@ body:not(.touch) #stage.aiming { cursor: none; }
    read or tap stays inside the safe area (--sal, --sar, --sat, --sab). Upright phones get the
    body.portrait rules at the end. */
 body.in-mission, body.in-mission * { touch-action: none; }
-body.in-mission #overlay .scroll, body.in-mission #overlay .sh-body { touch-action: pan-y; }
+/* touch-action is combined down the tree, so the scrolling box AND everything inside it must allow a
+   vertical pan, or a finger that lands on a line of text cannot scroll the notebook */
+body.in-mission #overlay .scroll, body.in-mission #overlay .sh-body,
+body.in-mission #overlay .scroll *, body.in-mission #overlay .sh-body * { touch-action: pan-y; }
 body.attract:not(.in-mission) #cv { visibility: visible; }
 
 /* Menu colours: a mid-dark slate, a step lighter for panels, another for cards. They are set on the
@@ -1095,13 +1101,13 @@ function figPose(anim, t, ph, A) {
   switch (anim) {
     case 'walk':
       p.tL = 0.46 * s; p.tR = -0.46 * s;
-      p.kL = 0.08 + 0.6 * Math.max(0, -c); p.kR = 0.08 + 0.6 * Math.max(0, c);
+      p.kL = 0.08 + 0.6 * Math.max(0, c); p.kR = 0.08 + 0.6 * Math.max(0, -c); // the knee bends while the leg swings forward (foot in the air), not while it pushes back
       p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28;
       p.hy = FIG.hip - 0.035 * Math.abs(s); p.lean = 0.05;
       break;
     case 'run': case 'panic':
       p.tL = 0.85 * s; p.tR = -0.85 * s;
-      p.kL = 0.2 + 1.15 * Math.max(0, -c); p.kR = 0.2 + 1.15 * Math.max(0, c);
+      p.kL = 0.2 + 1.15 * Math.max(0, c); p.kR = 0.2 + 1.15 * Math.max(0, -c);
       p.hy = FIG.hip - 0.07 * Math.abs(s) - 0.03; p.lean = 0.24;
       if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }
@@ -6326,6 +6332,56 @@ Sim.prototype.rangeAt = function (ax, ay) {
   }
   return null;
 };
+// Where a round fired right now would actually land. The aim pip used to be drawn with the
+// drop for whatever sat under the CROSSHAIR, but the bullet lands at the pip, which is lower and
+// often on something nearer or further away. So the pip jumped about as the crosshair crossed
+// things at different distances. This follows the bullet's own curve out through the scene
+// (the same order of checks as a real round, without changing anything) and returns the first
+// thing it meets, with the drop and drift at that distance. Display only: no gameplay reads it.
+Sim.prototype.impactAt = function (ax, ay) {
+  const sim = this, S = sim.S, st = sim.st, e = sim.eye(), w = sim.wind(), zA = sim.sh.zeroAng, planes = S.planes;
+  const at = (d) => { const dp = Bal.dope(st, zA, d, w); return { d, dp, x: e.x + ((ax + dp.driftMil) / 1000) * d, y: e.y + ((ay - dp.dropMil) / 1000) * d }; };
+  const done = (c, what) => ({ d: c.d, x: c.x, y: c.y, up: c.dp.dropMil, right: -c.dp.driftMil, tof: c.dp.tof, ok: c.dp.reached, what });
+  let prev = null, walls = 0;
+  for (let i = planes.length - 1; i >= 0; i--) {
+    const P = planes[i], d = P.z - e.z; if (d <= 1) continue;
+    const c = at(d);
+    if (!c.dp.reached) return null; // falls short before it gets this far
+    const x = c.x, y = c.y;
+    // the ground between the last plane and this one
+    if (P.groundY !== undefined) {
+      const gy = P.groundFn ? P.groundFn(x) : P.groundY;
+      if (y < gy) {
+        if (!prev || prev.y <= gy) return done(c, 'ground');
+        const f = clamp((prev.y - gy) / (prev.y - y), 0, 1);
+        return done(at(lerp(prev.d, d, f)), 'ground');
+      }
+    }
+    for (let j = 0; j < S.objects.length; j++) { const o = S.objects[j]; if (o.plane !== P || o.r <= 0 || o.gone || (!o.alive && !o.rehit) || o.pass) continue; if (o.w ? (x >= o.x - o.w / 2 && x <= o.x + o.w / 2 && y >= o.y - o.h / 2 && y <= o.y + o.h / 2) : Math.hypot(x - o.x, y - o.y) <= o.r) return done(c, 'object'); }
+    for (let j = 0; j < sim.actors.length; j++) { const a = sim.actors[j]; if (a.plane !== P || a.dead || a.gone || a.hidden || a.behind || a.inVeh) continue; if (Math.abs(x - a.x) > 1.3 || y < a.y - 0.2 || y > a.y + 2.4) continue; if (figHit(actorJoints(a), x - a.x, y - a.y)) return done(c, 'person'); }
+    for (let j = 0; j < sim.vehicles.length; j++) { const v = sim.vehicles[j]; if (v.plane !== P || v.gone) continue; const lx = (x - v.x) * v.dir, ly = y - v.y; if (lx >= -v.def.len / 2 && lx <= v.def.len / 2 && ly >= 0 && ly <= v.def.h) return done(c, 'vehicle'); }
+    for (let j = 0; j < S.props.length; j++) { const p2 = S.props[j]; if (p2.plane === P && !p2.gone && x >= p2.x - p2.w / 2 && x <= p2.x + p2.w / 2 && y >= p2.y && y <= p2.y + p2.h) return done(c, 'prop'); }
+    let inOpen = null;
+    for (let j = 0; j < P.openings.length; j++) { const op = P.openings[j]; if (x >= op.x && x <= op.x + op.w && y >= op.y && y <= op.y + op.h) { inOpen = op; break; } }
+    if (inOpen) {
+      for (let j = 0; j < sim.actors.length; j++) { const a = sim.actors[j]; if (a.plane !== P || a.dead || a.gone || a.hidden || !a.behind || a.room !== inOpen.room || a.inVeh) continue; if (Math.abs(x - a.x) <= 1.3 && figHit(actorJoints(a), x - a.x, y - a.y)) return done(c, 'person'); }
+      if (!inOpen.through) return done(c, 'room');
+      prev = c; continue;
+    }
+    let stop = false;
+    for (let j = 0; j < P.solids.length; j++) {
+      const s2 = P.solids[j]; if (x < s2.x || x > s2.x + s2.w || y < s2.y || y > s2.y + s2.h) continue;
+      const m = s2.mat;
+      if (m === 'leaf' || m === 'grid' || m === 'glasswall') continue;
+      if ((m === 'thin' || m === 'wood') && st.pen >= 1.4) continue;
+      if (m === 'wall' && st.pen >= 3 && walls < 1) { walls++; continue; }
+      stop = true; break;
+    }
+    if (stop) return done(c, 'cover');
+    prev = c;
+  }
+  return null;
+};
 // The correction for a shot at the thing under the crosshair, given the
 // current wind and zero. up > 0 means hold high; right > 0 means hold right.
 Sim.prototype.holdFor = function (d, dy) {
@@ -6889,9 +6945,10 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
     ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
   }
-  const showPip = (st.scope.smart || V.assist === 'full') && V.hold && V.hold.ok;
-  if (showPip) {
-    const px = cx - V.hold.right * ppm, py = cy + V.hold.up * ppm;
+  // the pip sits where the round would land right now (see Sim.impactAt), not at the hold for the crosshair's range
+  const pip = V.pip;
+  if ((st.scope.smart || V.assist === 'full') && pip && pip.ok) {
+    const px = cx - pip.right * ppm, py = cy + pip.up * ppm;
     if (Math.hypot(px - cx, py - cy) < R * 0.94) {
       ctx.strokeStyle = 'rgba(255,170,60,0.95)'; ctx.lineWidth = 1.6; const r = 6;
       ctx.beginPath(); ctx.moveTo(px, py - r); ctx.lineTo(px + r, py); ctx.lineTo(px, py + r); ctx.lineTo(px - r, py); ctx.closePath(); ctx.stroke();
@@ -6914,6 +6971,8 @@ View.prototype.updateReadout = function (sim, dt) {
   const r = sim.rangeAt(sim.sh.ax, sim.sh.ay);
   this.rangeInfo = r ? { d: r.d, ground: r.ground } : { d: 0 };
   this.hold = r && r.d > 20 ? sim.holdFor(r.d) : null;
+  const a = sim.aimNow(), imp = sim.impactAt(a.x, a.y);
+  this.pip = imp && imp.d > 20 ? imp : null;
 };
 
 CB.View = View;
@@ -20015,7 +20074,7 @@ Game.start = function (missionId, opts) {
   G.oracle = null;
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
-  G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.rangeInfo = null; G.view.bdcCache = null;
+  G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -20182,6 +20241,14 @@ Game.bindInput = function () {
     e.preventDefault();
   });
   const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null; };
+  // a quick tap on a radio message or a hint closes it early (a drag that starts there still aims)
+  let tap = null;
+  h.msg.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
+  h.msg.addEventListener('pointerup', (e) => {
+    const T = tap; tap = null;
+    if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
+    if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+  });
   stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
   document.addEventListener('pointerlockchange', () => { G.locked = document.pointerLockElement === stage; if (!G.locked && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && G.wasLocked) G.pause(true); G.wasLocked = G.locked; });
   stage.addEventListener('wheel', (e) => { if (G.state !== 'mission' || G.paused) return; e.preventDefault(); G.zoomBy(e.deltaY < 0 ? 1.14 : 1 / 1.14); }, { passive: false });

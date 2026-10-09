@@ -528,9 +528,10 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
     ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
   }
-  const showPip = (st.scope.smart || V.assist === 'full') && V.hold && V.hold.ok;
-  if (showPip) {
-    const px = cx - V.hold.right * ppm, py = cy + V.hold.up * ppm;
+  // the pip sits where the round would land right now (see Sim.impactAt), not at the hold for the crosshair's range
+  const pip = V.pip;
+  if ((st.scope.smart || V.assist === 'full') && pip && pip.ok) {
+    const px = cx - pip.right * ppm, py = cy + pip.up * ppm;
     if (Math.hypot(px - cx, py - cy) < R * 0.94) {
       ctx.strokeStyle = 'rgba(255,170,60,0.95)'; ctx.lineWidth = 1.6; const r = 6;
       ctx.beginPath(); ctx.moveTo(px, py - r); ctx.lineTo(px + r, py); ctx.lineTo(px, py + r); ctx.lineTo(px - r, py); ctx.closePath(); ctx.stroke();
@@ -553,6 +554,8 @@ View.prototype.updateReadout = function (sim, dt) {
   const r = sim.rangeAt(sim.sh.ax, sim.sh.ay);
   this.rangeInfo = r ? { d: r.d, ground: r.ground } : { d: 0 };
   this.hold = r && r.d > 20 ? sim.holdFor(r.d) : null;
+  const a = sim.aimNow(), imp = sim.impactAt(a.x, a.y);
+  this.pip = imp && imp.d > 20 ? imp : null;
 };
 
 CB.View = View;
