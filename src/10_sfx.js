@@ -373,6 +373,7 @@ Sfx.kcOpen = function () {
   const X = Sfx, ac = X.ac;
   if (X.kcS && X.kcS.on) X.kcClose(false);
   const out = ac.createGain(); out.gain.value = 0.62; out.connect(X.near); // about as loud as a real shot at its peak
+  Sfx.hold(X.kcVerbG.gain, ac.currentTime); X.kcVerbG.gain.setTargetAtTime(0.45, ac.currentTime, 0.01); // open the echo
   X.kcS = { on: true, t0: ac.currentTime, last: ac.currentTime, film: false, out, srcs: [], recent: [], next: 0, gore: true, bed: null, bedR: -1, wh: null, whR: -1, near: false, tear: null };
   return X.kcS;
 };
@@ -387,6 +388,7 @@ Sfx.kcClose = function (snap) {
   const now = X.ac.currentTime;
   S.on = false; S.bed = S.wh = S.tear = null;
   Sfx.hold(S.out.gain, now); S.out.gain.setTargetAtTime(0, now, 0.012);
+  Sfx.hold(X.kcVerbG.gain, now); X.kcVerbG.gain.setTargetAtTime(0, now, 0.015); // and its echo, which would ring on
   S.srcs.forEach((s) => { try { s.stop(now + 0.1); } catch (e) { /* already stopped */ } });
   S.srcs = [];
   const out = S.out; setTimeout(() => { try { out.disconnect(); } catch (e) { /* already gone */ } }, 600);
@@ -435,11 +437,11 @@ function kcBed(S, P) {
 // a slow heartbeat (one oscillator, its loudness and pitch moved for each "lub-dub")
 function kcHeart(S, t0, n) {
   const ac = Sfx.ac, o = ac.createOscillator(), lp = ac.createBiquadFilter(), g = ac.createGain();
-  o.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 240; g.gain.value = 0.0001;
+  o.type = 'triangle'; lp.type = 'lowpass'; lp.frequency.value = 320; g.gain.value = 0.0001;
   o.connect(lp); lp.connect(g); g.connect(S.out);
   for (let i = 0; i < n; i++) {
     const t = t0 + i * 1.08;
-    [[0, 0.3, 66, 42, 0.12], [0.18, 0.21, 58, 38, 0.14]].forEach((b) => {
+    [[0, 0.42, 66, 42, 0.12], [0.18, 0.3, 58, 38, 0.14]].forEach((b) => {
       const s = t + b[0];
       g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(b[1], s + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, s + b[4]);
       o.frequency.setValueAtTime(b[2], s); o.frequency.exponentialRampToValueAtTime(b[3], s + b[4]);
