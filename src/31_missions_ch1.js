@@ -133,29 +133,100 @@ mission({
   reward: { cr: 800, xp: 200 },
 });
 
+// ---- The 9:15: the envelope ---------------------------------------------------
+// The car parks in the near lane (plane PR) and the runner waits on the pavement (plane PS),
+// seven metres further back. To reach the driver's window he steps off the kerb and walks round
+// the nose of the car. From the roof the pavement looks higher than the road by C1M5_LIFT, so he
+// changes plane at the kerb standing that much above the road, and drops to the road as he
+// crosses: on screen he walks smoothly down and round, with no jump.
+const C1M5_KZ = 153 / 160, C1M5_LIFT = 14.64 * (1 - C1M5_KZ); // eye height (15 m, tipped down at the car) times the depth step
+const C1M5_KERB = -1.1, C1M5_KERB_R = C1M5_KERB * C1M5_KZ, C1M5_NOSE = -2.35, C1M5_DOOR = -3.63;
+// Drawn in the near hand of whoever has it (H.env.who). Inside a car only the part that shows
+// through that person's window is drawn, like the person.
+function c1m5Envelope(ctx, env, H, P) {
+  const sim = H.sim, who = H.env.who; if (!sim || !who || env.s < 2.2) return;
+  const a = sim.byId[who]; if (!a || a.gone || a.hidden || a.plane !== P) return;
+  const J = actorJoints(a), hx = a.x + J.haR[0], hy = a.y + J.haR[1];
+  if (hx < env.x0 - 1 || hx > env.x1 + 1) return;
+  ctx.save();
+  const v = a.inVeh;
+  if (v) {
+    const c = v.def, lx = c.seats[a.seat] * c.len; let wi = -1;
+    for (let w = 0; w < c.win.length; w++) if (lx >= c.win[w][0] * c.len - 0.05 && lx <= c.win[w][1] * c.len + 0.05) wi = w;
+    if (wi < 0) { ctx.restore(); return; }
+    ctx.beginPath(); ctx.rect(v.x + v.dir * c.win[wi][v.dir > 0 ? 0 : 1] * c.len, v.y + c.body + 0.06, (c.win[wi][1] - c.win[wi][0]) * c.len, c.h - c.body - 0.2); ctx.clip();
+  }
+  // it lies along the forearm, a little past the fingers
+  ctx.translate(hx, hy); ctx.rotate(Math.atan2(J.haR[1] - J.elR[1], J.haR[0] - J.elR[0]));
+  const S = H.S, paper = S.tone('#efe6cf', P), fold = S.tone('#9c8d70', P);
+  R4(ctx, -0.04, -0.06, 0.24, 0.12, paper);
+  if (env.s > 9) { ctx.strokeStyle = fold; ctx.lineWidth = Math.max(0.008, env.px * 0.7); ctx.beginPath(); ctx.moveTo(-0.04, -0.06); ctx.lineTo(0.06, 0); ctx.lineTo(-0.04, 0.06); ctx.stroke(); }
+  if (env.s > 5) { ctx.fillStyle = S.tone('#13161b', P); ctx.beginPath(); ctx.arc(0, 0, 0.032, 0, TAU); ctx.fill(); } // the fingers round it
+  ctx.restore();
+}
+// The runner has reached the driver's window (called from his routine). Who does what, and
+// when, from here: the driver takes the envelope, looks at it and passes it back over his
+// shoulder; the lawyer takes it, reads it and puts it away. Every beat checks that nothing has
+// gone wrong first (somebody shot, the car spooked, the runner frightened off).
+function c1m5Exchange(sim, H) {
+  const v = sim.byId.car, drv = sim.byId.drv, t = sim.byId.t, run = sim.byId.c1, E = H.env;
+  const inCar = (a) => a && !a.dead && a.inVeh === v;
+  const parked = () => !v.scared && !v.flatTire && !v.crashed && !v.gone && v.goal === null;
+  const pose = (a, anim) => { if (inCar(a)) a.anim = anim; };
+  const beat = (dt, fn) => sim.after(dt, () => { if (parked()) fn(); else { pose(drv, 'drive'); pose(t, 'drive'); } });
+  const open = () => !!(v.st.pane && v.st.pane[1] && v.st.pane[1].b === 1);
+  const runnerHolds = () => E.who === 'c1' && run && !run.dead && !run.gone && run.state === 'calm' && run.anim === 'handover';
+  beat(0.3, () => { if (runnerHolds() && open() && inCar(drv)) pose(drv, 'sitreach'); });
+  beat(0.85, () => { if (runnerHolds() && inCar(drv) && drv.anim === 'sitreach') E.who = 'drv'; else pose(drv, 'drive'); });
+  beat(1.25, () => { if (E.who === 'drv') pose(drv, 'sitread'); });
+  beat(1.85, () => { if (E.who !== 'drv' || !inCar(drv)) return; if (inCar(t)) pose(drv, 'sitpass'); else { pose(drv, 'drive'); sim.after(0.3, () => { if (E.who === 'drv') E.who = null; }); } });
+  beat(2.05, () => { if (E.who === 'drv' && drv.anim === 'sitpass') pose(t, 'sitreach'); });
+  beat(2.55, () => { if (E.who === 'drv' && t.anim === 'sitreach' && inCar(t)) { E.who = 't'; pose(t, 'sitread'); } else pose(t, 'drive'); });
+  beat(2.75, () => pose(drv, 'drive'));
+  beat(4.2, () => pose(t, 'drive'));
+  beat(4.55, () => { if (E.who === 't' && inCar(t)) E.who = null; }); // tucked away inside his coat
+}
+
 mission({
   id: 'c1m5', ch: 1, title: 'The 9:15', range: 170, needs: { glass: true },
   objective: 'White hat, dark glasses, back seat. The car stops once and not for long.',
-  brief: 'The Calloway lawyer never walks anywhere. Every evening at a quarter past nine his car pulls up outside the deli for a few seconds while a runner passes an envelope through the window. That is the only time he is ever still. He sits in the back. White hat, dark glasses. The driver is hired help; leave him if you can. When the car pulls away the chance is gone.',
-  intel: ['Target is in the BACK seat. The driver is in front.', 'The car stops for about eight seconds.', 'Window glass nudges a bullet slightly off line. Aim for the middle of the head.', 'A flat tyre would also stop a car.'],
+  brief: 'The Calloway lawyer never walks anywhere. Every evening at a quarter past nine his car pulls up on Calder Street, just past the laundry, for a few seconds. The driver winds his window down, a runner hands him an envelope, and he passes it back to his employer. That is the only time the lawyer is ever still. He sits in the back, behind glass that stays shut. White hat, dark glasses. The driver is hired help; leave him if you can. When the car pulls away the chance is gone.',
+  intel: ['Target is in the BACK seat. The driver is in front.', 'The car stops for about eight seconds. Only the driver\'s window comes down.', 'The back window stays up. Glass nudges a bullet slightly off line. Aim for the middle of the head.', 'A flat tyre would also stop a car.'],
   wind: { v: -1.2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Tannery roof', desc: 'Looking down into the car windows.', eye: [0, 15, 0] }],
   look: [-6, 2],
-  setup() { const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] }); K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42); return H; },
+  setup() {
+    const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] });
+    K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42);
+    H.env = { who: 'c1' };
+    [H.PS, H.PR].forEach((P) => P.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) { c1m5Envelope(ctx, env, H, P); } }));
+    return H;
+  },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
+    const road = (x) => ({ plane: H.PR, x, y: C1M5_LIFT, zone: 'street', room: null, behind: false });
     return [
       { id: 'drv', role: 'guard', look: { hat: 'peaked', hatCol: '#1d2026' } },
       { id: 't', role: 'target', look: { hat: 'fedora', hatCol: '#ece8dc', hatBand: '#22252b', glasses: 'shades' }, escapeText: 'The car pulled away with him in it. Same time tomorrow, then.' },
-      Object.assign(H.street(2), { id: 'c1', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#7a2438', bag: 'paper' }, routine: [['waitFor', 'parked'], ['walk', 0], ['wait', 6, 'talk', -1], ['walk', 47], ['gone']] }),
+      // the runner: to the kerb as the car comes, round its nose to the driver's door, and back
+      Object.assign(H.street(2), { id: 'c1', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#7a2438', coat: '#3a3f47' },
+        yFn(x) { return this.plane === H.PR ? C1M5_LIFT * smooth((x - C1M5_NOSE) / (C1M5_KERB_R - C1M5_NOSE)) : 0; },
+        // (an 'anim' before a 'walk' is the pose he arrives in, so the stride eases straight into it)
+        routine: [['wait', 10.4], ['walk', C1M5_KERB], ['waitFor', 'parked'], ['wait', 0.5, 'stand', -1], ['to', road(C1M5_KERB_R)], ['anim', 'handover'], ['walk', C1M5_DOOR],
+          ['call', (sim) => c1m5Exchange(sim, H)], ['wait', 1.1, 'handover', -1], ['wait', 1.0, 'talk', -1],
+          ['anim', 'walk'], ['walk', C1M5_KERB_R], ['to', H.street(C1M5_KERB)], ['walk', 47], ['gone']] }),
       Object.assign(H.street(-30), { id: 'c2', role: 'civ', look: { hair: 'bun', dress: COL.teal, bag: 'shopping' }, routine: stroll(47), speed: 0.9 }),
     ];
   },
   vehicles(H) {
+    // the driver's window (window 1) comes down as the car stops and goes back up before it leaves
     return [{ id: 'car', kind: 'sedan', plane: H.PR, x: -78, y: 0, dir: 1, col: '#101216', seats: ['drv', 't'],
-      routine: [['wait', 4], ['drive', -5, 9], ['emit', 'parked'], ['wait', 8.5], ['emit', 'leaving'], ['drive', 95, 10], ['gone']] }];
+      routine: [['wait', 4], ['drive', -5, 9], ['emit', 'parked'],
+        ['call', (sim, v) => { const ok = () => !v.scared && !v.flatTire && !v.crashed && !v.gone; sim.after(0.5, () => { if (ok()) carWindow(sim, v, 1, true, 1.2); }); sim.after(6.8, () => { if (ok()) carWindow(sim, v, 1, false, 1.2); }); }],
+        ['wait', 8.5], ['emit', 'leaving'], ['drive', 95, 10], ['gone']] }];
   },
   triggers(H) { return [
-    hint(1.5, 'A car is coming from the left. It will stop outside the deli. The man you want is in the back seat.'),
+    hint(1.5, 'A car is coming from the left. It will stop just past the laundry. The man you want is in the back seat.'),
     onEv('leaving', (sim) => sim.msg('Marlow', 'He is moving. Lead him or let him go.')),
     { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead) return; a.inVeh = null; a.hidden = false; sim.place(a, { plane: H.PS, x: sim.byId.car.x - 1.5, y: 0, zone: 'street', room: null, behind: false }); a.anim = a.idle = 'stand'; a.state = 'flee'; a.routine = [['run', -50], ['gone']]; a.pc = 0; sim.raiseAlarm('target', 0.3); } },
   ]; },

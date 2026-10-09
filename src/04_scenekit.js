@@ -2380,7 +2380,20 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   // windows
   const wy = c.body + 0.06, wh = c.h - c.body - 0.2;
   for (let i = 0; i < c.win.length; i++) {
-    const w0 = c.win[i][0] * L, w1 = c.win[i][1] * L, broken = st && st.glass && st.glass[i];
+    const w0 = c.win[i][0] * L, w1 = c.win[i][1] * L, pn = st && st.pane && st.pane[i], broken = st && st.glass && st.glass[i] && !(pn && pn.gone);
+    const down = pn && !broken ? kxPaneAt(pn, env.t) : 0;
+    if (down > 0.002) {
+      // a window wound part or all of the way down: the open part shows the dark inside of the
+      // car with no sheen on it, and the pane sinks into the door with its top edge catching the light
+      const gh = wh * (1 - down);
+      R4(ctx, w0, wy, w1 - w0, wh, S.tone('#151a22', P));
+      if (gh > 0.004) {
+        R4(ctx, w0, wy, w1 - w0, gh, gl);
+        ctx.fillStyle = 'rgba(200,225,255,0.14)'; ctx.fillRect(w0, wy, (w1 - w0) * 0.35, gh);
+        if (s > 6) R4(ctx, w0, wy + gh - Math.max(0.012, env.px * 0.9), w1 - w0, Math.max(0.012, env.px * 0.9), 'rgba(225,238,255,0.55)');
+      }
+      continue;
+    }
     R4(ctx, w0, wy, w1 - w0, wh, broken ? S.tone('#0d1016', P) : gl);
     if (!broken) {
       ctx.fillStyle = 'rgba(200,225,255,0.14)'; ctx.fillRect(w0, wy, (w1 - w0) * 0.35, wh);
@@ -2462,6 +2475,23 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
     ctx.globalAlpha = 0.3; ctx.drawImage(kxBlob('#fff0be'), L / 2 + 0.5, -0.22, 7, 0.5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.restore();
+}
+// A side window that can be wound down. st.pane[i] = { a, b, t0, dur, gone }: the pane moves
+// from a to b (0 = shut, 1 = all the way down) over dur seconds from time t0.
+function kxPaneAt(pn, t) { return lerp(pn.a, pn.b, smooth((t - pn.t0) / pn.dur)); }
+// Wind window i of vehicle v down (down = true) or back up, starting now. The picture and the
+// simulation must agree, so for bullets the glass is gone from the moment the pane is halfway
+// down until it is halfway back up. st.glass[i] is the flag the simulation reads (true: no
+// glass to break); pane.gone remembers that the window took the glass away, not a bullet, so
+// the car is not drawn with broken glass and the glass comes back when the window goes up.
+function carWindow(sim, v, i, down, dur) {
+  const st = v.st; st.pane = st.pane || [];
+  const was = st.pane[i], pn = st.pane[i] = { a: was ? kxPaneAt(was, sim.t) : 0, b: down ? 1 : 0, t0: sim.t, dur: dur || 1.2, gone: !!(was && was.gone) };
+  sim.after(pn.dur / 2, () => {
+    if (st.pane[i] !== pn) return; // wound the other way since
+    if (down && !st.glass[i]) { st.glass[i] = true; pn.gone = true; }
+    else if (!down && pn.gone) { st.glass[i] = false; pn.gone = false; }
+  });
 }
 // The elevated train: three cars, each with doors, a row of lit windows, roof gear and trucks.
 function kxTrain(ctx, env, S, P, c, col, dk, gl, st, dir) {
