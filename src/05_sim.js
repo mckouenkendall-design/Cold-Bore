@@ -459,7 +459,7 @@ Sim.prototype.leave = function (a) {
   if (!a.dead && sim.rules.kill.indexOf(a.id) >= 0 && !sim.winAt && sim.rules.escapeOk !== true) sim.fail('escaped', a.escapeText || 'The target got away.', 0.8);
 };
 
-Sim.prototype.killActor = function (a, part, how, bullet) {
+Sim.prototype.killActor = function (a, part, how, bullet, src) {
   const sim = this;
   if (a.dead) return;
   a.dead = true; a.deadT = 0; a.deathAtT = sim.t; a.deathPose = a.anim; a.deathAt = a.t; a.deathPh = a.ph; a.bubble = null;
@@ -470,6 +470,8 @@ Sim.prototype.killActor = function (a, part, how, bullet) {
   const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
   const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
     moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
+  // for the picture only: how the body falls, the wounds, the blood (see src/13_ragdoll.js)
+  rdNote(sim, a, part, how, bullet, src);
   sim.kills.push(k); a.goal = null;
   if (how === 'shot') { sim.stats.hits++; if (part === 'head') sim.stats.heads++; sim.stats.longest = Math.max(sim.stats.longest, k.range); }
   if (a.accident) sim.stats.accident++;
@@ -732,9 +734,9 @@ Sim.prototype.explode = function (ob) {
   sim.actors.forEach((a) => {
     if (a.dead || a.gone || a.hidden) return;
     if (a.plane !== ob.plane && Math.abs(a.plane.z - ob.plane.z) > 8) return;
-    if (Math.hypot(a.x - ob.x, a.y + 0.9 - ob.y) <= R) sim.killActor(a, 'torso', 'blast', null);
+    if (Math.hypot(a.x - ob.x, a.y + 0.9 - ob.y) <= R) sim.killActor(a, 'torso', 'blast', null, { x: ob.x, y: ob.y, r: R });
   });
-  sim.vehicles.forEach((v) => { if (!v.gone && Math.abs(v.plane.z - ob.plane.z) < 8 && Math.abs(v.x - ob.x) < R + 1.5) { v.routine = [['brake']]; v.pc = 0; v.goal = null; v.flatTire = true; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead) sim.killActor(a, 'torso', 'blast', null); }); sim.emit('wrecked:' + v.id); } });
+  sim.vehicles.forEach((v) => { if (!v.gone && Math.abs(v.plane.z - ob.plane.z) < 8 && Math.abs(v.x - ob.x) < R + 1.5) { v.routine = [['brake']]; v.pc = 0; v.goal = null; v.flatTire = true; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead) sim.killActor(a, 'torso', 'blast', null, { x: ob.x, y: ob.y, r: R }); }); sim.emit('wrecked:' + v.id); } });
   sim.S.objects.forEach((o2) => { if (o2 !== ob && o2.alive && (o2.kind === 'barrel' || o2.kind === 'tank') && Math.abs(o2.plane.z - ob.plane.z) < 8 && Math.hypot(o2.x - ob.x, o2.y - ob.y) < R + 2) sim.after(0.25, () => { if (o2.alive) { o2.alive = false; sim.explode(o2); sim.emit('obj:' + o2.id); } }); });
   if (sim.rules.boomQuiet) sim.noise(ob.x, ob.y, ob.plane, 'crash', 40);
   else { sim.noise(ob.x, ob.y, ob.plane, 'boom', 70); sim.raiseAlarm('explosion', 0.8); }
@@ -787,7 +789,7 @@ Sim.prototype.stepProps = function (dt) {
       sim.actors.forEach((a) => {
         if (a.dead || a.gone || a.hidden || a.inVeh) return;
         if (Math.abs(a.plane.z - p.plane.z) > 6) return;
-        if (Math.abs(a.x - p.x) <= p.w / 2 + 0.35 && Math.abs(a.y - p.floor) < 1.2) sim.killActor(a, 'torso', 'accident', null);
+        if (Math.abs(a.x - p.x) <= p.w / 2 + 0.35 && Math.abs(a.y - p.floor) < 1.2) sim.killActor(a, 'torso', 'accident', null, p);
       });
       sim.noise(p.x, p.y, p.plane, 'crash', 28);
       sim.emit('crash:' + p.id);

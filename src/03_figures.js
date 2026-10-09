@@ -128,106 +128,29 @@ function figPose(anim, t, ph, A) {
 }
 
 const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
-// Rotate a set of joints about a pivot (used for falling over).
-function figRotate(J, ang, px, py) {
-  const cs = Math.cos(ang), sn = Math.sin(ang);
-  for (const k in J) {
-    const v = J[k], dx = v[0] - px, dy = v[1] - py;
-    J[k] = [px + dx * cs - dy * sn, py + dx * sn + dy * cs];
-  }
-}
-
 // ---- dying -----------------------------------------------------------------
-// A standing person goes down in three beats: the knees give (pose 0), the body
-// tips over and lands (pose 1), and then it settles (pose 2). 'back' ends face
-// up with the head behind the feet, 'front' ends face down with the head ahead.
-const FIG_FALL = {
-  back: [{ lean: -0.2, head: -0.42, tL: 0.8, tR: 0.6, kL: 1.4, kR: 1.2, aL: 0.5, aR: -0.35, eL: 0.35, eR: 0.25 },
-    { lean: 0.05, head: -0.3, tL: 0.62, tR: 0.06, kL: 1.18, kR: 0.14, aL: 2.85, aR: 0.3, eL: 0.55, eR: -0.6 },
-    { lean: 0.05, head: -0.34, tL: 0.4, tR: 0.05, kL: 0.78, kR: 0.1, aL: 2.95, aR: 0.26, eL: 0.42, eR: -0.52 }],
-  front: [{ lean: 0.42, head: 0.35, tL: 0.55, tR: 0.4, kL: 1.55, kR: 1.7, aL: 0.5, aR: 0.25, eL: 0.4, eR: 0.3 },
-    { lean: -0.04, head: 0.3, tL: 0.02, tR: -0.03, kL: 0.46, kR: 0.1, aL: 2.75, aR: 2.25, eL: 0.6, eR: -0.5 },
-    { lean: -0.04, head: 0.34, tL: 0.02, tR: -0.03, kL: 0.14, kR: 0.06, aL: 2.82, aR: 2.3, eL: 0.5, eR: -0.42 }],
-};
-const FIG_FALL_KEYS = ['lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
-// How low each joint may come: a head and a chest have some thickness, so a body lies ON the ground, not in it.
-const FIG_REST = { hip: 0.095, neck: 0.095, sh: 0.095, head: 0.158, knL: 0.05, knR: 0.05, ftL: 0.035, ftR: 0.035, elL: 0.04, elR: 0.04, haL: 0.035, haR: 0.035 };
-const FIG_CORE = ['hip', 'neck', 'head', 'knL', 'knR', 'ftL', 'ftR'];
-// The joints of somebody who is dying or dead (local space, facing +x, not yet mirrored or scaled).
-function figDeadJoints(A) {
-  const base = figPose(A.deathPose || 'stand', A.deathAt || 0, A.deathPh || 0, A);
-  const T = A.deadT || 0, u = clamp(T / 0.75, 0, 1);
-  // which way the round was going, as the victim would feel it: +1 pushes them the way they face
-  const push = A.deathDir ? A.deathDir * (A.face || 1) : 0;
-  const kick = Math.sin(Math.PI * clamp(T / 0.17, 0, 1)); // the first jolt of the hit, gone in a sixth of a second
-  const shot = A.deathHow === 'shot' || A.deathHow === 'npc';
-  let J;
-  if (A.deathKind === 'slump') {
-    // collapse where they sit: the head goes, the body folds over, the arms swing loose and hang
-    const limp = smooth(u * 1.5);
-    const fold = u < 0.8 ? Math.pow(u / 0.8, 1.7) : 1 - 0.06 * Math.sin(((u - 0.8) / 0.2) * Math.PI);
-    const sw = Math.exp(-T * 2.6) * Math.sin(T * 8.5) * limp;
-    base.lean = lerp(base.lean, 0.9, fold) + (shot ? push * 0.1 * kick : 0);
-    base.head = lerp(base.head || 0, 0.72, limp) + (shot && A.deathPart === 'head' ? push * 0.4 * kick : 0);
-    base.aL = lerp(base.aL, 0.34, limp) + 0.3 * sw; base.aR = lerp(base.aR, 0.2, limp) - 0.24 * sw;
-    base.eL = lerp(base.eL, 0.1, limp); base.eR = lerp(base.eR, 0.08, limp);
-    return figJoints(base);
-  }
-  const dir = push ? push : (A.deathKind === 'front' ? 1 : -1);
-  const F = dir > 0 ? FIG_FALL.front : FIG_FALL.back;
-  const s1 = smooth(u / 0.32), s2 = smooth((u - 0.24) / 0.5), s2leg = smooth((u - 0.5) / 0.42), s3 = smooth((T - 0.7) / 0.75);
-  for (let i = 0; i < FIG_FALL_KEYS.length; i++) {
-    const k = FIG_FALL_KEYS[i];
-    let v = lerp(base[k] || 0, F[0][k], s1);
-    v = lerp(v, F[1][k], i >= 2 && i <= 5 ? s2leg : s2);
-    base[k] = lerp(v, F[2][k], s3);
-  }
-  if (shot) { if (A.deathPart === 'head') base.head += push * 0.5 * kick * (1 - s2); else base.lean += push * 0.22 * kick * (1 - s2); }
-  J = figJoints(base);
-  // tip over: slow while the knees go, then fast, then a small bounce as the body lands
-  let fall;
-  if (u < 0.1) fall = 0;
-  else if (u < 0.82) { const q = (u - 0.1) / 0.72; fall = q * q * (0.55 + 0.45 * q); }
-  else fall = 1 - 0.05 * Math.sin(((u - 0.82) / 0.18) * Math.PI);
-  figRotate(J, -dir * fall * (Math.PI / 2 - 0.05), 0, 0);
-  // carried along: by the round, by a blast, and by whatever speed they had
-  const how = A.deathHow, mom = A.deathPose === 'walk' ? 0.16 : (A.deathPose === 'run' || A.deathPose === 'panic') ? 0.42 : 0;
-  const thrown = how === 'blast' ? 0.6 : how === 'shot' ? (A.deathPart === 'head' ? 0.12 : 0.2) : 0.05;
-  const slide = (dir * thrown + mom) * easeOut(u);
-  // rest on the ground: let the body drop until something touches, and never sink in
-  let up = -9;
-  for (let i = 0; i < FIG_CORE.length; i++) { const k = FIG_CORE[i], d = FIG_REST[k] - J[k][1]; if (d > up) up = d; }
-  up *= smooth(u / 0.3);
-  if (how === 'blast') up += 0.32 * Math.sin(Math.PI * clamp(u / 0.8, 0, 1));
-  const floorK = smooth(u / 0.5);
-  for (const k in J) { const v = J[k]; v[0] += slide; v[1] += up; const fl = FIG_REST[k] * floorK; if (v[1] < fl && u > 0.05) v[1] = lerp(v[1], fl, floorK); }
-  return J;
-}
+// A dead body is a ragdoll: see src/13_ragdoll.js. The pose it died in comes from figPose
+// above; from then on the solver there moves it, and actorJoints below asks it where the
+// joints are.
 
 // Joints for an actor right now, in the actor's local space (already
 // mirrored for facing and scaled for height).
 function actorJoints(A) {
-  let J;
-  if (A.dead) {
-    // a body that has finished falling does not move again: work it out once
-    if (A._fdj && (A.deadT || 0) > 1.6) return A._fdj;
-    J = figDeadJoints(A);
-  } else {
-    const p = figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A);
-    // ease out of the previous pose over a quarter of a second
-    if (A.animFrom && A.animAt !== undefined) {
-      const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
-      if (u >= 0 && u < 1) { const q = figPose(A.animFrom, A.t || 0, A.ph || 0, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
-    }
-    J = figJoints(p);
+  // the dead: wherever the ragdoll has got to (already facing the right way and scaled)
+  if (A.dead) return rdJoints(A, (A.deadT || 0) + rdLead);
+  const p = figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A);
+  // ease out of the previous pose over a quarter of a second
+  if (A.animFrom && A.animAt !== undefined) {
+    const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, A.t || 0, A.ph || 0, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
   }
+  const J = figJoints(p);
   // turning round: the figure narrows through the turn rather than flipping in one frame
   let f = A.face || 1;
-  if (!A.dead && A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
+  if (A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
   const sc = (A.look && A.look.h) || 1;
   for (const k in J) { J[k][0] *= f * sc; J[k][1] *= sc; }
   J.scale = sc; J.f = f; // f: which way the figure faces right now, between -1 and 1 while it is turning
-  if (A.dead && (A.deadT || 0) > 1.6) A._fdj = J;
   return J;
 }
 
