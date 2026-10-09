@@ -22,7 +22,7 @@ function paKit(env) {
   this.x0 = 1e9; this.y0 = 1e9; this.x1 = -1e9; this.y1 = -1e9;
   this.fr = null; this.buf = false; this.s = 1; this.k = 1; this.fc = {};
   this.lineCol = (!env.fac && env.skin.line) ? env.skin.line : 'rgba(0,0,0,0.62)';
-  this.Z = { furn: env.paints.furn, metal: env.paints.metal, acc: env.paints.acc, rubber: '#0d0e10', bag: '#b9a27e', glass: '#27384a', carbon: { pat: 'carbon', a: '#30353c', b: '#15171b' } };
+  this.Z = { furn: env.paints.furn, metal: env.paints.metal, acc: env.paints.acc, rubber: '#0d0e10', bag: '#b9a27e', glass: '#27384a', carbon: { pat: 'carbon', a: '#30353c', b: '#15171b' }, poly: env.fac ? '#25282d' : env.paints.furn };
 }
 paKit.prototype.ext = function (x0, y0, x1, y1) {
   if (x0 < this.x0) this.x0 = x0; if (y0 < this.y0) this.y0 = y0; if (x1 > this.x1) this.x1 = x1; if (y1 > this.y1) this.y1 = y1;
@@ -644,10 +644,19 @@ const paBUL = {
   am_ap: { cas: '#c9a04a', bul: '#b9713f', og: 0.74, mp: 0.14, tip: '#141518', tipF: 0.46, seal: '#b8322c', cann: true },
   am_heavy: { cas: '#c9a04a', bul: '#a55f3a', og: 0.88, mp: 0.07, len: 0.24, bands: 3, tip: '#e3e6ea', tipF: 0.17 },
   am_tracer: { cas: '#c9a04a', bul: '#b9713f', og: 0.74, mp: 0.14, tip: '#ff4a2a', tipF: 0.42, glow: true, cann: true },
+  // calibre-specific loads
+  am_hmatch: { cas: '#c4cad0', bul: '#b56f3e', og: 0.9, mp: 0.08, len: 0.2, tip: '#2b6fd0', tipF: 0.2, boat: true },
+  am_77: { cas: '#c4cad0', bul: '#c07a44', og: 0.9, mp: 0.22, len: 0.3, hp: true, boat: true },
+  am_7n1: { cas: '#8e9399', bul: '#7f8a6a', og: 0.76, mp: 0.12, tip: '#c9ced4', tipF: 0.3, steel: true, cann: true },
+  am_22hv: { cas: '#c9a04a', bul: '#d08a52', og: 0.8, mp: 0.36, len: -0.12, round: true, plated: true },
+  am_300sup: { cas: '#c9a04a', bul: '#c07a44', og: 0.82, mp: 0.12, len: -0.25, tip: '#c8322c', tipF: 0.3 },
+  am_300red: { cas: '#c9a04a', bul: '#b9713f', og: 0.74, mp: 0.14, tip: '#3fa66b', tipF: 0.3, cann: true },
+  am_slap: { cas: '#c9a04a', bul: '#9aa2ab', og: 0.5, mp: 0.06, len: 0.3, sabot: '#3f8f4f', dart: 0.42 },
+  am_sp: { cas: '#c9a04a', bul: '#b9713f', og: 0.7, mp: 0.4, tip: '#8a8f96', tipF: 0.3, soft: true, cann: true },
 };
 // One cartridge lying along x with the bullet to the right. s is drawing units per millimetre.
 function paRound(K, C, type, ox, oy, s, env, quiet) {
-  const T = paBUL[type] || paBUL.am_ball, X = (mm) => ox + mm * s, b = C.bul * s;
+  const T = paBUL[type] || paBUL.am_ball, X = (mm) => ox + mm * s, b = C.bul * s * (T.dart || 1);
   const expo = C.oal - C.cl, tip = C.oal + expo * (T.len || 0), show = tip - C.cl;
   const og = show * (C.rf ? Math.max(T.og, 0.7) : T.og), xs = tip - og, mp = C.rf ? Math.max(T.mp, 0.3) : T.mp, round = T.round || C.rf;
   const bulPath = (c) => {
@@ -673,6 +682,13 @@ function paRound(K, C, type, ox, oy, s, env, quiet) {
     c.fillStyle = k.shade(c, 'cyl', bb, 1); c.fillRect(tx, oy - b, X(tip) - tx + 1, b * 2);
     c.strokeStyle = 'rgba(0,0,0,0.45)'; c.lineWidth = k.px(0.7); c.beginPath(); c.moveTo(tx, oy - b); c.lineTo(tx, oy + b); c.stroke();
     c.restore();
+  });
+  if (T.sabot) { // a plastic sleeve round the thin dart, split into petals that fall away at the muzzle
+    const bs = C.bul * s, xa = X(C.cl - 1.5), xb = X(C.cl + (tip - C.cl) * 0.42), pts = [xa, oy - bs, xb, oy - bs * 0.96, xb + bs * 0.9, oy - b * 1.15, xb + bs * 0.9, oy + b * 1.15, xb, oy + bs * 0.96, xa, oy + bs];
+    K.poly(T.sabot, pts, { sh: 'cyl' }); K.lo([xa, oy - bs * 0.02, xb + bs * 0.85, oy - bs * 0.02], 0.8, 0.5); K.hi([xa + bs * 0.3, oy - bs * 0.62, xb, oy - bs * 0.58], 0.8, 0.25);
+  }
+  if (T.soft) K.add((c) => { // the bare lead nose of a soft point
+    c.save(); c.beginPath(); bulPath(c); c.clip(); c.fillStyle = 'rgba(30,30,34,0.35)'; c.fillRect(X(tip) - b * 0.3, oy - b * T.mp, b * 0.32, b * T.mp * 2); c.restore();
   });
   const bands = T.bands || (solid ? 2 : 0);
   for (let i = 0; i < bands; i++) { const gx = X(xs - 1.2 - i * (xs - C.cl - 1.5) / (bands + 0.6)); K.lo([gx, oy - b * 0.96, gx, oy + b * 0.96], 1, 0.45); K.hi([gx + b * 0.12, oy - b * 0.8, gx + b * 0.12, oy - b * 0.2], 0.8, 0.25); }
@@ -704,7 +720,7 @@ function paRound(K, C, type, ox, oy, s, env, quiet) {
   K.hi([X(rt * 3), oy - C.br * s * 0.62, X((C.sx || C.cl) - 2), oy - (C.sr || C.br) * s * 0.62], 1, 0.3);
 }
 // the Stormglass slug: a finned tungsten dart with copper driving bands
-function paSlug(K, ox, oy, s, env) {
+function paSlug(K, ox, oy, s, env, hollow) {
   const X = (u) => ox + u * s, t = env.time || 0;
   K.add((c) => { const p = 0.7 + 0.3 * Math.sin(t * 4 + oy), g = c.createRadialGradient(0, 0, 0, 0, 0, 7 * s); g.addColorStop(0, 'rgba(111,227,255,' + (0.26 * p).toFixed(3) + ')'); g.addColorStop(1, 'rgba(111,227,255,0)'); c.save(); c.translate(X(6), oy); c.scale(1, 0.4); c.fillStyle = g; c.beginPath(); c.arc(0, 0, 7 * s, 0, TAU); c.fill(); c.restore(); });
   K.poly('#4b525a', [X(0), oy - 1.5 * s, X(2.6), oy - 0.5 * s, X(2.6), oy + 0.5 * s, X(0), oy + 1.5 * s, X(0.6), oy]);
@@ -713,6 +729,7 @@ function paSlug(K, ox, oy, s, env) {
   K.shape('#8a929b', [X(9.3), oy - 0.5 * s, X(13), oy + 0.5 * s], (c) => { c.moveTo(X(9.3), oy - 0.5 * s); c.quadraticCurveTo(X(11.4), oy - 0.46 * s, X(13), oy); c.quadraticCurveTo(X(11.4), oy + 0.46 * s, X(9.3), oy + 0.5 * s); c.closePath(); }, { sh: 'cyl' });
   [3.2, 5.2, 7.2].forEach((u) => { K.tube('#c07a44', X(u), X(u + 0.9), oy, 0.74 * s, 0.74 * s); K.hi([X(u + 0.1), oy - 0.5 * s, X(u + 0.8), oy - 0.5 * s], 0.8, 0.4); });
   K.tube('#e6e9ec', X(8.4), X(9.3), oy, 0.95 * s, 0.7 * s);
+  if (hollow) { K.ell('#08090b', X(12.75), oy, 0.14 * s, 0.3 * s, { sh: null, line: false }); K.rect('#08090b', X(10.2), oy - 0.12 * s, 2.4 * s, 0.24 * s, 0.1 * s, { sh: null, line: false, alpha: 0.5 }); }
 }
 
 // ===========================================================================
@@ -721,7 +738,7 @@ function paSlug(K, ox, oy, s, env) {
 function paAmmo(K, id, env) {
   const C = paCAL[env.g.cal];
   if (!C) { // the coil gun
-    paSlug(K, 0, -2.2, 1, env); paSlug(K, 1.4, 2.2, 1, env);
+    paSlug(K, 0, -2.2, 1, env, id === 'am_sg_hollow'); paSlug(K, 1.4, 2.2, 1, env, id === 'am_sg_hollow');
     K.frame(-1.5, -5, 16, 5); return;
   }
   const s = 0.1, d = C.rim * 2 * 1.22 * s, off = C.oal * 0.08 * s;
@@ -737,9 +754,9 @@ function paAmmo(K, id, env) {
 function paBarrelDims(env, bp) {
   const A = env.A; bp = bp || env.cfg.barrel;
   const stiff = bp === 'br_heavy' || bp === 'br_carbon';
-  const bR = (A.slim ? 0.8 : 1) * (A.heavy || 1) * (bp === 'br_heavy' ? 1.4 : bp === 'br_carbon' ? 1.32 : 1) * 1.05;
+  const bR = (A.slim ? 0.8 : 1) * (A.heavy || 1) * (bp === 'br_heavy' ? 1.4 : bp === 'br_carbon' ? 1.32 : bp === 'br_flute' ? 0.96 : 1) * 1.05;
   const C = paCAL[env.g.cal];
-  return { r0: bR * 1.25, r1: stiff ? bR * 1.2 : bR * 0.88, len: A.barrel * (bp === 'br_short' ? 0.8 : 1), bore: C ? C.bul / 10 : 0.4, zone: bp === 'br_carbon' ? 'carbon' : 'metal', stiff, bp };
+  return { r0: bR * 1.25, r1: stiff ? bR * 1.2 : bR * 0.88, len: A.barrel * (bp === 'br_short' ? 0.8 : bp === 'br_long' ? 1.15 : 1), bore: C ? C.bul / 10 : 0.4, zone: bp === 'br_carbon' ? 'carbon' : 'metal', stiff, bp };
 }
 // the short calibre mark engraved on metal: '.308', '8 mm', '7.62'
 function paCalMark(g) { const q = g.calName.split(' '); return q[1] === 'mm' ? q[0] + ' mm' : q[0]; }
@@ -768,20 +785,35 @@ function paMuzzle(K, id, env) {
     K.rpoly('metal', [1.6, -4.6, 4.8, -4.6, 4.8, 4.6, 1.6, 4.6], 0.6);
     K.rect('#040405', 2.4, -1.5, 1.6, 3.0, 0.5, { sh: null, lc: 'rgba(111,227,255,0.6)' });
     K.screw(3.2, -3.5, 0.35, null, true); K.screw(3.2, 3.5, 0.35, null, true);
-    K.frame(-9.2, -5.4, 7.2, 5.4); K.fadeX(-5.6, -9);
+    if (id === 'mz_sg_damper') { // a thick ring of magnets bolted to the bracket, glowing through its slot
+      K.rpoly('acc', [4.6, -6.0, 9.6, -6.0, 9.6, 6.0, 4.6, 6.0], 1.1);
+      [-5.5, 4.6].forEach((y) => { K.rect('#c07a44', 5.2, y, 3.8, 0.9, 0.2, { sh: 'cyl' }); K.ridges(5.3, y, 3.6, 0.9, 0.36, 0.5); });
+      paCoil(K, 6.0, -3.2, 2.2, 6.4, t);
+      K.rect('#040405', 9.2, -1.4, 0.7, 2.8, 0.3, { sh: null, lc: 'rgba(111,227,255,0.6)' });
+      [[5.1, -4.2], [9.1, -4.2], [5.1, 4.2], [9.1, 4.2]].forEach((q) => K.screw(q[0], q[1], 0.3, null, true));
+    }
+    K.frame(-9.2, -6.6, 11.2, 6.6); K.fadeX(-5.6, -9);
     return;
   }
-  if (A.can || A.mod) { // a built-in suppressor: the front of the can is the muzzle
-    const cr = A.can ? 2.15 : 1.55;
-    K.tube('metal', -10, -1.6, 0, cr, cr);
-    for (let x = -8.4; x < -2; x += A.can ? 2.6 : 1.9) { K.lo([x, -cr * 0.98, x, cr * 0.98], 0.9, 0.4); K.hi([x + 0.14, -cr * 0.9, x + 0.14, cr * 0.2], 0.8, 0.12); }
-    K.rect('metal', -1.8, -cr * 1.04, 1.9, cr * 2.08, 0.25, { sh: 'cyl', tint: 'rgba(0,0,0,0.2)' }); K.ridges(-1.7, -cr * 1.04, 1.7, cr * 2.08, 0.3, 0.45, true);
-    if (A.mod) for (let x = -8; x < -2.4; x += 1.1) K.ell('#040405', x, -cr * 0.2, 0.2, 0.2, { sh: null, line: false });
-    paFace(K, 0.1, 0, cr * 1.04, bore * 1.25, 'metal');
-    K.frame(-11.6, -4.2, 4.8, 4.2); K.fadeX(-6.4, -10);
+  if (A.can || A.mod) { // a built-in suppressor: the whole can, so the lengths of the choices can be compared
+    const long = id === 'mz_rt_long', short = id === 'mz_wh_short' || id === 'mz_hs_short';
+    const len = (A.can || A.mod) * (long ? 1.75 : id === 'mz_wh_short' ? 0.62 : id === 'mz_hs_short' ? 0.66 : 1);
+    const maxLen = A.mod ? A.mod * 1.75 : A.can, cr = A.can ? 2.15 : long ? 1.85 : 1.55, br = Math.min(B.r0, cr * 0.7);
+    K.tube('metal', -6.5, 0.4, 0, br, br * 0.96);
+    K.tube('metal', 0, len - 1.7, 0, cr, cr);
+    if (A.mod) { // the rimfire moderator: a row of small vents
+      for (let x = 1.4; x < len - 2.4; x += 1.1) K.ell('#040405', x, -cr * 0.22, 0.2, 0.2, { sh: null, line: false });
+      if (long) { K.lo([A.mod - 1.5, -cr * 0.98, A.mod - 1.5, cr * 0.98], 1, 0.5); K.hi([A.mod - 1.36, -cr * 0.9, A.mod - 1.36, cr * 0.2], 0.8, 0.16); }
+    } else for (let x = 2.6; x < len - 2.4; x += 2.6) { K.lo([x, -cr * 0.98, x, cr * 0.98], 0.9, 0.4); K.hi([x + 0.14, -cr * 0.9, x + 0.14, cr * 0.2], 0.8, 0.12); }
+    if (short) { K.rect('metal', 0.1, -cr * 1.08, 2.0, cr * 2.16, 0.3, { sh: 'cyl', tint: 'rgba(0,0,0,0.22)' }); K.hatch([0.15, -cr * 1.05, 2.05, -cr * 1.05, 2.05, cr * 1.05, 0.15, cr * 1.05], 0.3, 0.5); }
+    K.rect('metal', len - 1.8, -cr * 1.04, 1.9, cr * 2.08, 0.25, { sh: 'cyl', tint: 'rgba(0,0,0,0.2)' }); K.ridges(len - 1.7, -cr * 1.04, 1.7, cr * 2.08, 0.3, 0.45, true);
+    if (A.can) K.text(paCalMark(g), len * 0.48, 0.15, Math.min(cr * 0.5, 1.0), 'rgba(235,238,242,0.42)');
+    paFace(K, len + 0.1, 0, cr * 1.04, bore * 1.25, 'metal');
+    const W = maxLen + 9.2, Hh = Math.max(cr * 1.6, W * 0.2);
+    K.frame(-6.4, -Hh, W - 6.4, Hh); K.fadeX(-3.6, -6.4);
     return;
   }
-  const sup = id === 'mz_supl' || id === 'mz_suph', k = A.amr ? 1.5 : 1, thread = g.supp === true, x0 = -7.4;
+  const sup = id === 'mz_supl' || id === 'mz_suph' || id === 'mz_ol_can', k = A.amr ? 1.5 : 1, thread = g.supp === true, x0 = -7.4;
   // the end of the barrel
   if (B.zone === 'carbon') { K.tube('carbon', x0, -3.4, 0, r * 1.02, r * 1.02); K.tube('metal', -3.5, thread ? -1.9 : 0, 0, r, r); K.lo([-3.5, -r, -3.5, r], 0.9, 0.5); }
   else K.tube('metal', x0, thread ? -1.9 : 0, 0, r * 1.03, r);
@@ -834,6 +866,51 @@ function paMuzzle(K, id, env) {
     K.rect('acc', 22.2, -2.42, 2.3, 4.84, 0.35, { sh: 'cyl', tint: 'rgba(0,0,0,0.3)' }); K.ridges(22.4, -2.42, 1.9, 4.84, 0.62, 0.55, true);
     K.text(paCalMark(g), 21.1, 0, 0.78, 'rgba(240,242,245,0.42)', { rot: -Math.PI / 2 });
     paFace(K, 24.5, 0, 2.3, bore * 1.25, 'acc');
+  } else if (id === 'mz_ol_can') { // long and plain, held on a clamp with a lever
+    K.tube('acc', -2.2, 1.0, 0, 1.6, 1.6, { tint: 'rgba(0,0,0,0.25)' }); K.ridges(-2.1, -1.6, 3.0, 3.2, 0.36, 0.45);
+    K.rpoly('#2a2d33', [1.6, -2.3, 2.3, -3.7, 5.6, -3.4, 5.8, -2.9, 3.0, -2.3], 0.2);
+    K.rect('#2a2d33', 0.6, -2.4, 2.8, 4.8, 0.4, { sh: 'cyl' }); K.screw(2.0, 1.5, 0.3, '#8d949c', true);
+    K.rect('acc', 3.3, -2.05, 19.4, 4.1, 0.5, { sh: 'cyl', tint: 'rgba(255,255,255,0.03)' });
+    [7.5, 12.5, 17.5].forEach((x) => { K.lo([x, -2.0, x, 2.0], 0.9, 0.4); K.hi([x + 0.14, -1.9, x + 0.14, 0.2], 0.8, 0.14); });
+    K.text(paCalMark(g), 10, 0.55, 0.85, 'rgba(240,242,245,0.45)');
+    K.rect('acc', 22.4, -2.15, 1.8, 4.3, 0.35, { sh: 'cyl', tint: 'rgba(0,0,0,0.25)' });
+    paFace(K, 24.25, 0, 2.15, bore * 1.25, 'acc');
+  } else if (id === 'mz_comp') { // three slots cut in the top push the muzzle down
+    const R1 = r * 1.42;
+    K.rect('#8d949c', -2.3, -r * 1.22, 0.45, r * 2.44, 0.08, { sh: 'cyl' });
+    K.rpoly('acc', [-1.9, -R1, 5.4, -R1, 5.4, R1, -1.9, R1], [0.15, 0.4, 0.4, 0.15], { sh: 'cyl' });
+    K.rect('acc', -1.6, -R1 * 0.6, 1.4, R1 * 1.2, 0.1, { sh: null, tint: 'rgba(0,0,0,0.28)', lc: 'rgba(0,0,0,0.5)' });
+    for (let i = 0; i < 3; i++) { const px = 0.5 + i * 1.55; K.rpoly('#040405', [px, -R1 - 0.02, px + 0.95, -R1 - 0.02, px + 0.95, -R1 * 0.22, px, -R1 * 0.22], [0, 0, 0.35, 0.35], { sh: null, lc: 'rgba(255,255,255,0.14)' }); K.hi([px + 1.08, -R1 * 0.88, px + 1.08, -R1 * 0.32], 0.8, 0.2); }
+    K.lo([-0.2, R1 * 0.4, 5.2, R1 * 0.4], 0.8, 0.3);
+    paFace(K, 5.45, 0, R1 * 0.96, bore * 1.5, 'acc');
+  } else if (id === 'mz_rad') { // a tube drilled all the way round with rings of small holes
+    const R1 = r * 1.6;
+    K.rect('#7d848c', -2.3, -r * 1.25, 1.1, r * 2.5, 0.1, { sh: 'cyl' });
+    K.rpoly('acc', [-1.3, -R1, 9.4, -R1, 9.4, R1, -1.3, R1], [0.3, 0.5, 0.5, 0.3], { sh: 'cyl' });
+    for (let i = 0; i < 5; i++) for (let j = -2; j <= 2; j++) {
+      const yy = ((j + (i % 2 ? 0.5 : 0)) / 2.7) * R1, ca = Math.sqrt(Math.max(0, 1 - (yy / R1) * (yy / R1)));
+      if (Math.abs(yy) < R1 * 0.9) K.ell('#040405', 0.6 + i * 1.75, yy, 0.36, 0.36 * ca, { sh: null, lc: 'rgba(255,255,255,0.12)' });
+    }
+    paFace(K, 9.45, 0, R1 * 0.96, bore * 1.4, 'acc');
+  } else if (id === 'mz_av_hammer') { // two big chambers with a window on each side
+    const H = r * 2.4;
+    K.tube('acc', -2.2, 14.6, 0, r * 1.15, r * 1.15);
+    [0, 7.6].forEach((dx) => {
+      K.rpoly('acc', [dx, -H, dx + 6.8, -H, dx + 6.8, H, dx, H], 0.5);
+      K.rect('#040405', dx + 1.2, -H * 0.74, 4.4, H * 1.48, 0.7, { sh: null, lc: 'rgba(255,255,255,0.14)' });
+      K.rect('acc', dx + 1.4, -bore * 1.1, 4.0, bore * 2.2, 0, { sh: 'cyl', line: false, tint: 'rgba(0,0,0,0.5)' });
+      K.hi([dx + 0.4, -H * 0.86, dx + 6.4, -H * 0.86], 0.9, 0.25);
+      K.screw(dx + 0.6, H * 0.84, 0.28, null, true); K.screw(dx + 6.2, H * 0.84, 0.28, null, true);
+    });
+    paFace(K, 14.45, 0, H * 0.9, bore * 1.3, 'acc');
+  } else if (id === 'mz_av_cone') { // a cone that throws the blast forward
+    const H = r * 2.7, r0 = r * 1.15, x1 = 13.5;
+    K.rect('acc', -2.2, -r * 1.3, 3.2, r * 2.6, 0.3, { sh: 'cyl' }); K.ridges(-2.1, -r * 1.3, 3.0, r * 2.6, 0.32, 0.5);
+    K.poly('acc', [1.0, -r0, x1, -H, x1, H, 1.0, r0], { sh: 'cyl' });
+    [5, 9].forEach((x) => { const hh = r0 + ((H - r0) * (x - 1)) / (x1 - 1); K.lo([x, -hh * 0.98, x, hh * 0.98], 0.9, 0.4); K.hi([x + 0.15, -hh * 0.9, x + 0.15, -hh * 0.2], 0.8, 0.16); });
+    K.ell('acc', x1, 0, H * 0.3, H, { sh: 'cyl', tint: 'rgba(255,255,255,0.08)' });
+    K.ell('#040405', x1 + 0.03, 0, H * 0.3 * 0.84, H * 0.84, { sh: null, lc: 'rgba(255,255,255,0.12)' });
+    K.ell('acc', x1 + 0.05, 0, bore * 0.4, bore * 1.3, { sh: null, line: false, tint: 'rgba(0,0,0,0.4)' });
   } else if (A.type === 'svd') { // the factory fitting: a long cone with five slots
     K.tube('metal', -2.4, -1.2, 0, r * 1.3, r * 1.3); K.tube('metal', -1.3, 6.4, 0, r * 1.08, r * 1.5);
     [-0.62, -0.08, 0.5].forEach((f, i) => K.rect('#040405', 0.2, r * f, 4.9, r * (i === 1 ? 0.3 : 0.2), r * 0.1, { sh: null, lc: 'rgba(255,255,255,0.1)' }));
@@ -850,6 +927,7 @@ function paMuzzle(K, id, env) {
     if (!thread) K.lo([-0.5, -r * 0.98, -0.5, r * 0.98], 0.8, 0.3);
   }
   // siblings share one scale; each is centred on what it shows
+  if (A.amr) { const W = 26, mid = (-7.2 + K.x1) / 2; K.frame(mid - W / 2, -6.6, mid + W / 2, 6.6); K.fadeX(-3.8, -7.2); return; }
   const xl = sup ? -6.4 : -7.2, Wm = sup ? 32.5 : Math.max(16.4, 8.2 * k + 8.6), W = sup ? Wm : (Wm + (K.x1 - xl) + 2.4) / 2, mid = (xl + K.x1) / 2;
   const Hs = sup ? 4.6 : Math.max(r * 2.1 * k + 0.9, 4.2) * (W / Wm);
   K.frame(mid - W / 2, -Hs, mid + W / 2, Hs); K.fadeX(xl + 3.4, xl);
@@ -895,10 +973,15 @@ function paBarrelBody(K, env, B, T) {
     const rc = B.stiff ? r1 : r1 * 0.75 + r0 * 0.25;
     seg('metal', 0, sh, r0, r0); seg('metal', sh, sh + 5, r0, rc); seg('metal', sh + 5, end, rc, r1); ring(sh, r0, 0.3);
   }
+  if (bp === 'br_k_select') { // the armourer's two brass rings, and his mark
+    seg('#c9a24a', 2.2, 3.1, r0 * 1.06, r0 * 1.06); seg('#c9a24a', 3.6, 4.05, r0 * 1.04, r0 * 1.04);
+    if (vis(6)) K.text('Z', X(6.2), yc + R(r0) * 0.08, Math.min(R(r0) * 0.55, 1.1), 'rgba(240,215,140,0.75)');
+  }
+  if (bp === 'br_long' && vis(A.barrel - 1)) { seg('metal', A.barrel - 1.2, A.barrel + 0.4, r1 * 1.3, r1 * 1.3, { tint: 'rgba(255,255,255,0.05)' }); ring(A.barrel - 0.4, r1 * 1.3, 0.5); }
   if (A.take) { seg('acc', 0, 2.6, r0 * 1.22, r0 * 1.22); if (vis(1.3)) K.ridges(X(0.15), yc - R(r0 * 1.22), 2.3 * z, R(r0 * 1.22) * 2, 0.3 * z, 0.5); }
   // flutes on heavy barrels
-  if (((A.heavy || 1) > 1.25 && bp !== 'br_carbon') || bp === 'br_heavy') {
-    const fa = Math.max(sh + 8, T.from), fb = Math.min(L - 6, T.to);
+  if (((A.heavy || 1) > 1.25 && bp !== 'br_carbon') || bp === 'br_heavy' || bp === 'br_flute') {
+    const fa = Math.max(sh + (bp === 'br_flute' ? 6 : 8), T.from), fb = Math.min(L - (bp === 'br_flute' ? 4 : 6), T.to);
     if (fb > fa + 1) [-0.56, -0.02, 0.5].forEach((f) => { const h = R(r1) * 0.2; K.rect('#000', X(fa), yc + R(r1) * f - h / 2, X(fb) - X(fa), h, h / 2, { sh: null, line: false, alpha: 0.48 }); K.hi([X(fa) + h, yc + R(r1) * f + h * 0.7, X(fb) - h, yc + R(r1) * f + h * 0.7], 0.8, 0.14); });
   }
   if (thread) { seg('metal', L - 2.0, L, r1 * 0.76, r1 * 0.76, { tint: 'rgba(255,255,255,0.1)' }); threads(L - 1.95, L - 0.05, r1 * 0.76); }
@@ -945,10 +1028,12 @@ function paBarrelBody(K, env, B, T) {
 function paRailBody(K, env, Lf, T) {
   const X = (u) => T.ox + (u - T.u0) * T.z, z = T.z, oy = T.y, a = Math.max(0, T.from), b = Math.min(Lf, T.to), t = env.time || 0;
   K.rect('metal', X(a), oy - 3.5 * z, (b - a) * z, 2 * z, 0.4 * z); K.rect('metal', X(a), oy + 1.3 * z, (b - a) * z, 2 * z, 0.4 * z);
-  for (let u = 6; u < Lf - 6; u += 9) {
+  const step = T.dense ? 6.2 : 9, cw = T.dense ? 4.1 : 5;
+  for (let u = 6; u < Lf - 6; u += step) {
     if (u + 6 < T.from || u - 1 > T.to) continue;
-    paCoil(K, X(u), oy - 1.5 * z, 5 * z, 2.8 * z, t);
-    K.rect('metal', X(u - 0.6), oy - 1.9 * z, 0.9 * z, 3.6 * z, 0.2 * z, { tint: 'rgba(255,255,255,0.08)' }); K.rect('metal', X(u + 4.7), oy - 1.9 * z, 0.9 * z, 3.6 * z, 0.2 * z, { tint: 'rgba(255,255,255,0.08)' });
+    paCoil(K, X(u), oy - 1.5 * z, cw * z, 2.8 * z, t);
+    if (T.dense) for (let k = 0.7; k < cw - 0.4; k += 0.55) K.hair('rgba(150,80,30,0.9)', [X(u + k), oy - 1.45 * z, X(u + k), oy + 1.25 * z], 1.1); // copper windings packed tight
+    K.rect('metal', X(u - 0.6), oy - 1.9 * z, 0.9 * z, 3.6 * z, 0.2 * z, { tint: 'rgba(255,255,255,0.08)' }); K.rect('metal', X(u + cw - 0.3), oy - 1.9 * z, 0.9 * z, 3.6 * z, 0.2 * z, { tint: 'rgba(255,255,255,0.08)' });
   }
   if (T.from < 2) { K.rpoly('metal', [X(-2.4), oy - 4.3 * z, X(1.4), oy - 4.3 * z, X(1.4), oy + 4.1 * z, X(-2.4), oy + 4.1 * z], 0.5 * z, { tint: 'rgba(0,0,0,0.15)' }); K.screw(X(-0.5), oy - 3.1 * z, 0.45 * z, null, true); K.screw(X(-0.5), oy + 2.9 * z, 0.45 * z, null, true); }
   if (T.to > Lf - 2) {
@@ -973,13 +1058,14 @@ function paBubble(K, cx, cy, Rl, ax, ay, drawFn) {
 // The whole barrel across the top, with two detail bubbles underneath: the breech and the muzzle.
 function paBarrel(K, id, env) {
   const A = env.A;
-  if (A.can || A.mod || A.type === 'rail') id = 'br_std'; // nothing else fits these
-  const Lf = A.barrel + (A.can || 0), Rl = Lf * 0.2;
+  if (A.can || A.mod || (A.type === 'rail' && id !== 'cl_dense')) id = 'br_std'; // nothing else fits these
+  const Lf = A.barrel * (partFits(PART_BY_ID.br_long, env.g) || id === 'br_long' ? 1.15 : 1) + (A.can || 0), Rl = Lf * 0.2; // room for the longest barrel this rifle can take, so all its barrels share one scale
   if (A.type === 'rail') {
-    paRailBody(K, env, Lf, { ox: 0, u0: 0, y: 0, z: 1, from: -99, to: 999 });
+    const dn = id === 'cl_dense';
+    paRailBody(K, env, Lf, { ox: 0, u0: 0, y: 0, z: 1, from: -99, to: 999, dense: dn });
     const yL = 4.6 + 1.6 + Rl, zl = (Rl * 0.52) / 4.2, c1 = Lf - Rl + 1.6, c0 = Rl - 2.6;
-    paBubble(K, c1, yL, Rl, Lf - 0.5, 4.2, () => paRailBody(K, env, Lf, { ox: c1, u0: Lf - (Rl / zl) * 0.6, y: yL, z: zl, from: Lf - (Rl / zl) * 1.7, to: 999 }));
-    paBubble(K, c0, yL, Rl, 8.5, 2.2, () => paRailBody(K, env, Lf, { ox: c0, u0: 6.5, y: yL, z: zl, from: -99, to: 6.5 + (Rl / zl) * 1.2 }));
+    paBubble(K, c1, yL, Rl, Lf - 0.5, 4.2, () => paRailBody(K, env, Lf, { ox: c1, u0: Lf - (Rl / zl) * 0.6, y: yL, z: zl, from: Lf - (Rl / zl) * 1.7, to: 999, dense: dn }));
+    paBubble(K, c0, yL, Rl, 8.5, 2.2, () => paRailBody(K, env, Lf, { ox: c0, u0: 6.5, y: yL, z: zl, from: -99, to: 6.5 + (Rl / zl) * 1.2, dense: dn }));
     K.frame(-3.4, -5, Lf + 3.2, yL + Rl + 0.6);
     return;
   }
@@ -988,6 +1074,10 @@ function paBarrel(K, id, env) {
   if (id === 'br_short') { // dashed ghost of the factory length
     const F = paBarrelDims(env, 'br_std');
     K.hair('rgba(255,255,255,0.3)', [top + 1, -F.r1 * ex, A.barrel, -F.r1 * ex, A.barrel, F.r1 * ex, top + 1, F.r1 * ex], 0.9, { dash: [0.9, 0.7] });
+  }
+  if (id === 'br_long') { // a dashed mark where the factory barrel would have ended
+    const F = paBarrelDims(env, 'br_std');
+    K.hair('rgba(255,255,255,0.4)', [A.barrel, -F.r1 * ex * 2.2, A.barrel, F.r1 * ex * 2.2], 0.9, { dash: [0.7, 0.6] });
   }
   const canR = A.can ? 2.15 * 0.8 : A.mod ? 1.55 * 0.95 : 0, hTop = Math.max(B.r0, canR) * ex;
   const up = A.military || A.type === 'svd' ? 3.6 : A.type === 'ar' ? 2.2 : 0.8;
@@ -1024,31 +1114,102 @@ function paSupport(K, id, env) {
     K.frame(-11, -5.4, 14.6, 5.9);
     return;
   }
-  if (id === 'sp_bipod') {
-    const dk = '#1c1f24', md = '#2d3138', lt = '#555c65';
+  if (id === 'sp_bipod' || id === 'sp_av_mono') {
+    // the Anvil's rig is the same bipod made heavier, with spiked feet, moved right to make room for the rear leg
+    const dk = '#1c1f24', md = '#2d3138', lt = '#555c65', O = id === 'sp_av_mono' ? 6.4 : 0, fat = O > 0, lw = fat ? 1.2 : 1;
     const leg = (sx, fx) => {
-      const tx = sx * 1.7, ty = -5.6, mx = sx * 4.6, my = 2.2, bx = sx * fx, by = 9.4;
-      K.poly(lt, paQuad(mx - sx * 0.6, my - 1.6, bx, by, 0.85, 0.8), { sh: 'cylv' });
-      for (let i = 1; i <= 5; i++) { const f = i / 6.2; const qx = mx + (bx - mx) * f, qy = my + (by - my) * f; K.lo([qx - 0.42, qy - sx * 0.14, qx + 0.42, qy + sx * 0.14], 0.9, 0.55); }
-      K.poly(dk, paQuad(tx, ty, mx, my, 1.5, 1.4), { sh: 'cylv' });
-      K.poly(md, paQuad(mx - sx * 0.32, my - 0.9, mx + sx * 0.34, my + 0.9, 1.9, 1.9), { sh: 'cylv' });
-      K.hatch(paQuad(mx - sx * 0.32, my - 0.9, mx + sx * 0.34, my + 0.9, 1.9, 1.9), 0.3, 0.5);
-      K.spring(sx * 2.9, -5.0, sx * 5.3, 0.6, 11, 0.36, '#9aa2ab', 0.16);
-      K.rpoly('rubber', paQuad(bx - sx * 0.25, by - 0.7, bx + sx * 0.5, by + 1.3, 1.5, 2.0), 0.4, { sh: 'soft' });
+      const tx = O + sx * 1.7, ty = -5.6, mx = O + sx * 4.6, my = 2.2, bx = O + sx * fx, by = 9.4;
+      K.poly(lt, paQuad(mx - sx * 0.6, my - 1.6, bx, by, 0.85 * lw, 0.8 * lw), { sh: 'cylv' });
+      for (let i = 1; i <= 5; i++) { const f = i / 6.2; const qx = mx + (bx - mx) * f, qy = my + (by - my) * f; K.lo([qx - 0.42 * lw, qy - sx * 0.14, qx + 0.42 * lw, qy + sx * 0.14], 0.9, 0.55); }
+      K.poly(dk, paQuad(tx, ty, mx, my, 1.5 * lw, 1.4 * lw), { sh: 'cylv' });
+      K.poly(md, paQuad(mx - sx * 0.32, my - 0.9, mx + sx * 0.34, my + 0.9, 1.9 * lw, 1.9 * lw), { sh: 'cylv' });
+      K.hatch(paQuad(mx - sx * 0.32, my - 0.9, mx + sx * 0.34, my + 0.9, 1.9 * lw, 1.9 * lw), 0.3, 0.5);
+      K.spring(O + sx * 2.9, -5.0, O + sx * 5.3, 0.6, 11, 0.36, '#9aa2ab', 0.16);
+      if (fat) { K.poly('#9aa2ab', [bx - 0.35, by + 1.0, bx + 0.35, by + 1.0, bx, by + 2.6], { sh: 'cylv' }); K.poly('#2d3138', paQuad(bx - sx * 0.35, by - 0.3, bx + sx * 0.55, by + 1.1, 2.3, 2.3), { sh: 'cylv' }); }
+      else K.rpoly('rubber', paQuad(bx - sx * 0.25, by - 0.7, bx + sx * 0.5, by + 1.3, 1.5, 2.0), 0.4, { sh: 'soft' });
       K.lo([bx - 0.5, by + 0.5, bx + 0.9 * sx + 0.3, by + 0.3], 0.9, 0.6);
-      K.screw(sx * 5.6, 0.9, 0.3, '#8d949c');
+      K.screw(O + sx * 5.6, 0.9, 0.3, '#8d949c');
     };
     // rail clamp
-    K.rect(md, -3.6, -9.6, 7.2, 1.3, 0.25); K.rect('#08090b', -2.2, -9.62, 1.2, 0.55, 0.1, { sh: null, line: false }); K.rect('#08090b', 1.0, -9.62, 1.2, 0.55, 0.1, { sh: null, line: false });
-    K.rect(dk, -3.2, -8.4, 6.4, 1.2, 0.25);
-    K.rect(md, 3.2, -9.0, 1.9, 1.2, 0.2, { sh: 'cyl' }); K.circ(md, 5.6, -8.4, 1.05); K.add((c, k) => { c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = k.px(0.7); c.beginPath(); for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; c.moveTo(5.6 + Math.cos(a) * 0.8, -8.4 + Math.sin(a) * 0.8); c.lineTo(5.6 + Math.cos(a) * 1.04, -8.4 + Math.sin(a) * 1.04); } c.stroke(); });
-    K.screw(5.6, -8.4, 0.3, '#8d949c', true);
+    K.rect(md, O - 3.6, -9.6, 7.2, 1.3, 0.25); K.rect('#08090b', O - 2.2, -9.62, 1.2, 0.55, 0.1, { sh: null, line: false }); K.rect('#08090b', O + 1.0, -9.62, 1.2, 0.55, 0.1, { sh: null, line: false });
+    K.rect(dk, O - 3.2, -8.4, 6.4, 1.2, 0.25);
+    K.rect(md, O + 3.2, -9.0, 1.9, 1.2, 0.2, { sh: 'cyl' }); K.circ(md, O + 5.6, -8.4, 1.05); K.add((c, k) => { c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = k.px(0.7); c.beginPath(); for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; c.moveTo(O + 5.6 + Math.cos(a) * 0.8, -8.4 + Math.sin(a) * 0.8); c.lineTo(O + 5.6 + Math.cos(a) * 1.04, -8.4 + Math.sin(a) * 1.04); } c.stroke(); });
+    K.screw(O + 5.6, -8.4, 0.3, '#8d949c', true);
     leg(-1, 8.2); leg(1, 8.2);
     // pivot block
-    K.rpoly(md, [-2.9, -7.3, 2.9, -7.3, 3.5, -4.6, -3.5, -4.6], 0.45);
-    K.screw(-1.9, -5.8, 0.5, '#8d949c'); K.screw(1.9, -5.8, 0.5, '#8d949c');
-    K.rect('#08090b', -0.8, -6.7, 1.6, 1.3, 0.3, { sh: null, lc: 'rgba(255,255,255,0.1)' });
+    K.rpoly(md, [O - 2.9, -7.3, O + 2.9, -7.3, O + 3.5, -4.6, O - 3.5, -4.6], 0.45);
+    K.screw(O - 1.9, -5.8, 0.5, '#8d949c'); K.screw(O + 1.9, -5.8, 0.5, '#8d949c');
+    K.rect('#08090b', O - 0.8, -6.7, 1.6, 1.3, 0.3, { sh: null, lc: 'rgba(255,255,255,0.1)' });
+    if (fat) { // the rear leg: a clamp, a long threaded leg with a big height wheel, a wide foot
+      const mx = -10.6;
+      K.rect('#9aa2ab', mx - 0.5, -7.4, 1.0, 17.2, 0.2, { sh: 'cylv' }); K.ridges(mx - 0.5, -5.6, 1.0, 13.6, 0.3, 0.45, true);
+      K.rpoly('metal', [mx - 2.4, -9.8, mx + 2.4, -9.8, mx + 2.4, -7.2, mx - 2.4, -7.2], 0.4); K.screw(mx - 1.3, -8.5, 0.32, '#8d949c', true); K.screw(mx + 1.3, -8.5, 0.32, '#8d949c', true);
+      K.rect('#2d3138', mx - 2.2, -1.6, 4.4, 1.8, 0.4, { sh: 'cylv' }); K.ridges(mx - 2.1, -1.55, 4.2, 1.7, 0.26, 0.55);
+      K.rect('#2d3138', mx - 1.1, 3.4, 2.2, 1.0, 0.25, { sh: 'cylv' }); K.ridges(mx - 1.05, 3.45, 2.1, 0.9, 0.24, 0.5);
+      K.rpoly('rubber', [mx - 2.6, 9.6, mx + 2.6, 9.6, mx + 3.2, 11.2, mx - 3.2, 11.2], 0.4, { sh: 'soft' });
+      K.frame(-15.4, -10.6, 16.6, 12.6);
+      return;
+    }
     K.frame(-10.5, -10, 10.5, 11.2);
+    return;
+  }
+  if (id === 'sp_sling') { // a leather strap lying in a loose loop, with its buckle and two swivels
+    const pts = [-12.2, -2.8, -8.6, -6.0, -2.4, -6.4, 3.6, -4.4, 6.0, -0.6, 2.2, 2.6, -3.4, 3.4, -1.4, 6.2, 5.6, 6.6, 11.8, 4.4];
+    K.line('#24160c', pts, 2.3, { curve: true, cap: 'butt' });
+    K.line('#6b4426', pts, 1.85, { curve: true, cap: 'butt' });
+    K.hair('rgba(255,235,200,0.22)', pts.map((v, i) => (i % 2 ? v - 0.45 : v)), 0.9, { curve: true });
+    K.stitch(pts.map((v, i) => (i % 2 ? v + 0.55 : v)), 'rgba(240,220,180,0.5)', 0.8, true);
+    K.rpoly('#c9a24a', [-3.4, -7.6, -1.2, -7.6, -1.2, -5.1, -3.4, -5.1], 0.3, { sh: 'cyl' }); K.rect('#24160c', -2.9, -7.0, 1.2, 1.3, 0.2, { sh: null, line: false });
+    [[-12.4, -2.6, -2.3], [12.2, 4.2, 0.9]].forEach((q) => {
+      K.shape(null, [q[0] - 1.2, q[1] - 1.2, q[0] + 1.2, q[1] + 1.2], (c) => c.ellipse(q[0] + Math.cos(q[2]) * 0.4, q[1] + Math.sin(q[2]) * 0.4, 1.1, 0.75, q[2], 0, TAU), { sh: null, lc: '#9aa2ab', lw: 1.8 });
+      K.circ('#8d949c', q[0] + Math.cos(q[2]) * 1.5, q[1] + Math.sin(q[2]) * 1.5, 0.5);
+    });
+    K.frame(-14.6, -8.8, 14.6, 8.8);
+    return;
+  }
+  if (id === 'sp_sticks') { // two crossed poles tied where they cross; the rifle rests in the fork
+    const wood = '#8a6a44', yc = -4.6;
+    [-1, 1].forEach((d) => {
+      const x0 = d * 9.6, y0 = 10.6, x1 = -d * 9.6 * 0.38, y1 = yc - (y0 - yc) * 0.38;
+      K.poly(wood, paQuad(x0, y0, x1, y1, 0.8, 0.66), { sh: 'cylv', tint: d > 0 ? 'rgba(0,0,0,0.12)' : null });
+      K.hair('rgba(255,235,200,0.2)', [x0 - d * 0.1, y0 - 0.6, x1 - d * 0.1, y1 + 0.6], 0.8);
+      K.rpoly('rubber', paQuad(x0 + d * 0.05, y0 - 0.4, x0 + d * 0.32, y0 + 1.0, 1.05, 1.15), 0.3, { sh: 'soft' });
+      K.rpoly('rubber', paQuad(x1 + d * 1.1, y1 + 1.7, x1, y1, 1.0, 0.9), 0.3, { sh: 'soft' }); // a rubber sleeve where the rifle lies
+      K.ridges(Math.min(x1, x1 + d * 1.1) - 0.2, y1, 1.4, 1.8, 0.35, 0.35, true);
+    });
+    K.ell('#c8b48a', 0, yc, 1.1, 0.8, { sh: 'soft' });
+    [-0.6, 0, 0.6].forEach((dx) => K.lo([dx - 0.5, yc - 0.7, dx + 0.5, yc + 0.7], 0.8, 0.35));
+    K.line('#c8b48a', [0.6, yc + 0.6, 1.4, yc + 2.4, 0.9, yc + 3.4], 0.24, { curve: true });
+    K.frame(-11.4, -11.6, 11.4, 12.4);
+    return;
+  }
+  if (id === 'sp_rearbag') { // a bag with two ears, filled with sand; the butt rides in the dip between them
+    const gc = '#4f5a3c', dk = '#3a4330';
+    const body = [-10.2, 5.8, 10.2, 5.8, 10.8, -0.4, 9.6, -5.6, 7.2, -5.4, 6.0, -2.6, -6.0, -2.6, -7.2, -5.4, -9.6, -5.6, -10.8, -0.4];
+    const rr = [1.4, 1.4, 1.6, 1.2, 0.8, 1.6, 1.6, 0.8, 1.2, 1.6];
+    K.rpoly(gc, body, rr, { sh: 'soft' });
+    K.add((c, k) => { // woven cloth, and a darker dip where the stock sits
+      c.save(); c.beginPath(); paRPath(c, body, rr); c.clip();
+      c.strokeStyle = 'rgba(0,0,0,0.08)'; c.lineWidth = k.px(0.7); c.beginPath(); for (let i = -12; i < 12; i += 0.45) { c.moveTo(i, -6); c.lineTo(i, 6); } for (let j = -6; j < 6; j += 0.45) { c.moveTo(-12, j); c.lineTo(12, j); } c.stroke();
+      const g = c.createRadialGradient(0, -3.6, 0.5, 0, -3.6, 6); g.addColorStop(0, 'rgba(0,0,0,0.3)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(-7, -6, 14, 6);
+      c.restore();
+    });
+    K.stitch([-9.6, 4.6, 9.6, 4.6], 'rgba(220,225,190,0.45)', 0.8); K.stitch([-8.4, -4.0, -6.6, -1.6, 6.6, -1.6, 8.4, -4.0], 'rgba(220,225,190,0.4)', 0.8);
+    K.rpoly(dk, [-3.2, 0.8, 3.2, 0.8, 3.2, 3.6, -3.2, 3.6], 0.4, { sh: 'soft' }); K.stitch([-2.8, 1.2, 2.8, 1.2, 2.8, 3.2, -2.8, 3.2, -2.8, 1.2], 'rgba(220,225,190,0.5)', 0.7);
+    K.line('#2c3223', [-8.8, -5.0, -9.8, -7.2, -8.0, -7.8, -7.6, -5.4], 0.5, { curve: true });
+    K.frame(-12, -8.6, 12, 8.4);
+    return;
+  }
+  if (id === 'sp_hs_grip') { // an upright grip on a rail clamp, with finger grooves
+    K.rect('#2d3138', -5.4, -8.2, 10.8, 1.7, 0.3); for (let x = -4.4; x < 4.6; x += 1.5) K.rect('#08090b', x, -8.2, 0.8, 0.5, 0.1, { sh: null, line: false });
+    K.rect('#1c1f24', -3.0, -6.6, 6.0, 1.1, 0.25); K.screw(4.4, -7.35, 0.34, '#8d949c', true);
+    const grip = [-2.4, -5.6, 2.5, -5.6, 2.1, 6.4, 1.7, 7.4, -1.7, 7.4, -2.1, 6.4];
+    K.rpoly('acc', grip, [0.3, 0.3, 0.6, 0.6, 0.6, 0.6]);
+    for (let i = 0; i < 3; i++) K.ell('#000', -2.3, -2.6 + i * 2.8, 0.55, 1.05, { sh: null, line: false, alpha: 0.35 });
+    paStipple(K, [-1.6, -4.6, 1.8, -4.6, 1.6, 5.6, -1.4, 5.6], 150, 12, 0.32);
+    K.hi([1.6, -4.8, 1.3, 5.8], 1, 0.18);
+    K.rpoly('acc', [-2.5, 6.6, 2.5, 6.6, 2.5, 8.2, -2.5, 8.2], 0.5, { tint: 'rgba(0,0,0,0.25)' }); K.ridges(-2.4, 6.7, 4.8, 1.4, 0.4, 0.4);
+    K.frame(-9.6, -9.6, 9.6, 9.6);
     return;
   }
   if (id === 'sp_tripod') {
@@ -1153,7 +1314,7 @@ function paStipple(K, pts, n, seed, a) {
 // one-piece sporting or service stock; the fore-end runs on out of view
 function paStockClassic(K, id, env) {
   const A = env.A, s = A.small ? 0.86 : 1, synth = !!A.synth, mil = !!A.military;
-  const skel = id === 'st_skel', chas = id === 'st_chassis', cheek = id === 'st_cheek';
+  const skel = id === 'st_skel', chas = id === 'st_chassis', cheek = id === 'st_cheek', thumb = id === 'st_thumb', kpad = id === 'st_k_pad';
   const bx = -36.4 * s, cut = 20, belly = (x) => 10 * s + ((x + 34 * s) * (4.4 - 10 * s)) / (34 * s - 15);
   let pts, rr; const holes = [];
   if (skel) {
@@ -1161,6 +1322,10 @@ function paStockClassic(K, id, env) {
     rr = [0, 0.3, 3, 3, 0.8, 0.5, 0.5, 0.6, 1.4, 1.2, 1, 1, 1, 0.3, 0];
     const xa = -30 * s + 1.6, xb = -15.4, w = (xb - xa - 1.6) / 3;
     for (let i = 0; i < 3; i++) holes.push([xa + i * (w + 0.8), -1.75, w, 1.7, 0.6]);
+  } else if (thumb) { // a raised comb, an upright grip and a hole for the thumb
+    pts = [cut, -2.1, 0, -2.4, -6, -1.6, -10.5, -3.8, -14, -4.5, -33 * s, -4.0, -36 * s, -3.4, bx, 9.6 * s, -34 * s, 10 * s, -16.5, 5.2, -8, 7.6, -4, 6.6, -2, 2.6, 1, 2.3, cut, 2.4];
+    rr = [0, 0.3, 2, 1.6, 2.4, 1, 0.5, 0.5, 0.8, 4, 1.4, 1, 1, 0.3, 0];
+    holes.push([-16.4, 0.7, -10.6, -0.7, -8.8, 3.7, -14.6, 4.8]);
   } else {
     pts = [cut, -2.1, 0, -2.4, -6, -1.6, -13, -3.6, -34 * s, -2.4, -36 * s, -2.0, bx, 9.6 * s, -34 * s, 10 * s, -15, 4.4, -8, 6.2, -4, 5.4, -2, 2.6, 1, 2.3, cut, 2.4];
     rr = [0, 0.3, 3, 3, 0.8, 0.5, 0.5, 0.8, 4, 1.2, 1, 1, 0.3, 0];
@@ -1171,15 +1336,15 @@ function paStockClassic(K, id, env) {
     [0.6, 6.4 * s].forEach((y) => K.rect('#9aa2ab', bx - 1.6, y, 2.4, 0.6, 0.1, { sh: 'cyl' }));
     paMonopod(K, -29.3 * s, belly(-29.3 * s) - 0.2, 4.8);
   }
-  K.rpoly('furn', pts, rr, { holes });
-  holes.forEach((h) => K.shape(null, [h[0], h[1], h[0] + h[2], h[1] + h[3]], (c) => paRectPath(c, h[0], h[1], h[2], h[3], h[4]), { sh: null, lc: 'rgba(255,255,255,0.14)' }));
+  K.rpoly('furn', pts, rr, { holes, hr: 1.5 });
+  holes.forEach((h) => { if (h.length === 5) K.shape(null, [h[0], h[1], h[0] + h[2], h[1] + h[3]], (c) => paRectPath(c, h[0], h[1], h[2], h[3], h[4]), { sh: null, lc: 'rgba(255,255,255,0.14)' }); else K.shape(null, paBB(h), (c) => paRPath(c, h, 1.5), { sh: null, lc: 'rgba(255,255,255,0.16)' }); });
   K.rect('#000', 0.6, -2.42, cut - 0.6, 0.5, 0, { sh: null, line: false, alpha: 0.42 }); // the channel the action sits in
-  const grip = skel ? [-10.4, 2.0, -4.7, 2.4, -5.2, 6.1, -8.7, 6.6] : [-11.4, 3.0, -4.7, 2.3, -4.9, 4.9, -8.2, 5.7, -12.2, 4.5], fore = [4, 0.1, 14, 0.2, 14, 1.9, 4, 1.8];
+  const grip = skel ? [-10.4, 2.0, -4.7, 2.4, -5.2, 6.1, -8.7, 6.6] : thumb ? [-8.6, 4.4, -4.8, 2.5, -4.5, 6.2, -7.6, 7.2] : [-11.4, 3.0, -4.7, 2.3, -4.9, 4.9, -8.2, 5.7, -12.2, 4.5], fore = [4, 0.1, 14, 0.2, 14, 1.9, 4, 1.8];
   if (chas) paStipple(K, grip, 90, 7, 0.28);
   else if (synth) { paStipple(K, grip, 110, 7, 0.3); paStipple(K, fore, 120, 9, 0.3); }
   else { K.hatch(grip, 0.42, 0.5); K.hatch(fore, 0.42, 0.5); K.shape(null, paBB(grip), (c) => paPolyPath(c, grip), { sh: null, lc: 'rgba(0,0,0,0.45)' }); K.shape(null, paBB(fore), (c) => paPolyPath(c, fore), { sh: null, lc: 'rgba(0,0,0,0.45)' }); }
-  K.hi([-13.5, skel ? -2.95 : -3.3, -33 * s, skel ? -2.4 : -2.15], 1, 0.22);
-  if (!skel && !chas) {
+  if (thumb) K.hi([-14, -4.3, -33 * s, -3.8], 1, 0.22); else K.hi([-13.5, skel ? -2.95 : -3.3, -33 * s, skel ? -2.4 : -2.15], 1, 0.22);
+  if (!skel && !chas && !thumb) {
     if (synth) [2.2, 3.4, 4.6].forEach((y) => { K.lo([-31 * s, y, -31 * s + 9 - (y - 2.2) * 1.2, y - 0.3], 1, 0.3); K.hi([-31 * s, y + 0.16, -31 * s + 9 - (y - 2.2) * 1.2, y - 0.14], 0.8, 0.1); });
     else if (!mil) K.poly('#15171a', [-8.3, 5.85, -4.2, 5.1, -3.9, 5.6, -8.1, 6.45], { sh: 'soft' }); // grip cap
   }
@@ -1189,9 +1354,17 @@ function paStockClassic(K, id, env) {
     K.rect('metal', bx + 0.2, -2.55, 3.0, 0.5, 0.2, { tint: 'rgba(255,255,255,0.08)' }); K.screw(bx + 2.2, -2.3, 0.2);
     if (!skel && !chas) { K.circ('#8d949c', -21.5, 2.3, 1.05); K.screw(-21.5, 2.3, 0.3, '#5b636c'); K.shape(null, [-30, 2.2, -26.4, 3.3], (c) => paRectPath(c, -30, 2.2, 3.6, 1.1, 0.5), { sh: null, lc: '#8d949c', lw: 1.4 }); }
     K.rect('#000', 3, -0.75, 14, 0.7, 0.35, { sh: null, line: false, alpha: 0.3 });
-  } else paPad(K, bx + 0.1, -2.05, (skel ? 9.25 : 9.65) * s, 1.5, !synth && !A.small ? 'rgba(226,220,200,0.8)' : null);
+  } else paPad(K, bx + 0.1, thumb ? -3.45 : -2.05, (skel ? 9.25 : 9.65) * s, 1.5, !synth && !A.small ? 'rgba(226,220,200,0.8)' : null);
   if (!mil && !chas) { const sx = -27 * s, sy = skel ? 1.25 : belly(sx); if (!skel) { K.circ('#8d949c', sx, sy + 0.2, 0.42); K.shape(null, [sx - 0.8, sy + 0.4, sx + 0.8, sy + 2], (c) => c.ellipse(sx, sy + 1.2, 0.62, 0.8, 0, 0, TAU), { sh: null, lc: '#9aa2ab', lw: 1.5 }); } }
   if (cheek) { paCheek(K, -27.4, -11.6, -3.0, 2.9, { posts: 0.9 }); paWheel(K, -23.6, -0.4, 1.0); paWheel(K, -15.6, -0.9, 1.0); }
+  if (kpad) { // a leather pad laced on over the comb, with brass eyelets
+    const pad = [-28.6, -2.55, -27.8, -5.5, -14.9, -5.2, -14.0, -3.4];
+    K.rpoly('#6b4426', pad, [0.4, 0.9, 0.9, 0.4], { sh: 'soft' }); K.hi([-27.2, -5.2, -15.4, -4.95], 1, 0.25);
+    const lace = []; for (let x = -27.1, i = 0; x < -15; x += 1.5, i++) lace.push(x, i % 2 ? -3.05 : -4.95);
+    for (let i = 0; i < lace.length; i += 2) K.circ('#c9a24a', lace[i], lace[i + 1], 0.2, { sh: null, line: false });
+    K.line('#e6d3a4', lace, 0.22); K.stitch([-27.7, -5.0, -15.0, -4.75], 'rgba(240,220,180,0.55)', 0.7);
+    K.add((c, k) => { c.save(); c.beginPath(); paRPath(c, pad, [0.4, 0.9, 0.9, 0.4]); c.clip(); c.strokeStyle = 'rgba(30,15,5,0.2)'; c.lineWidth = k.px(0.7); c.beginPath(); for (let i = 0; i < 9; i++) { c.moveTo(-28.4, -5.2 + i * 0.32); c.lineTo(-14.2, -5.0 + i * 0.3); } c.stroke(); c.restore(); });
+  }
   if (chas) {
     paCheek(K, -27.4, -12.6, -3.0, 2.4, { posts: 0.9, screws: true }); paWheel(K, bx + 3.4, 5.6 * s, 1.1);
     [-11.5, -5.2].forEach((x) => K.screw(x, -0.2, 0.34, '#8d949c', true)); K.screw(-18, 0.9, 0.34, '#8d949c', true);
@@ -1277,6 +1450,35 @@ function paStockAR(K, id, env) {
 // thumbhole stock of laminated wood, for the Orlov pattern
 function paStockSVD(K, id, env) {
   const skel = id === 'st_skel', chas = id === 'st_chassis', cheek = id === 'st_cheek';
+  if (id === 'st_ol_fold') { // a steel tube stock that folds along the side, on its own pistol grip
+    K.rect('metal', -1.8, -3.4, 2.8, 5.0, 0.4, { tint: 'rgba(255,255,255,0.05)' }); K.circ('#8d949c', -0.4, -1.2, 0.72); K.screw(-0.4, -1.2, 0.3, '#5b636c'); K.rect('#08090b', -1.4, 0.6, 1.8, 0.7, 0.2, { sh: null, line: false });
+    K.poly('#2a2e34', paQuad(-6.4, 2.4, -32.4, 7.0, 1.0), { sh: 'flat' }); K.hi([-7, 2.2, -32, 6.6], 0.8, 0.18);
+    K.rect('metal', -33.6, -3.4, 32.4, 1.5, 0.7, { sh: 'cyl' });
+    K.rpoly('acc', [-28.2, -3.45, -27.7, -5.3, -16.9, -5.3, -16.4, -3.45], 0.6); K.stitch([-27.4, -4.85, -17.2, -4.85], 'rgba(235,225,200,0.5)', 0.7);
+    K.rpoly('poly', [-1.2, 1.4, 1.4, 1.4, -2.8, 9.4, -7.8, 9.6, -6.0, 1.2], [0.3, 0.4, 1.0, 1.0, 0.3]);
+    paStipple(K, [-1.6, 2.4, 0.6, 2.4, -3.0, 8.6, -6.6, 8.8], 120, 6, 0.35);
+    K.rpoly('acc', [-35.2, -3.8, -32.6, -3.8, -32.2, 8.4, -34.8, 8.8], 0.5);
+    paPad(K, -35.1, -3.7, 8.8, 1.2);
+    K.screw(-33.9, -2.65, 0.3, '#8d949c', true); K.screw(-33.4, 7.0, 0.3, '#8d949c', true);
+    K.frame(-39.4, -6.8, 2.8, 13);
+    return;
+  }
+  if (id === 'st_ol_poly') { // the later black stock: a smaller thumbhole, a cheek riser on two screws, a thick rubber butt
+    const pts = [0, -2.2, -9, -1.4, -15, -2.5, -33, -2.9, -36, -2.9, -36.4, 8.3, -33, 8.7, -20, 4.6, -14.6, 3.8, -8.5, 9.6, -3.6, 9.0, -1.2, 1.6];
+    const hole = [-28.6, -0.3, -16.8, 0.1, -17.4, 2.6, -29.4, 5.0];
+    K.rect('metal', -0.4, -2.5, 1.5, 4.2, 0.3, { tint: 'rgba(255,255,255,0.1)' }); K.screw(0.5, -0.5, 0.3, '#5b636c');
+    K.rpoly('poly', pts, [0.4, 3, 0.8, 0.5, 0.5, 0.5, 0.8, 2.2, 1.0, 1.3, 1.3, 0.8], { hole, hr: 1.2 });
+    K.shape(null, paBB(hole), (c) => paRPath(c, hole, 1.2), { sh: null, lc: 'rgba(255,255,255,0.16)' });
+    K.lo([-31, 6.6, -21, 3.8], 0.8, 0.3); K.hi([-10, -1.25, -32.6, -2.7], 1, 0.16);
+    paStipple(K, [-10.6, 4.4, -3.4, 2.4, -4.2, 8.6, -8.4, 9.0], 150, 6, 0.4);
+    K.rpoly('acc', [-30.4, -2.85, -29.9, -6.1, -16.9, -5.8, -16.3, -2.55], 0.8); K.screw(-27.4, -4.4, 0.36, '#8d949c', true); K.screw(-19.6, -4.2, 0.36, '#8d949c', true);
+    K.stitch([-29.4, -5.5, -17.4, -5.25], 'rgba(235,225,200,0.4)', 0.7);
+    K.rpoly('rubber', [-38.6, -3.0, -36.1, -3.0, -36.1, 8.6, -38.6, 8.6], [0.9, 0, 0, 0.9], { sh: 'soft' });
+    for (let y = -2.2; y < 8; y += 0.85) K.hair('rgba(255,255,255,0.14)', [-38.3, y, -36.4, y], 0.9);
+    K.rect('metal', -30.6, 7.4, 2.4, 0.6, 0.2); K.shape(null, [-30.4, 7.8, -28.4, 9.8], (c) => c.ellipse(-29.4, 8.9, 0.8, 0.95, 0, 0, TAU), { sh: null, lc: '#9aa2ab', lw: 1.5 });
+    K.frame(-39.4, -6.8, 2.8, 13);
+    return;
+  }
   const pts = [0, -2.2, -9, -1.4, -34, -3.4, -36, -3.0, -36.4, 8.2, -33, 8.6, -13, 3.8, -8.5, 9.6, -3.6, 9.0, -1.2, 1.6];
   const hole = skel ? [-29.4, -0.8, -13.6, -0.3, -14.6, 3.0, -30.6, 5.8] : [-27, 0.2, -15, 0.4, -16, 2.6, -28, 4.6];
   if (chas) paMonopod(K, -30.3, 8.0, 4.6);
@@ -1387,7 +1589,10 @@ function paTrigger(K, id, env) {
   }
   // safety catch
   K.rpoly(match ? steel : '#3d424a', [2.2, -3.4, 2.6, -4.6, 4.3, -4.9, 4.6, -4.2, 3.4, -3.4], 0.25); K.circ(red, 3.9, -4.4, 0.24, { sh: null, line: false });
-  paBlade(K, -0.6, 1.2, 4.8, match ? red : '#22262b', match);
+  if (id === 'tr_set') { // two blades: the back one sets the front one, a screw between them sets how light it breaks
+    paBlade(K, 1.9, 1.2, 5.0, '#22262b'); paBlade(K, -2.2, 1.2, 3.8, '#2c3036');
+    K.screw(-0.15, 1.75, 0.32, gold, true); K.spring(-3.6, -1.9, -1.4, -1.9, 6, 0.3, steel, 0.14);
+  } else paBlade(K, -0.6, 1.2, 4.8, match ? red : '#22262b', match);
   K.frame(coil ? -6 : -6.6, -5.8, coil ? 9.4 : 6.6, 6.6);
 }
 
@@ -1401,25 +1606,34 @@ function paGlint(K, x, y, r) {
 function paAction(K, id, env) {
   const g = env.g, A = env.A, slick = id === 'ac_slick', steel = '#9aa2ab', t = env.time || 0;
   if (g.action === 'charge') { // the Stormglass: a capacitor bank and its switching block
+    const fast = id === 'cp_fast', n = fast ? 6 : 4, pit = fast ? 2.0 : 2.9, cw = fast ? 1.7 : 2.4;
     K.rpoly('metal', [-9, -3.6, 9, -3.6, 9, 3.8, -9, 3.8], 0.6);
     K.rect('#c07a44', -8, -3.0, 11.6, 0.7, 0.2, { sh: 'cyl' });
-    for (let i = 0; i < 4; i++) {
-      const x = -7.6 + i * 2.9;
-      K.rect('#2f6db5', x, -2.3, 2.4, 5.2, 0.4, { sh: 'cylv' }); K.rect('#c9ced4', x, -2.3, 2.4, 0.7, 0.3, { sh: 'cylv' }); K.rect('#e9edf2', x + 1.6, -1.5, 0.4, 4.2, 0, { sh: null, line: false, alpha: 0.7 });
-      K.lo([x + 0.1, 2.3, x + 2.3, 2.3], 0.9, 0.4); K.rect('#c07a44', x + 0.9, -3.0, 0.6, 0.8, 0, { sh: null, line: false });
+    if (fast) {
+      K.rpoly('metal', [-9, 3.4, 9, 3.4, 8.4, 6.2, -8.4, 6.2], 0.5, { tint: 'rgba(0,0,0,0.1)' });
+      K.add((c) => { // a soft glow round the charge strip, stretched to its shape
+        const p = 0.7 + 0.3 * Math.sin(t * 4), g = c.createRadialGradient(0, 0, 0, 0, 0, 1); g.addColorStop(0, 'rgba(111,227,255,' + (0.4 * p).toFixed(3) + ')'); g.addColorStop(1, 'rgba(111,227,255,0)');
+        c.save(); c.translate(-1.9, 4.8); c.scale(7.4, 1.5); c.fillStyle = g; c.beginPath(); c.arc(0, 0, 1, 0, TAU); c.fill(); c.restore();
+      });
+      K.rect('#6fe3ff', -7.6, 4.2, 11.4, 1.2, 0.4, { sh: 'soft', lc: 'rgba(0,40,60,0.7)' }); K.ridges(-7.4, 4.2, 11.0, 1.2, 0.9, 0.35); for (let x = -7; x < 4; x += 1.2) K.lo([x, 5.6, x, 6.0], 0.8, 0.5); }
+    for (let i = 0; i < n; i++) {
+      const x = -7.6 + i * pit;
+      K.rect(fast ? '#b8322c' : '#2f6db5', x, -2.3, cw, 5.2, 0.4, { sh: 'cylv' }); K.rect('#c9ced4', x, -2.3, cw, 0.7, 0.3, { sh: 'cylv' }); K.rect('#e9edf2', x + cw * 0.66, -1.5, 0.4, 4.2, 0, { sh: null, line: false, alpha: 0.7 });
+      K.lo([x + 0.1, 2.3, x + cw - 0.1, 2.3], 0.9, 0.4); K.rect('#c07a44', x + cw * 0.37, -3.0, 0.6, 0.8, 0, { sh: null, line: false });
     }
     K.rect('#191b20', 4.4, -2.6, 3.8, 5.4, 0.4); K.ridges(4.6, -2.4, 3.4, 3.0, 0.5, 0.6);
     K.add((c) => { const p = 0.65 + 0.35 * Math.sin(t * 4), gg = c.createRadialGradient(6.3, 1.7, 0, 6.3, 1.7, 1.9); gg.addColorStop(0, 'rgba(111,227,255,' + (0.7 * p).toFixed(3) + ')'); gg.addColorStop(1, 'rgba(111,227,255,0)'); c.fillStyle = gg; c.fillRect(4.4, -0.2, 3.8, 3.8); });
     K.rect('#6fe3ff', 5.0, 1.3, 2.6, 0.8, 0.3, { sh: 'soft', lc: 'rgba(0,40,60,0.7)' });
     [-8.3, 8.3].forEach((x) => { K.screw(x, -3.0, 0.3, null, true); K.screw(x, 3.2, 0.3, null, true); });
     K.line('#1c8fb0', [9, -1.2, 10.6, -1.6, 11.6, -0.6], 0.34, { curve: true }); K.line('#d0872a', [9, 0.6, 10.4, 1.2, 11.6, 0.8], 0.34, { curve: true });
-    K.frame(-10.4, -6.4, 12.4, 6.6);
+    K.frame(-10.4, -6.4, 12.4, 7.2);
     return;
   }
   if (g.action === 'single') { // a falling block worked by an under-lever, with the one round on its way in
     const C = paCAL[g.cal] || paCAL.c65, dk = '#2a2e34';
     paRound(K, C, env.cfg.ammo, 0.6, -2.6, 0.1, env, true);
-    const lev = [-0.6, 3.4, -1.8, 5.4, -5.6, 6.2, -8.4, 5.2, -8.0, 3.8, -5.4, 3.3, -2.6, 3.5];
+    const quick = id === 'ac_ib_breech', lev = quick ? [-0.6, 3.4, -1.6, 6.4, -5.8, 7.4, -9.4, 6.0, -8.8, 3.8, -5.4, 3.3, -2.6, 3.5] : [-0.6, 3.4, -1.8, 5.4, -5.6, 6.2, -8.4, 5.2, -8.0, 3.8, -5.4, 3.3, -2.6, 3.5];
+    if (quick) { K.spring(-7.6, 4.8, -2.2, 4.6, 9, 0.4, '#9aa2ab', 0.16); K.circ('#d6a12a', -9.0, 4.9, 0.55); K.screw(-9.0, 4.9, 0.22, '#8a6a2a'); K.rpoly('#c9ced4', [1.6, -3.4, 3.4, -3.8, 3.6, -3.2, 1.8, -2.8], 0.15); }
     K.line('rgba(0,0,0,0.75)', lev, 1.05, { curve: true }); K.line('#59616a', lev, 0.72, { curve: true }); K.hair('rgba(255,255,255,0.25)', lev, 0.8, { curve: true });
     K.rpoly('metal', [-4.6, -1.4, 2.6, -1.4, 2.6, 4.0, -4.6, 4.0], 0.5, { tint: 'rgba(255,255,255,0.05)' });
     K.rpoly(dk, [-2.2, -3.6, 0.2, -3.6, 0.2, 3.0, -2.2, 3.0], [0.5, 0.2, 0.3, 0.3]); K.hi([-1.9, -3.4, -0.1, -3.4], 1, 0.35);
@@ -1428,6 +1642,19 @@ function paAction(K, id, env) {
     K.rpoly(dk, [-4.4, -1.6, -3.4, -4.2, -2.6, -4.4, -2.4, -3.6, -3.0, -3.2, -3.0, -1.2], 0.3); K.ridges(-3.5, -4.3, 1.0, 0.6, 0.2, 0.6);
     K.circ(steel, -0.8, 2.9, 0.6); K.screw(-0.8, 2.9, 0.28, '#5b636c'); K.screw(-3.8, 3.2, 0.3, '#5b636c'); K.screw(1.8, -0.6, 0.3, '#5b636c');
     K.frame(-9.8, -5.6, 8.4, 7.2);
+    return;
+  }
+  if (id === 'ac_gas') { // the gas block on the barrel, with a numbered dial that sets how much gas works the action
+    const r = paBarrelDims(env).r1 * 1.15 + 0.3, dk = '#2d3138';
+    K.tube('metal', -9.5, 9.5, 0, r, r * 0.94);
+    K.tube('#8a9098', -9.5, -2.6, -r * 2.15, 0.36, 0.36);
+    K.rpoly('metal', [-3, -r * 2.7, 3.2, -r * 2.7, 3.2, r * 1.5, -3, r * 1.5], 0.5, { tint: 'rgba(255,255,255,0.05)' });
+    K.screw(-1.6, r * 0.95, 0.3, '#8d949c', true); K.screw(1.8, r * 0.95, 0.3, '#8d949c', true);
+    K.rect(dk, 3.1, -r * 2.55, 1.8, r * 1.6, 0.3, { sh: 'cyl' }); K.ridges(3.2, -r * 2.55, 1.6, r * 1.6, 0.25, 0.55);
+    ['1', '2', '3', '4'].forEach((n, i) => K.text(n, -2.1 + i * 1.3, -r * 1.85, Math.min(0.85, r * 0.55), i === 1 ? '#d6a12a' : 'rgba(235,238,242,0.7)'));
+    K.poly('#d6a12a', [-0.95, -r * 1.25, -0.55, -r * 1.25, -0.75, -r * 1.55], { sh: null });
+    K.fadeX(-6, -9.5); K.fadeX(6.5, 9.5);
+    K.frame(-9.5, -6.2, 9.5, 5.4);
     return;
   }
   if (g.action === 'semi') { // bolt carrier, with its return spring and buffer underneath
@@ -1469,12 +1696,16 @@ function paAction(K, id, env) {
   if (slick) { // skeleton handle and a big fluted knob
     K.shape(hc, [-7.8, 0.4, -4.2, 5.4], (c) => { paPolyPath(c, paQuad(-4.8, 0.6, -6.9, 5.2, 1.1, 0.85)); paPolyPath(c, paQuad(-5.3, 1.8, -6.3, 4.0, 0.42, 0.34)); }, { eo: true });
     K.rpoly(hc, paQuad(-6.75, 4.7, -7.9, 7.5, 2.0, 2.3), 0.6, { sh: 'cylv' }); for (let i = 0; i < 5; i++) K.lo([-7.6 + i * 0.4, 5.3 + i * 0.1, -8.3 + i * 0.4, 7.2 + i * 0.1], 0.9, 0.4);
+  } else if (id === 'ac_k_bent') { // the handle bent down along the stock, with a flattened, chequered knob
+    K.poly(bc, paQuad(-4.8, 0.6, -5.2, 3.2, 0.95, 0.85)); K.poly(bc, paQuad(-5.15, 3.0, -7.9, 5.4, 0.85, 0.75));
+    K.ell(bc, -8.5, 6.0, 1.3, 1.0, { tint: 'rgba(255,255,255,0.04)' }); K.hatch([-9.5, 5.2, -7.5, 5.2, -7.5, 6.8, -9.5, 6.8], 0.26, 0.45);
+    K.add((c) => { c.fillStyle = 'rgba(255,255,255,0.3)'; c.beginPath(); c.ellipse(-8.9, 5.5, 0.4, 0.22, -0.4, 0, TAU); c.fill(); });
   } else { K.poly(bc, paQuad(-4.8, 0.6, -6.9, 5.2, 0.95, 0.75)); K.circ(bc, -7.2, 6.1, 1.25, { tint: 'rgba(255,255,255,0.04)' }); K.add((c) => { c.fillStyle = 'rgba(255,255,255,0.3)'; c.beginPath(); c.ellipse(-7.6, 5.6, 0.4, 0.24, -0.5, 0, TAU); c.fill(); }); }
   // striker
   K.tube(steel, -3.2, 6.4, 4.7, 0.26, 0.26); K.poly(steel, [6.4, 4.44, 7.9, 4.6, 7.9, 4.8, 6.4, 4.96], { sh: 'cyl' }); K.rect(steel, -3.6, 4.0, 1.0, 1.4, 0.2, { sh: 'cyl' }); K.rect(steel, 4.9, 4.2, 0.6, 1.0, 0.15, { sh: 'cyl' });
   K.spring(-2.5, 4.7, 4.9, 4.7, slick ? 11 : 17, 0.72, slick ? '#6fb6ff' : '#8d949c', slick ? 0.15 : 0.25);
   if (slick) { paGlint(K, -3.2, -0.75, 0.75); paGlint(K, 7.4, -1.5, 0.55); paGlint(K, -8.0, 5.4, 0.6); }
-  K.frame(-13.2, -3.4, 9.2, 8.2);
+  K.frame(-13.2, -3.4, 9.2, id === 'ac_k_bent' ? 8.6 : 8.2);
 }
 
 // ===========================================================================
@@ -1484,13 +1715,13 @@ function paAction(K, id, env) {
 //   P: w length along the rounds, h depth, lean how far the bottom sits forward of the top,
 //      n rounds shown, zone, ribs, fol follower colour
 function paMagBox(K, id, env, P) {
-  const C = paCAL[env.g.cal] || paCAL.c308, ext = id === 'mg_ext', quick = id === 'mg_quick';
-  const w = P.w, h = P.h * (ext ? P.ext || 1.42 : 1), lean = P.lean * (ext ? 1.5 : 1), pw = P.pw === undefined ? 1.5 : P.pw;
+  const C = paCAL[env.g.cal] || paCAL.c308, ext = id === 'mg_ext' || id === 'mg_ol_20', quick = id === 'mg_quick';
+  const w = P.w, h = P.h * (id === 'mg_ol_20' ? 1.75 : ext ? P.ext || 1.42 : 1), lean = P.lean * (id === 'mg_ol_20' ? 1.8 : ext ? 1.5 : 1), pw = P.pw === undefined ? 1.5 : P.pw;
   const sm = (w * 0.84) / C.oal, rr = C.rim * sm, pitch = rr * 2 * (P.single ? 1.03 : 0.9);
   const sx = (v) => lean * Math.pow(Math.max(0, v), pw);            // forward shift at depth v (0..1)
   const edge = (u, v0, v1) => { const o = []; for (let i = 0; i <= 6; i++) { const v = v0 + ((v1 - v0) * i) / 6; o.push(u * w + sx(v), v * h); } return o; };
   const quad = (u0, u1, v0, v1) => { const a = edge(u0, v0, v1), b = edge(u1, v1, v0); return a.concat(b); };
-  const zone = P.zone || 'acc', n = P.n + (ext ? P.extN || 2 : 0);
+  const zone = P.zone || 'acc', n = P.n + (ext ? (P.extN || 2) * (id === 'mg_ol_20' ? 2 : 1) : 0);
   // the round waiting at the lips
   paRound(K, C, env.cfg.ammo, w * 0.06, -rr * 0.3, sm, env, true);
   // body
@@ -1515,8 +1746,7 @@ function paMagBox(K, id, env, P) {
   // pressed ribs, witness marks down the spine
   if (P.ribs === 'h') for (let v = 0.2; v < 0.85; v += 0.16) { K.lo([0.012 * w + sx(v), v * h, 0.11 * w + sx(v), v * h], 1, 0.4); K.lo([0.91 * w + sx(v), v * h, 0.99 * w + sx(v), v * h], 1, 0.4); }
   else { K.hair('rgba(255,255,255,0.12)', edge(0.06, 0.05, 0.9), 0.9); K.hair('rgba(0,0,0,0.4)', edge(0.95, 0.05, 0.9), 0.9); }
-  const cap = Math.round(env.g.mag * (ext ? 1.6 : 1));
-  K.text(String(Math.max(cap, env.g.mag + (ext ? 1 : 0))), w * 0.5 + sx(0.93), h * 0.93, Math.min(h * 0.07, w * 0.14), 'rgba(235,238,242,0.55)');
+  K.text(String(paMagCap(env.g, id)), w * 0.5 + sx(0.93), h * 0.93, Math.min(h * 0.07, w * 0.14), 'rgba(235,238,242,0.55)');
   K.rect('#08090b', w * 0.02 + sx(0.3), h * 0.28, w * 0.07, h * 0.05, 0.05, { sh: null, line: false });
   // floor plate
   const bx0 = sx(1) - w * 0.04, bw = w * 1.08;
@@ -1534,8 +1764,51 @@ function paMagBox(K, id, env, P) {
   }
   return { w, h, lean, rr };
 }
+// How many rounds a rifle holds with a given magazine part (the same sum as buildStats).
+function paMagCap(g, id) { const p = PART_BY_ID[id], m = p && p.mod.magMul; return m ? Math.max(g.mag + 1, Math.round(g.mag * m)) : g.mag; }
+// A drum: a short neck up to the feed lips with the next round in them, and a round body whose clear back shows
+// the rounds coiled inside. o: w neck width, nh neck height, lean, R drum radius, dx where the drum sits.
+function paDrumMag(K, id, env, o) {
+  const C = paCAL[env.g.cal] || paCAL.c308, s = (o.w * 0.84) / C.oal, rr = C.rim * s, zone = o.zone || 'acc', R = o.R;
+  paRound(K, C, env.cfg.ammo, o.w * 0.06, -rr * 0.3, s, env, true);
+  K.rpoly(zone, [0, 0.2, 0, -rr * 1.25, o.w * 0.4, -rr * 1.25, o.w * 0.5, 0.2], [0, 0.3, 0.5, 0], {});
+  K.rpoly(zone, [0, 0, o.w, 0, o.w + o.lean, o.nh + R * 0.4, o.lean, o.nh + R * 0.4], 0.3);
+  for (let v = 0.25; v < 0.9; v += 0.22) K.lo([o.lean * v + 0.1, o.nh * v, o.lean * v + o.w * 0.12, o.nh * v], 1, 0.4);
+  const cx = o.dx, cy = o.nh + R * 0.9;
+  K.circ(zone, cx, cy, R, { sh: 'soft' });
+  K.circ('#0a0b0d', cx, cy, R * 0.78, { sh: null, lc: 'rgba(0,0,0,0.6)' });
+  K.add((c, k) => { // the rounds inside, seen end on through the clear back: a coil of brass rims
+    c.save(); c.beginPath(); c.arc(cx, cy, R * 0.77, 0, TAU); c.clip();
+    const n = Math.min(40, paMagCap(env.g, id)), rm = Math.max(R * 0.07, 0.25);
+    for (let i = 0; i < n; i++) {
+      const f = i / n, a = -Math.PI / 2 + f * TAU * 1.6, rad = R * (0.66 - f * 0.34), x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
+      c.fillStyle = '#c9a04a'; c.beginPath(); c.arc(x, y, rm, 0, TAU); c.fill(); c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.arc(x + rm * 0.15, y + rm * 0.15, rm * 0.4, 0, TAU); c.fill();
+    }
+    const g = c.createLinearGradient(cx - R, cy - R, cx + R, cy + R); g.addColorStop(0, 'rgba(200,225,250,0.22)'); g.addColorStop(0.5, 'rgba(200,225,250,0)'); c.fillStyle = g; c.fillRect(cx - R, cy - R, R * 2, R * 2);
+    c.restore();
+  });
+  K.circ(zone, cx, cy, R * 0.26, { tint: 'rgba(255,255,255,0.06)' }); // the winding key
+  K.rpoly(zone, [cx - R * 0.12, cy - R * 0.46, cx + R * 0.12, cy - R * 0.46, cx + R * 0.12, cy + R * 0.46, cx - R * 0.12, cy + R * 0.46], 0.2, { tint: 'rgba(255,255,255,0.08)' });
+  K.screw(cx, cy, R * 0.08, '#8d949c', true);
+  K.text(String(paMagCap(env.g, id)), o.lean * 0.5 + o.w * 0.5, o.nh * 0.62, Math.min(o.w * 0.2, 1.3), 'rgba(235,238,242,0.7)');
+  K.frame(-1.2, -rr * 2.6, Math.max(cx + R, o.w * 1.05) + 1.4, cy + R + 0.8);
+}
 function paMag(K, id, env) {
   const A = env.A, g = env.g, C = paCAL[g.cal];
+  if (id === 'mg_drum') { paDrumMag(K, id, env, { w: A.mag === 'curved' ? 6.2 : 7.4, nh: 3.0, lean: 0.4, R: 6.4, dx: 4.0 }); return; }
+  if (id === 'mg_k_trench') { paDrumMag(K, id, env, { w: 7.6, nh: 2.6, lean: 0.2, R: 5.6, dx: 3.9, zone: 'metal' }); return; }
+  if (id === 'mg_k_clip' && C) { // five rounds held by their rims in a sprung steel strip
+    const s = 0.1, pit = C.rim * 2 * s * 1.04, n = 5;
+    for (let i = 0; i < n; i++) paRound(K, C, env.cfg.ammo, 0.5, i * pit, s, env, true);
+    const y0 = -pit * 0.55, y1 = (n - 1) * pit + pit * 0.55;
+    K.rpoly('#b08a3a', [-0.2, y0, 0.75, y0, 0.75, y1, -0.2, y1], 0.15, { sh: 'cylv' });
+    K.rpoly('#b08a3a', [0.55, y0 - 0.1, 1.0, y0 - 0.1, 1.0, y1 + 0.1, 0.55, y1 + 0.1], 0.1, { sh: 'cylv', tint: 'rgba(0,0,0,0.18)' });
+    K.rect('#8a6a2a', 0.0, (y0 + y1) / 2 - 0.5, 0.5, 1.0, 0.15, { sh: null, line: false });
+    K.hi([0.05, y0 + 0.2, 0.05, y1 - 0.2], 0.8, 0.35);
+    const W = C.oal * s * 1.12 + 2, H = y1 - y0;
+    K.frame(-1.4, y0 - H * 0.45, W, y1 + H * 0.45);
+    return;
+  }
   if (A.type === 'rail') { // slug cassette
     K.rpoly('acc', [-0.5, -0.4, 9.5, -0.4, 9.5, 7.4, -0.5, 7.4], 0.7);
     [1.2, 3.2, 5.2].forEach((x) => K.rect('#d6a12a', x, -0.9, 1.3, 0.6, 0.1, { sh: 'cyl' }));
@@ -1566,10 +1839,10 @@ function paMag(K, id, env) {
   else P = { w: 9, h: 4.4, lean: 0, n: 2, extN: 1, ext: 1.6, zone: 'metal', fol: '#9aa2ab', internal: true };
   R = paMagBox(K, id, env, P);
   // beside it, every round it holds, so the capacity can be counted at a glance
-  const capOf = (ext) => (ext ? Math.max(g.mag + 1, Math.round(g.mag * 1.6)) : g.mag);
-  const sm = (P.w * 0.84) / C.oal, rr = C.rim * sm, pit = rr * 2.16, full = P.h * P.ext, lm = P.lean * 1.5;
+  const ol20 = partFits(PART_BY_ID.mg_ol_20, g), capMax = Math.max(paMagCap(g, 'mg_ext'), ol20 ? paMagCap(g, 'mg_ol_20') : 0);
+  const sm = (P.w * 0.84) / C.oal, rr = C.rim * sm, pit = rr * 2.16, full = P.h * Math.max(P.ext, ol20 ? 1.75 : 0), lm = P.lean * (ol20 ? 1.8 : 1.5);
   const rowsMax = Math.max(3, Math.floor((full + rr * 1.4) / pit)), colW = C.oal * sm * 1.16;
-  const now = capOf(id === 'mg_ext'), cols = Math.ceil(now / rowsMax), rows = Math.ceil(now / cols), colsMax = Math.ceil(capOf(true) / rowsMax);
+  const now = paMagCap(g, id), cols = Math.ceil(now / rowsMax), rows = Math.ceil(now / cols), colsMax = Math.ceil(capMax / rowsMax);
   const x0 = (P.internal ? 11.6 : P.w + Math.max(0, lm) + P.w * 0.2) + 0.4;
   for (let i = 0; i < now; i++) { const col = Math.floor(i / rows), row = i % rows; paRound(K, C, env.cfg.ammo, x0 + col * colW + (row % 2 ? colW * 0.05 : 0), -rr * 0.2 + row * pit, sm, env, true); }
   if (P.internal) { // the hinged floor plate under a hunting rifle, with its latch

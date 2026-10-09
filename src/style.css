@@ -383,6 +383,16 @@ details { margin: 0 0 10px; } summary { display: flex; align-items: center; min-
 .skcell .q { display: grid; place-items: center; background: repeating-linear-gradient(135deg, #18202a 0 6px, #1e2733 6px 12px); font: 800 18px var(--head); color: #5b6b80; }
 .skcell b { display: block; font: 700 11px/1.15 var(--head); letter-spacing: .04em; text-transform: uppercase; margin-top: 5px; } .skcell i { display: block; font-style: normal; font-size: 10px; line-height: 1.25; color: var(--rc); }
 .skcell.unknown b, .skcell.unknown i { color: var(--mute); }
+/* a skin not owned yet: its real look under a light grey veil, with a lock */
+.skcell .skpic { position: relative; display: block; }
+.skcell .veil, .stage .veil { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(214, 220, 228, .34) 0 4px, rgba(214, 220, 228, .18) 4px 9px); }
+.skcell .veil { border-radius: 7px; }
+.skcell .lk, .stage .lk { position: absolute; display: grid; place-items: center; border-radius: 50%; background: rgba(14, 18, 24, .84); color: #e3e8ee; pointer-events: none; box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
+.skcell .lk { right: 4px; top: 4px; width: 19px; height: 19px; } .skcell .lk svg { width: 11px; height: 11px; }
+.stage .lk { right: 10px; top: 10px; width: 30px; height: 30px; } .stage .lk svg { width: 16px; height: 16px; }
+.skcell.locked b { color: var(--dim); } .skcell.locked i { color: var(--mute); }
+.skcell.peek { border-color: var(--rc); border-style: dashed; box-shadow: 0 0 0 1px var(--rc) inset; }
+.dchip.fitfor { color: var(--amber2); border-color: rgba(255, 170, 60, .4); }
 .skcell.on { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
 .skcell .new { position: absolute; top: 2px; right: 2px; padding: 2px 5px; border-radius: 6px; background: var(--amber); color: #1b0f02; font: 800 8.5px var(--head); letter-spacing: .12em; text-transform: uppercase; font-style: normal; }
 .sk-info { flex: none; } .sk-info .eyebrow { color: var(--rc); margin-bottom: 1px; } .sk-info h3 { font-size: 19px; } .sk-info p { font-size: 12px; line-height: 1.4; margin-top: 3px; }

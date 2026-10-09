@@ -69,7 +69,7 @@ const fs = require('fs');
       const cfgFor = (g, extra) => Object.assign(CB.defaultConfig(g), { skin }, extra || {});
       const part = (slot, id, g, w, h, extra) => ({ w, h, label: id + (g ? ' / ' + g : ''), draw: (c, x, y) => CB.drawPartArt(c, slot, id, x, y, w, h, Object.assign({ gunId: g, cfg: cfgFor(g), time: 1.3 }, extra || {})) });
       const glass = (id, g, r, extra) => ({ w: r * 2, h: r * 2, label: id + (extra && extra.zoom ? ' ' + extra.zoom + 'x' : ''), draw: (c, x, y) => CB.drawReticleThumb(c, id, x + r, y + r, r, Object.assign({ gunId: g, time: 1.3 }, extra || {})) });
-      const fits = (slot, g) => CB.PARTS.filter((p) => p.slot === slot);
+      const fits = (slot, g) => CB.PARTS.filter((p) => p.slot === slot && (!g || !CB.partFits || CB.partFits(p, CB.GUNS.find((q) => q.id === g)))); // only what that rifle can take
       if (sec === 'scopes') {
         CB.SCOPES.forEach((s) => row(s.id + '  ' + s.name, [part('scope', s.id, 'halden', 260, 150), glass(s.id, 'halden', 75), part('scope', s.id, 'halden', TW, TH), glass(s.id, 'halden', 48), part('scope', s.id, 'halden', 96, 60), glass(s.id, 'halden', 28), part('scope', s.id, 'halden', 130, 60, { cfg: cfgFor('halden', { skin: 'desert' }) }), part('scope', s.id, 'halden', 130, 60, { cfg: cfgFor('halden', { skin: 'midas' }) })]));
       } else if (sec === 'glass') {

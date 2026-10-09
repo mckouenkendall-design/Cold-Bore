@@ -26,8 +26,22 @@ Save.load = function () {
     for (const k in f.settings) if (d.settings[k] === undefined) d.settings[k] = f.settings[k];
     for (const k in f.stats) if (d.stats[k] === undefined) d.stats[k] = f.stats[k];
     Save.data = d;
+    Save.tidy(d);
   } else Save.data = f;
   return Save.data;
+};
+// Some general parts were later limited to the rifles they suit (no modern brake on the
+// eighty-year-old Kessler, for example). A saved rifle still wearing one goes back to the
+// factory part in that slot. The part itself stays owned for the rifles it does fit.
+Save.tidy = function (d) {
+  if (!d || !d.guns) return;
+  for (const id in d.guns) {
+    const g = GUN_BY_ID[id], rec = d.guns[id];
+    if (!g || !rec) continue;
+    const def = defaultConfig(id), cfg = rec.cfg = Object.assign({}, def, rec.cfg || {});
+    ['muzzle', 'barrel', 'stock', 'support', 'ammo', 'trigger', 'action', 'mag'].forEach((slot) => { if (!partFits(PART_BY_ID[cfg[slot]], g)) cfg[slot] = def[slot]; });
+    if (!SCOPE_BY_ID[cfg.scope] || !scopeFits(SCOPE_BY_ID[cfg.scope], g)) cfg.scope = def.scope;
+  }
 };
 Save.write = function () {
   try { window.localStorage.setItem(SAVE_KEY, JSON.stringify(Save.data)); Save.ok = true; } catch (e) { Save.ok = false; }
