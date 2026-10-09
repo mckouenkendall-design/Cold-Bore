@@ -16,32 +16,63 @@
 //   0  THE RIFLE    the player's rifle side on, the flash, the round leaving the muzzle.
 //   1  THE FLIGHT   a camera riding just behind the round through the real scene.
 //   2  THE SWING    the camera lets go of the round and swings round the target until it
-//                   looks across the line of fire. The scene fades into "X-ray space".
-//   3  THE X-RAY    the round goes through the body. Bones and organs on its line break.
+//                   looks across the line of fire, a little from the shooter's side (75
+//                   degrees off the line, drifting to 80), so the round is seen going into,
+//                   through and out of the body rather than flat across it. The scene fades
+//                   into "X-ray space".
+//   3  THE X-RAY    the deep slow motion. The round brakes over its last hand spans, all but
+//                   stops as it touches the skin, then crawls through the body. Bones and
+//                   organs on its line break; it comes out of the far side (or stays in).
 //   4  THE HOLD     the world speeds back up toward real time and the body is seen to fall
 //                   (the ragdoll, src/13_ragdoll.js); a moment after it lands, a flash back to
 //                   the scope, where the same body carries on from where the film left it.
+//
+// Timeline (real seconds, a 155 m chest shot with a .308): rifle 0.95, flight 1.3 to 2.1 by
+// distance, swing 1.3, then the slow motion: approach 1.05, the touch 0.35, through the body
+// about 1.6, the exit hanging in the air 0.85; then the hold until the body is down. About
+// 10.5 s in all; a tap skips it at any point (KillCam.skip).
+//
+// Sound: the film tells the sound engine every beat as it happens on screen (kcSay, below) and
+// keeps KillCam.rate up to date: how fast time is passing in the picture, 1 = real time. It is
+// the speed the world's clock is running at (world seconds per film second), never below
+// kcTune.rateMin: in the flight it rises and falls with the round's apparent speed (a short
+// shot never gets near real time), at the rifle and from the swing until the hold the picture
+// is far slower than the sound engine can follow and it sits at rateMin, and in the hold it
+// is exactly the speed the falling body is shown at, rising toward 0.55.
 //
 // Two kinds of space are used. "World" is the game's own: x across, y up, z down range,
 // in metres. "X-ray space" is the same axes but measured from the target's feet, so the
 // body always stands at the origin however the target was moving.
 // ---------------------------------------------------------------------------
-const KillCam = CB.KillCam = { active: false, done: false, rate: 0.2 };
+const KillCam = CB.KillCam = { active: false, done: false, rate: 0.05 };
 
 const kcTune = {
   beat: 0.95,        // seconds spent at the rifle
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
-  swing: 1.3,        // seconds for the camera to come round to side on
+  swing: 1.3,        // seconds for the camera to come round
+  angle: 75,         // degrees off the line of fire the swing ends at (90 would be square across it)
+  angleX: 80,        // and drifts toward during the X-ray
+  lensX: 0.62,       // the X-ray's lens, as a share of the flight's (wider, from closer in)
+  approach: 1.05,    // seconds from the end of the swing to the round touching the skin
+  touchV: 0.09,      // metres per second the round is down to as it touches
+  touch: 0.35,       // seconds it all but stops there, the moment of impact
+  crawl: 0.36,       // metres per second the round is shown moving through the body
+  linger: 0.85,      // seconds the exit hangs in the air before the hold
+  rest: 0.5,         // seconds held on a round that stopped (in the body or just past it)
+  insideMax: 4.6,    // seconds inside the body at most, whatever happens
+  creep: 0.02,       // world seconds per film second while the round is inside the body
+  rateMin: 0.05,     // the slowest KillCam.rate ever reported (the sound engine's own floor)
   hold: 0.85,        // seconds holding on the result, at least
   holdMax: 3.0,      // and at most, waiting for the body to come down
   out: 0.34,         // seconds of flash back to the scope
   swingFrom: 2.6,    // metres from the target at which the camera lets go of the round
   standOff: 0.55,    // metres short of the skin at which the swing ends
-  crawl: 0.5,        // metres per second the round is shown moving through the body
   bulletScale: 2.1,  // the round is drawn this many times life size so its shape can be read
+  maxParts: 1100,    // bits in the air at once, at most
   deg: Math.PI / 180,
 };
+KillCam.tune = kcTune; // (for tests and tuning; nothing in the game changes it)
 // bullet diameters in millimetres, by the rifle's calibre
 const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
 const kcPalDefault = { skyTop: '#22234f', skyBot: '#ef8a55', ink: '#0e1016', rim: 'rgba(255,225,205,0.45)', dark: 0.35, star: 0 };
@@ -155,9 +186,25 @@ const kcHash = (n) => { const x = Math.sin(n * 127.1 + 11.7) * 43758.5453; retur
 const kcOwnSound = () => { const X = CB.Sfx; return !(X && X.kc); };
 function kcNoise(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.noise) X.noise(p); } catch (e) { /* sound is optional */ } }
 function kcTone(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.tone) X.tone(p); } catch (e) { /* sound is optional */ } }
-// One beat: 'fly', 'near', 'cover', 'enter', 'bone', 'exit', 'fall' or 'end'. Every beat carries the
-// film's speed (rate, 1 = real time), the part hit, the calibre, how hard the round hits (power,
-// 0 to 1) and whether gore is on, plus whatever the beat itself adds (mat, bone, size).
+// One beat, in the order they come:
+//   'fly'     the round leaves the muzzle (0.08 s into the film)
+//   'cover'   it goes through cover, in the flight or just before the body (mat; behind: the wall
+//             behind the body)
+//   'slow'    the swing is over and the deep slow motion begins (len: about how many real seconds
+//             it lasts, until 'resume'): the round brakes toward the body, touches, goes through
+//   'near'    half a second on screen before the round touches the skin
+//   'enter'   it touches the skin: the moment of impact (spray: 0 to 1, how much blood is blown
+//             back out of the hole, 0 with gore off)
+//   'bone'    the tip reaches a bone (bone: skull, rib, spine or limb)
+//   'organ'   the tip reaches an organ, only with gore on (organ: heart, lungL, lungR, liver,
+//             stomach, kidL, kidR, gut or brain; key: true for the one the film slows down on and names)
+//   'exit'    it breaks out of the far side (size: 0 to 1, how big the hole is; spray: 0 to 1, how
+//             violent the burst of blood, mist and tissue is, 0 with gore off)
+//   'resume'  the slow motion ends: the world speeds back up toward real time over about a second
+//   'fall'    the body lands (mat: the ground; speed)
+//   'end'     the film is over or was skipped
+// Every beat carries the film's speed (rate, see KillCam.rate above), the part hit, the calibre,
+// how hard the round hits (power, 0 to 1) and whether gore is on, plus whatever the beat adds.
 function kcSay(K, stage, extra) {
   try {
     const X = CB.Sfx; if (!X || !X.kc) return;
@@ -207,6 +254,11 @@ KillCam.start = function (o) {
   K.exit = rdExits(aid, K.part, K.cal, pen) || K.simThrough === true;
   K.exitK = K.exit ? Math.max(0.2, rdExitSize(aid, K.part, K.cal, Math.max(pen, K.simThrough ? 1.2 : 0))) : 0;
   K.through = K.exit; K.spent = K.exit && K.simThrough === false;
+  // How violent the wounds are drawn, from how hard the round hits: about 0.16 for a .22, 0.55
+  // for a .308 and 0.85 for a .50 (so a .50 throws five times what a .22 does). gx is the same
+  // for the way out, which also depends on how big a hole the round makes there.
+  K.gk = 0.15 + 0.85 * Math.pow(K.power, 1.6);
+  K.gx = K.exit ? clamp(K.exitK * (0.35 + 0.75 * K.power), 0.08, 1.1) : 0;
   // which side the camera swings to: the side the target is facing, so we end up looking at their front
   const a = o.actor;
   K.side = a && (a.face || 1) < 0 ? -1 : 1;
@@ -215,14 +267,15 @@ KillCam.start = function (o) {
   // book-keeping
   K.ret = Math.min(o.sim.t, o.tHit - step * 0.25); K.prevRet = K.ret; K.simDt = 0;
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
+  K.Td = K.Tc + kcTune.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.cap = null; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.gunLay = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
-  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.follow = null;
+  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null;
   K.covers = kcCoverList(K, o, h, a0); K.wallB = kcWallList(K, o, h, a0);
-  K.active = true; K.done = false; K.skipped = false; K.rate = 0.12;
+  K.active = true; K.done = false; K.skipped = false; K.wr = 0; K.rate = kcTune.rateMin;
   return true;
 };
 KillCam.stop = function () { const K = KillCam; if (K.o) kcSayEnd(K); K.active = false; K.o = null; K.parts = []; K.wparts = []; K.fig = null; K.plan = null; };
@@ -261,23 +314,25 @@ function kcAdvance(K, o, dt) {
   K.T += dt; K.spin += dt * 9;
   const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
   K.prevRet = K.ret;
+  let wr = 0; // how fast the world's clock runs this frame (world seconds per film second), for KillCam.rate
   if (!K.snd.fly && T >= 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
   if (T < K.Ta) {
     // ---- 0: at the rifle. Time is all but stopped.
-    K.stage = 0; K.rate = 0.12; K.speedK = 0;
+    K.stage = 0; K.speedK = 0;
   } else if (T < K.Tb) {
     // ---- 1: the flight. Distance covered follows a curve that starts slowly, runs fast in the
     // middle and arrives slowly: a cubic that leaves with slope k0 and lands with slope k1.
     if (K.stage < 1) { K.stage = 1; kcNoise({ type: 'bandpass', f: 150, f1: 640, sweep: K.Tf * 0.6, q: 0.9, dur: K.Tf * 0.9, att: K.Tf * 0.5, gain: 0.06, brown: true }); }
-    const u = (T - K.Ta) / K.Tf, D = Math.max(0.5, K.zS - K.zA);
+    const u = (T - K.Ta) / K.Tf, D = Math.max(0.5, K.zS - K.zA), t0 = K.bp[3];
     const k0 = clamp((7 * K.Tf) / D, 0, 0.8), k1 = clamp((kcSwingV0(K) * K.Tf) / D, 0, 0.8);
     const g = (u * u * u - 2 * u * u + u) * k0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * k1;
     const gv = (3 * u * u - 4 * u + 1) * k0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * k1;
     kcPathAtZ(K, lerp(K.zA, K.zS, clamp(g, 0, 1)), K.bp);
     K.speedK = clamp(gv / 1.5, 0, 1); K.fu = u;
-    K.rate = clamp(0.2 + 0.85 * K.speedK, 0.2, 1);
+    if (dt > 0) wr = Math.max(0, K.bp[3] - t0) / dt; // the round's own flight time covered this frame
     K.ret = Math.max(K.ret, Math.min(K.bp[3], cap));
-    kcFlightCovers(K); kcStepParts(K, dt * K.rate, K.wparts, true);
+    // (the bits thrown off cover out there fly at the pace the round seems to rush along)
+    kcFlightCovers(K); kcStepParts(K, dt * clamp(0.2 + 0.85 * K.speedK, 0.2, 1), K.wparts, true);
   } else {
     // ---- 2 to 4: the round is on its last straight few metres. s is how far its tip is past
     // the middle of the body, in metres (negative while it is still on its way).
@@ -288,35 +343,46 @@ function kcAdvance(K, o, dt) {
         // the swing: the round eases down from the flight's last speed
         const u = (T - K.Tb) / kcTune.swing, D = Math.max(0.05, K.dS - pl.sFrom);
         K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / kcTune.swing;
-        K.rate = lerp(0.2, 0.1, u);
         if (!K.snd.h1 && u > 0.12) { K.snd.h1 = 1; kcBeat(0.1); }
         if (!K.snd.h2 && u > 0.7) { K.snd.h2 = 1; kcBeat(0.12); }
       } else {
+        // The approach: the round brakes over its last hand spans and is all but stopped when it
+        // touches the skin, exactly approach seconds after the swing (a cubic in time that starts
+        // at the swing's last speed and ends at touchV).
         K.stage = 3;
-        K.spd = lerp(1.0, kcTune.crawl * 1.15, smooth((K.s + pl.sFrom) / Math.max(0.05, pl.sFrom + pl.sIn)));
-        K.s += K.spd * dt; K.rate = 0.1;
+        if (!K.snd.slow) { K.snd.slow = 1; kcSay(K, 'slow', { len: +kcSlowLen(K).toFixed(2) }); }
+        const Ta = kcTune.approach, u = clamp((T - K.Tc) / Ta, 0, 1), D = Math.max(0.01, pl.sIn - pl.sA);
+        const m0 = clamp((pl.vA * Ta) / D, 0, 2.9), m1 = clamp((kcTune.touchV * Ta) / D, 0, 1);
+        const h = (u * u * u - 2 * u * u + u) * m0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * m1;
+        const hv = (3 * u * u - 4 * u + 1) * m0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * m1;
+        K.s = pl.sA + D * h; K.spd = (D * hv) / Ta;
       }
+      wr = K.spd / K.v;
       K.ret = Math.max(K.ret, Math.min(o.tHit + K.s / K.v, cap));
       // half a second (on screen) before the round reaches the body
-      if (!K.snd.near) { const left = T < K.Tc ? K.Tc - T + 0.6 : (pl.sIn - K.s) / Math.max(0.3, K.spd); if (left <= 0.5) { K.snd.near = 1; kcSay(K, 'near'); } }
-      if (K.s >= pl.sIn - 1e-4) {
+      if (!K.snd.near && T >= K.Td - 0.5) { K.snd.near = 1; kcSay(K, 'near'); }
+      if (T >= K.Td) {
         // the tip touches the skin: this is the frame the world is allowed to make the kill
-        K.hitT = T; K.stage = 3; K.s = Math.max(K.s, pl.sIn);
+        K.hitT = T; K.stage = 3; K.s = pl.sIn;
         K.ret = Math.max(K.ret, o.tHit + K.step * 1.002);
       }
     } else {
-      // inside the body: a slow crawl that all but stops as the round reaches the main thing it hits
-      let sp = kcTune.crawl * (1 - 0.74 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.034, 2)));
-      if (K.exit && !K.spent) { if (K.s > pl.sOut) sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 15); }
+      // Inside the body. For a moment after it touches, the round hardly moves (the hit lands);
+      // then a slow crawl that all but stops again as it reaches the main thing it hits.
+      const since = T - K.hitT, a = o.actor, tch = kcTune.touch;
+      const wake = since < tch ? lerp(kcTune.touchV / kcTune.crawl, 0.12, smooth(since / (tch * 0.4))) : lerp(0.12, 1, smooth((since - tch) / 0.45));
+      let sp = kcTune.crawl * (since < tch ? wake : wake * (1 - 0.8 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.04, 2))));
+      if (K.exit && !K.spent) { if (K.s > pl.sOut) { if (K.exitT === undefined) K.exitT = T; sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 5); } }
       else if (K.spent) {
         // out of the far side with nothing left: it tumbles a hand's width further and drops
         if (K.s > pl.sOut) { if (K.spentT === undefined) K.spentT = T; sp = kcTune.crawl * 1.6 * clamp((pl.sSpent - K.s) / 0.12, 0, 1); }
         if (pl.sSpent - K.s < 0.004) K.stopped = true;
       } else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
+      if (K.stopped && K.stopT === undefined) K.stopT = T;
       K.spd = sp; K.s += sp * dt;
-      const since = T - K.hitT, a = o.actor;
-      if (K.holdT0 === null && ((K.exit && !K.spent && K.s > pl.sOut + 0.3) || K.stopped || since > 2.5)) {
-        K.holdT0 = T; K.stage = 4;
+      // the exit hangs in the air a moment; a round that stayed in is held on a moment
+      if (K.holdT0 === null && ((K.exitT !== undefined && T - K.exitT > kcTune.linger) || (K.stopT !== undefined && T - K.stopT > kcTune.rest) || since > kcTune.insideMax)) {
+        K.holdT0 = T; K.stage = 4; kcSay(K, 'resume');
         kcTone({ at: 0.18, f: 55, dur: 1.3, att: 0.05, gain: 0.07, verb: 0.4 }); kcTone({ at: 0.18, f: 110, dur: 0.9, att: 0.05, gain: 0.018, verb: 0.4 });
       }
       // the body hitting the ground, as the film shows it
@@ -325,19 +391,28 @@ function kcAdvance(K, o, dt) {
       // moment after the body is down (or after a few seconds at most).
       if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > kcTune.hold) || ht > kcTune.holdMax) K.outT0 = T; }
       if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; kcSayEnd(K); try { o.view.flash = Math.max(o.view.flash || 0, 1); } catch (e) { /* the scope picture is not ours to break */ } }
-      const hr = K.holdT0 !== null ? lerp(0.12, 0.55, smooth((T - K.holdT0 - 0.2) / 0.8)) : 0;
-      K.rate = K.outT0 !== null ? Math.max(0.3, hr) : K.holdT0 !== null ? Math.max(0.16, hr) : 0.22;
-      K.ret += dt * (K.outT0 !== null ? Math.max(0.22, hr) : K.holdT0 !== null ? hr : 0.03);
+      wr = K.holdT0 === null ? kcTune.creep : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
+      if (K.outT0 !== null) wr = Math.max(0.3, wr);
+      K.ret += dt * wr;
     }
     // things on the round's line break as its tip reaches them (cover before it reaches the body)
     for (let i = 0; i < pl.evs.length; i++) { const ev = pl.evs[i]; if (!ev.done && K.s >= ev.s && (ev.kind === 'skin0' || ev.kind === 'cover' || K.hitT !== null)) { ev.done = true; kcFire(K, ev); } }
-    kcStepParts(K, dt * (K.holdT0 !== null ? Math.max(0.3, K.rate) : 0.15));
+    kcStepParts(K, dt * (K.holdT0 !== null ? Math.max(0.3, wr) : 0.15));
   }
+  // what the sound is told: the world's clock, a little smoothed, never below the floor
+  K.wr = K.T <= dt + 1e-9 ? wr : K.wr + (wr - K.wr) * Math.min(1, dt * 18);
+  K.rate = clamp(K.wr, kcTune.rateMin, 1);
   K.simDt = Math.max(0, K.ret - K.prevRet);
   return K.ret;
 }
 // the speed the round is shown at as the swing begins (metres per second), so the flight can land on it
 function kcSwingV0(K) { return (1.28 * Math.max(0.2, K.dS - kcTune.standOff - 0.2)) / kcTune.swing; }
+// About how long the deep slow motion lasts, from the end of the swing to the hold (for the sound).
+function kcSlowLen(K) {
+  const pl = K.plan; if (!pl) return 3;
+  const inside = ((K.exit ? pl.sOut : pl.sStop) - pl.sIn) / kcTune.crawl;
+  return kcTune.approach + kcTune.touch + 0.3 + inside * 1.25 + (K.exit && !K.spent ? kcTune.linger + 0.1 : kcTune.rest + 0.2);
+}
 function kcBeat(g) { kcTone({ f: 62, f1: 40, dur: 0.09, gain: g }); kcTone({ at: 0.16, f: 54, f1: 36, dur: 0.11, gain: g * 0.7 }); }
 
 // ---- the plan: what the round will meet, worked out from where it goes in ----------------
@@ -404,6 +479,7 @@ function kcBeginSwing(K, o) {
   evs.sort((p, q) => p.s - q.s);
   pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
   pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
+  { const D = Math.max(0.05, K.dS - pl.sFrom); pl.sA = -K.dS + D; pl.vA = (D * 0.72) / kcTune.swing; } // exactly where, and how fast it is going
   pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
   pl.sSpent = pl.sOut + 0.1 + 0.2 * K.exitK;             // one with nothing left after the far side stops here
   // the caption goes to the most important thing the round actually reaches
@@ -422,7 +498,13 @@ function kcBeginSwing(K, o) {
   const vx = cx - Hx[0], vy = cy - Hx[1], vz = cz - Hx[2], R0 = Math.hypot(vx, vy, vz);
   const top = K.look.bag === 'umbrella' ? Math.max(J.head[1] + fig.hr, 2.55 * sc) : J.head[1] + fig.hr + (K.look.hat ? 0.24 : 0.04) * sc, low = Math.min(J.ftL[1], J.ftR[1], J.hip[1]);
   const mid = [J.hip[0] * 0.5, Math.max(top - 0.78 * sc, (top + low) / 2), 0];
-  K.sw = { f, R0, phi0: Math.atan2(K.side * vx, -vz), el0: Math.asin(clamp(vy / R0, -0.9, 0.9)), H: Hx.slice(), mid, focus: [Hx[0], Hx[1] + 0.02, 0],
+  // The swing is measured from the round's own line, so that "75 degrees off the line of fire"
+  // means just that however the round came in (across from a long way to one side, or down from
+  // a roof): b points back along the line toward the shooter, n level and square to it, u = n x b.
+  const d = K.dir, nl = Math.hypot(d[0], d[2]) || 1, B = [-d[0], -d[1], -d[2]], Nn = [d[2] / nl, 0, -d[0] / nl];
+  const U = [Nn[1] * B[2] - Nn[2] * B[1], Nn[2] * B[0] - Nn[0] * B[2], Nn[0] * B[1] - Nn[1] * B[0]];
+  const vb = vx * B[0] + vy * B[1] + vz * B[2], vn = vx * Nn[0] + vz * Nn[2], vu = vx * U[0] + vy * U[1] + vz * U[2];
+  K.sw = { f, R0, B, N: Nn, U, phi0: Math.atan2(K.side * vn, vb), el0: Math.asin(clamp(vu / R0, -0.9, 0.9)), H: Hx.slice(), mid, focus: [Hx[0], Hx[1] + 0.02, 0],
     sW: W, sH: H, R1: f / Math.min(W / 1.5, vis / 1.62), R2: f / Math.min(W / 0.86, vis / 0.6), phx: g.sx, phy: g.sy,
     px0: g.sx - (f * (Hx[0] - cx)) / (Hx[2] - cz), py0: g.sy + (f * (Hx[1] - cy)) / (Hx[2] - cz), // where the chase camera's centre line was on screen
     // where the X-ray origin sits in the world: first as the flight has it, then pinned to the live target
@@ -439,45 +521,66 @@ function kcFire(K, ev) {
   K.dmg[ev.ref] = K.T;
   if (pl.key === ev) K.cap = { text: ev.label, t0: K.T, s: ev.s };
   // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
+  // Everything with blood in it is scaled by how hard the round hits (K.gk, K.gx: see KillCam.start),
+  // so a .22 leaves a small neat hole and a puff, and a .50 tears the body open.
+  const G = K.gk, N = (x) => Math.max(0, Math.round(x));
   if (ev.kind === 'skin0') {
-    kcSay(K, 'enter');
-    if (K.gore) { kcSpray(K, 0, 18, at, -1, 0.9, 0.3, 1.7, 0.003, 0.0065, 0.4); kcSpray(K, 1, K.through === false ? 12 : 6, at, -1, 0.5, 0.8, 2.8, 0.003, 0.008, 2.5); kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 }); }
-    else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
+    kcSay(K, 'enter', { spray: K.gore ? +clamp(G, 0, 1).toFixed(2) : 0 });
+    K.rip.push({ t0: K.T, s: ev.s, k: G, way: -1 }); // the shock of it running out over the skin
+    if (K.gore) {
+      // blown back out of the hole toward the shooter: a puff of mist, drops, flecks of skin and cloth
+      kcSpray(K, 0, N(10 + 40 * G), at, -1, 0.8, 0.3, 1.2 + 2.6 * G, 0.003, 0.005 + 0.005 * G, 0.4 + 0.3 * G);
+      kcSpray(K, 1, N((K.through === false ? 8 : 4) + 26 * G), at, -1, 0.5, 0.6, 2 + 4 * G, 0.0025, 0.006 + 0.005 * G, 2.5);
+      if (G > 0.3) kcSpray(K, 10, N(12 * (G - 0.25)), at, -1, 0.6, 0.5, 1.4 + 2.4 * G, 0.004, 0.008 + 0.006 * G, 2.5);
+      kcSpray(K, 9, N(0.6 + 2.6 * G), at, -1, 0.4, 0.12, 0.3 + 0.5 * G, 0.03 + 0.02 * G, 0.045 + 0.05 * G, 1.4);
+      kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 });
+    } else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
   } else if (ev.kind === 'bone' || ev.kind === 'spine') {
     K.mush = Math.min(1, K.mush + (ev.kind === 'spine' ? 0.3 : 0.22));
     const rf = ev.ref; kcSay(K, 'bone', { bone: ev.kind === 'spine' ? 'spine' : /^(skull|jaw)/.test(rf) ? 'skull' : /^rib/.test(rf) ? 'rib' : 'limb' });
-    kcSpray(K, 2, Math.round((ev.kind === 'spine' ? 11 : 7) * (0.6 + 0.9 * K.power)), at, 1, 0.75, 0.4, 2.6 + 2 * K.power, 0.01, 0.026, K.through === false ? 0.22 : 2);
-    if (K.gore) kcSpray(K, 1, 5, at, 1, 0.7, 0.2, 1.3, 0.003, 0.007, 0.13);
+    kcSpray(K, 2, N((ev.kind === 'spine' ? 1.5 : 1) * (4 + 14 * G)), at, 1, 0.75, 0.4, 2 + 4 * G, 0.008, 0.02 + 0.012 * G, K.through === false ? 0.22 : 2);
+    if (K.gore) { kcSpray(K, 1, N(3 + 10 * G), at, 1, 0.7, 0.2, 1.1 + 1.4 * G, 0.003, 0.006 + 0.004 * G, 0.15); if (G > 0.4) kcSpray(K, 10, N(8 * (G - 0.3)), at, 1, 0.7, 0.3, 1 + 2 * G, 0.004, 0.009, 0.2); }
     kcNoise({ type: 'bandpass', f: 1500, q: 1.6, dur: 0.03, gain: 0.11 }); kcTone({ type: 'square', f: 520, f1: 180, dur: 0.035, gain: 0.03, lp: 2000 });
-    if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * 1.5 + K.side * 0.5, vy: 0.9, vz: d[2] * 1.7, rot: 0, vr: 5 };
+    if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * (1.2 + 1.2 * K.gx) + K.side * 0.5, vy: 0.9, vz: d[2] * (1.4 + 1.4 * K.gx), rot: 0, vr: 5 + 4 * K.gx };
   } else if (ev.kind === 'organ') {
     K.mush = Math.min(1, K.mush + 0.12);
-    kcSpray(K, 1, ev.ref === 'heart' ? 22 : 13, at, 1, 0.9, 0.2, 1.6, 0.003, 0.009, 0.15);
-    if (ev.ref === 'brain') kcSpray(K, 3, 8, at, 1, 0.8, 0.3, 1.5, 0.005, 0.011, 0.16);
+    kcSay(K, 'organ', { organ: ev.ref, key: pl.key === ev });
+    // (organs are only on the round's line with gore on, so all of this is gore)
+    kcSpray(K, 1, N((ev.ref === 'heart' ? 1.6 : 1) * (8 + 20 * G)), at, 1, 0.9, 0.2, 1.2 + 1.6 * G, 0.003, 0.007 + 0.005 * G, 0.15);
+    kcSpray(K, 0, N(3 + 10 * G), at, 1, 0.9, 0.1, 0.6 + 0.8 * G, 0.003, 0.007, 0.12);
+    if (ev.ref === 'brain') kcSpray(K, 3, N(5 + 14 * G), at, 1, 0.8, 0.3, 1.5 + 1.5 * G, 0.005, 0.011, 0.16);
     kcNoise({ type: 'bandpass', f: 520, f1: 220, q: 1.2, dur: 0.12, att: 0.01, gain: 0.07 });
   } else if (ev.kind === 'skin1') {
-    // out of the far side: how much comes with it depends on the round (a magnum or a .50 makes a
-    // large exit and throws out blood, mist and bits of bone; a round with nothing left, less)
-    const ek = K.exitK * (K.spent ? 0.65 : 1);
-    kcSay(K, 'exit', { size: ek });
+    // Out of the far side: how much comes with it depends on the round. A .308 makes a ragged hole
+    // and a cone of blood; a magnum or a .50 bursts the far side open, a jet of blood and mist, torn
+    // tissue and bone, and a red cloud that hangs in the air. A round with nothing left, much less.
+    const ek = K.exitK * (K.spent ? 0.65 : 1), X = K.gx * (K.spent ? 0.55 : 1);
+    kcSay(K, 'exit', { size: +ek.toFixed(2), spray: K.gore ? +clamp(X, 0, 1).toFixed(2) : 0 });
+    K.rip.push({ t0: K.T, s: ev.s, k: Math.max(G * 0.6, X), way: 1 });
     if (K.gore) {
-      kcSpray(K, 1, Math.round(35 + 90 * ek), at, 1, 0.34 + 0.12 * ek, 1, 5 + 7 * ek, 0.0025, 0.011 + 0.007 * ek, 3); kcSpray(K, 0, Math.round(14 + 34 * ek), at, 1, 0.6, 0.4, 2 + 2.4 * ek, 0.003, 0.007 + 0.007 * ek, 0.6);
-      if (pl.part === 'head') kcSpray(K, 3, Math.round(6 + 12 * ek), at, 1, 0.4, 1, 3 + 4 * ek, 0.005, 0.012, 3);
-      if (pl.part === 'head' || K.dmg.spine !== undefined || K.dmg.ribOut !== undefined) kcSpray(K, 2, Math.round(2 + 10 * ek), at, 1, 0.45, 1.2, 3 + 4 * ek, 0.008, 0.02, 2.5); // bone carried out with it
+      kcSpray(K, 0, N(16 + 50 * X), at, 1, 0.2, 2, 6 + 10 * X, 0.003, 0.007 + 0.008 * X, 0.45);                    // the jet, straight on along the line
+      kcSpray(K, 1, N(30 + 140 * X), at, 1, 0.3 + 0.22 * X, 1, 5 + 8 * X, 0.0025, 0.011 + 0.01 * X, 3);          // drops, a widening cone
+      kcSpray(K, 0, N(14 + 50 * X), at, 1, 0.6, 0.4, 2 + 3 * X, 0.003, 0.008 + 0.008 * X, 0.7);                  // mist
+      kcSpray(K, 9, N(1 + 9 * X), at, 1, 0.45, 0.25, 1.1 + 2.4 * X, 0.025 + 0.03 * X, 0.05 + 0.09 * X, 2.2);     // the cloud that hangs
+      kcSpray(K, 10, N(2 + 20 * X), at, 1, 0.45, 1, 3.5 + 5 * X, 0.005, 0.011 + 0.017 * X, 3);                   // torn tissue
+      if (pl.part === 'head') kcSpray(K, 3, N(6 + 26 * X), at, 1, 0.4, 1, 3 + 5 * X, 0.005, 0.012 + 0.008 * X, 3);
+      if (pl.part === 'head' || K.dmg.spine !== undefined || K.dmg.ribOut !== undefined) kcSpray(K, 2, N(2 + 18 * X), at, 1, 0.45, 1.2, 3 + 5 * X, 0.008, 0.02 + 0.01 * X, 2.5); // bone carried out with it
       // a few strings of drops that stretch out as they fly
-      for (let j = 0, nj = 2 + Math.round(4 * ek); j < nj; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
-      if (kcHash(H[0] * 31 + H[1] * 17) < 0.7) for (let i = 0; i < 3; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * 9, sd: R.f() * 9 });
+      for (let j = 0, nj = 2 + N(7 * X); j < nj; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
+      if (kcHash(H[0] * 31 + H[1] * 17) < 0.4 + X) for (let i = 0, nl = 3 + N(3 * X); i < nl; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * (9 + 6 * X), sd: R.f() * 9 });
       kcNoise({ type: 'bandpass', f: 900, f1: 400, q: 0.8, dur: 0.2, att: 0.01, gain: 0.04 });
     } else kcSpray(K, 4, 10, at, 1, 0.7, 0.3, 1.6, 0.004, 0.008, 0.4);
     if (K.hat && !K.hat.fly) K.hat.fly = K.T;
   }
 }
-// Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust.
+// Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust,
+// 9 a cloud of blood mist that hangs, 10 torn tissue (5 to 8 are cover: see kcCoverBurst).
 // way: +1 along the round's travel, -1 back toward the shooter. spread: 0 a jet, 1 nearly a ball.
 // sp0..sp1 speeds in metres per second, r0..r1 sizes in metres, life in seconds of the spray's own time.
 function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
   const L = list || K.parts;
-  if (L.length > 520) return;
+  if (L.length > kcTune.maxParts) return;
+  n = Math.min(n, kcTune.maxParts + 40 - L.length);
   const R = K.rng, d = K.dir;
   for (let i = 0; i < n; i++) {
     let rx = R.f() * 2 - 1, ry = R.f() * 2 - 1, rz = R.f() * 2 - 1; const rl = Math.hypot(rx, ry, rz) || 1;
@@ -487,8 +590,9 @@ function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
   }
 }
 // how the bits in the air slow down (drag) and fall (gravity), by kind: 0 mist, 1 drops, 2 bone,
-// 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster
-const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8];
+// 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster, 9 a hanging
+// cloud of mist, 10 tissue
+const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5, 4.5, 0.6], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8, 0.35, 9.8];
 function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spray flies in slow motion
   const ps = list || K.parts, wz = !world && K.wallB ? K.wallB.dz : 1e9;
   for (let i = ps.length - 1; i >= 0; i--) {
@@ -498,8 +602,9 @@ function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spr
     const drag = kcDrag[p.k] || 0.5, g = kcFall[p.k] || 9.8;
     p.vx -= p.vx * drag * dt; p.vy -= (p.vy * drag + g) * dt; p.vz -= p.vz * drag * dt;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.rot += p.vr * dt;
+    if (p.k === 9) { if (p.y < p.r) { p.y = p.r; p.vy = Math.max(0, p.vy); } if (p.z > wz - p.r) { p.z = wz - p.r; p.vz = Math.min(0, p.vz); } continue; } // a cloud only drifts
     if (!world && p.y < 0.004) { p.y = 0.004; p.stuck = true; p.life = p.age + 3; } // landed: a mark on the floor
-    else if (p.z >= wz && p.k !== 7) { p.z = wz; p.stuck = true; p.wall = true; p.life = p.age + (p.k === 1 || p.k === 0 ? 9 : 2); } // the wall behind: blood stays on it
+    else if (p.z >= wz && p.k !== 7) { p.z = wz; p.stuck = true; p.wall = true; p.life = p.age + (p.k === 1 || p.k === 0 || p.k === 10 ? 9 : 2); } // the wall behind: blood stays on it
   }
   if (!list && K.plate) { const q = K.plate; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.rot += q.vr * dt; }
 }
@@ -939,6 +1044,9 @@ function kcWake(ctx, c, tx, ty, tz, dx, dy, dz, o) {
 // ---- stages 2 to 4: the swing, the X-ray, the hold --------------------------------------------
 // The camera circles the target. phi is how far round it has come (0 = behind the round,
 // a quarter turn = looking square across the line of fire), R how far away it is, el how high.
+// It stops short of a quarter turn (kcTune.angle, then drifting to angleX), on the shooter's
+// side, so it still looks a little along the round's path: the round is seen to go into the
+// body, through it and out, instead of sliding flat across the picture.
 function kcOrbitCam(K, V) {
   const W = V.W, H = V.H, sw = K.sw, c = K.cam, T = K.T, deg = kcTune.deg;
   if (sw.sW !== W || sw.sH !== H) { // the phone was turned: frame the shots again for the new shape
@@ -950,13 +1058,17 @@ function kcOrbitCam(K, V) {
   // in the hold the camera draws back, comes round toward the shooter's side a little (so a wall
   // behind is seen, not edge on) and follows the body down
   const hold = K.holdT0 !== null ? smooth((T - K.holdT0 - 0.15) / 1.1) : 0, fl = K.follow;
-  const phi = lerp(lerp(sw.phi0, 80 * deg, e) + (9 * (1 - Math.exp(-tau * 2.2)) + 2.2 * tau) * deg, (K.wallB ? 52 : 70) * deg, hold);
-  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2, push) * (1 + 0.85 * hold), el = lerp(lerp(sw.el0, 0.11, e), 0.22, hold);
+  const phi = lerp(lerp(sw.phi0, kcTune.angle * deg, e) + (kcTune.angleX - kcTune.angle) * (1 - Math.exp(-tau * 0.6)) * deg, (K.wallB ? 52 : 70) * deg, hold);
+  // For the X-ray the camera comes in closer with a wider lens (the body is framed the same): the
+  // stronger perspective makes the round's path read in depth, the near end coming toward us.
+  const fk = lerp(1, kcTune.lensX, push * (1 - hold));
+  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2 * fk, push) * (1 + 0.85 * hold), el = lerp(lerp(sw.el0, 0.11, e), 0.22, hold);
   const k1 = smooth(u * 1.2);
   let px = lerp(lerp(sw.H[0], sw.mid[0], k1), sw.focus[0], push), py = lerp(lerp(sw.H[1], sw.mid[1], k1), sw.focus[1], push), pz = 0;
   if (fl && hold > 0) { px = lerp(px, fl[0], hold); py = lerp(py, fl[1], hold); pz = lerp(pz, fl[2], hold); }
-  c.x = px + R * K.side * Math.sin(phi) * Math.cos(el); c.y = py + R * Math.sin(el); c.z = pz - R * Math.cos(phi) * Math.cos(el);
-  c.f = sw.f;
+  const B = sw.B, Nn = sw.N, U = sw.U, cb = Math.cos(phi) * Math.cos(el), cn = K.side * Math.sin(phi) * Math.cos(el), cu = Math.sin(el);
+  c.x = px + R * (B[0] * cb + Nn[0] * cn + U[0] * cu); c.y = py + R * (B[1] * cb + U[1] * cu); c.z = pz + R * (B[2] * cb + Nn[2] * cn + U[2] * cu);
+  c.f = sw.f * fk;
   // The chase camera looked straight down range with its picture slid sideways. Over the first
   // third of the swing that turns into a camera that really looks at the target.
   kcLook(c, px, py, pz);
@@ -1001,7 +1113,7 @@ function kcDrawXray(K, V, ctx, dt) {
   const xr = smooth((T - (K.Tc - 0.5)) / 0.55), infl = smooth((u - 0.12) / 0.5);
   kcShell(ctx, K, c, fig, figA, xr, infl, pal);
   if (xr > 0.01) kcInnards(ctx, K, c, fig, figA * xr);
-  if (K.hitT !== null) kcTrack(ctx, K, c, fig);
+  if (K.hitT !== null) { kcTrack(ctx, K, c, fig); kcRipples(ctx, K, c, fig); }
   // the round, while any of it is still to be seen
   const tipx = pl.H[0] + d[0] * K.s, tipz = pl.H[2] + d[2] * K.s;
   let tipy = pl.H[1] + d[1] * K.s, tum = 0;
@@ -1010,8 +1122,16 @@ function kcDrawXray(K, V, ctx, dt) {
   const inside = K.hitT !== null ? clamp((K.s - pl.sIn) / 0.25, 0, 1) : 0;
   const bo = { len: K.len, rad: K.rad, spin: K.spin * (K.hitT !== null ? 0.5 : 2.2), mush: K.mush * 0.9, steel: K.steel || !K.gore, hot: 0.2 * (1 - inside), tilt: (K.through === false ? 0.42 : 0.2) * inside * Math.sin(inside * 2.1) + tum };
   if (K.hitT === null) kcWake(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], { len: K.len, rad: K.rad, a: (K.sonic ? 0.9 : 0.35) * (1 - 0.5 * u), t: T, cone: K.sonic });
-  kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   kcDrawParts(ctx, K, c);
+  // The round is drawn over the spray, so it can always be followed through the body. While it is
+  // inside, a soft light round it lifts it off the gore (it is the one thing the eye must not lose).
+  const glow = K.hitT !== null && (!K.exit || K.s < pl.sOut + 0.25) && !(K.spent && K.spentT !== undefined) ? smooth((K.s - pl.sIn + 0.01) / 0.03) : 0;
+  if (glow > 0.01 && kcProj(c, tipx - d[0] * K.len * 0.5, tipy - d[1] * K.len * 0.5, tipz - d[2] * K.len * 0.5, kcQ)) {
+    const gr = Math.max(8, K.len * kcQ[2] * 1.1), gg = ctx.createRadialGradient(kcQ[0], kcQ[1], 0, kcQ[0], kcQ[1], gr);
+    gg.addColorStop(0, K.gore ? 'rgba(255,236,200,0.5)' : 'rgba(225,242,255,0.5)'); gg.addColorStop(1, 'rgba(255,236,200,0)');
+    ctx.globalAlpha = glow; ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], gr, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+  }
+  kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   kcCaption(ctx, K, c, V);
 }
 // The floor of X-ray space: faint rings and spokes round the target's feet, and a soft shadow.
@@ -1198,11 +1318,11 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
       if (i === 1 && K.dmg.skin1 === undefined) break;
       kcLoc(fr, (i ? pl.sOut : pl.sIn) * fig.fs, bb, pl.c0, kcL0);
       if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) continue;
-      // the way in is a small neat hole; the way out is larger and torn, more so for a big round
-      const r = Math.max(1.5, (i ? 0.01 + 0.024 * K.exitK : 0.007 + 0.005 * K.power) * kcQ[2]);
-      if (K.gore) { ctx.fillStyle = '#8c1219'; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.3, 0, TAU); ctx.fill(); }
+      // the way in is a small neat hole; the way out is larger and torn, far more so for a big round
+      const r = Math.max(1.5, (i ? 0.01 + 0.04 * K.gx : 0.006 + 0.01 * K.gk) * kcQ[2]);
+      if (K.gore) { ctx.fillStyle = '#8c1219'; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * (1.3 + (i ? 0.5 * K.gx : 0.3 * K.gk)), 0, TAU); ctx.fill(); }
       ctx.fillStyle = K.gore ? '#3a0408' : '#0a1018'; ctx.beginPath();
-      if (i) for (let j = 0; j < 6; j++) { const an = j * 1.05 + kcHash(j + pl.c0 * 40) * 0.7, rr = r * (0.55 + 0.6 * kcHash(j * 3.7 + pl.sOut * 20)); ctx.moveTo(kcQ[0] + Math.cos(an) * r * 0.4 + rr, kcQ[1] + Math.sin(an) * r * 0.4); ctx.arc(kcQ[0] + Math.cos(an) * r * 0.4, kcQ[1] + Math.sin(an) * r * 0.4, rr, 0, TAU); }
+      if (i) for (let j = 0, nj = 6 + Math.round(4 * K.gx); j < nj; j++) { const an = j * (TAU / nj) + kcHash(j + pl.c0 * 40) * 0.7, rr = r * (0.55 + 0.6 * kcHash(j * 3.7 + pl.sOut * 20)); ctx.moveTo(kcQ[0] + Math.cos(an) * r * 0.4 + rr, kcQ[1] + Math.sin(an) * r * 0.4); ctx.arc(kcQ[0] + Math.cos(an) * r * 0.4, kcQ[1] + Math.sin(an) * r * 0.4, rr, 0, TAU); }
       else ctx.arc(kcQ[0], kcQ[1], r, 0, TAU);
       ctx.fill();
     }
@@ -1539,25 +1659,64 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
   ctx.globalAlpha = 1;
 }
 // The track the round leaves: a hollow that balloons open just behind it and falls shut again,
-// leaving a thin dark line. Its width at each point depends on how long ago the tip went by.
+// leaving a ragged dark channel. Its width at each point depends on how long ago the tip went by,
+// and on the round: a .22 leaves a pencil line, a .50 a hollow the width of a fist that leaves a
+// channel as thick as a thumb. With gore on, the channel bleeds out into the flesh round it.
 function kcTrack(ctx, K, c, fig) {
-  const pl = K.plan, sm = pl.samples, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0, fs = fig.fs;
-  const lim = K.through === false ? pl.sStop : pl.sOut;
+  const pl = K.plan, sm = pl.samples, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0, fs = fig.fs, G = K.gk;
+  const lim = K.through === false ? pl.sStop : pl.sOut, open = 0.16 + 0.22 * G;
   let n = 0;
   for (let i = 0; i < sm.length; i += 2) { if (sm[i + 1] < 0 && K.s >= sm[i]) sm[i + 1] = T; if (sm[i + 1] >= 0 && sm[i] <= lim + 0.012) n++; }
   if (n < 2) return;
-  const xs = [], ys = [], ws = [], wl = [];
+  const xs = [], ys = [], ws = [], wl = [], wb = [];
   for (let i = 0; i < n; i++) {
     kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcL0);
     if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
-    const x = (T - sm[i * 2 + 1]) / 0.16, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
-    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push((0.02 + 0.03 * K.power) * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push((0.005 + 0.004 * K.exitK) * Math.min(1, ends * 1.6) * kcQ[2]);
+    const age = T - sm[i * 2 + 1], x = age / open, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
+    const core = (0.004 + 0.012 * G) * (0.7 + 0.6 * kcHash(i * 3.1 + G * 7)) * Math.min(1, ends * 1.6) * kcQ[2]; // torn, so never quite even
+    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push((0.012 + 0.075 * G) * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push(core);
+    wb.push(core * (1.4 + (1.6 + 2.2 * G) * smooth(age / 1.6))); // the bleed spreading out from it
   }
   let ax = xs[n - 1] - xs[0], ay = ys[n - 1] - ys[0]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
   const shape = (w, add) => { ctx.beginPath(); for (let i = 0; i < n; i++) { const x = xs[i] - ay * (w[i] + add), y = ys[i] + ax * (w[i] + add); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } for (let i = n - 1; i >= 0; i--) ctx.lineTo(xs[i] + ay * (w[i] + add), ys[i] - ax * (w[i] + add)); ctx.closePath(); };
   ctx.lineJoin = 'round';
-  if (K.gore) { ctx.globalAlpha = 0.34; ctx.fillStyle = '#ff6a5c'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffb0a4'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.92; ctx.fillStyle = '#3a0408'; shape(wl, 0); ctx.fill(); }
-  else { ctx.globalAlpha = 0.2; ctx.fillStyle = '#e6f3ff'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#e6f3ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.88; ctx.fillStyle = '#06101a'; shape(wl, 0); ctx.fill(); }
+  if (K.gore) {
+    ctx.globalAlpha = 0.42; ctx.fillStyle = '#7a0a12'; shape(wb, 0); ctx.fill();
+    ctx.globalAlpha = 0.34; ctx.fillStyle = '#ff6a5c'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffb0a4'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalAlpha = 0.95; ctx.fillStyle = '#3a0408'; shape(wl, 0); ctx.fill();
+    // shreds of flesh hanging into the channel along its edges
+    ctx.strokeStyle = '#a3141c'; ctx.lineWidth = Math.max(1, wl[0] * 0.35); ctx.globalAlpha = 0.8; ctx.beginPath();
+    for (let i = 1; i < n - 1; i++) { const sd = i & 1 ? 1 : -1, l = wl[i] * (1.2 + 1.6 * kcHash(i * 5.7)), sl = (kcHash(i * 2.3) - 0.5) * wl[i] * 2; ctx.moveTo(xs[i] - ay * wl[i] * sd, ys[i] + ax * wl[i] * sd); ctx.lineTo(xs[i] - ay * (wl[i] + l) * sd + ax * sl, ys[i] + ax * (wl[i] + l) * sd + ay * sl); }
+    ctx.stroke();
+  } else { ctx.globalAlpha = 0.2; ctx.fillStyle = '#e6f3ff'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#e6f3ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.88; ctx.fillStyle = '#06101a'; shape(wl, 0); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+// The shock of the round going in (and coming out) running out over the skin as a ring, and just
+// before a round breaks out, the skin of the far side pushed out ahead of it. Bigger for a bigger round.
+function kcRipples(ctx, K, c, fig) {
+  const pl = K.plan, d = K.dir, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0;
+  // two directions square to the round's line: across (level) and up
+  let e1x = d[2], e1z = -d[0]; const l1 = Math.hypot(e1x, e1z) || 1; e1x /= l1; e1z /= l1;
+  const e2x = d[1] * e1z, e2y = d[2] * e1x - d[0] * e1z, e2z = -d[1] * e1x;
+  const col = K.gore ? '#ffc2b8' : '#e6f3ff', fill = K.gore ? '#d0303a' : '#bfe0ff';
+  for (let i = 0; i < K.rip.length; i++) {
+    const r = K.rip[i], dur = 0.35 + 0.45 * r.k, u = (T - r.t0) / dur; if (u < 0 || u > 1) continue;
+    kcLoc(fr, r.s * fig.fs, bb, pl.c0, kcL1);
+    for (let j = 0; j < 2; j++) {
+      const rad = (0.012 + (0.04 + 0.15 * r.k) * easeOut(clamp(u * (j ? 1.6 : 1), 0, 1))) * (j ? 0.6 : 1);
+      ctx.beginPath(); if (!kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcSet(kcV1, e1x * rad, 0, e1z * rad), kcSet(kcV2, e2x * rad, e2y * rad, e2z * rad))) break;
+      if (j === 0) { ctx.globalAlpha = 0.22 * (1 - u) * (0.4 + r.k); ctx.fillStyle = fill; ctx.fill(); }
+      ctx.globalAlpha = (j ? 0.35 : 0.6) * (1 - u); ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, (1.5 + 2 * r.k) * (1 - u)); ctx.stroke();
+    }
+  }
+  // the far side tenting out as the tip comes up to it
+  const togo = pl.sOut - K.s;
+  if (K.exit && K.hitT !== null && togo > 0 && togo < 0.07) {
+    const k = 1 - togo / 0.07, b = (0.012 + 0.03 * K.gx) * k * k;
+    kcLoc(fr, (pl.sOut + b * 0.45) * fig.fs, bb, pl.c0, kcL1);
+    kcSet(kcV1, e1x * b * 0.85, 0, e1z * b * 0.85); kcSet(kcV2, e2x * b * 0.85, e2y * b * 0.85, e2z * b * 0.85); kcMul(kcV3, d, b * 0.6);
+    ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2, kcV3)) { ctx.globalAlpha = 0.55; ctx.fillStyle = K.gore ? '#9a6f7a' : '#9cc6ea'; ctx.fill(); ctx.globalAlpha = 0.8; ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); }
+  }
   ctx.globalAlpha = 1;
 }
 // Blood, bone and dust in flight. Each bit is a point in space put through the camera; drops
@@ -1566,13 +1725,23 @@ function kcDrawParts(ctx, K, c, list) {
   const ps = list || K.parts; if (!ps.length) return;
   ctx.lineCap = 'round';
   const flat = Math.max(0.12, Math.abs(Math.sin(c.pitch)));
-  // mist and dust: soft dots that swell and thin
+  // the hanging cloud: soft red puffs that swell, drift and thin out, behind everything else
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i]; if (p.k !== 9 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+    const u = clamp(p.age / p.life, 0, 1), r = Math.max(2, p.r * kcQ[2] * (1 + 2.2 * Math.sqrt(u))), a = 0.34 * smooth(p.age / 0.04) * (1 - u) * (1 - u);
+    if (a < 0.01) continue;
+    const g = ctx.createRadialGradient(kcQ[0], kcQ[1], 0, kcQ[0], kcQ[1], r);
+    g.addColorStop(0, 'rgba(150,14,24,' + a.toFixed(3) + ')'); g.addColorStop(0.55, 'rgba(120,10,20,' + (a * 0.55).toFixed(3) + ')'); g.addColorStop(1, 'rgba(90,6,14,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
+  }
+  // mist and dust: soft dots that swell and thin (a faint wider ring round each, so they blur together)
   for (let pass = 0; pass < 5; pass += 4) {
     ctx.fillStyle = pass === 0 ? '#a3141c' : '#cfe4f5';
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
-      const u = p.age / p.life;
-      ctx.globalAlpha = 0.4 * (1 - u) * (1 - u * 0.5); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], Math.max(1, p.r * kcQ[2] * (1 + u * 2.4)), 0, TAU); ctx.fill();
+      const u = p.age / p.life, a = 0.4 * (1 - u) * (1 - u * 0.5), r = Math.max(1, p.r * kcQ[2] * (1 + u * 2.4));
+      ctx.globalAlpha = a * 0.3; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.9, 0, TAU); ctx.fill();
+      ctx.globalAlpha = a * 0.75; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
     }
   }
   // drops: a round head and a tail drawn back along the way it came. Tails and heads are
@@ -1593,6 +1762,22 @@ function kcDrawParts(ctx, K, c, list) {
       }
       ctx.fill();
     }
+  }
+  // torn tissue: ragged dark lumps with a wet edge, turning as they fly (flattened once they land)
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.fillStyle = pass ? '#c23a40' : '#5c0910'; ctx.beginPath();
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]; if (p.k !== 10 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+      const r = Math.max(1.2, p.r * kcQ[2]) * (pass ? 0.45 : 1) * (0.4 + 0.6 * clamp((p.life - p.age) / 0.06, 0, 1)), sq = p.stuck ? flat : 0.6 + 0.4 * Math.abs(Math.sin(p.rot * 0.7));
+      const x = kcQ[0] - (pass ? r * 0.35 : 0), y = kcQ[1] - (pass ? r * 0.4 : 0), ro = p.rot, ca = Math.cos(ro), sa = Math.sin(ro);
+      for (let j = 0; j < 5; j++) { // five lobes of uneven size round the middle
+        const an = j * 1.2566, rr = r * (0.7 + 0.5 * kcHash(j * 7.3 + p.r * 9e3)), lx = Math.cos(an) * rr, ly = Math.sin(an) * rr * sq;
+        const px = x + lx * ca - ly * sa, py = y + lx * sa + ly * ca;
+        if (j) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+    ctx.globalAlpha = pass ? 0.55 : 0.95; ctx.fill();
   }
   // splinters (of bone, of wood) and chips of brick: short sticks, turning
   for (let pass = 0; pass < 3; pass++) {
