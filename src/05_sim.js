@@ -229,6 +229,7 @@ Sim.prototype.noiseAll = function (kind, dist) {
   // an unsuppressed shot heard across the whole scene
   const sim = this, st = sim.st;
   if (sim.state !== 'play' && !sim.winAt) return;
+  if (sim.M.practice) return; // nobody at the Range to hear it (see raiseAlarm)
   const alarmR = st.noise, suspR = st.noise * 1.7;
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
@@ -307,6 +308,10 @@ Sim.prototype.beginFlee = function (a) {
 };
 Sim.prototype.raiseAlarm = function (by, delay) {
   const sim = this;
+  // Never at the Range (a practice mission): there is nobody there to raise one. A loud rifle
+  // used to set it off with its own bang (noiseAll), which brought the banner, the pill, the
+  // siren and a racing pulse that shakes the aim. Stopping it here stops every way in.
+  if (sim.M.practice) return;
   if (sim.alarmT !== null || sim.alarmPending) return;
   sim.alarmPending = true;
   sim.after(delay || 0, () => {
