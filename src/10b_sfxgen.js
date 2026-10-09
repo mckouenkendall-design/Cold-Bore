@@ -288,14 +288,21 @@ function sgVoiceFor(cal, action) {
 // How each muzzle device changes the rifle's own sound. Each number multiplies a layer of the
 // bare rifle (missing = unchanged):
 //   blast, T, lp   the muzzle blast's push, its length, and the top left in it (Hz)
-//   ports          extra pushes a moment later, one for each pair of side holes (seconds after)
+//   ports, g2      extra pushes a moment later, one for each set of holes (seconds after), and how hard
 //   gas, fc, tau   the hiss of escaping gas: how loud, its pitch, how long; sizzle = its very top
-//   mid, low       a lift (dB) in the middle (a brake throwing gas at you) or low middle (a big chamber)
+//   mid, midF      a lift (dB) in the middle at about midF Hz (a brake throwing gas back at you); a
+//                  brake's follows the rifle's own voice, a compensator's (fixF) stays put
+//   low            a lift (dB) in the low middle (a big chamber)
+//   side, zing, chuff, prongs, hum  a device's own sound: a tanker brake's two side jets, a radial
+//                  brake's high zing, a compensator's upward "tss", a flash hider's ringing prongs,
+//                  the coil gun's field damper humming
 //   crack, whip    the bullet's own crack and the whip of it going away: no suppressor touches these
-//   body, sub      the boom and the low thump you feel; ring = the barrel's ring; knock = the stock's thump
+//   body, bodyLp, sub  the boom (and how much of its top is left) and the low thump you feel;
+//                  ring = the barrel's ring; knock = the stock's thump
 //   slap, tail, far  the echoes off nearby things, the rolling tail, the echo back from down range
-//   can, canT, tock, rattle  a suppressor's own sound: its tube ringing, the hollow "tock" of
-//                  the gas inside it, and (a cheap loose one) a rattle on its mount
+//   can, canT, canG, tock, tockT, tockG, rattle  a suppressor's own sound: its tube ringing (pitches,
+//                  length, level), the hollow "tock" of the gas inside it (pitch, length, level), and
+//                  (a cheap loose one) a rattle and buzz on its mount
 //   loud           the loudness it ends up at, in dB against the bare rifle
 const SG_DEV = {
   none: {},

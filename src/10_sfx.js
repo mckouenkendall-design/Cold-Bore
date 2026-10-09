@@ -411,7 +411,7 @@ Sfx.result = function (win) {
 // Under the whole film: a low bed that grows as time slows, and a heartbeat. 'fly' slows the
 // rifle's own report right down. 'slow' drops the world into the deep slow motion (a falling rush,
 // a sub drop, a faint ringing in the ears) and it holds there for o.len seconds; 'enter' is the
-// hit itself, the player's own kill confirm slowed an octave down under a stretched slap and punch,
+// hit itself, the player's own kill confirm slowed a fifth down under a stretched slap and punch,
 // then a tearing that lasts until the round comes out; 'resume' rushes the world back up as the
 // clock climbs toward 0.55 over about a second. A shot through the heart stops the heartbeat. Wet
 // layers are only added with gore on, and grow with the spray the film reports. Beats that arrive

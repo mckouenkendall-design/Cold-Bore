@@ -33,7 +33,10 @@ const S = makeScene({ time: 'night', weather: 'rain', seed: 5, refZ: 300,
   limits and the start aim.
 - `bounds`: the area (in metres, on the `refZ` plane) the scope may point at.
 - `exits`: x positions panicking people run to.
-- `ambience`: `city | harbour | wild | snow` (background sound).
+- `ambience`: `city | harbour | wild | snow` (background sound). It also sets the
+  echo of every shot: city slaps, harbour, a valley (`wild`), a mountain ridge
+  (`snow`). Set `S.indoor = true` if the player fires from inside a room: shots
+  then boom and ring like one. `groundMat` sets how the empty cases land.
 
 Planes: `const P = S.plane(z, 'name')`. Far planes are drawn first.
 - `P.add({ x0, x1, layer, draw(ctx, env) { ... } })` adds something to draw.
