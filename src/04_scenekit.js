@@ -1398,6 +1398,8 @@ K.building = function (S, P, o) {
       }
     } });
   }
+  // for detail added on top by a scene: what the wall is made of and what is already fixed to it
+  B.kStyle = kStyle; B.wallHex = wallBase; B.acs = acs; B.doorC = o.door; B.doorOp = doorOp; B.pipes = pipes; B.vents = vents; B.alarm = alarm;
   return B;
 };
 // How colourful a wall colour is, 0 (grey) to 1.
@@ -3113,6 +3115,7 @@ K.tower = function (S, P, x, h, o) { // guard tower or water tower on legs with 
 //     D.at = s     what follows waits until the zoom gives s pixels per metre
 //     D.pass = n   what follows is drawn after everything with a lower pass (details on top)
 //     D.lit = true what follows gives off its own light (signs), so night dims it less
+//     D.env      the view it is first drawn in (to find where the eye is), only while filling
 const KD_TIERS = [0, 1.2, 2.5, 5, 10, 20, 40, 80, 160];      // the steps of zoom, in pixels per metre
 const KD_P2D = typeof Path2D !== 'undefined';
 K.deco = function (S, P, o, fill) {
@@ -3182,7 +3185,7 @@ K.deco = function (S, P, o, fill) {
     if (it) { it.x0 = bx0 - 1; it.x1 = bx1 + 1; }
   };
   D.draw = (ctx, env) => {
-    if (!list) { if (fill) fill(D, makeRng(o.seed || 1)); finish(); }
+    if (!list) { if (fill) { D.env = env; fill(D, makeRng(o.seed || 1)); D.env = null; } finish(); }
     const s = env.s, x0 = env.x0, x1 = env.x1, y0 = env.y0 === undefined ? -1e9 : env.y0, y1 = env.y1 === undefined ? 1e9 : env.y1;
     let T = 0; while (T + 1 < KD_TIERS.length && KD_TIERS[T + 1] <= s) T++;            // the step of zoom we are at
     for (let gi = 0; gi < list.length; gi++) {
