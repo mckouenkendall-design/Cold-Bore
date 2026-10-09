@@ -98,6 +98,8 @@ Sim.prototype.setRoutine = function (id, routine, keepState) {
   const a = typeof id === 'string' ? this.byId[id] : id; if (!a || a.dead) return;
   a.routine = routine.slice(); a.pc = 0; a.wait = 0; a.goal = null; a.stack = []; a.waitFor = null;
   if (!keepState) a.state = 'calm';
+  // half way up (or down) to a change of plane that will now never come: lose it as they walk on
+  if (a.lift && a.lift.y1) this.ease(a, a.y - a.lift.base, 0, { dist: 1.5 });
 };
 Sim.prototype.alive = function (id) { const a = this.byId[id]; return !!a && !a.dead; };
 Sim.prototype.fail = function (code, text, delay) {
@@ -379,11 +381,108 @@ Sim.prototype.place = function (a, p) {
   ['plane', 'room', 'behind', 'zone', 'x', 'y', 'face'].forEach((k) => { if (p[k] !== undefined) a[k] = p[k]; });
   if (p.room === undefined && p.plane) { a.room = null; }
   if (p.behind === undefined && p.plane) a.behind = !!p.room;
+  if (p.plane || p.y !== undefined) a.lift = null;
 };
+
+// ---- changes of level ------------------------------------------------------------
+// The picture is a stack of flat planes, so somebody who goes from one plane to another (a room
+// to the terrace in front of it, the road to the pavement, a car seat to the street) would jump:
+// from up on a roof, a nearer plane shows the same ground lower down the screen. Instead they
+// change plane at the spot that looks the same from the shooter, and a.lift carries the
+// difference in height: an offset from the ground (base) that eases from y0 to y1 as they walk
+// `dist` metres, or over `time` seconds. On screen they walk smoothly nearer or further, or climb
+// in and out. The spot along the road moves a little too (by an amount that depends on where
+// the shooter is), so the walk that follows goes a touch faster or slower and they still arrive
+// where and when the routine says, from every firing position.
+// Where a point on plane P0 appears on plane P1, seen from the shooter's position.
+Sim.prototype.onPlane = function (x, y, P0, P1) {
+  const e = this.eye0, k = (P1.z - e.z) / (P0.z - e.z);
+  return { x: e.x + (x - e.x) * k, y: e.y + (y - e.y) * k };
+};
+Sim.prototype.ease = function (a, y0, y1, o) {
+  o = o || {};
+  const base = o.base !== undefined ? o.base : a.lift ? a.lift.base : a.y;
+  a.lift = { base, y0, y1, u: 0, dist: o.dist || 0, time: o.dist ? 0 : o.time || 0.35 };
+  a.y = base + y0;
+};
+function liftStep(a, moved, dt) {
+  const L = a.lift;
+  if (a.inVeh || a.dead || a.gone) { a.lift = null; return; }
+  L.u = Math.min(1, L.u + (L.dist ? moved / L.dist : dt / L.time));
+  a.y = (a.yFn ? a.yFn(a.x) : L.base) + lerp(L.y0, L.y1, smooth(L.u));
+  if (L.u >= 1 && !L.y1) a.lift = null;
+}
+// The walk that is next in the routine, if it is one.
+function nextWalk(a) { const op = a.routine[a.pc]; return op && (op[0] === 'walk' || op[0] === 'run') ? op : null; }
+// How fast to take a walk to x from `from` so as to arrive as if it had started at `was`.
+function hurryFor(x, from, was) { const d = Math.abs(x - was); return d > 0.05 ? clamp(Math.abs(x - from) / d, 0.5, 2.5) : 1; }
+// ['step', placement, dist]: onto placement's plane (and zone, room) where they stand on screen,
+// losing the difference in height over the next walk (or `dist` metres; or a third of a second).
+Sim.prototype.stepTo = function (a, p, dist) {
+  const was = a.lift && a.lift.at !== undefined ? a.lift.at : a.x, q = this.onPlane(a.x, a.y, a.plane, p.plane), base = p.y === undefined ? 0 : p.y, op = nextWalk(a);
+  this.place(a, Object.assign({}, p, { x: q.x, y: base }));
+  if (op) { a.hurryOp = op; a.hurryV = hurryFor(op[1], q.x, was); }
+  this.ease(a, q.y - base, 0, { base, dist: dist || (op ? Math.max(0.3, Math.abs(op[1] - q.x) * 0.85) : 0) });
+};
+// ['rise', placement], then a walk to x: the other way round. They stay on this plane and walk
+// to the spot that lines up with x on placement's plane, climbing (or sinking) on the way to the
+// height from which a 'step' to placement lands them exactly on its ground at x. For when they
+// must be drawn on this plane until the moment they change (walking up to a door in the wall
+// behind them, say). True if it set them walking.
+Sim.prototype.riseFor = function (a, p) {
+  const e = this.eye0, base = a.yFn ? a.yFn(a.x) : a.lift ? a.lift.base : a.y, py = p.y === undefined ? 0 : p.y, op = nextWalk(a);
+  const k = (p.plane.z - e.z) / (a.plane.z - e.z), want = e.y + (py - e.y) / k - base;
+  if (!op) { this.ease(a, a.y - base, want, { base }); return false; }
+  const x = e.x + (op[1] - e.x) / k;
+  a.pc++; a.goal = x; a.running = op[0] === 'run'; if (op[2] && op[0] === 'walk') a.speed = op[2];
+  const d = Math.abs(op[1] - a.x); a.hurryNow = d > 0.05 ? clamp(Math.abs(x - a.x) / d, 0.5, 2.5) : 1;
+  this.ease(a, a.y - base, want, { base, dist: Math.max(0.3, Math.abs(x - a.x) * 0.85) });
+  a.lift.at = op[1]; // where they are on the routine's reckoning when they get there
+  return true;
+};
+
+// ---- in and out of vehicles -------------------------------------------------------
+// Where somebody sits in a vehicle (drawn there, through the window). Their door is at the seat.
+Sim.prototype.seatPos = function (v, i) {
+  const c = v.def;
+  return { x: v.x + v.dir * c.seats[i] * c.len, y: v.y + (c.body + c.h) / 2 - 1.2 };
+};
+// Out through the door at their seat (or at `door`, {x, y} on the vehicle's plane, for back
+// doors), onto the plane, ground and zone of placement p. Left out, that is the vehicle's own
+// plane and road: they stand in front of it. A plane beyond the vehicle is the far door, and
+// they stand behind it. They come out at the height they sat at and stand up over a moment
+// before their routine goes on (so set any new routine first).
+Sim.prototype.getOut = function (a, p, door) {
+  const v = a.inVeh; if (!v) return;
+  p = p || {};
+  const s = door || this.seatPos(v, a.seat), P = p.plane || v.plane, base = p.y !== undefined ? p.y : P === v.plane ? v.y : 0;
+  const q = this.onPlane(s.x, s.y, v.plane, P);
+  if (v.seats[a.seat] === a.id) v.seats[a.seat] = null;
+  a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; a.goal = null;
+  this.place(a, { plane: P, x: q.x, y: base, zone: p.zone || 'street', room: null, behind: false });
+  this.ease(a, q.y - base, 0, { base, time: 0.4 });
+  a.wait = Math.max(a.wait || 0, 0.45);
+};
+// Before taking a seat: walk to the door (the spot that lines up with the seat from the
+// shooter, on whatever plane they are on), then sit down into it over a moment. True while
+// that is still going on. Somebody already there (as near as one step) gets straight in.
+Sim.prototype.boardStep = function (a, v, seat) {
+  if (!v || v.gone || !a.plane) return false;
+  const s = this.seatPos(v, seat), q = this.onPlane(s.x, s.y, v.plane, a.plane), k = (v.plane.z - this.eye0.z) / (a.plane.z - this.eye0.z);
+  if (Math.abs(q.x - a.x) * k <= 0.1 && Math.abs(q.y - a.y) * k <= 0.1) return false;
+  if (Math.abs(q.x - a.x) > 0.02) { a.goal = q.x; a.hurryNow = 1; return true; }
+  const base = a.lift ? a.lift.base : a.y;
+  this.ease(a, a.y - base, q.y - base, { base, time: clamp(0.25 + Math.abs(q.y - a.y) * 0.5, 0.3, 0.7) });
+  a.wait = a.lift.time; a.anim = a.idle = 'stand';
+  return true;
+};
+
 // One person, one step. The wrapper notes when the pose or the facing changes so the
 // figure can ease from one to the other instead of snapping (see figPoseChange).
 Sim.prototype.stepActor = function (a, dt) {
+  const x0 = a.x, L = a.lift;
   this.stepActorCore(a, dt);
+  if (a.lift) liftStep(a, a.lift === L ? Math.abs(a.x - x0) : 0, dt); // (a lift begun this step: they have not walked yet)
   if (a.anim !== a.animCur) figPoseChange(a);
   if (!a.dead) a.faceS = approach(a.faceS === undefined ? a.face : a.faceS, a.face, dt * 9);
 };
@@ -392,7 +491,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
-  if (a.inVeh) { const v = a.inVeh, c = v.def; a.x = v.x + v.dir * c.seats[a.seat] * c.len; a.y = v.y + (c.body + c.h) / 2 - 1.2; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
   if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
@@ -415,7 +514,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   }
   // moving toward a goal
   if (a.goal !== null) {
-    const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1), dx = a.goal - a.x, stepd = sp * dt;
+    const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1) * (a.hurryNow || 1), dx = a.goal - a.x, stepd = sp * dt;
     a.face = sign(dx) || a.face; a.vx = a.face * sp;
     a.anim = a.running ? (a.state === 'panic' ? 'panic' : 'run') : 'walk';
     a.ph += dt * sp * (a.running ? FIG_GAIT.run : FIG_GAIT.walk).k; // the stride is worked out from this, so the feet stay put on the ground
@@ -433,14 +532,16 @@ Sim.prototype.stepActorCore = function (a, dt) {
     if (!op) { a.anim = a.idle; return; }
     a.pc++;
     switch (op[0]) {
-      case 'walk': a.goal = op[1]; a.running = false; if (op[2]) a.speed = op[2]; return;
-      case 'run': a.goal = op[1]; a.running = true; return;
+      case 'walk': a.goal = op[1]; a.running = false; if (op[2]) a.speed = op[2]; a.hurryNow = op === a.hurryOp ? a.hurryV : 1; a.hurryOp = null; return;
+      case 'run': a.goal = op[1]; a.running = true; a.hurryNow = op === a.hurryOp ? a.hurryV : 1; a.hurryOp = null; return;
       case 'wait': a.wait = op[1]; if (op[2]) { a.anim = op[2]; a.idle = op[2]; } else a.anim = a.idle; if (op[3]) a.face = op[3]; return;
       case 'anim': a.anim = a.idle = op[1]; break;
       case 'face': a.face = op[1]; a.faceHome = op[1]; break;
       case 'hide': a.hidden = true; break;
       case 'show': a.hidden = false; break;
       case 'to': sim.place(a, op[1]); break;
+      case 'step': sim.stepTo(a, op[1], op[2]); break;
+      case 'rise': if (sim.riseFor(a, op[1])) return; break;
       case 'emit': sim.emit(op[1]); break;
       case 'waitFor': a.waitFor = op[1]; if (!sim.did(op[1])) { a.anim = a.idle; return; } a.waitFor = null; break;
       case 'say': sim.bubble(a, op[1], op[2] || 2.5); break;
@@ -452,7 +553,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
       case 'call': op[1](sim, a); break;
       case 'speed': a.speed = op[1]; break;
       case 'role': a.role = op[1]; break;
-      case 'veh': { const v = sim.byId[op[1]]; a.inVeh = v; a.seat = op[2] || 0; v.seats[a.seat] = a.id; a.anim = 'drive'; a.plane = v.plane; a.room = null; a.behind = false; a.zone = 'veh:' + v.id; return; }
+      case 'veh': { const v = sim.byId[op[1]]; if (sim.boardStep(a, v, op[2] || 0)) { a.pc--; return; } a.inVeh = v; a.lift = null; a.seat = op[2] || 0; v.seats[a.seat] = a.id; a.anim = 'drive'; a.plane = v.plane; a.room = null; a.behind = false; a.zone = 'veh:' + v.id; return; }
       case 'back': { const s = a.stack.pop(); if (s) { a.routine = s.routine; a.pc = Math.max(0, s.pc - (s.goal !== null ? 1 : 0)); a.wait = s.wait; a.anim = a.idle = s.anim; } break; }
       default: break;
     }
@@ -545,7 +646,7 @@ Sim.prototype.stepVehicle = function (v, dt) {
     else if (op[0] === 'emit') sim.emit(op[1]);
     else if (op[0] === 'gone') { v.gone = true; sim.emit('gone:' + v.id); v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) sim.leave(a); }); return; }
     else if (op[0] === 'brake') { v.goal = v.x + v.dir * Math.max(2, v.v * 0.9); v.maxV = 0; v.flatTire = true; return; }
-    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, { x: v.x + (op[2] || 0), y: op[5] === undefined ? v.y : op[5], plane: op[4] || v.plane, zone: op[3] || 'street', room: null, behind: false }); v.seats[a.seat] = null; } }
+    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead && a.inVeh === v) sim.getOut(a, op[2]); }
     else if (op[0] === 'call') op[1](sim, v);
     else if (op[0] === 'loop') v.pc = op[1] || 0;
   }

@@ -242,7 +242,8 @@ mission({
   triggers(H) { return [
     hint(1.5, 'A car is coming from the left. It will stop just past the laundry. The man you want is in the back seat.'),
     onEv('leaving', (sim) => sim.msg('Marlow', 'He is moving. Lead him or let him go.')),
-    { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead) return; a.inVeh = null; a.hidden = false; sim.place(a, { plane: H.PS, x: sim.byId.car.x - 1.5, y: 0, zone: 'street', room: null, behind: false }); a.anim = a.idle = 'stand'; a.state = 'flee'; a.routine = [['run', -50], ['gone']]; a.pc = 0; sim.raiseAlarm('target', 0.3); } },
+    // a flat tyre: he gets out of his door on this side and runs for it
+    { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead || !a.inVeh) return; sim.setRoutine(a, [['run', -50], ['gone']]); sim.getOut(a); a.state = 'flee'; sim.raiseAlarm('target', 0.3); } },
   ]; },
   challenge: { id: 'moving', text: 'Hit him while the car is moving', test: (sim) => sim.kills.some((k) => k.id === 't' && k.moving) },
   solve: [['until', (s) => s.did('parked')], ['wait', 0.7], ['shoot', 't', 'head']],
@@ -312,6 +313,9 @@ mission({
   reward: { cr: 1000, xp: 240 },
 });
 
+// Dutch's car pulls up in the near lane at C1M7_CAR. C1M7_NOSE is just clear of its nose, where
+// he and his guard change between the road and the pavement.
+const C1M7_CAR = -8.1, C1M7_NOSE = -5.0;
 mission({
   id: 'c1m7', ch: 1, title: 'Dutch', range: 168,
   objective: 'Dutch Pell: the big bald man with the red scarf. Do not touch the detective.',
@@ -335,12 +339,16 @@ mission({
     return H;
   },
   cast(H) {
+    // They get out on the road side, walk round the nose of the car and step up onto the pavement
+    // (plane PS, seven metres further back) just past it, and come back the same way.
+    const road = H.street(0, { plane: H.PR }), door = (i) => doorX('suv', C1M7_CAR, 1, i);
+    const back = (seat) => [['rise', road], ['walk', C1M7_NOSE], ['step', road], ['walk', door(seat)]];
     return [
       { id: 'drv', role: 'guard', look: { hat: 'cap' } },
       { id: 'dutch', role: 'target', look: { build: 'big', beard: '#9a9fa6', coat: '#15171b', long: true, scarf: COL.red, h: 1.08 },
-        routine: [['walk', 2.2], ['wait', 11, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -9.5], ['emit', 'dutch_in'], ['veh', 'suv', 1]], escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
+        routine: [['walk', C1M7_NOSE], ['step', H.street(0)], ['walk', 2.2], ['wait', 11.25, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -2]].concat(back(1), [['emit', 'dutch_in'], ['veh', 'suv', 1]]), escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
       { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' },
-        routine: [['walk', -0.8], ['wait', 12, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -11.5], ['veh', 'suv', 2]] },
+        routine: [['walk', C1M7_NOSE], ['step', H.street(0)], ['walk', -0.8], ['wait', 13.1, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -2]].concat(back(2), [['veh', 'suv', 2]]) },
       Object.assign(H.street(3.8), { id: 'sgt', role: 'civ', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, failText: 'You shot a police sergeant. Every officer in Port Calder is now looking for you.',
         routine: [['waitFor', 'arrived'], ['wait', 21.5, 'talk', -1], ['walk', -47], ['gone']] }),
       Object.assign(H.street(27.5), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#39404a' }, routine: [['wait', 999, 'arms', -1]] }),
@@ -352,7 +360,7 @@ mission({
     H._train = t;
     return [
       { id: 'suv', kind: 'suv', plane: H.PR, x: -80, y: 0, dir: 1, col: '#0e0f12', seats: ['drv', 'dutch', 'g1'],
-        routine: [['wait', 5], ['drive', -12, 9], ['emit', 'arrived'], ['wait', 1.2], ['out', 'dutch', 3, 'street', H.PS, 0], ['out', 'g1', 1, 'street', H.PS, 0], ['waitFor', 'dutch_in'], ['wait', 1.6], ['drive', 95, 11], ['gone']] },
+        routine: [['wait', 4.57], ['drive', C1M7_CAR, 9], ['emit', 'arrived'], ['wait', 0.77], ['out', 'dutch'], ['out', 'g1'], ['waitFor', 'dutch_in'], ['wait', 1.6], ['drive', 95, 11], ['gone']] },
       { id: 'vcar', kind: 'sedan', plane: H.PR, x: 35, y: 0, dir: -1, col: '#3a3f49', seats: ['varga'], routine: [] },
       t.veh,
     ];

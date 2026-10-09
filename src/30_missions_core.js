@@ -50,6 +50,9 @@ function passersBy(H, o) {
     if (o.plane) a.plane = o.plane;
   } };
 }
+// Where the door of a seat is, along the road, for a vehicle of this kind standing at x facing
+// dir: walk people there before ['veh', ...] (it walks them the rest of the way if they are not).
+function doorX(kind, x, dir, seat) { const c = CARS[kind]; return x + dir * c.seats[seat || 0] * c.len; }
 // Radio line from a character at a given time.
 function say(at, who, text, dur) { return { at, do(sim) { sim.msg(who, text, dur); } }; }
 function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', typeof text === 'function' ? text() : text, dur || 10); } }; }
