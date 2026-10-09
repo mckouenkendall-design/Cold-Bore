@@ -265,7 +265,7 @@ mission({
     H.out = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: null, zone: H.bal.zone, behind: false });
     // the balcony door opens as the guard comes out to smoke and as he goes back in
     const bd = H.b3.win(3, 4), bx = bd.x + bd.w / 2, inner = H.b3.winX(3) + 0.4;
-    K.swingDoor(H.S, H.PB, { H, x: bd.x, y: bd.y, w: bd.w, h: bd.h, hinge: -1, col: '#3a3f47', glass: true, open(sim) {
+    K.swingDoor(H.S, H.PB, { H, x: bd.x, y: bd.y, w: bd.w, h: bd.h, hinge: -1, col: '#3a3f47', open(sim) {
       const g = sim.byId.g; if (!g || g.dead || g.gone || g.state !== 'calm') return false;
       return g.zone === H.bal.zone ? g.goal !== null && Math.abs(g.x - bx) < 1.7 : g.room === 'b3:count' && g.x > inner && (g.goal === null || g.goal > inner);
     } });

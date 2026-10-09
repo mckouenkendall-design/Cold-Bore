@@ -453,8 +453,12 @@ mission({
       A: { lit: { 2: true, 3: false, 5: false, 7: false, 9: true }, bays: { '2,2': 'deskL', '2,3': 'none', '2,4': 'shelf+', '2,6': 'plant+' } },
       F: { shop: { lit: true }, wins: { '2,1': { lit: true, blind: 0 }, '1,3': dark, '2,3': dark, '3,3': dark, '1,2': dark, '1,4': dark } } });
     K.thing(H.S, H.PC, 'duck', H.siteKit.cabX + 4.9, 3.0);
+    // Pip's workshop door (the shop door of the brick block) opens as she comes out
+    const F = H.F, dx = F.x + F.w - 2.1;
+    K.swingDoor(H.S, F.P, { H, x: dx + 0.13, y: 0.12, w: 1.24, h: 2.16, hinge: 1, lit: true, col: '#3b2c26', open: (sim) => K.doorBusy(sim, ['pip'], dx + 0.75, 1.2, 0.6) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const A = H.A, F = H.F, door = F.x + F.w - 1.35;
     const team = { coat: '#15171b', hat: 'beanie', hatCol: '#15171b', mask: '#2a2e36' };

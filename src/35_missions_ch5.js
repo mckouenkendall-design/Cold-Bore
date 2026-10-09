@@ -470,8 +470,12 @@ mission({
       row: { cafe: { wins: { '2,1': { open: true, blind: 0, lit: true } } }, rec: { wins: { '0,2': { lit: true }, '0,4': { lit: true } } }, mill: { wins: { '2,2': { open: true, blind: 0, lit: true }, '4,4': { blind: 0, lit: true } } } } });
     K.table(H.S, H.PSt, 188, { y: H.QY, umbrella: '#b33a3a' }); K.table(H.S, H.PSt, 192, { y: H.QY, umbrella: '#e8dcc0' });
     K.thing(H.S, H.PO, 'duck', H.b.ten.x + 16 * 0.3 + 1.25, H.b.ten.roofY + 0.9 + 5.05); // on the tenement water tank
+    // the office's glazed doors open for the officers going in, and again when they come out with the boxes
+    const R = H.b.rec, dop = R.wins['0,3'];
+    K.swingDoor(H.S, H.PO, { H, x: dop.x, y: H.QY, w: dop.w, h: dop.y + dop.h - H.QY, hinge: 0, lit: true, col: '#3b2c26', open: (sim) => K.doorBusy(sim, ['v1', 'v2'], R.winX(3) + 0.45, 1.4) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const help = vargaHelps(f), R = H.b.rec, doorX = R.winX(3);
     const gun = (o) => Object.assign({ role: 'hostile', state: 'alert', calmOnAlarm: true, hidden: true, look: { mask: '#16181d', coat: '#2a2d33', hat: 'beanie', hatCol: '#16181d', gun: 'rifle' } }, o);

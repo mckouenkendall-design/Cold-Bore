@@ -2549,12 +2549,12 @@ K.parked = function (S, P, kind, x, dir, col, o) {
 // closed door. K.swingDoor draws over a door: the inside (dark, or lit) and the leaf turned
 // back on its hinge, eased open and shut over a third of a second. Picture only: the
 // simulation never reads it.
-//   o = { H, x, y, w, h, open(sim), hinge, lit, col, glass, layer }
+//   o = { H, x, y, w, h, open(sim), hinge, lit, col, layer }
 //   H       the mission's handles; the mission keeps its simulation in H.sim (see start())
 //   open    true while the door should stand open
 //   hinge   -1 hinged on the left, 1 on the right, 0 a pair of doors opening from the middle
 //   lit     false for a dark inside, true (or a colour) for a lit one
-//   col     the colour of the door; glass: true for a glazed door
+//   col     the colour of the door (its edge shows as it turns)
 K.swingDoor = function (S, P, o) {
   const st = { k: 0, t: null }, hinge = o.hinge === undefined ? -1 : o.hinge;
   P.add({ x0: o.x - 0.6, x1: o.x + o.w + 0.6, layer: o.layer === undefined ? 1 : o.layer, draw(ctx, env) {
@@ -2563,30 +2563,34 @@ K.swingDoor = function (S, P, o) {
     if (st.t === null || env.t < st.t || env.t - st.t > 1) st.k = want; else st.k = approach(st.k, want, (env.t - st.t) / 0.33);
     st.t = env.t;
     const k = smooth(st.k); if (k < 0.01 || o.x > env.x1 || o.x + o.w < env.x0) return;
+    // Only the gap is painted: the leaf keeps the scene's own drawing of the door (so it starts
+    // to open looking exactly as it did shut), with its free edge showing and a little shade as
+    // it turns away from us.
     const x = o.x, y = o.y, w = o.w, h = o.h, s = env.s, cs = Math.cos(k * 1.35);
-    const base = o.col || '#4a3a2c', leaf = S.tone(base, P), dark = S.tone(darken(base, 0.45), P), edge = S.tone(lighten(base, 0.18), P);
-    R4(ctx, x, y, w, h, o.lit ? S.tone(o.lit === true ? '#efd29a' : o.lit, P, true) : S.tone('#0b0e13', P));
-    if (o.lit && s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, y, w, h * 0.12); } // the shade of the lintel on the lit floor inside
+    const base = o.col || '#4a3a2c', edge = S.tone(lighten(base, 0.18), P);
     const leaves = hinge === 0 ? [[x, (w / 2) * cs, 1], [x + w - (w / 2) * cs, (w / 2) * cs, -1]] : hinge < 0 ? [[x, w * cs, 1]] : [[x + w - w * cs, w * cs, -1]];
+    const g0 = hinge > 0 ? x : hinge < 0 ? x + w * cs : x + (w / 2) * cs, g1 = hinge > 0 ? x + w - w * cs : hinge < 0 ? x + w : x + w - (w / 2) * cs;
+    R4(ctx, g0, y, g1 - g0, h, o.lit ? S.tone(o.lit === true ? '#efd29a' : o.lit, P, true) : S.tone('#0b0e13', P));
+    if (o.lit && s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(g0, y + h * 0.88, g1 - g0, h * 0.12); } // the shade under the lintel inside
     leaves.forEach(([lx, lw, side]) => {
       if (lw < env.px * 0.5) return;
-      R4(ctx, lx, y, lw, h, leaf);
-      if (o.glass && lw > 0.12 && s > 3) R4(ctx, lx + lw * 0.16, y + h * 0.3, lw * 0.68, h * 0.6, S.tone(S.pal.glass, P));
-      // the free edge of the leaf shows its thickness; the face darkens as it turns away from us
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.3 * k).toFixed(3) + ')'; ctx.fillRect(lx, y, lw, h);
       const fe = Math.max(0.035, env.px), ex = side > 0 ? lx + lw : lx - fe;
       R4(ctx, ex, y, fe, h, edge);
-      ctx.fillStyle = 'rgba(0,0,0,' + (0.35 * k).toFixed(3) + ')'; ctx.fillRect(lx, y, lw, h);
-      if (s > 8) R4(ctx, side > 0 ? lx + lw - Math.min(lw, 0.05) : lx, y, Math.min(lw, 0.05), h, dark);
     });
   } });
 };
-// Is anybody in `ids` going through a door at x right now? Somebody visible within `near`
-// metres of it, or somebody hidden there who is about to be shown.
+// Is anybody in `ids` going through a door at x right now? Somebody within `near` metres of
+// it who is walking, or who is about to be hidden there, or somebody hidden there who is about
+// to be shown (looking past steps that take no time, such as a change of clothes). Somebody
+// who only stands about near the door does not hold it open.
+const KX_NO_TIME = { look: 1, emit: 1, face: 1, anim: 1, speed: 1, role: 1, say: 1, call: 1 };
 K.doorBusy = function (sim, ids, x, near, lead) {
   for (let i = 0; i < ids.length; i++) {
     const a = sim.byId[ids[i]]; if (!a || a.dead || a.gone || a.inVeh || Math.abs(a.x - x) > near) continue;
-    if (!a.hidden) return true;
-    const op = a.routine[a.pc];
+    let pc = a.pc, op = a.routine[pc];
+    while (op && KX_NO_TIME[op[0]]) op = a.routine[++pc];
+    if (!a.hidden) { if (a.goal !== null || (op && op[0] === 'hide' && a.wait < 0.3)) return true; continue; }
     if (op && op[0] === 'show' && a.wait < (lead === undefined ? 0.45 : lead) && !a.waitFor) return true;
   }
   return false;

@@ -209,9 +209,12 @@ mission({
   setup() {
     const H = SCN.ridge({ z: 1000, eye: [0, 145, 0], time: 'dawn', weather: 'clear', heli: 'live', seed: 6 });
     C6.duck(H, H.PA, -43.3, 4.5);
+    // the steel door of the command bunker opens for Varga and whoever walks with her
+    K.swingDoor(H.S, H.cmd.P, { H, x: H.door - 0.65, y: H.cmd.y, w: 1.3, h: 2.2, hinge: -1, col: '#3a434e', open: (sim) => K.doorBusy(sim, ['varga', 'reyes', 'brandt'], H.door, 1.6) });
     return H;
   },
-  start(sim) {
+  start(sim, H) {
+    H.sim = sim;
     sim.clock = (s) => { let m = 99; s.actors.forEach((a) => { if (!a.dead && a.threat) m = Math.min(m, a.threat.t); }); return m < 99 ? fmtTime(Math.ceil(m)) : '-:--'; };
   },
   tick(sim, H, dt) { H.heli.step(sim, dt); },

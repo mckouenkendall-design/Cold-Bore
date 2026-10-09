@@ -52,6 +52,13 @@ Sfx.onEvent = function (e, sim) {
   }
 };
 
+// The lodge's front door (a pair of plank leaves) swings open for the people listed as they
+// go in or come out. Picture only: see K.swingDoor.
+function c3Door(H, ids, near) {
+  const B = H.lodge, dx = B.winX(B.door);
+  K.swingDoor(H.S, B.P, { H, x: dx - 1.05, y: 0.14, w: 2.1, h: 2.41, hinge: 0, col: '#3a2a20', open: (sim) => K.doorBusy(sim, ids, dx, near || 1.6) });
+}
+
 // Take someone out of a vehicle and stand them on the road (used when the
 // convoy is stopped).
 function c3Out(sim, H, id, x) {
@@ -74,8 +81,10 @@ mission({
   setup() {
     const H = SCN.valley({ z: 400, eye: 40, time: 'day', seed: 3 });
     H.kit.duck(H.S, H.PD, H.tower.x + 0.5, H.tower.roofY + 0.28, 1.25);
+    c3Door(H, ['c1']); // the porter carrying crates in
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const B = H.lodge, door = B.winX(B.door);
     return [
@@ -114,8 +123,10 @@ mission({
   setup() {
     const H = SCN.valley({ z: 450, eye: 46, time: 'day', seed: 5, flagX: -47 });
     H.kit.duck(H.S, H.PD, H.woodpile.x, H.woodpile.y + 0.27, 1.3);
+    c3Door(H, ['cook'], 1.9); // the cook going back to his kitchen and out again with the soup
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const T = H.tower, B = H.lodge;
     const stairTop = { plane: H.PD, x: T.stairTop, y: T.floor, zone: 'yard', room: null, behind: false };
@@ -417,8 +428,12 @@ mission({
     const H = SCN.valley({ z: 480, eye: 44, time: 'dawn', seed: 13, top: 138, lodge: { wins: { '2,3': { lit: true }, '0,1': { lit: true }, '0,6': { lit: true } } } });
     H.screen = [H.screenPine(near, 0.8, H.deckY + 1.1, { h: 31 }), H.screenPine(near, 6.4, H.deckY + 1.0, { h: 28 })];
     H.kit.duck(H.S, H.PR, H.gate.x - 3.5, H.roadY + 4.5, 1.4);
+    // the maid comes out through the deck door at the left end to sweep, and goes back in by it
+    const md = H.lodge.wins['1,0'];
+    K.swingDoor(H.S, H.lodge.P, { H, x: md.x, y: md.y, w: md.w, h: md.h, hinge: -1, col: '#5a4030', open: (sim) => K.doorBusy(sim, ['maid'], md.x + md.w / 2, 1.4) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const home = H.inLodge(1, 0, 0);
     return [
@@ -467,8 +482,10 @@ mission({
   setup() {
     const H = SCN.valley({ z: 600, eye: 78, time: 'day', seed: 17 });
     H.kit.duck(H.S, H.PL, H.chimney.x - 1.6, H.chimney.y - 3.3, 1.5);
+    c3Door(H, ['valet', 'g1', 'august', 'g2']); // August and his people come out of the front door
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true });
     return [
