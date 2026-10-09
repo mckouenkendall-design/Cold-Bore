@@ -424,7 +424,7 @@ View.prototype.drawLens = function (sim, cam) {
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
 
-  if (V.mode !== 'plain' && !V.noReticle) V.drawReticle(sim, cx, cy, ppm);
+  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -527,9 +527,12 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   if ((st.scope.lrf || st.scope.smart) && info) {
     ctx.fillStyle = nvc ? 'rgba(220,255,225,0.95)' : 'rgba(255,170,60,0.95)';
     ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
+    // Sideways the picture runs up under the objective line, so the game says where there is room (V.lrfY).
+    const ly = !V.round && V.lrfY ? V.lrfY : cy - Math.min(R * 0.72, Rv - 34);
+    ctx.fillText(info.d ? (info.mark ? 'MARK ' : '') + Math.round(info.d) + ' m' : '- - -', cx, ly);
   }
-  // the pip sits where the round would land right now (see Sim.impactAt), not at the hold for the crosshair's range
+  // The pip sits where the round would land right now (see Sim.impactAt), not at the hold for the
+  // crosshair's range. With a mark it sits at the drop and drift for the marked distance instead.
   const pip = V.pip;
   if ((st.scope.smart || V.assist === 'full') && pip && pip.ok) {
     const px = cx - pip.right * ppm, py = cy + pip.up * ppm;
@@ -546,12 +549,66 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   }
 };
 
+// ---- the mark: a distance the player has locked -------------------------------------------
+// Without a mark the read-outs measure whatever is in the middle of the scope, and the amber
+// marker follows the bullet's own path to whatever it meets first. Both go wrong the moment the
+// scope is raised to allow for drop: the middle of the scope is then on whatever is behind the
+// target, and once the bullet's path clears the target the marker jumps to the drop for the
+// backdrop (it can sit on the target while the round would pass over). A mark fixes that: put the
+// crosshair on the target and mark it, and its distance is measured once and kept. Until the
+// player marks something else or clears it, RANGE, HOLD and the amber marker use that distance
+// however the scope moves. It is a fixed distance, not a person: if they move, mark them again.
+// Display only, like the read-outs: nothing in the simulation reads it.
+// Who gets it: everyone on Full help, and anyone whose scope has a built-in rangefinder.
+View.prototype.canMark = function (sim) { return this.assist === 'full' || !!(sim && sim.st.scope.lrf); };
+// Measure what is under the crosshair right now and lock it. Nothing there (the open sky) clears the mark.
+View.prototype.setMark = function (sim) {
+  const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), e = sim.eye();
+  this.holdT = 0; // fresh numbers on the next frame
+  if (!r || !(r.d > 1)) { this.mark = null; return null; }
+  // the spot on the line of sight at that distance, for the little marker drawn in the world
+  this.mark = { sim, d: r.d, x: e.x + (a.x / 1000) * r.d, y: e.y + (a.y / 1000) * r.d, z: e.z + r.d, at: this.rt };
+  return this.mark;
+};
+View.prototype.clearMark = function () { this.mark = null; this.holdT = 0; };
+// the mark, if there is one for this mission (a mark never carries over to another one)
+View.prototype.markFor = function (sim) { const m = this.mark; return m && m.sim === sim ? m : null; };
+
+// The marked spot, out in the world: four short ticks pointing in at it (unlike the coach's
+// corners, the amber diamond or the coach's ring) and the locked distance beside it. It stays
+// where the target was when it was marked, so a target who walks away walks out of it.
+View.prototype.drawMark = function (sim, cam) {
+  const V = this, mk = V.markFor(sim); if (!mk) return;
+  const ctx = V.ctx, p = V.project(sim, mk.x, mk.y, mk.z), x = p[0], y = p[1];
+  if (Math.abs(x - cam.cx) > cam.hw - 6 || Math.abs(y - cam.cy) > cam.hh - 6) return;
+  const nv = !!sim.st.scope.nv, col = nv ? 'rgba(225,255,230,0.95)' : 'rgba(150,226,255,0.95)';
+  const pop = clamp((V.rt - mk.at) / 0.25, 0, 1), r0 = 5 + (1 - pop) * 12, r1 = r0 + 6; // closes in on the spot when it is set
+  ctx.lineCap = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass ? col : 'rgba(0,0,0,0.55)'; ctx.lineWidth = pass ? 1.7 : 3.6;
+    ctx.beginPath();
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach((q) => { ctx.moveTo(x + q[0] * r0, y + q[1] * r0); ctx.lineTo(x + q[0] * r1, y + q[1] * r1); });
+    ctx.stroke();
+  }
+  ctx.font = '700 10.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const s = Math.round(mk.d) + ' m', tx = x + r1 + 3, ty = y - r1 + 2;
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(s, tx, ty);
+  ctx.fillStyle = col; ctx.fillText(s, tx, ty);
+  ctx.lineCap = 'butt';
+};
+
 // Refresh the spotter's numbers a few times a second (range and hold).
 View.prototype.updateReadout = function (sim, dt) {
   this.holdT -= dt;
   if (this.holdT > 0) return;
   this.holdT = 0.14;
-  const aim = sim.aimNow();
+  const mk = this.markFor(sim);
+  if (mk) { // a marked distance: the same numbers wherever the crosshair goes
+    this.rangeInfo = { d: mk.d, mark: true };
+    this.hold = mk.d > 20 ? sim.holdFor(mk.d) : null;
+    this.pip = this.hold ? Object.assign({ d: mk.d, what: 'mark' }, this.hold) : null;
+    return;
+  }
   const r = sim.rangeAt(sim.sh.ax, sim.sh.ay);
   this.rangeInfo = r ? { d: r.d, ground: r.ground } : { d: 0 };
   this.hold = r && r.d > 20 ? sim.holdFor(r.d) : null;

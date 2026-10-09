@@ -145,13 +145,13 @@ const SCOPES = [
   { id: 'night', name: 'Nightjar NV 3-10x', zoom: [3, 10], ret: 'mildot', nv: true, price: 4200, rank: 4,
     desc: 'Night vision. Turns a dark scene into green daylight, so unlit targets stand out. Washes out near bright lamps.' },
   { id: 'lrf', name: 'Corvus LRF 4-16x', zoom: [4, 16], ret: 'milhash', lrf: true, turret: true, price: 5200, rank: 5,
-    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass.' },
+    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass. Tap MARK with the crosshair on a target and its distance stays locked, so the numbers stay right when you aim high.' },
   { id: 'tree', name: 'Kestrel Tree 6-24x', zoom: [6, 24], ret: 'tree', turret: true, price: 7500, rank: 6,
     desc: 'A grid of dots spreading out below the crosshair like a pine tree, for holding drop and wind at the same time.' },
   { id: 'comp', name: 'Meridian 8-32x', zoom: [8, 32], ret: 'fine', turret: true, price: 11000, rank: 7,
     desc: 'Competition glass. Enormous magnification and a hair-thin reticle marked every fifth of a mil. Narrow view: easy to get lost in.' },
   { id: 'oracle', name: 'Oracle 5-25x Smart', zoom: [5, 25], ret: 'milhash', lrf: true, smart: true, turret: true, price: 18000, rank: 8,
-    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target.' },
+    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target. Tap MARK on a target to lock its distance: the diamond stays right for it however you move the scope.' },
 ];
 
 // ---- parts ----------------------------------------------------------------

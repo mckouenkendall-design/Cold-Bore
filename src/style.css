@@ -81,6 +81,15 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .h-reload { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--dim); font-size: 9.5px; }
 .h-reload.need { color: #1b0f02; background: var(--amber); animation: pulse .45s infinite alternate; }
 .h-reload.off { opacity: .35; } .h-reload.down { background: var(--line2); }
+/* MARK: locks the distance to what the crosshair is on. Lit amber, with the distance, while a mark is set. */
+.h-mark { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--ink); font-size: 10px; line-height: 1.05; align-content: center; gap: 2px; }
+.h-mark em { display: none; font: 700 11.5px var(--mono); font-style: normal; letter-spacing: -.02em; color: var(--amber2); }
+.h-mark.on { border-color: var(--amber); color: var(--amber); background: rgba(40, 26, 8, .9); box-shadow: 0 0 14px rgba(255, 170, 60, .35); }
+.h-mark.on em { display: block; }
+.h-mark.down { background: var(--line2); }
+body.landscape .h-mark { opacity: .92; }
+.h-strip .cell-range.marked { border-color: var(--amber); }
+.h-strip .cell-range.marked i, .h-strip .cell-range.marked b { color: var(--amber); }
 .h-ammo { position: absolute; pointer-events: none; text-align: right; }
 .h-ammo .pips { display: flex; gap: 3px; justify-content: flex-end; margin-bottom: 3px; }
 .h-ammo .pips i { width: 5px; height: 15px; border-radius: 2px 2px 1px 1px; background: var(--amber); } .h-ammo .pips i.e { background: #2a323d; }
@@ -94,7 +103,7 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .h-keys { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 11.5px; color: var(--mute); display: none; pointer-events: none; }
 .h-keys b { color: var(--dim); font-weight: 600; }
 body:not(.touch) .h-keys { display: block; }
-body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
+body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-mark, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
 body:not(.touch) .h-ammo { right: 24px !important; bottom: 40px !important; }
 body:not(.touch) #stage.aiming { cursor: none; }
 .h-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1s; pointer-events: none; }

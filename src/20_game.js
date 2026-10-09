@@ -51,7 +51,7 @@ Game.buildHud = function () {
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
   h.strip = mk('h-strip');
-  h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
+  h.sRange = mk('cell cell-range', '<i>RANGE</i><b>--</b>', h.strip);
   h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
@@ -61,8 +61,10 @@ Game.buildHud = function () {
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
   h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
+  // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
+  h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -86,15 +88,19 @@ Game.placeHud = function () {
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
     document.body.classList.toggle('short', small);
+    // MARK sits low on the left, just right of the zoom slider, level with HOLD BREATH. On a short
+    // phone the ammo count moves up above it to make room.
     if (small) {
       P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
       P(h.breath, { right: 126, bottom: 18, width: 74, height: 74, left: 'auto', top: 'auto' });
       P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
-      P(h.ammo, { left: 70, bottom: 26, right: 'auto', top: 'auto' });
+      P(h.mark, { left: 76, bottom: 22, width: 56, height: 56, right: 'auto', top: 'auto' });
+      P(h.ammo, { left: 70, bottom: h.mark.style.display === 'none' ? 26 : 92, right: 'auto', top: 'auto' });
     } else {
       P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
+      P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
       P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
     }
   } else {
@@ -108,13 +114,17 @@ Game.placeHud = function () {
     P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
     P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
-    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
-    P(h.strip, { left: sl, top: 'auto', bottom: B + (G.touch ? 8 : 30), width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
+    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150, sb = B + (G.touch ? 8 : 30);
+    P(h.strip, { left: sl, top: 'auto', bottom: sb, width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
+    // MARK sits on top of the RANGE read-out it locks, beside the zoom slider, under the left thumb
+    P(h.mark, { left: sl, bottom: sb + (h.strip.offsetHeight || 38) + 10, width: rl, height: rl, right: 'auto', top: 'auto' });
     // On a guided run the coach's card takes the place of the objective line, top left beside
     // the notebook button, well clear of the middle of the picture. The pills drop below it.
     const cw = Math.max(220, Math.min(320, W * 0.36));
     P(h.coach, { left: L + 64, top: sf.t + 6, width: cw, right: 'auto', bottom: 'auto' });
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: G.coach ? sf.t + 100 : 50 });
+    const pt = G.coach ? sf.t + 100 : 50;
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: pt });
+    V.lrfY = pt + 36; // the rangefinder's number in the glass goes just under the pills, clear of the objective and the coach
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
   }
 };
@@ -122,8 +132,10 @@ Game.placeHud = function () {
 Game.updateHud = function (dt) {
   const G = Game, h = G.hud, sim = G.sim, sh = sim.sh, st = sim.st, V = G.view, A = Save.data.settings.assist;
   const set = (e, s) => { if (e._s !== s) { e._s = s; e.innerHTML = s; } };
-  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
+  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf, mark = V.markFor(sim);
+  set(h.sRange.firstChild, mark ? 'MARKED' : 'RANGE'); h.sRange.classList.toggle('marked', !!mark);
   set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + (r.d >= 1000 ? 'm' : ' m') : 'sky') : 'by eye');
+  h.mark.classList.toggle('on', !!mark); set(h.mark.lastChild, mark ? Math.round(mark.d) + ' m' : '');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
@@ -209,6 +221,10 @@ Game.start = function (missionId, opts) {
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
+  // every mission starts with no mark; the MARK button and the M key only for players who get it
+  G.view.mark = null; clearTimeout(G.markT);
+  const canMark = G.view.canMark(G.sim);
+  G.hud.mark.style.display = canMark ? '' : 'none'; G.hud.keys.querySelector('.k-mark').style.display = canMark ? '' : 'none';
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -227,6 +243,7 @@ Game.start = function (missionId, opts) {
 Game.stop = function () {
   const G = Game;
   G.state = 'menu'; G.sim = null; G.oracle = null; G.coach = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine'); document.body.classList.remove('guided');
+  G.view.mark = null; clearTimeout(G.markT);
   if (CB.KillCam && CB.KillCam.active) CB.KillCam.stop();
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
@@ -341,6 +358,19 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
 Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
+// MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
+// sky it clears the mark instead. Holding the button (or the M key) down clears it too.
+Game.markTarget = function () {
+  const G = Game, sim = G.sim, V = G.view;
+  if (!sim || G.state !== 'mission' || G.paused || G.cine || sim.state !== 'play' || !V.canMark(sim)) return false;
+  const had = !!V.markFor(sim), m = V.setMark(sim);
+  if (m || had) Sfx.ui(m ? 'tap' : 'back');
+  return !!m;
+};
+Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.sim)) return; G.view.clearMark(); Sfx.ui('back'); };
+const MARK_HOLD = 0.6; // seconds held down that clear the mark
+Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
+Game.markUp = function () { clearTimeout(Game.markT); };
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -398,6 +428,7 @@ Game.bindInput = function () {
   press(h.fire, () => G.fire());
   press(h.breath, () => { if (G.sim) G.sim.holdBreath(!G.sim.sh.holding); });
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
+  press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
@@ -416,13 +447,14 @@ Game.bindInput = function () {
     if (G.cine) { if ((e.key === ' ' || e.key === 'Enter') && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
+    else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
     else if (e.key === '=' || e.key === '+') G.zoomBy(1.15);
     else if (e.key === '-' || e.key === '_') G.zoomBy(1 / 1.15);
   });
-  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); });
-  window.addEventListener('blur', () => { G.keys = {}; if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
+  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); });
+  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
 };

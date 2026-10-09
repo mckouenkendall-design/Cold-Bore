@@ -83,6 +83,15 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .h-reload { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--dim); font-size: 9.5px; }
 .h-reload.need { color: #1b0f02; background: var(--amber); animation: pulse .45s infinite alternate; }
 .h-reload.off { opacity: .35; } .h-reload.down { background: var(--line2); }
+/* MARK: locks the distance to what the crosshair is on. Lit amber, with the distance, while a mark is set. */
+.h-mark { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--ink); font-size: 10px; line-height: 1.05; align-content: center; gap: 2px; }
+.h-mark em { display: none; font: 700 11.5px var(--mono); font-style: normal; letter-spacing: -.02em; color: var(--amber2); }
+.h-mark.on { border-color: var(--amber); color: var(--amber); background: rgba(40, 26, 8, .9); box-shadow: 0 0 14px rgba(255, 170, 60, .35); }
+.h-mark.on em { display: block; }
+.h-mark.down { background: var(--line2); }
+body.landscape .h-mark { opacity: .92; }
+.h-strip .cell-range.marked { border-color: var(--amber); }
+.h-strip .cell-range.marked i, .h-strip .cell-range.marked b { color: var(--amber); }
 .h-ammo { position: absolute; pointer-events: none; text-align: right; }
 .h-ammo .pips { display: flex; gap: 3px; justify-content: flex-end; margin-bottom: 3px; }
 .h-ammo .pips i { width: 5px; height: 15px; border-radius: 2px 2px 1px 1px; background: var(--amber); } .h-ammo .pips i.e { background: #2a323d; }
@@ -96,7 +105,7 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .h-keys { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 11.5px; color: var(--mute); display: none; pointer-events: none; }
 .h-keys b { color: var(--dim); font-weight: 600; }
 body:not(.touch) .h-keys { display: block; }
-body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
+body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-mark, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
 body:not(.touch) .h-ammo { right: 24px !important; bottom: 40px !important; }
 body:not(.touch) #stage.aiming { cursor: none; }
 .h-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1s; pointer-events: none; }
@@ -632,7 +641,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 9:13 AM";
+const BUILD = "Oct 9, 2:32 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -972,13 +981,13 @@ const SCOPES = [
   { id: 'night', name: 'Nightjar NV 3-10x', zoom: [3, 10], ret: 'mildot', nv: true, price: 4200, rank: 4,
     desc: 'Night vision. Turns a dark scene into green daylight, so unlit targets stand out. Washes out near bright lamps.' },
   { id: 'lrf', name: 'Corvus LRF 4-16x', zoom: [4, 16], ret: 'milhash', lrf: true, turret: true, price: 5200, rank: 5,
-    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass.' },
+    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass. Tap MARK with the crosshair on a target and its distance stays locked, so the numbers stay right when you aim high.' },
   { id: 'tree', name: 'Kestrel Tree 6-24x', zoom: [6, 24], ret: 'tree', turret: true, price: 7500, rank: 6,
     desc: 'A grid of dots spreading out below the crosshair like a pine tree, for holding drop and wind at the same time.' },
   { id: 'comp', name: 'Meridian 8-32x', zoom: [8, 32], ret: 'fine', turret: true, price: 11000, rank: 7,
     desc: 'Competition glass. Enormous magnification and a hair-thin reticle marked every fifth of a mil. Narrow view: easy to get lost in.' },
   { id: 'oracle', name: 'Oracle 5-25x Smart', zoom: [5, 25], ret: 'milhash', lrf: true, smart: true, turret: true, price: 18000, rank: 8,
-    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target.' },
+    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target. Tap MARK on a target to lock its distance: the diamond stays right for it however you move the scope.' },
 ];
 
 // ---- parts ----------------------------------------------------------------
@@ -6107,6 +6116,7 @@ Sim.prototype.noiseAll = function (kind, dist) {
   // an unsuppressed shot heard across the whole scene
   const sim = this, st = sim.st;
   if (sim.state !== 'play' && !sim.winAt) return;
+  if (sim.M.practice) return; // nobody at the Range to hear it (see raiseAlarm)
   const alarmR = st.noise, suspR = st.noise * 1.7;
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
@@ -6185,6 +6195,10 @@ Sim.prototype.beginFlee = function (a) {
 };
 Sim.prototype.raiseAlarm = function (by, delay) {
   const sim = this;
+  // Never at the Range (a practice mission): there is nobody there to raise one. A loud rifle
+  // used to set it off with its own bang (noiseAll), which brought the banner, the pill, the
+  // siren and a racing pulse that shakes the aim. Stopping it here stops every way in.
+  if (sim.M.practice) return;
   if (sim.alarmT !== null || sim.alarmPending) return;
   sim.alarmPending = true;
   sim.after(delay || 0, () => {
@@ -7259,7 +7273,7 @@ View.prototype.drawLens = function (sim, cam) {
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
 
-  if (V.mode !== 'plain' && !V.noReticle) V.drawReticle(sim, cx, cy, ppm);
+  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -7362,9 +7376,12 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   if ((st.scope.lrf || st.scope.smart) && info) {
     ctx.fillStyle = nvc ? 'rgba(220,255,225,0.95)' : 'rgba(255,170,60,0.95)';
     ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
+    // Sideways the picture runs up under the objective line, so the game says where there is room (V.lrfY).
+    const ly = !V.round && V.lrfY ? V.lrfY : cy - Math.min(R * 0.72, Rv - 34);
+    ctx.fillText(info.d ? (info.mark ? 'MARK ' : '') + Math.round(info.d) + ' m' : '- - -', cx, ly);
   }
-  // the pip sits where the round would land right now (see Sim.impactAt), not at the hold for the crosshair's range
+  // The pip sits where the round would land right now (see Sim.impactAt), not at the hold for the
+  // crosshair's range. With a mark it sits at the drop and drift for the marked distance instead.
   const pip = V.pip;
   if ((st.scope.smart || V.assist === 'full') && pip && pip.ok) {
     const px = cx - pip.right * ppm, py = cy + pip.up * ppm;
@@ -7381,12 +7398,66 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   }
 };
 
+// ---- the mark: a distance the player has locked -------------------------------------------
+// Without a mark the read-outs measure whatever is in the middle of the scope, and the amber
+// marker follows the bullet's own path to whatever it meets first. Both go wrong the moment the
+// scope is raised to allow for drop: the middle of the scope is then on whatever is behind the
+// target, and once the bullet's path clears the target the marker jumps to the drop for the
+// backdrop (it can sit on the target while the round would pass over). A mark fixes that: put the
+// crosshair on the target and mark it, and its distance is measured once and kept. Until the
+// player marks something else or clears it, RANGE, HOLD and the amber marker use that distance
+// however the scope moves. It is a fixed distance, not a person: if they move, mark them again.
+// Display only, like the read-outs: nothing in the simulation reads it.
+// Who gets it: everyone on Full help, and anyone whose scope has a built-in rangefinder.
+View.prototype.canMark = function (sim) { return this.assist === 'full' || !!(sim && sim.st.scope.lrf); };
+// Measure what is under the crosshair right now and lock it. Nothing there (the open sky) clears the mark.
+View.prototype.setMark = function (sim) {
+  const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), e = sim.eye();
+  this.holdT = 0; // fresh numbers on the next frame
+  if (!r || !(r.d > 1)) { this.mark = null; return null; }
+  // the spot on the line of sight at that distance, for the little marker drawn in the world
+  this.mark = { sim, d: r.d, x: e.x + (a.x / 1000) * r.d, y: e.y + (a.y / 1000) * r.d, z: e.z + r.d, at: this.rt };
+  return this.mark;
+};
+View.prototype.clearMark = function () { this.mark = null; this.holdT = 0; };
+// the mark, if there is one for this mission (a mark never carries over to another one)
+View.prototype.markFor = function (sim) { const m = this.mark; return m && m.sim === sim ? m : null; };
+
+// The marked spot, out in the world: four short ticks pointing in at it (unlike the coach's
+// corners, the amber diamond or the coach's ring) and the locked distance beside it. It stays
+// where the target was when it was marked, so a target who walks away walks out of it.
+View.prototype.drawMark = function (sim, cam) {
+  const V = this, mk = V.markFor(sim); if (!mk) return;
+  const ctx = V.ctx, p = V.project(sim, mk.x, mk.y, mk.z), x = p[0], y = p[1];
+  if (Math.abs(x - cam.cx) > cam.hw - 6 || Math.abs(y - cam.cy) > cam.hh - 6) return;
+  const nv = !!sim.st.scope.nv, col = nv ? 'rgba(225,255,230,0.95)' : 'rgba(150,226,255,0.95)';
+  const pop = clamp((V.rt - mk.at) / 0.25, 0, 1), r0 = 5 + (1 - pop) * 12, r1 = r0 + 6; // closes in on the spot when it is set
+  ctx.lineCap = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass ? col : 'rgba(0,0,0,0.55)'; ctx.lineWidth = pass ? 1.7 : 3.6;
+    ctx.beginPath();
+    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach((q) => { ctx.moveTo(x + q[0] * r0, y + q[1] * r0); ctx.lineTo(x + q[0] * r1, y + q[1] * r1); });
+    ctx.stroke();
+  }
+  ctx.font = '700 10.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const s = Math.round(mk.d) + ' m', tx = x + r1 + 3, ty = y - r1 + 2;
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(s, tx, ty);
+  ctx.fillStyle = col; ctx.fillText(s, tx, ty);
+  ctx.lineCap = 'butt';
+};
+
 // Refresh the spotter's numbers a few times a second (range and hold).
 View.prototype.updateReadout = function (sim, dt) {
   this.holdT -= dt;
   if (this.holdT > 0) return;
   this.holdT = 0.14;
-  const aim = sim.aimNow();
+  const mk = this.markFor(sim);
+  if (mk) { // a marked distance: the same numbers wherever the crosshair goes
+    this.rangeInfo = { d: mk.d, mark: true };
+    this.hold = mk.d > 20 ? sim.holdFor(mk.d) : null;
+    this.pip = this.hold ? Object.assign({ d: mk.d, what: 'mark' }, this.hold) : null;
+    return;
+  }
   const r = sim.rangeAt(sim.sh.ax, sim.sh.ay);
   this.rangeInfo = r ? { d: r.d, ground: r.ground } : { d: 0 };
   this.hold = r && r.d > 20 ? sim.holdFor(r.d) : null;
@@ -22259,7 +22330,7 @@ Game.buildHud = function () {
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
   h.strip = mk('h-strip');
-  h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
+  h.sRange = mk('cell cell-range', '<i>RANGE</i><b>--</b>', h.strip);
   h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
@@ -22269,8 +22340,10 @@ Game.buildHud = function () {
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
   h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
+  // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
+  h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -22294,15 +22367,19 @@ Game.placeHud = function () {
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
     document.body.classList.toggle('short', small);
+    // MARK sits low on the left, just right of the zoom slider, level with HOLD BREATH. On a short
+    // phone the ammo count moves up above it to make room.
     if (small) {
       P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
       P(h.breath, { right: 126, bottom: 18, width: 74, height: 74, left: 'auto', top: 'auto' });
       P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
-      P(h.ammo, { left: 70, bottom: 26, right: 'auto', top: 'auto' });
+      P(h.mark, { left: 76, bottom: 22, width: 56, height: 56, right: 'auto', top: 'auto' });
+      P(h.ammo, { left: 70, bottom: h.mark.style.display === 'none' ? 26 : 92, right: 'auto', top: 'auto' });
     } else {
       P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
+      P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
       P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
     }
   } else {
@@ -22316,13 +22393,17 @@ Game.placeHud = function () {
     P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
     P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
-    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
-    P(h.strip, { left: sl, top: 'auto', bottom: B + (G.touch ? 8 : 30), width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
+    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150, sb = B + (G.touch ? 8 : 30);
+    P(h.strip, { left: sl, top: 'auto', bottom: sb, width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
+    // MARK sits on top of the RANGE read-out it locks, beside the zoom slider, under the left thumb
+    P(h.mark, { left: sl, bottom: sb + (h.strip.offsetHeight || 38) + 10, width: rl, height: rl, right: 'auto', top: 'auto' });
     // On a guided run the coach's card takes the place of the objective line, top left beside
     // the notebook button, well clear of the middle of the picture. The pills drop below it.
     const cw = Math.max(220, Math.min(320, W * 0.36));
     P(h.coach, { left: L + 64, top: sf.t + 6, width: cw, right: 'auto', bottom: 'auto' });
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: G.coach ? sf.t + 100 : 50 });
+    const pt = G.coach ? sf.t + 100 : 50;
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: pt });
+    V.lrfY = pt + 36; // the rangefinder's number in the glass goes just under the pills, clear of the objective and the coach
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
   }
 };
@@ -22330,8 +22411,10 @@ Game.placeHud = function () {
 Game.updateHud = function (dt) {
   const G = Game, h = G.hud, sim = G.sim, sh = sim.sh, st = sim.st, V = G.view, A = Save.data.settings.assist;
   const set = (e, s) => { if (e._s !== s) { e._s = s; e.innerHTML = s; } };
-  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
+  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf, mark = V.markFor(sim);
+  set(h.sRange.firstChild, mark ? 'MARKED' : 'RANGE'); h.sRange.classList.toggle('marked', !!mark);
   set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + (r.d >= 1000 ? 'm' : ' m') : 'sky') : 'by eye');
+  h.mark.classList.toggle('on', !!mark); set(h.mark.lastChild, mark ? Math.round(mark.d) + ' m' : '');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
@@ -22417,6 +22500,10 @@ Game.start = function (missionId, opts) {
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
+  // every mission starts with no mark; the MARK button and the M key only for players who get it
+  G.view.mark = null; clearTimeout(G.markT);
+  const canMark = G.view.canMark(G.sim);
+  G.hud.mark.style.display = canMark ? '' : 'none'; G.hud.keys.querySelector('.k-mark').style.display = canMark ? '' : 'none';
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -22435,6 +22522,7 @@ Game.start = function (missionId, opts) {
 Game.stop = function () {
   const G = Game;
   G.state = 'menu'; G.sim = null; G.oracle = null; G.coach = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine'); document.body.classList.remove('guided');
+  G.view.mark = null; clearTimeout(G.markT);
   if (CB.KillCam && CB.KillCam.active) CB.KillCam.stop();
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
@@ -22549,6 +22637,19 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
 Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
+// MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
+// sky it clears the mark instead. Holding the button (or the M key) down clears it too.
+Game.markTarget = function () {
+  const G = Game, sim = G.sim, V = G.view;
+  if (!sim || G.state !== 'mission' || G.paused || G.cine || sim.state !== 'play' || !V.canMark(sim)) return false;
+  const had = !!V.markFor(sim), m = V.setMark(sim);
+  if (m || had) Sfx.ui(m ? 'tap' : 'back');
+  return !!m;
+};
+Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.sim)) return; G.view.clearMark(); Sfx.ui('back'); };
+const MARK_HOLD = 0.6; // seconds held down that clear the mark
+Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
+Game.markUp = function () { clearTimeout(Game.markT); };
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -22606,6 +22707,7 @@ Game.bindInput = function () {
   press(h.fire, () => G.fire());
   press(h.breath, () => { if (G.sim) G.sim.holdBreath(!G.sim.sh.holding); });
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
+  press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
@@ -22624,14 +22726,15 @@ Game.bindInput = function () {
     if (G.cine) { if ((e.key === ' ' || e.key === 'Enter') && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
+    else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
     else if (e.key === '=' || e.key === '+') G.zoomBy(1.15);
     else if (e.key === '-' || e.key === '_') G.zoomBy(1 / 1.15);
   });
-  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); });
-  window.addEventListener('blur', () => { G.keys = {}; if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
+  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); });
+  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
 };
 
@@ -29119,10 +29222,10 @@ UI.howTo = function () {
     <p class="lead">Read the brief. Find the right person through the scope. Wait for the right moment. Take one shot.</p>
     <div class="howcols">
     <div><h4>Controls</h4>
-    ${touch ? '<ul><li><b>Hold the phone sideways.</b> The picture fills the whole screen.</li><li><b>Drag anywhere</b> to move the scope. Slow drags move it finely.</li><li><b>Zoom slider</b> on the left, or pinch with two fingers.</li><li><b>Hold breath</b> steadies the crosshair for a few seconds.</li><li><b>Fire</b> fires the instant you touch it.</li><li><b>Reload</b> when the magazine is empty.</li></ul>'
-      : '<ul><li><b>Mouse</b> aims. <b>Left click</b> fires. <b>Wheel</b> zooms.</li><li><b>Shift</b> holds your breath. <b>R</b> reloads.</li><li><b>Q and E</b> turn the zero dial on scopes that have one.</li><li><b>Arrow keys</b> nudge the aim. <b>Esc</b> opens your notebook.</li></ul>'}</div>
+    ${touch ? '<ul><li><b>Hold the phone sideways.</b> The picture fills the whole screen.</li><li><b>Drag anywhere</b> to move the scope. Slow drags move it finely.</li><li><b>Zoom slider</b> on the left, or pinch with two fingers.</li><li><b>Hold breath</b> steadies the crosshair for a few seconds.</li><li><b>Fire</b> fires the instant you touch it.</li><li><b>Reload</b> when the magazine is empty.</li><li><b>Mark</b> locks the distance to whatever the crosshair is on. Hold it down to clear it.</li></ul>'
+      : '<ul><li><b>Mouse</b> aims. <b>Left click</b> fires. <b>Wheel</b> zooms.</li><li><b>Shift</b> holds your breath. <b>R</b> reloads.</li><li><b>Q and E</b> turn the zero dial on scopes that have one.</li><li><b>M</b> locks the distance to whatever the crosshair is on. Hold M down to clear it.</li><li><b>Arrow keys</b> nudge the aim. <b>Esc</b> opens your notebook.</li></ul>'}</div>
     <div><h4>The numbers under the scope</h4>
-    <ul><li><b>Range</b>: distance to whatever the crosshair is on.</li><li><b>Wind</b>: the arrow shows which way it pushes the bullet.</li><li><b>Hold</b>: how far to aim off, in mils. One mil is one mark on the scope glass. "Up 2.9" means put the third mark below the centre on the target.</li></ul></div>
+    <ul><li><b>Range</b>: distance to whatever the crosshair is on.</li><li><b>Marked</b>: with Full help, or with a scope that has a rangefinder, you can lock a target's distance. Put the crosshair on them and mark. RANGE then says MARKED, and RANGE, HOLD and the amber marker stay set for that distance while you aim higher to make up for the drop. If they move, mark them again. Marking the open sky clears it.</li><li><b>Wind</b>: the arrow shows which way it pushes the bullet.</li><li><b>Hold</b>: how far to aim off, in mils. One mil is one mark on the scope glass. "Up 2.9" means put the third mark below the centre on the target.</li></ul></div>
     <div><h4>Staying unseen</h4>
     <ul><li>A loud rifle is heard by everyone. Fire while something louder is happening, or fit a suppressor (a tube on the muzzle that takes away the bang).</li><li>A body in the light gets found. Darkness, timing and distance are your friends.</li><li>Some things in a scene can be shot to change it: lamps, hooks, bells, fuse boxes.</li></ul></div>
     <div><h4>Stars</h4><p>One for finishing, one for staying clean, one for not wasting shots. Every mission also has a challenge and a hidden rubber duck.</p></div>
@@ -29670,7 +29773,7 @@ UI.settings = function (fromTitle) {
   const d = Save.data, s = d.settings;
   const tog = (key, label, sub) => `<button class="setrow" data-a="tog" data-k="${key}"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><span class="sw ${s[key] ? 'on' : ''}"><i></i></span></button>`;
   const sld = (key, label, min, max, step, sub) => `<div class="setrow col"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}" aria-label="${label}"></div>`;
-  const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
+  const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target. MARK locks a target\'s distance so the marker stays right while you aim high.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
   const body = `<div class="scroll">
     <div class="setcols">
     <div class="setgroup tester-group"><div class="eyebrow">Tester mode (temporary)</div>
