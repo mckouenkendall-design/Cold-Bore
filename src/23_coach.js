@@ -110,10 +110,33 @@ Coach.prototype.nextTarget = function () {
   const from = this.cur ? this.cur.i : this.pc;
   for (let i = from; i < this.script.length; i++) {
     const c = this.script[i]; if (!COACH_SHOT[c[0]]) continue;
-    const T = this.targetOf(c); if (T) return T;
+    const T = this.targetOf(c); if (T) { T.step = c; return T; }
   }
   return null;
 };
+// Where the bot would put the crosshair for a target right now: the same point on the person or
+// thing, the same lead for a moving one, the same solution for drop and wind. Returns the world
+// point the crosshair should sit on, the aim in mils, and the distance out to it.
+Coach.prototype.aimAt = function (T, c) {
+  const sim = this.sim, sh = sim.sh, st = sim.st;
+  const extra = st.action === 'charge' ? (sh.chargeT > 0 ? Math.max(0, sh.chargeT) : 0.85) : 0;
+  let pt, lead = null;
+  if (T.kind === 'person') {
+    const a = T.a; pt = sim.partPoint(a, c[2] || 'torso');
+    const vx = a.inVeh ? a.inVeh.v * a.inVeh.dir * (a.inVeh.goal !== null ? 1 : 0) : (a.goal !== null ? a.vx : 0);
+    lead = { vx, extra };
+  } else if (T.kind === 'object') pt = { x: T.ob.x, y: T.ob.y, z: T.ob.plane.z };
+  else { pt = T.p; if (pt.vx) lead = { vx: pt.vx, extra }; }
+  const sol = sim.aimFor(pt.x, pt.y, pt.z, lead), e = sim.eye(), d = pt.z - e.z;
+  return { x: e.x + (sol.ax / 1000) * d, y: e.y + (sol.ay / 1000) * d, z: pt.z, ax: sol.ax, ay: sol.ay, d };
+};
+// While waiting for a shot, show its mark faintly so the crosshair can be settled on it early.
+Coach.prototype.preAim = function (o, T) {
+  if (!T || !T.step || (T.kind === 'person' && T.hidden)) return;
+  o.aim = this.aimAt(T, T.step); o.early = true;
+};
+// Bracket the next thing to shoot, and its mark, ahead of time.
+Coach.prototype.ahead = function (o) { const T = this.nextTarget(); o.target = this.mark(T, true); this.preAim(o, T); };
 
 // Read the script against the world as it is now. Returns (and keeps in this.out) what to show:
 //   kind   'wait' | 'hold' | 'dial' | 'reload' | 'shoot' | 'flight' | 'done'
@@ -125,7 +148,7 @@ Coach.prototype.nextTarget = function () {
 //   shot, shots     which shot this is leading up to, of how many
 Coach.prototype.update = function () {
   const C = this, sim = C.sim, sh = sim.sh, st = sim.st;
-  const o = C.out = { kind: 'done', head: '', text: '', count: null, target: null, aim: null, fire: false, ready: false, onMark: false, charging: false, shot: 1, shots: C.nSeg, dial: null };
+  const o = C.out = { kind: 'done', head: '', text: '', count: null, target: null, aim: null, early: false, fire: false, ready: false, onMark: false, charging: false, shot: 1, shots: C.nSeg, dial: null };
   if (sim.state !== 'play') { o.head = 'DONE'; return o; }
   if (sim.winAt) { o.head = 'JOB DONE'; o.text = 'Stay on the scope while it plays out.'; o.shot = C.nSeg; return o; }
   let guard = 0;
@@ -159,12 +182,12 @@ Coach.prototype.update = function () {
     if (k === 'hold') {
       if (sh.holding || sh.exhausted > 0 || sh.breath < st.breath * 0.2 || el > 4) { C.next(); continue; }
       o.kind = 'hold'; o.head = 'HOLD YOUR BREATH'; o.text = 'Press HOLD BREATH now. It steadies the crosshair for the shot.';
-      o.target = C.mark(C.nextTarget(), true); break;
+      C.ahead(o); break;
     }
     if (k === 'reload') {
       if (sh.reloadT > 0 || sh.ammo >= st.mag || sh.reserve <= 0 || sh.chargeT > 0 || el > 6) { C.next(); continue; }
       o.kind = 'reload'; o.head = 'RELOAD NOW'; o.text = 'Top the rifle up while nothing is happening.';
-      o.target = C.mark(C.nextTarget(), true); break;
+      C.ahead(o); break;
     }
     if (k === 'dial') {
       if (!st.scope.turret) { C.next(); continue; }
@@ -172,7 +195,7 @@ Coach.prototype.update = function () {
       if (sh.zeroR === S.dialTo) { C.next(); continue; }
       o.kind = 'dial'; o.dial = S.dialTo; o.head = 'SET THE ZERO DIAL TO ' + S.dialTo + ' M';
       o.text = Game.touch ? 'Use the minus and plus beside ZERO under the scope.' : 'Press Q and E to turn the zero dial.';
-      o.target = C.mark(C.nextTarget(), true); break;
+      C.ahead(o); break;
     }
     if (COACH_SHOT[k]) { if (C.shotStep(o, S, el)) continue; break; }
     C.next(); // a step this coach does not know: skip it, as the bot would
@@ -184,11 +207,12 @@ Coach.prototype.update = function () {
 Coach.prototype.waitOut = function (o, S, why) {
   o.kind = 'wait'; o.head = 'WAIT';
   const T = this.nextTarget();
-  o.target = this.mark(T, true);
+  o.target = this.mark(T, true); this.preAim(o, T);
   const line = this.guideLine(this.seg[S.i], 'wait');
   if (line) { o.text = line; return; }
   if (why === 'pause') o.text = 'Let it settle for a moment.';
   else if (why === 'cover') o.text = 'Wait for a loud noise to hide the shot.';
+  else if (o.aim) o.text = 'Wait for the right moment. Keep the cross on the faint mark' + (T && T.kind === 'object' ? ' on ' + T.name : '') + '.';
   else o.text = 'Wait for the right moment. Keep watching ' + (T ? (T.kind === 'person' ? 'the marked target' : T.name || 'the marked spot') : 'the scene') + '.';
 };
 // Fill in the box for a target and say whether it is the one being shot now or the next one.
@@ -226,18 +250,9 @@ Coach.prototype.shotStep = function (o, S, el) {
     o.kind = 'wait'; o.head = 'WAIT'; o.text = 'Wait for the target to show.'; return false;
   }
   // where the bot would aim: the same point, the same lead, the same solution
-  let pt, lead = null;
-  const extra = st.action === 'charge' ? (sh.chargeT > 0 ? Math.max(0, sh.chargeT) : 0.85) : 0;
-  if (T.kind === 'person') {
-    const a = T.a; pt = sim.partPoint(a, c[2] || 'torso');
-    const vx = a.inVeh ? a.inVeh.v * a.inVeh.dir * (a.inVeh.goal !== null ? 1 : 0) : (a.goal !== null ? a.vx : 0);
-    lead = { vx, extra };
-  } else if (T.kind === 'object') pt = { x: T.ob.x, y: T.ob.y, z: T.ob.plane.z };
-  else { pt = T.p; if (pt.vx) lead = { vx: pt.vx, extra }; }
-  const sol = sim.aimFor(pt.x, pt.y, pt.z, lead), e = sim.eye(), d = pt.z - e.z;
-  o.aim = { x: e.x + (sol.ax / 1000) * d, y: e.y + (sol.ay / 1000) * d, z: pt.z, ax: sol.ax, ay: sol.ay };
+  const A = o.aim = C.aimAt(T, c);
   // how far the crosshair is from the mark, in metres out at the target
-  const now = sim.aimNow(), err = (Math.hypot(now.x - sol.ax, now.y - sol.ay) / 1000) * d;
+  const now = sim.aimNow(), err = (Math.hypot(now.x - A.ax, now.y - A.ay) / 1000) * A.d;
   const part = c[2] || 'torso';
   const tol = T.kind === 'person' ? (part === 'head' ? 0.07 : 0.13) : T.kind === 'object' ? Math.max(0.06, Math.min(0.3, 0.7 * Math.min(T.ob.w ? T.ob.w / 2 : T.ob.r || 0.3, T.ob.h ? T.ob.h / 2 : T.ob.r || 0.3))) : 0.15;
   o.onMark = err <= tol;
@@ -286,7 +301,9 @@ Coach.prototype.draw = function (V, rt) {
   const go = o.fire, col = go ? '#5fd38a' : '#ffaa3c';
   let low = -1e9; // the bottom of the bracket on screen, so a label under the mark can clear it
   if (o.target && o.target.box) low = this.drawBracket(ctx, V, o.target, o.target.next ? '#ffcf8a' : col, rt);
-  if (o.aim && o.kind === 'shoot') {
+  if (o.aim && (o.kind === 'shoot' || o.early)) {
+    // during a wait the mark for the coming shot shows faintly, so the crosshair can settle on it early
+    if (o.early) ctx.globalAlpha = 0.5;
     const p = V.project(sim, o.aim.x, o.aim.y, o.aim.z), mx = p[0], my = p[1];
     const cx = V.cam ? V.cam.cx : V.cx, cy = V.cam ? V.cam.cy : V.cy, dist = Math.hypot(mx - cx, my - cy);
     // a faint line from the crosshair to the mark when they are apart
@@ -305,6 +322,7 @@ Coach.prototype.draw = function (V, rt) {
     }
     const lab = go ? 'FIRE NOW' : o.charging ? 'KEEP STILL' : '';
     if (lab) { const ly = Math.max(my + 30, low + 16); this.label(ctx, lab, mx, ly < V.H - 60 ? ly : my + 30, col, 16); }
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
 };
