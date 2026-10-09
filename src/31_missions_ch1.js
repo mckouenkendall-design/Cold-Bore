@@ -108,8 +108,10 @@ mission({
     K.box(H.S, H.PB, -2, H.b3.roofY + 0.9, 4, 0.55, '#2a2e36', { solid: false });
     H.hook = K.hang(H.S, H.PS, 0, 12.5, 'piano', { id: 'hook', top: H.b3.roofY + 1.2, floor: 0 });
     K.thing(H.S, H.PR, 'duck', -27, 3.25);
+    K.powerTool(H.S, H.PS, { H, who: 'c2', kind: 'jackhammer', cover: 'jackhammer' }); // the road crew's jackhammer, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     return [
       Object.assign(H.street(6.5), { id: 't', role: 'target', face: -1, look: { coat: COL.cream, long: true, hat: 'sun', hatCol: '#efe6cf', hatBand: '#22252b', bag: 'cane' },

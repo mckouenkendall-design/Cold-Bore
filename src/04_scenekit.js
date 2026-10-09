@@ -2592,6 +2592,69 @@ K.doorBusy = function (sim, ids, x, near, lead) {
   return false;
 };
 
+// ---- a worker's power tool -------------------------------------------------------
+// Some missions offer the noise of a jackhammer or a chainsaw as cover. This puts the tool in
+// the worker's hands and makes it run exactly while that cover runs: the jackhammer chatters
+// on the pavement and throws up grit, the chainsaw bites into a log on a sawbuck and sprays
+// sawdust. If the worker stops working (frightened, or shot) the tool stays where he left it.
+// Drawn on the worker's plane just before the people on it (his hands go over the grips),
+// and behind anything that stands in front of him there. Picture only.
+//   o = { H, who (actor id), kind: 'jackhammer' | 'chainsaw', cover (the cover's name) }
+K.powerTool = function (S, P, o) {
+  const at = { x: null, y: 0, f: 1, hx: 0, hy: 0 }, chain = o.kind === 'chainsaw';
+  const T = (hex, self) => S.tone(hex, P, self);
+  if (chain) { // the log he is cutting, on a sawbuck in front of where he stands (behind him in the picture, so it hides nothing)
+    P.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+      if (at.x === null) { const a = o.H && o.H.sim && o.H.sim.byId[o.who]; if (!a) return; at.x = a.x; at.y = a.y; at.f = a.face < 0 ? -1 : 1; }
+      if (env.s < 2 || at.x < env.x0 - 3 || at.x > env.x1 + 3) return;
+      const f = at.f, lx = at.x + f * 0.82, y = at.y, wood = T('#7a5a3c'), bark = T('#4f3a28'), end = T('#c9a878');
+      ctx.strokeStyle = T('#5a4634'); ctx.lineWidth = Math.max(0.045, env.px); ctx.beginPath();
+      for (const dx of [-0.42, 0.42]) { ctx.moveTo(lx + dx - 0.22, y); ctx.lineTo(lx + dx + 0.18, y + 0.66); ctx.moveTo(lx + dx + 0.22, y); ctx.lineTo(lx + dx - 0.18, y + 0.66); }
+      ctx.stroke();
+      R4(ctx, lx - 0.72, y + 0.52, 1.44, 0.24, wood); R4(ctx, lx - 0.72, y + 0.52, 1.44, 0.06, bark);
+      if (env.s > 8) { R4(ctx, f > 0 ? lx - 0.75 : lx + 0.69, y + 0.53, 0.06, 0.22, end); ctx.fillStyle = T('#d8c39a'); ctx.beginPath(); ctx.ellipse(at.x + f * 0.42, y + 0.02, 0.3, 0.05, 0, 0, TAU); ctx.fill(); } // the cut end, and the sawdust below it
+    } });
+  }
+  P.add({ x0: -1e4, x1: 1e4, layer: 1, draw(ctx, env) {
+    const sim = o.H && o.H.sim; if (!sim || env.s < 2) return;
+    const a = sim.byId[o.who]; if (!a || a.gone || a.plane !== P) return;
+    if (!a.dead && !a.hidden && a.anim === 'work') {
+      const J = actorJoints(a); at.f = J.f < 0 ? -1 : 1; at.x = a.x; at.y = a.y;
+      at.hx = a.x + (J.haR[0] + J.haL[0]) / 2; at.hy = a.y + (J.haR[1] + J.haL[1]) / 2; at.held = true;
+    } else at.held = false;
+    if (at.x === null || at.x < env.x0 - 3 || at.x > env.x1 + 3) return;
+    const on = at.held && sim.covered() && sim.coverName === o.cover, f = at.f, t = env.t, y = at.y, s = env.s;
+    const steel = T('#8d949a'), dark = T('#2a2e36'), paint = T(chain ? '#e8762a' : '#d8b52a');
+    if (!chain) {
+      // the jackhammer: T handle in his hands, the body, the chisel on the ground, its air hose trailing behind him
+      const cx = at.held ? at.hx + f * 0.04 : at.x + f * 0.55, top = at.held ? at.hy : y + 0.95, vib = on ? Math.sin(t * 150) * 0.014 : 0;
+      ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.035, env.px * 0.8); ctx.beginPath(); ctx.moveTo(cx - f * 0.07, top - 0.3); ctx.quadraticCurveTo(cx - f * 0.6, y + 0.5, cx - f * 1.0, y + 0.03); ctx.lineTo(cx - f * 3.2, y + 0.03); ctx.stroke();
+      R4(ctx, cx - 0.018, y, 0.036, 0.36 + vib, steel);
+      R4(ctx, cx - 0.07, y + 0.34 + vib, 0.14, top - y - 0.36, paint);
+      if (s > 6) { R4(ctx, cx - 0.07, y + 0.34 + vib, 0.14, 0.06, dark); R4(ctx, cx - 0.035, y + 0.42 + vib, 0.07, top - y - 0.48, T('#f0d36a')); }
+      R4(ctx, cx - 0.21, top - 0.03 + vib, 0.42, 0.055, dark);
+      if (on) { // grit and dust kicked up round the chisel
+        for (let i = 0; i < 6; i++) { const u = (t * 1.7 + i / 6) % 1, sd = i % 2 ? 1 : -1; ctx.globalAlpha = (1 - u) * 0.45; circ(ctx, cx + sd * (0.08 + 0.45 * u), y + 0.05 + 0.4 * u * (1 - 0.4 * u), 0.05 + 0.16 * u, T('#cfc7b8')); }
+        ctx.globalAlpha = 1;
+        if (s > 6) { ctx.fillStyle = T('#8a8378'); for (let i = 0; i < 5; i++) { const u = (t * 3.1 + i * 0.37) % 1, sd = i % 2 ? 1 : -1; ctx.fillRect(cx + sd * (0.05 + 0.5 * u), y + 0.02 + 0.5 * u - 0.9 * u * u, 0.025, 0.025); } }
+      }
+      return;
+    }
+    // the chainsaw: the engine in his hands, the bar down into the log
+    const hx = at.held ? at.hx : at.x + f * 0.82, hy = at.held ? at.hy : y + 0.84, ang = at.held ? -0.62 : -0.05, bx = hx + f * 0.12, by = hy - 0.05;
+    const tx = bx + f * Math.cos(ang) * 0.46, ty = by + Math.sin(ang) * 0.46, shake = on ? Math.sin(t * 120) * 0.008 : 0;
+    ctx.strokeStyle = steel; ctx.lineWidth = Math.max(0.05, env.px); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(bx, by + shake); ctx.lineTo(tx, ty + shake); ctx.stroke(); ctx.lineCap = 'butt';
+    if (on && s > 8) { ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.012, env.px * 0.6); ctx.setLineDash([0.03, 0.03]); ctx.lineDashOffset = -t * 2.4; ctx.beginPath(); ctx.moveTo(bx, by + 0.025 + shake); ctx.lineTo(tx, ty + 0.025 + shake); ctx.stroke(); ctx.setLineDash([]); }
+    R4(ctx, hx - 0.16, hy - 0.11 + shake, 0.32, 0.19, paint); R4(ctx, hx - 0.1, hy + 0.08 + shake, 0.2, 0.04, dark);
+    if (on) {
+      // sawdust thrown back off the bar, and a little exhaust from the engine
+      for (let i = 0; i < 7; i++) { const u = (t * 2.2 + i / 7) % 1; ctx.globalAlpha = (1 - u) * 0.7; circ(ctx, tx - f * (0.1 + 0.6 * u), ty - 0.05 - 0.55 * u * u + 0.12 * u, 0.02 + 0.03 * u, T('#e3cf9f')); }
+      for (let i = 0; i < 3; i++) { const u = (t * 0.9 + i / 3) % 1; ctx.globalAlpha = (1 - u) * 0.3; circ(ctx, hx - f * (0.2 + 0.2 * u), hy + 0.05 + 0.6 * u, 0.06 + 0.14 * u, T('#b9bec4')); }
+      ctx.globalAlpha = 1;
+    }
+  } });
+};
+
 // ---- assorted props -----------------------------------------------------------
 // A plain block: a wall, a roof, a crate, a stack.  New: o.plain = true leaves off the
 // light top edge and the shaded side that every block now gets.

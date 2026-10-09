@@ -235,8 +235,10 @@ mission({
     K.box(S, PC, 26.0, 0, 0.62, 0.92, '#3f6fb0', { solid: false, band: 0.1 });
     K.thing(S, PC, 'can', 26.31, 1.1, { id: 'tin', r: 0.26, lure: 11, lureY: 0, drawFn(ctx, env, S2, ob) { if (!ob.alive) return; R4(ctx, ob.x - 0.17, ob.y - 0.18, 0.34, 0.36, S.tone('#c9ced3', PC, true)); R4(ctx, ob.x - 0.17, ob.y + 0.06, 0.34, 0.07, S.tone('#c8372d', PC, true)); } });
     K.thing(S, PC, 'duck', H.siteKit.craneX + 6.6, H.siteKit.jibY + 0.47);
+    K.powerTool(S, PC, { H, who: 'w2', kind: 'jackhammer', cover: 'jackhammer' }); // the night crew's jackhammer, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const K0 = H.siteKit, door = K0.cabX + 1.0, hi = { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' };
     const crew = 'One of the night crew is down. He had nothing to do with any of this, and the client wanted no questions.';

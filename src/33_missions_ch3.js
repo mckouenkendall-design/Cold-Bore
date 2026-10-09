@@ -255,8 +255,10 @@ mission({
     H.logs = H.kit.logs(S, PR, lx, ry + 9.6, { id: 'logs', floor: ry, top: ry + 11.1 });
     K.box(S, PR, 31, ry + 0.75, 7.5, 1.5, '#6a4a30', { ribs: 0.5, band: 0.12, mat: 'wood' });   // cut timber stacked on the verge
     H.kit.duck(S, PR, 37.2, ry + 2.55, 1.45);
+    K.powerTool(S, PR, { H, who: 'c1', kind: 'chainsaw', cover: 'chainsaw' }); // the woodcutter's saw, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     return [
       { id: 'd1', role: 'guard', look: { hat: 'beanie', coat: '#39404a' } },
