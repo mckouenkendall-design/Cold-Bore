@@ -623,6 +623,8 @@ K.ground = function (S, P, o) {
         ctx.fill();
       }
     }
+    // detail layers lying on this ground (K.deco with ground: true): under the water and the light
+    if (P.groundDeco) for (let i = 0; i < P.groundDeco.length; i++) P.groundDeco[i].draw(ctx, env);
     // rain: standing water, and lamp light running down the wet surface towards you
     if (puddles && floor && s > 4) {
       const lamps = kxLampsNear(S, P, y), hMax = kind === 'pavement' && o.kerb ? hOf(o.kerb) - 0.06 : (o.near || 1e9) - 0.1;
@@ -3084,6 +3086,231 @@ K.tower = function (S, P, x, h, o) { // guard tower or water tower on legs with 
   P.solid(x - w / 2, y + h, w, 1.25, 'wood');
   P.open({ x: x - w / 2, y: y + h + 1.25, w, h: 1.25, room: room.id, glass: false, through: true });
   return { x, floor: y + h + 0.25, room: room.id };
+};
+
+// ---- static detail layers -------------------------------------------------------
+// Small things that never move (stains, cracks, joints, moss, litter, clutter lying about)
+// are given once and then drawn with a handful of fills a frame, however many there are.
+// Shapes are gathered by colour (one fill draws all of one colour); each colour is cut into
+// strips along the plane so only what is on screen is drawn, and each strip is kept as a
+// ready-made path where the browser allows it, one for each step of zoom, so at low zoom the
+// shapes too small to see are left out. Colours go through S.tone here, once. Every colour
+// (and opacity) used costs one more fill a frame, so keep to a few of each.
+//
+//   K.deco(S, P, { layer, after, ground, seed }, fill)
+//     fill(D, R) adds the shapes. It runs the first time the plane is drawn, not when the
+//     scene is built, so the test bot and the shot oracle (which never draw) pay nothing for
+//     it. R is a random stream of its own (seed), so nothing a mission depends on moves.
+//     layer   as for any item (0 behind people, 2 in front of them)
+//     after   an item already on the plane to draw just after (default: after everything so far)
+//     ground  true: drawn by the plane's ground (K.ground) after its own paving and before
+//             puddles and the lamp light lying on it, so light still falls on top
+//   In fill:
+//     D.rect(x, y, w, h, hex, a)        D.poly([x, y, x, y, ...], hex, a)
+//     D.ell(x, y, rx, ry, hex, a)       D.seg(x1, y1, x2, y2, w, hex, a)   D.line([x, y, ...], w, hex, a)
+//     a is the opacity (1 if left out). A shape is drawn only once it is at least D.min
+//     screen pixels across (1.4 unless changed); a line once it is a third of a pixel wide.
+//     D.at = s     what follows waits until the zoom gives s pixels per metre
+//     D.pass = n   what follows is drawn after everything with a lower pass (details on top)
+//     D.lit = true what follows gives off its own light (signs), so night dims it less
+const KD_TIERS = [0, 1.2, 2.5, 5, 10, 20, 40, 80, 160];      // the steps of zoom, in pixels per metre
+const KD_P2D = typeof Path2D !== 'undefined';
+K.deco = function (S, P, o, fill) {
+  o = o || {};
+  const D = { S, P, min: 1.4, at: 0, pass: 0, lit: false };
+  const groups = new Map(), cols = new Map();
+  let list = null, bx0 = 1e9, bx1 = -1e9;
+  // opacity is kept to steps of a tenth (a twentieth when faint), so shapes share groups and fills
+  const col = (hex, a) => {
+    if (a !== undefined) a = a < 0.3 ? Math.max(0.05, Math.round(a * 20) / 20) : Math.round(a * 10) / 10;
+    const key = hex + (D.lit ? '!' : '') + (a === undefined || a >= 1 ? '' : '|' + a);
+    let c = cols.get(key);
+    if (!c) { c = S.tone(hex, P, D.lit); if (a !== undefined && a < 1) c = rgba(c, a); cols.set(key, c); }
+    return c;
+  };
+  // one group for each colour (and pass); each shape remembers the step of zoom it shows from
+  const grp = (c, kind, w) => {
+    const key = D.pass + '/' + kind + '/' + c + '/' + (w || 0);
+    let g = groups.get(key); if (!g) { g = { pass: D.pass, kind, col: c, w: w || 0, sh: [], ord: groups.size, ti: 99 }; groups.set(key, g); }
+    return g;
+  };
+  const put = (g, need, x0, x1, y0, y1, t, d) => {
+    need = Math.max(D.at, need); if (need > KD_TIERS[KD_TIERS.length - 1]) return;      // never big enough to see
+    let ti = 0; while (KD_TIERS[ti] < need) ti++;
+    g.sh.push({ x0, x1, y0, y1, t, d, ti }); if (ti < g.ti) g.ti = ti;
+    if (x0 < bx0) bx0 = x0; if (x1 > bx1) bx1 = x1;
+  };
+  D.rect = (x, y, w, h, hex, a) => { if (w > 0 && h > 0) put(grp(col(hex, a), 'f'), D.min / Math.min(w, h), x, x + w, y, y + h, 0, [x, y, w, h]); };
+  D.ell = (x, y, rx, ry, hex, a) => { if (rx > 0 && ry > 0) put(grp(col(hex, a), 'f'), D.min / (2 * Math.min(rx, ry)), x - rx, x + rx, y - ry, y + ry, 2, [x, y, rx, ry]); };
+  D.poly = (p, hex, a, size) => {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, ar = 0;
+    for (let i = 0; i < p.length; i += 2) { const x = p[i], y = p[i + 1], j = (i + 2) % p.length; ar += x * p[j + 1] - p[j] * y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (ar < 0) { const q = []; for (let i = p.length - 2; i >= 0; i -= 2) q.push(p[i], p[i + 1]); p = q; }   // every shape winds the same way, so overlaps never cut holes
+    put(grp(col(hex, a), 'f'), D.min / (size || Math.max(1e-4, Math.min(x1 - x0, y1 - y0))), x0, x1, y0, y1, 1, p);
+  };
+  D.line = (p, w, hex, a) => {
+    w = w < 0.05 ? Math.max(0.005, Math.round(w * 200) / 200) : Math.round(w * 50) / 50;   // widths in steps too, so lines share groups
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, len = 0;
+    for (let i = 0; i < p.length; i += 2) { if (p[i] < x0) x0 = p[i]; if (p[i] > x1) x1 = p[i]; if (p[i + 1] < y0) y0 = p[i + 1]; if (p[i + 1] > y1) y1 = p[i + 1]; if (i) len += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); }
+    put(grp(col(hex, a), 's', w), Math.max(0.35 / w, 3 / Math.max(1e-4, len)), x0 - w, x1 + w, y0 - w, y1 + w, 3, p);
+  };
+  D.seg = (x1, y1, x2, y2, w, hex, a) => D.line([x1, y1, x2, y2], w, hex, a);
+  const shape = (c, sh) => {
+    const d = sh.d;
+    if (sh.t === 0) c.rect(d[0], d[1], d[2], d[3]);
+    else if (sh.t === 2) { c.moveTo(d[0] + d[2], d[1]); c.ellipse(d[0], d[1], d[2], d[3], 0, 0, TAU); }
+    else { c.moveTo(d[0], d[1]); for (let i = 2; i < d.length; i += 2) c.lineTo(d[i], d[i + 1]); if (sh.t === 1) c.closePath(); }
+  };
+  // after filling: cut each colour into strips left to right, a sixteenth of its spread wide
+  // (at least 12 m), so a screen usually holds two or three strips of it
+  const finish = () => {
+    list = [];
+    groups.forEach((g) => {
+      if (!g.sh.length) return;
+      g.sh.sort((a, b) => a.x0 - b.x0);
+      const W = Math.max(12, (g.sh[g.sh.length - 1].x0 - g.sh[0].x0) / 16);
+      g.ch = [];
+      let cur = null;
+      for (let i = 0; i < g.sh.length; i++) {
+        const sh = g.sh[i];
+        if (!cur || sh.x0 > cur.start + W) { cur = { start: sh.x0, x0: sh.x0, x1: sh.x1, y0: sh.y0, y1: sh.y1, sh: [], ti: 99, p: [] }; g.ch.push(cur); }
+        cur.sh.push(sh); if (sh.x1 > cur.x1) cur.x1 = sh.x1; if (sh.y0 < cur.y0) cur.y0 = sh.y0; if (sh.y1 > cur.y1) cur.y1 = sh.y1; if (sh.ti < cur.ti) cur.ti = sh.ti;
+      }
+      g.sh = null; list.push(g);
+    });
+    list.sort((a, b) => a.pass - b.pass || a.ord - b.ord);
+    if (it) { it.x0 = bx0 - 1; it.x1 = bx1 + 1; }
+  };
+  D.draw = (ctx, env) => {
+    if (!list) { if (fill) fill(D, makeRng(o.seed || 1)); finish(); }
+    const s = env.s, x0 = env.x0, x1 = env.x1, y0 = env.y0 === undefined ? -1e9 : env.y0, y1 = env.y1 === undefined ? 1e9 : env.y1;
+    let T = 0; while (T + 1 < KD_TIERS.length && KD_TIERS[T + 1] <= s) T++;            // the step of zoom we are at
+    for (let gi = 0; gi < list.length; gi++) {
+      const g = list[gi]; if (g.ti > T) continue;
+      let set = false;
+      for (let ci = 0; ci < g.ch.length; ci++) {
+        const c = g.ch[ci]; if (c.x0 > x1) break; if (c.ti > T || c.x1 < x0 || c.y1 < y0 || c.y0 > y1) continue;
+        if (!set) { set = true; if (g.kind === 'f') ctx.fillStyle = g.col; else { ctx.strokeStyle = g.col; ctx.lineWidth = Math.max(g.w, env.px * 0.9); } }
+        if (KD_P2D) { // one kept path for each step of zoom, holding the shapes big enough to see at it
+          let p = c.p[T];
+          if (!p) { p = c.p[T] = new Path2D(); for (let i = 0; i < c.sh.length; i++) if (c.sh[i].ti <= T) shape(p, c.sh[i]); }
+          if (g.kind === 'f') ctx.fill(p); else ctx.stroke(p);
+        } else { ctx.beginPath(); for (let i = 0; i < c.sh.length; i++) if (c.sh[i].ti <= T) shape(ctx, c.sh[i]); if (g.kind === 'f') ctx.fill(); else ctx.stroke(); }
+      }
+    }
+  };
+  // for checking costs: how many groups and strips this layer has (once drawn)
+  D.stats = () => { let n = 0, sh = 0; if (list) list.forEach((g) => { n += g.ch.length; g.ch.forEach((c) => { sh += c.sh.length; }); }); return { groups: list ? list.length : 0, strips: n, shapes: sh }; };
+  let it = null;
+  if (o.ground) (P.groundDeco = P.groundDeco || []).push(D);
+  else if (o.item !== false) {
+    it = P.add({ x0: -1e9, x1: 1e9, layer: o.layer || 0, draw: D.draw, deco: D });
+    if (o.after) { const i = P.items.indexOf(o.after); if (i >= 0) { P.items.pop(); P.items.splice(i + 1, 0, it); } }
+  }
+  return D;
+};
+
+// ---- weathering, added to a detail layer -------------------------------------------
+// R is the layer's own random stream. Colours are plain hex; each helper picks its own opacity.
+const KW = {
+  // Streaks running down from a line at yTop: rust under fixings, rain stains under sills.
+  // Each is wide where it starts and runs to a point; o.n, o.len [lo, hi], o.w [lo, hi], o.a.
+  streaks(D, R, x0, x1, yTop, hex, o) {
+    o = o || {}; const n = o.n || Math.max(1, Math.round((x1 - x0) * (o.per || 0.6)));
+    for (let i = 0; i < n; i++) {
+      const x = R.r(x0, x1), l = R.r(o.len ? o.len[0] : 0.4, o.len ? o.len[1] : 1.6), w = R.r(o.w ? o.w[0] : 0.04, o.w ? o.w[1] : 0.12), dx = R.r(-0.04, 0.04), a = (o.a || 0.3) * R.r(0.55, 1);
+      D.poly([x - w / 2, yTop, x + w / 2, yTop, x + w * 0.3 + dx, yTop - l * 0.55, x + dx * 2, yTop - l, x - w * 0.25 + dx, yTop - l * 0.5], hex, a, w);
+    }
+  },
+  // A dirty band at the foot of a wall, its top edge ragged: splashes off the ground.
+  grime(D, R, x0, x1, y, h, hex, a) {
+    const p = [x1, y, x0, y]; for (let x = x0; x < x1; x += R.r(0.25, 0.7)) p.push(x, y + h * R.r(0.45, 1));
+    p.push(x1, y + h * R.r(0.45, 1)); D.poly(p, hex, a === undefined ? 0.22 : a, h * 0.5);
+  },
+  // Hairline cracks: a wandering line with the odd branch. dir is the general heading in radians.
+  cracks(D, R, x, y, len, hex, o) {
+    o = o || {}; const w = o.w || 0.02, dir = o.dir === undefined ? -Math.PI / 2 : o.dir, p = [x, y]; let cx = x, cy = y, an = dir;
+    const st = len / 6;
+    for (let i = 0; i < 6; i++) {
+      an = dir + R.r(-0.6, 0.6); cx += Math.cos(an) * st; cy += Math.sin(an) * st; p.push(cx, cy);
+      if (i === 2 && R.chance(0.6)) { const b = an + (R.chance(0.5) ? 0.9 : -0.9); D.line([cx, cy, cx + Math.cos(b) * st * 1.3, cy + Math.sin(b) * st * 1.3, cx + Math.cos(b + 0.3) * st * 2, cy + Math.sin(b + 0.3) * st * 2], w * 0.8, hex, o.a || 0.5); }
+    }
+    D.line(p, w, hex, o.a || 0.55);
+  },
+  // An irregular patch (peeled paint, a damp stain, a moss bloom): a wobbly oval.
+  blob(D, R, x, y, rx, ry, hex, a, k) {
+    const n = 9, p = [], k0 = k === undefined ? 0.3 : k, ph = R.r(0, TAU);
+    for (let i = 0; i < n; i++) { const an = ph + (i / n) * TAU, r = 1 - k0 + k0 * 2 * R.f(); p.push(x + Math.cos(an) * rx * r, y + Math.sin(an) * ry * r); }
+    D.poly(p, hex, a, Math.min(rx, ry) * 2);
+  },
+  // Paint coming away: a pale patch where the coat has gone, with a dark lip along its top.
+  peel(D, R, x, y, w, h, base, a) {
+    KW.blob(D, R, x, y, w / 2, h / 2, lighten(base, 0.18), a === undefined ? 0.75 : a, 0.35);
+    D.pass++; D.seg(x - w * 0.35, y + h * 0.42, x + w * 0.3, y + h * 0.46, Math.min(0.03, h * 0.12), darken(base, 0.4), 0.5); D.pass--;
+  },
+  // Moss or weed along a base line: a row of soft bumps.
+  moss(D, R, x0, x1, y, h, hex, a) {
+    for (let x = x0; x < x1; x += R.r(h * 0.8, h * 2.6)) { const r = h * R.r(0.5, 1.1); D.ell(x, y + r * 0.2, r * R.r(1, 1.8), r, hex, a === undefined ? 0.85 : a); }
+  },
+};
+
+// ---- small things lying about, added to a detail layer -------------------------------
+// All of them are low and drawn behind the people on their plane, or on a wall: none is
+// big enough to pass for cover. x is the left end and y the ground unless it says otherwise.
+const KC = {
+  // A wooden crate with its boards and the darker frame across them.
+  crate(D, x, y, w, h, hex) {
+    const d = darken(hex, 0.28), l = lighten(hex, 0.14);
+    D.rect(x, y, w, h, hex); D.pass++;
+    D.rect(x, y + h - 0.04, w, 0.04, l); D.rect(x, y, 0.06, h, d); D.rect(x + w - 0.06, y, 0.06, h, d); D.rect(x, y, w, 0.06, d); D.rect(x, y + h - 0.1, w, 0.06, d);
+    for (let k = 1; k < 3; k++) D.rect(x + 0.06, y + (h * k) / 3, w - 0.12, 0.015, d, 0.7);
+    D.seg(x + 0.08, y + 0.08, x + w - 0.08, y + h - 0.12, 0.05, d, 0.85);
+    D.pass--;
+  },
+  // A pallet lying flat, or several stacked: n of them.
+  pallets(D, x, y, n, hex) {
+    const d = darken(hex, 0.35);
+    for (let i = 0; i < n; i++) { const yy = y + i * 0.15; D.rect(x, yy + 0.1, 1.2, 0.05, hex); D.rect(x + 0.02, yy, 0.12, 0.1, hex); D.rect(x + 0.54, yy, 0.12, 0.1, hex); D.rect(x + 1.06, yy, 0.12, 0.1, hex); D.rect(x + 0.14, yy + 0.02, 0.4, 0.06, d, 0.9); D.rect(x + 0.66, yy + 0.02, 0.4, 0.06, d, 0.9); }
+  },
+  // A coil of rope or hose seen from the side: flat rings, a lighter top.
+  coil(D, cx, y, r, hex) {
+    const d = darken(hex, 0.3), l = lighten(hex, 0.18);
+    for (let i = 0; i < 3; i++) D.ell(cx, y + 0.04 + i * 0.05, r - i * r * 0.12, 0.05, i % 2 ? d : hex);
+    D.pass++; D.ell(cx, y + 0.16, r * 0.62, 0.025, l, 0.8); D.ell(cx, y + 0.16, r * 0.3, 0.018, d, 0.9); D.pass--;
+  },
+  // A run of chain hanging between two points (or lying, if sag is 0): small links.
+  chain(D, x0, y0, x1, y1, sag, hex) {
+    const n = Math.max(3, Math.round(Math.hypot(x1 - x0, y1 - y0) / 0.07));
+    for (let i = 0; i <= n; i++) { const u = i / n, x = lerp(x0, x1, u), y = lerp(y0, y1, u) - sag * 4 * u * (1 - u); D.ell(x, y, i % 2 ? 0.035 : 0.022, i % 2 ? 0.02 : 0.03, hex, 0.95); }
+  },
+  // An old tyre lying flat, or a stack of them: n high.
+  tyres(D, cx, y, n, r) {
+    for (let i = 0; i < n; i++) { const yy = y + i * r * 0.62; D.rect(cx - r, yy, r * 2, r * 0.58, '#1a1c20'); D.ell(cx, yy + r * 0.58, r, r * 0.16, '#24272c'); D.pass++; D.ell(cx, yy + r * 0.58, r * 0.5, r * 0.08, '#0e0f12'); D.rect(cx - r, yy + r * 0.24, r * 2, r * 0.05, '#2c3036', 0.8); D.pass--; }
+  },
+  // A rock: a lumpy mound with its lit top and a shadow at its foot. k shifts its colour.
+  rock(D, R, cx, y, w, h, hex) {
+    const p = [cx - w / 2, y], n = 7;
+    for (let i = 1; i < n; i++) { const u = i / n, an = Math.PI * (1 - u); p.push(cx + Math.cos(an) * w / 2 * R.r(0.85, 1.05), y + Math.sin(an) * h * R.r(0.75, 1.1)); }
+    p.push(cx + w / 2, y);
+    D.poly(p, hex); D.pass++;
+    D.poly([cx - w * 0.3, y + h * 0.7, cx + w * 0.05, y + h * R.r(0.92, 1.02), cx + w * 0.28, y + h * 0.66, cx, y + h * 0.78], lighten(hex, 0.16), 0.8);
+    D.rect(cx - w / 2, y, w, h * 0.12, darken(hex, 0.3), 0.6); D.pass--;
+  },
+  // A tuft of grass or scrub: thin blades, as one shape (a zig-zag along the ground).
+  tuft(D, R, x, y, h, hex) {
+    const n = R.i(3, 5), p = [x - h * 0.3, y];
+    for (let i = 0; i < n; i++) { const bx = x + (i - (n - 1) / 2) * h * 0.15; p.push(bx + R.r(-0.35, 0.35) * h, y + h * R.r(0.6, 1), bx + h * 0.06, y + h * 0.08); }
+    p.push(x + h * 0.3, y);
+    D.poly(p, hex, 0.95, h * 0.3);
+  },
+  // A low bush: a few overlapping round clumps, darker underneath.
+  bush(D, R, cx, y, w, h, hex) {
+    const n = Math.max(3, Math.round(w / (h * 0.7)));
+    for (let i = 0; i < n; i++) { const u = (i + 0.5) / n, r = h * R.r(0.45, 0.65); D.ell(cx - w / 2 + u * w, y + r * 0.9, r * 1.1, r, hex); }
+    D.pass++;
+    for (let i = 0; i < n; i++) { const u = (i + 0.4) / n, r = h * R.r(0.2, 0.32); D.ell(cx - w / 2 + u * w - r * 0.3, y + h * 0.95, r, r * 0.8, lighten(hex, 0.12), 0.8); }
+    D.rect(cx - w / 2, y, w, h * 0.15, darken(hex, 0.3), 0.6); D.pass--;
+  },
 };
 
 CB.K = K; CB.makeScene = makeScene; CB.CARS = CARS;
