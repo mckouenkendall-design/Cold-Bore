@@ -22,6 +22,13 @@ mission({
       'A train on the NEAR line blocks your view and your bullet. A train on the FAR line is only noise cover.', 'Range about 450 m. A light wind from the left.',
       vargaHelps(f) ? 'Detective Varga is listening in. She will call it when the clerk is clear.' : 'His minder waits by the car with his back turned. A railway constable walks the far siding: leave him be.'];
   },
+  guide: [
+    'The fixer wears a PALE long raincoat and a grey flat cap and arrives by car from the right. The clerk (brown coat, glasses) must not see him fall.',
+    'Let them talk and swap the case. The clerk then walks left round the lamp hut, and Pip tells you when he is past it (about 37 seconds in).',
+    'The fixer stands on the phone meanwhile. Your rifle is loud, so wait for the train on the FAR line: its rumble starts about 43 seconds in.',
+    'Shoot the fixer in the chest then, before he walks back to his car at about 50 seconds. If a constable walks the far siding, keep clear of him.',
+    'HOLD reads about 3.7 up (about 1.7 m) and 0.6 left (about 25 cm). The wind blows left to right; on the plain scope at full zoom, his chest sits at the tip of the thick post below the centre.',
+  ],
   wind: { v: 2.4, gust: 1.2 }, par: 1,
   rules: { kill: ['fixer'], until: 'clerk_safe', strict: true, aftermath: 2.4, strictText: 'The clerk heard it, saw it and ran. He will tell Aurel there is a rifle on the grain elevator, and he will never talk to us.' },
   vantages: [{ name: 'Grain elevator', desc: 'High over the yard, 450 m out. Trains on the near line still get in the way.', eye: [0, 30, 0] }],
@@ -103,6 +110,13 @@ mission({
       'One camera, on the corner of the glasshouse, covers the rose walk on the right. He goes there alone.', 'Range about 500 m. Wind 4 m/s from the left: watch the bunting.',
       f && f.savedBrandt ? 'Nadia Brandt is a guest (red hair, teal dress). She has offered to point him out. Do not hit her.' : vargaHelps(f) ? 'Detective Varga knows him by sight and will describe him.' : 'A police constable is on the drive, hired for the day. He is not one of theirs.'];
   },
+  guide: [
+    'These steps are for the Chapel tower. Madrigan is the security man (black suit, dark glasses) with WHITE hair and a RED tie, and the host has both but wears cream.',
+    'Your rifle is heard from here, so the first shot goes inside the band music: NOISE COVER for 15 seconds out of every 22, starting about 3 seconds in.',
+    'Shoot out the camera on the corner of the glasshouse at the right, which watches the rose walk. It is small, so take your time and hold your breath.',
+    'Madrigan walks right to the rose walk and stands staring at the broken camera for about 12 seconds, from about 28 seconds in. Shoot him in the chest there.',
+    'Both shots: HOLD reads about 4.5 up (about 2.3 m) and 1.0 left (about half a metre). The wind blows left to right; watch the bunting.',
+  ],
   wind: { v: 4, gust: 1.5 }, par: 2, rules: { kill: ['hs'] },
   vantages: [
     { name: 'Chapel tower', desc: '500 m. Near enough that any rifle is heard in the garden. Fire while the band is playing.', eye: [0, 46, 0], tag: 'Shorter shot' },
@@ -187,6 +201,13 @@ mission({
       'Shoot the yellow hook above the cargo net and the crew will come to look. Make sure nobody is under it.', 'A train crossing the bridge covers a loud shot. Any alarm and they cast off.',
       vargaHelps(f) ? 'Varga is holding river traffic at the lock. Two crew aboard.' : 'A police launch patrols past the stern. It must be well clear when the fuel goes. Three crew aboard.'];
   },
+  guide: [
+    'Nobody dies and no alarm. The target is the pair of RED fuel drums at the stern (right end) of the armoury boat, and the blast reaches about 8 m.',
+    'Your rifle is loud, so fire only while a train crosses the bridge (NOISE COVER on). The first comes about 9 seconds in and lasts about 18 seconds.',
+    'As it starts, check that nobody is under the cargo net on the quay at the left, then shoot the yellow hook block above it. The whole crew walks over to look.',
+    'When all the crew are well to the left of the boat and any police launch is far off to the left (about 17 seconds in), shoot the red drums.',
+    'HOLD reads about 3.3 up (about 1.4 m) and 0.7 right (about 30 cm). The wind blows right to left, so aim right.',
+  ],
   wind: { v: -2.6, gust: 1.2 }, par: 2,
   rules: { destroy: ['fuel'], noKills: true, boomQuiet: true, strict: true, time: 95, aftermath: 4,
     timeText: 'They cast off on time, with the whole armoury aboard. She could be anywhere on the river by morning.',
@@ -279,6 +300,14 @@ mission({
       'Each escort who gets out walks to the back of the van and takes aim. That is your countdown.', 'Range about 700 m, wind 5 m/s. The bullet takes more than a second to arrive.',
       vargaHelps(f) ? 'Varga pulled the rear escort car over at the last junction. One car in front, one gunman.' : 'Two escort cars, one gunman in each. A traffic constable stands at the toll: he is only doing his job.'];
   },
+  guide: [
+    'You need a rifle that reaches 700 m, such as the Orlov SVK. The prisoner sits behind the barred window of the GREY van, and the traffic constable and the man on the far kerb are innocent.',
+    'The freight train below covers your shots from about 8 seconds in. The convoy drives in from the left and stops at the toll about 24 seconds in.',
+    'Within 5 seconds of that stop, shoot the front (right-hand) tyre of the grey van. A flat keeps it on the bridge.',
+    'The escorts get out and walk to the back of the van. Shoot each one as soon as he stands still there (about 27 to 34 seconds in), before his countdown ends.',
+    'HOLD reads about 6.8 up (almost 5 m) and 1.9 left (about 1.4 m). On the Orlov\'s scope, put the V-shaped mark labelled 7 on the target, then shift your aim left by about 2 of the small side marks.',
+    'The wind blows left to right and the bullet takes over a second to land, so only shoot men who are standing still. You have spare rounds: if you miss, fire again at once.',
+  ],
   wind: { v: 5, gust: 1 }, par: (f) => (vargaHelps(f) ? 4 : 5), // the shots needed, plus two: this is 700 m in a crosswind, against a clock
   rules: { protect: ['pris'], time: 75, aftermath: 4.5, timeText: 'Aurel\'s second car reached the bridge. You were out of time.',
     done(sim) { const v = sim.byId.van; return !!v.stopped && ['g1', 'g3'].every((id) => { const a = sim.byId[id]; return !a || a.dead || a.gone; }); } },
@@ -367,6 +396,14 @@ mission({
       'From the quarry road the chimney hides the dish. From the pylon the cypresses hide her desk.', 'Thunder covers one shot at a time. Range 550 m or more, and rain.',
       vargaHelps(f) ? 'Varga is six minutes away. One guard on the terrace.' : 'Two guards: one on the terrace, one by the car. A police car is watching from the lane outside. Leave it alone.'];
   },
+  guide: [
+    'This is a choice, and these steps strand Marlow alive from the Quarry road: break her desk radio, then flatten a tyre on her pale car. Leave the police car in the lane alone.',
+    'Your rifle is loud, so fire only in thunder: NOISE COVER for about 2.5 seconds, every 9 seconds from 4 seconds in. One shot per thunder.',
+    'Wait until Marlow has left her desk and gone out to the fire on the terrace. In the thunder about 13 seconds in, shoot the radio on her desk through the study window.',
+    'In the next thunder, about 22 seconds in, shoot the front (right-hand) tyre of the pale car on the drive. Radio first: once the tyre goes, the guard by the car calls for help a few seconds later.',
+    'HOLD reads about 5.2 up for the radio and 4.9 for the tyre (about 2.8 m high), and about 0.8 left (about 40 cm). The wind blows left to right.',
+    'The other choice is to shoot Marlow herself. Either way is a win, but it changes what happens later.',
+  ],
   wind: { v: 3, gust: 1.8 }, par: 2,
   rules: { aftermath: 5, done(sim) { return sim.byId.marlow.dead || (!!sim.byId.mcar.flatTire && !!sim.radioDown); } },
   vantages: [
@@ -460,6 +497,15 @@ mission({
       'They come one at a time at first. Two more will wait for the door to open again.', 'Range about 600 m, wind 4 m/s from the right.',
       vargaHelps(f) ? 'Varga will call out where she sees them. Four gunmen expected.' : 'Nobody is calling them out for you. Five gunmen, and a police marksman on the mill roof who is NOT one of them.'];
   },
+  guide: [
+    'Keep the two people walking into the records office alive until they drive off with the boxes. The church bells cover every shot, so never wait for noise.',
+    'Gunmen show themselves one at a time and fire about 6 seconds after they raise their rifles. Shoot each one as soon as he stops.',
+    'First a balcony right of the office (about 6 seconds in), then a roof at the far left, above the chandler (about 14 seconds).',
+    'While the two are inside, one gunman waits on the balcony above the front door (about 29 seconds) and sometimes one in the street on the left (about 34). Shoot them before the door opens again at about 42 seconds.',
+    'The last one appears in the window over the cafe on the right, about 4 seconds after they come out.',
+    'HOLD reads about 5.7 up (about 3.4 m) and 1.2 to 1.5 right (about 80 cm). The wind blows right to left and gusts, so check HOLD on each man.',
+    'You have two spare rounds if you miss. Never shoot the police marksman in a peaked cap on the mill roof.',
+  ],
   wind: { v: -4, gust: 0.9 }, par: (f) => (vargaHelps(f) ? 6 : 7), // one round each, plus two spare
   rules: { protect: ['v1', 'v2'], until: 'safe', aftermath: 3 },
   vantages: [{ name: 'Sail loft', desc: 'Down the quay on the same bank, looking along the street. 600 m.', eye: [146, 40, 0] }],
@@ -534,6 +580,13 @@ mission({
       'Range about 800 m, wind 6 m/s and gusting. Hold for both.', 'The helicopter drowns out your shot. Do not waste it on a mirror.',
       vargaHelps(f) ? 'Varga is pinned behind the cars with her officers. She will tell you what she can see.' : 'Varga\'s officers are pinned behind the cars. Nobody down there knows you are helping.'];
   },
+  guide: [
+    'You need a rifle that reaches 800 m. Lights flash all over the bridge: the mirrors blink fast and evenly, and the real scope gives one long, slow flare just before each of his shots.',
+    'He fires about 9, 18, 27 and 36 seconds in, and the fourth shot kills. The helicopter covers your shot, so noise is no problem.',
+    'Watch for the slow flare about 7 seconds in, high on the right-hand tower. When he fires at about 9 seconds, shoot that exact spot.',
+    'HOLD reads about 8.4 up (about 6.7 m) and 2.1 left (about 1.6 m). On a mil-dot scope (dots along the lines, one per HOLD unit), the flare sits just below the 8th dot under the centre and 2 dots right of the upright line.',
+    'The wind blows hard left to right and gusts, so check HOLD right before you fire. One round, through his glass.',
+  ],
   wind: { v: 6, gust: 2.5 }, par: 1,
   rules: { destroy: ['rook'], protect: ['off1', 'off2', 'off3', 'varga'], time: 36.5, aftermath: 3.4, timeText: 'His fourth shot did not miss.' },
   vantages: [{ name: 'Gasworks stack', desc: 'Down river and high up. 800 m to the bridge, with the wind across you.', eye: [0, 52, 0] }],
