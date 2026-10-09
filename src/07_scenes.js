@@ -622,13 +622,19 @@ function stLitter(D, R, x0, x1, yA, yB, sq, dens) {
   }
   D.at = 0;
 }
-function stDetail(S, H, q) {
-  const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
-  const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
-  // what must stay clear on the face of the row: windows, doors, shop fronts, and the pipes,
+// Weather and wear on the faces of a row of K.building walls Bs standing on plane P, as one
+// static layer drawn just after the item o.after: soot or rain running down from the
+// cornices, salt or grime under the string courses, damp at the foot, cracks from the window
+// corners, old repairs, tie plates, rust under the air conditioners, a cable, a dish, a bell
+// panel, weeds at the foot and a buddleia on a cornice. All of it keeps off the windows, doors,
+// shop fronts and fixings already on the walls. o.birds: where pigeons sit (the cornice is
+// whitened under them). Returns clear(x0, y0, x1, y1): whether that box of wall is free.
+function stFacade(S, P, Bs, o) {
+  const birds = o.birds || [];
+  // what must stay clear on the faces: windows, doors, shop fronts, and the pipes,
   // vents, alarm boxes and air conditioners already fixed to the walls
   const obs = [];
-  H.b.forEach((B) => {
+  Bs.forEach((B) => {
     for (const k in B.wins) { const op = B.wins[k]; obs.push([op.x - 0.2, op.y - 0.18, op.x + op.w + 0.2, op.y + op.h + 0.32]); }
     if (B.shop) obs.push([B.x - 0.05, B.base - 1, B.x + B.w + 0.05, B.base + B.fh + 0.6]);
     if (B.doorC !== undefined && !B.shop) {
@@ -643,15 +649,10 @@ function stDetail(S, H, q) {
   // how far down from (x, y) the wall is clear, a strip hw either side; and whether a box is clear
   const roomDown = (x, y, hw) => { let d = y - 0.62; for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x + hw < o[0] || x - hw > o[2]) continue; if (y > o[1] && y < o[3]) return 0; if (o[3] <= y) d = Math.min(d, y - o[3]); } return d; };
   const clear = (x0, y0, x1, y1) => { for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x1 > o[0] && x0 < o[2] && y1 > o[1] && y0 < o[3]) return false; } return true; };
-  // where the pigeons sit on the cornices (and so where the cornice is whitened under them)
-  const birds = [];
-  { const R = makeRng(5131 + seed * 7); H.b.forEach((B) => { if (B.kStyle === 'glass') return; for (let i = 0, n = R.i(0, 3); i < n; i++) birds.push([B.x + R.r(0.8, B.w - 1.4), B.roofY + 0.16, R.r(0, 20), R.chance(0.5) ? 1 : -1]); }); }
-
-  // ---- the faces of the row ----
-  K.deco(S, PB, { after: q.rowEnd, seed: 5101 + seed }, (D, R) => {
+  K.deco(S, P, { after: o.after, seed: o.seed }, (D, R) => {
     const soot = '#1a1512', salt = '#f0eadc', wash = '#20242a', rust = '#7a3c1e', iron = '#24211f', cab = '#1f2227', green = '#3c4a32';
     const streak = (x, y, w, l, hex, a) => D.poly([x - w / 2, y, x + w / 2, y, x + w * 0.4, y - l * 0.55, x + w * 0.2, y - l, x - w * 0.12, y - l * 0.96, x - w * 0.36, y - l * 0.5], hex, a, w);
-    H.b.forEach((B) => {
+    Bs.forEach((B) => {
       if (B.kStyle === 'glass') return;
       const brick = B.kStyle === 'brick', x0 = B.x, x1 = B.x + B.w, top = B.roofY - 0.18, pw = B.w / B.cols;
       // soot (on brick) or rain (on cast concrete) running down from under the cornice
@@ -753,7 +754,7 @@ function stDetail(S, H, q) {
       birds.forEach((b) => { if (b[0] < x0 || b[0] > x1) return; for (let k = 0; k < 3; k++) { const x = b[0] + R.r(-0.35, 0.35), l = Math.min(R.r(0.12, 0.5), roomDown(x, B.roofY - 0.15, 0.03)); if (l > 0.08) streak(x, B.roofY - 0.15, R.r(0.04, 0.09), l, '#ecebe4', 0.4); } });
     });
     // a dish bolted to a pier on one building, its cable run in at the window below
-    { const cands = H.b.filter((B) => B.kStyle === 'brick' && B.floors >= 4 && B.cols > 2);
+    { const cands = Bs.filter((B) => B.kStyle === 'brick' && B.floors >= 4 && B.cols > 2);
       if (cands.length) {
         const B = cands[R.i(0, cands.length - 1)], px = B.x + R.i(1, B.cols - 1) * (B.w / B.cols) + 0.3, y = B.floorY(B.floors - 2) + 1.5;
         if (clear(px - 0.4, y - 0.42, px + 0.5, y + 0.36)) {
@@ -763,12 +764,12 @@ function stDetail(S, H, q) {
         }
       } }
     // a bell panel beside each street door
-    H.b.forEach((B) => {
+    Bs.forEach((B) => {
       if (!B.doorOp) return; const d = B.doorOp, bx = d.x - 0.72, by = B.base + 1.2; if (!clear(bx - 0.02, by, bx + 0.22, by + 0.36)) return;
       D.at = 10; D.rect(bx + 0.02, by, 0.16, 0.3, '#5d636b'); D.pass = 1; D.at = 20; for (let k = 0; k < 4; k++) D.poly([bx + 0.06, by + 0.04 + k * 0.055, bx + 0.14, by + 0.04 + k * 0.055, bx + 0.14, by + 0.07 + k * 0.055, bx + 0.06, by + 0.07 + k * 0.055], '#c9b98a', 1, 0.08); D.pass = 0;
     });
     // a buddleia rooted in the joint above a cornice, as they do
-    { const B = H.b[R.i(0, H.b.length - 1)], bx = B.x + B.w * R.r(0.3, 0.75), by = B.roofY + 0.16;
+    { const B = Bs[R.i(0, Bs.length - 1)], bx = B.x + B.w * R.r(0.3, 0.75), by = B.roofY + 0.16;
       if (B.kStyle !== 'glass' && clear(bx - 0.45, by, bx + 0.45, by + 0.5)) {
         D.at = 6; KW.blob(D, R, bx, by + 0.03, 0.22, 0.06, '#3c4a32', 0.6, 0.3);
         const tips = []; for (let k = 0; k < 5; k++) { const tx = bx + (k - 2) * 0.1 + R.r(-0.05, 0.05), ty = by + R.r(0.22, 0.42); D.seg(bx + (k - 2) * 0.02, by, tx, ty, 0.025, '#4a5a34'); tips.push([tx, ty]); }
@@ -776,6 +777,16 @@ function stDetail(S, H, q) {
         D.pass = 2; for (let k = 0; k < 3; k++) { const t = tips[k * 2]; D.ell(t[0] + 0.02, t[1] + 0.06, 0.03, 0.07, '#8a5aa8'); } D.pass = 0;
       } }
   });
+  return clear;
+}
+function stDetail(S, H, q) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
+  const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
+  // where the pigeons sit on the cornices (and so where the cornice is whitened under them)
+  const birds = [];
+  { const R = makeRng(5131 + seed * 7); H.b.forEach((B) => { if (B.kStyle === 'glass') return; for (let i = 0, n = R.i(0, 3); i < n; i++) birds.push([B.x + R.r(0.8, B.w - 1.4), B.roofY + 0.16, R.r(0, 20), R.chance(0.5) ? 1 : -1]); }); }
+
+  const clear = stFacade(S, PB, H.b, { after: q.rowEnd, seed: 5101 + seed, birds });
 
   // ---- the pavement along the row, and the lots past its ends ----
   K.deco(S, PB, { ground: true, seed: 5121 + seed }, (D, R) => {
