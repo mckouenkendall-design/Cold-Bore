@@ -20,6 +20,10 @@ right moment, take one shot.
 - Made for a phone held sideways; the scope picture fills the screen
 - Real bullet flight: travel time, drop and wind, with scope markings that are
   true to scale
+- MARK: lock a target's distance so the hold and the aim marker stay right while
+  you raise the scope for drop (everyone on Full help; rangefinder scopes for the rest)
+- The Range never raises an alarm
+- An app icon (an amber scope reticle) for "Add to Home Screen"
 - Every rifle has its own sound, from its calibre, barrel, stock and action, and
   every muzzle brake, compensator, flash hider and suppressor changes it. The
   place shapes the echo: city, harbour, valley, mountain ridge
@@ -105,6 +109,10 @@ node test/guidecheck.js         # checks the written walkthroughs
 node test/notebook.js           # notebook scrolls by touch, messages close on a tap
 node test/tester.js             # tester mode unlocks everything and gives the real save back
 node test/gunroom.js            # the gun room at several sizes
+node test/mark.js               # MARK keeps the read-outs right while aiming high; no alarms in the Range
+node test/jumps.js              # nobody's position jumps between frames in any mission
+node test/detail.js             # before/after pictures of scene detail
+node test/icon.js               # renders the app icon PNGs into src/icons.json
 node test/ragdoll.js calibre    # contact sheets of falling bodies
 node test/sfx.js                # hits, misses, explosions, thunder, reloads, interface, kill camera beats
 node test/sfx_guns.js           # every rifle with every muzzle option and load, compared pair by pair

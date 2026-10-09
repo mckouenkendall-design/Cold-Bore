@@ -656,7 +656,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 4:44 PM";
+const BUILD = "Oct 9, 5:04 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -3762,6 +3762,8 @@ K.ground = function (S, P, o) {
         ctx.fill();
       }
     }
+    // detail layers lying on this ground (K.deco with ground: true): under the water and the light
+    if (P.groundDeco) for (let i = 0; i < P.groundDeco.length; i++) P.groundDeco[i].draw(ctx, env);
     // rain: standing water, and lamp light running down the wet surface towards you
     if (puddles && floor && s > 4) {
       const lamps = kxLampsNear(S, P, y), hMax = kind === 'pavement' && o.kerb ? hOf(o.kerb) - 0.06 : (o.near || 1e9) - 0.1;
@@ -4535,6 +4537,8 @@ K.building = function (S, P, o) {
       }
     } });
   }
+  // for detail added on top by a scene: what the wall is made of and what is already fixed to it
+  B.kStyle = kStyle; B.wallHex = wallBase; B.acs = acs; B.doorC = o.door; B.doorOp = doorOp; B.pipes = pipes; B.vents = vents; B.alarm = alarm;
   return B;
 };
 // How colourful a wall colour is, 0 (grey) to 1.
@@ -6225,6 +6229,232 @@ K.tower = function (S, P, x, h, o) { // guard tower or water tower on legs with 
   return { x, floor: y + h + 0.25, room: room.id };
 };
 
+// ---- static detail layers -------------------------------------------------------
+// Small things that never move (stains, cracks, joints, moss, litter, clutter lying about)
+// are given once and then drawn with a handful of fills a frame, however many there are.
+// Shapes are gathered by colour (one fill draws all of one colour); each colour is cut into
+// strips along the plane so only what is on screen is drawn, and each strip is kept as a
+// ready-made path where the browser allows it, one for each step of zoom, so at low zoom the
+// shapes too small to see are left out. Colours go through S.tone here, once. Every colour
+// (and opacity) used costs one more fill a frame, so keep to a few of each.
+//
+//   K.deco(S, P, { layer, after, ground, seed }, fill)
+//     fill(D, R) adds the shapes. It runs the first time the plane is drawn, not when the
+//     scene is built, so the test bot and the shot oracle (which never draw) pay nothing for
+//     it. R is a random stream of its own (seed), so nothing a mission depends on moves.
+//     layer   as for any item (0 behind people, 2 in front of them)
+//     after   an item already on the plane to draw just after (default: after everything so far)
+//     ground  true: drawn by the plane's ground (K.ground) after its own paving and before
+//             puddles and the lamp light lying on it, so light still falls on top
+//   In fill:
+//     D.rect(x, y, w, h, hex, a)        D.poly([x, y, x, y, ...], hex, a)
+//     D.ell(x, y, rx, ry, hex, a)       D.seg(x1, y1, x2, y2, w, hex, a)   D.line([x, y, ...], w, hex, a)
+//     a is the opacity (1 if left out). A shape is drawn only once it is at least D.min
+//     screen pixels across (1.4 unless changed); a line once it is a third of a pixel wide.
+//     D.at = s     what follows waits until the zoom gives s pixels per metre
+//     D.pass = n   what follows is drawn after everything with a lower pass (details on top)
+//     D.lit = true what follows gives off its own light (signs), so night dims it less
+//     D.env      the view it is first drawn in (to find where the eye is), only while filling
+const KD_TIERS = [0, 1.2, 2.5, 5, 10, 20, 40, 80, 160];      // the steps of zoom, in pixels per metre
+const KD_P2D = typeof Path2D !== 'undefined';
+K.deco = function (S, P, o, fill) {
+  o = o || {};
+  const D = { S, P, min: 1.4, at: 0, pass: 0, lit: false };
+  const groups = new Map(), cols = new Map();
+  let list = null, bx0 = 1e9, bx1 = -1e9;
+  // opacity is kept to steps of a tenth (a twentieth when faint), so shapes share groups and fills
+  const col = (hex, a) => {
+    if (a !== undefined) a = a < 0.3 ? Math.max(0.05, Math.round(a * 20) / 20) : Math.round(a * 10) / 10;
+    const key = hex + (D.lit ? '!' : '') + (a === undefined || a >= 1 ? '' : '|' + a);
+    let c = cols.get(key);
+    if (!c) { c = S.tone(hex, P, D.lit); if (a !== undefined && a < 1) c = rgba(c, a); cols.set(key, c); }
+    return c;
+  };
+  // one group for each colour (and pass); each shape remembers the step of zoom it shows from
+  const grp = (c, kind, w) => {
+    const key = D.pass + '/' + kind + '/' + c + '/' + (w || 0);
+    let g = groups.get(key); if (!g) { g = { pass: D.pass, kind, col: c, w: w || 0, sh: [], ord: groups.size, ti: 99 }; groups.set(key, g); }
+    return g;
+  };
+  const put = (g, need, x0, x1, y0, y1, t, d) => {
+    need = Math.max(D.at, need); if (need > KD_TIERS[KD_TIERS.length - 1]) return;      // never big enough to see
+    let ti = 0; while (KD_TIERS[ti] < need) ti++;
+    g.sh.push({ x0, x1, y0, y1, t, d, ti }); if (ti < g.ti) g.ti = ti;
+    if (x0 < bx0) bx0 = x0; if (x1 > bx1) bx1 = x1;
+  };
+  D.rect = (x, y, w, h, hex, a) => { if (w > 0 && h > 0) put(grp(col(hex, a), 'f'), D.min / Math.min(w, h), x, x + w, y, y + h, 0, [x, y, w, h]); };
+  D.ell = (x, y, rx, ry, hex, a) => { if (rx > 0 && ry > 0) put(grp(col(hex, a), 'f'), D.min / (2 * Math.min(rx, ry)), x - rx, x + rx, y - ry, y + ry, 2, [x, y, rx, ry]); };
+  D.poly = (p, hex, a, size) => {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, ar = 0;
+    for (let i = 0; i < p.length; i += 2) { const x = p[i], y = p[i + 1], j = (i + 2) % p.length; ar += x * p[j + 1] - p[j] * y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (ar < 0) { const q = []; for (let i = p.length - 2; i >= 0; i -= 2) q.push(p[i], p[i + 1]); p = q; }   // every shape winds the same way, so overlaps never cut holes
+    put(grp(col(hex, a), 'f'), D.min / (size || Math.max(1e-4, Math.min(x1 - x0, y1 - y0))), x0, x1, y0, y1, 1, p);
+  };
+  D.line = (p, w, hex, a) => {
+    w = w < 0.05 ? Math.max(0.005, Math.round(w * 200) / 200) : Math.round(w * 50) / 50;   // widths in steps too, so lines share groups
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, len = 0;
+    for (let i = 0; i < p.length; i += 2) { if (p[i] < x0) x0 = p[i]; if (p[i] > x1) x1 = p[i]; if (p[i + 1] < y0) y0 = p[i + 1]; if (p[i + 1] > y1) y1 = p[i + 1]; if (i) len += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]); }
+    put(grp(col(hex, a), 's', w), Math.max(0.35 / w, 3 / Math.max(1e-4, len)), x0 - w, x1 + w, y0 - w, y1 + w, 3, p);
+  };
+  D.seg = (x1, y1, x2, y2, w, hex, a) => D.line([x1, y1, x2, y2], w, hex, a);
+  const shape = (c, sh) => {
+    const d = sh.d;
+    if (sh.t === 0) c.rect(d[0], d[1], d[2], d[3]);
+    else if (sh.t === 2) { c.moveTo(d[0] + d[2], d[1]); c.ellipse(d[0], d[1], d[2], d[3], 0, 0, TAU); }
+    else { c.moveTo(d[0], d[1]); for (let i = 2; i < d.length; i += 2) c.lineTo(d[i], d[i + 1]); if (sh.t === 1) c.closePath(); }
+  };
+  // after filling: cut each colour into strips left to right, a sixteenth of its spread wide
+  // (at least 12 m), so a screen usually holds two or three strips of it
+  const finish = () => {
+    list = [];
+    groups.forEach((g) => {
+      if (!g.sh.length) return;
+      g.sh.sort((a, b) => a.x0 - b.x0);
+      const W = Math.max(12, (g.sh[g.sh.length - 1].x0 - g.sh[0].x0) / 16);
+      g.ch = [];
+      let cur = null;
+      for (let i = 0; i < g.sh.length; i++) {
+        const sh = g.sh[i];
+        if (!cur || sh.x0 > cur.start + W) { cur = { start: sh.x0, x0: sh.x0, x1: sh.x1, y0: sh.y0, y1: sh.y1, sh: [], ti: 99, p: [] }; g.ch.push(cur); }
+        cur.sh.push(sh); if (sh.x1 > cur.x1) cur.x1 = sh.x1; if (sh.y0 < cur.y0) cur.y0 = sh.y0; if (sh.y1 > cur.y1) cur.y1 = sh.y1; if (sh.ti < cur.ti) cur.ti = sh.ti;
+      }
+      g.sh = null; list.push(g);
+    });
+    list.sort((a, b) => a.pass - b.pass || a.ord - b.ord);
+    if (it) { it.x0 = bx0 - 1; it.x1 = bx1 + 1; }
+  };
+  D.draw = (ctx, env) => {
+    if (!list) { if (fill) { D.env = env; fill(D, makeRng(o.seed || 1)); D.env = null; } finish(); }
+    const s = env.s, x0 = env.x0, x1 = env.x1, y0 = env.y0 === undefined ? -1e9 : env.y0, y1 = env.y1 === undefined ? 1e9 : env.y1;
+    let T = 0; while (T + 1 < KD_TIERS.length && KD_TIERS[T + 1] <= s) T++;            // the step of zoom we are at
+    for (let gi = 0; gi < list.length; gi++) {
+      const g = list[gi]; if (g.ti > T) continue;
+      let set = false;
+      for (let ci = 0; ci < g.ch.length; ci++) {
+        const c = g.ch[ci]; if (c.x0 > x1) break; if (c.ti > T || c.x1 < x0 || c.y1 < y0 || c.y0 > y1) continue;
+        if (!set) { set = true; if (g.kind === 'f') ctx.fillStyle = g.col; else { ctx.strokeStyle = g.col; ctx.lineWidth = Math.max(g.w, env.px * 0.9); } }
+        if (KD_P2D) { // one kept path for each step of zoom, holding the shapes big enough to see at it
+          let p = c.p[T];
+          if (!p) { p = c.p[T] = new Path2D(); for (let i = 0; i < c.sh.length; i++) if (c.sh[i].ti <= T) shape(p, c.sh[i]); }
+          if (g.kind === 'f') ctx.fill(p); else ctx.stroke(p);
+        } else { ctx.beginPath(); for (let i = 0; i < c.sh.length; i++) if (c.sh[i].ti <= T) shape(ctx, c.sh[i]); if (g.kind === 'f') ctx.fill(); else ctx.stroke(); }
+      }
+    }
+  };
+  // for checking costs: how many groups and strips this layer has (once drawn)
+  D.stats = () => { let n = 0, sh = 0; if (list) list.forEach((g) => { n += g.ch.length; g.ch.forEach((c) => { sh += c.sh.length; }); }); return { groups: list ? list.length : 0, strips: n, shapes: sh }; };
+  let it = null;
+  if (o.ground) (P.groundDeco = P.groundDeco || []).push(D);
+  else if (o.item !== false) {
+    it = P.add({ x0: -1e9, x1: 1e9, layer: o.layer || 0, draw: D.draw, deco: D });
+    if (o.after) { const i = P.items.indexOf(o.after); if (i >= 0) { P.items.pop(); P.items.splice(i + 1, 0, it); } }
+  }
+  return D;
+};
+
+// ---- weathering, added to a detail layer -------------------------------------------
+// R is the layer's own random stream. Colours are plain hex; each helper picks its own opacity.
+const KW = {
+  // Streaks running down from a line at yTop: rust under fixings, rain stains under sills.
+  // Each is wide where it starts and runs to a point; o.n, o.len [lo, hi], o.w [lo, hi], o.a.
+  streaks(D, R, x0, x1, yTop, hex, o) {
+    o = o || {}; const n = o.n || Math.max(1, Math.round((x1 - x0) * (o.per || 0.6)));
+    for (let i = 0; i < n; i++) {
+      const x = R.r(x0, x1), l = R.r(o.len ? o.len[0] : 0.4, o.len ? o.len[1] : 1.6), w = R.r(o.w ? o.w[0] : 0.04, o.w ? o.w[1] : 0.12), dx = R.r(-0.04, 0.04), a = (o.a || 0.3) * R.r(0.55, 1);
+      D.poly([x - w / 2, yTop, x + w / 2, yTop, x + w * 0.3 + dx, yTop - l * 0.55, x + dx * 2, yTop - l, x - w * 0.25 + dx, yTop - l * 0.5], hex, a, w);
+    }
+  },
+  // A dirty band at the foot of a wall, its top edge ragged: splashes off the ground.
+  grime(D, R, x0, x1, y, h, hex, a) {
+    const p = [x1, y, x0, y]; for (let x = x0; x < x1; x += R.r(0.25, 0.7)) p.push(x, y + h * R.r(0.45, 1));
+    p.push(x1, y + h * R.r(0.45, 1)); D.poly(p, hex, a === undefined ? 0.22 : a, h * 0.5);
+  },
+  // Hairline cracks: a wandering line with the odd branch. dir is the general heading in radians.
+  cracks(D, R, x, y, len, hex, o) {
+    o = o || {}; const w = o.w || 0.02, dir = o.dir === undefined ? -Math.PI / 2 : o.dir, p = [x, y]; let cx = x, cy = y, an = dir;
+    const st = len / 6;
+    for (let i = 0; i < 6; i++) {
+      an = dir + R.r(-0.6, 0.6); cx += Math.cos(an) * st; cy += Math.sin(an) * st; p.push(cx, cy);
+      if (i === 2 && R.chance(0.6)) { const b = an + (R.chance(0.5) ? 0.9 : -0.9); D.line([cx, cy, cx + Math.cos(b) * st * 1.3, cy + Math.sin(b) * st * 1.3, cx + Math.cos(b + 0.3) * st * 2, cy + Math.sin(b + 0.3) * st * 2], w * 0.8, hex, o.a || 0.5); }
+    }
+    D.line(p, w, hex, o.a || 0.55);
+  },
+  // An irregular patch (peeled paint, a damp stain, a moss bloom): a wobbly oval.
+  blob(D, R, x, y, rx, ry, hex, a, k) {
+    const n = 9, p = [], k0 = k === undefined ? 0.3 : k, ph = R.r(0, TAU);
+    for (let i = 0; i < n; i++) { const an = ph + (i / n) * TAU, r = 1 - k0 + k0 * 2 * R.f(); p.push(x + Math.cos(an) * rx * r, y + Math.sin(an) * ry * r); }
+    D.poly(p, hex, a, Math.min(rx, ry) * 2);
+  },
+  // Paint coming away: a pale patch where the coat has gone, with a dark lip along its top.
+  peel(D, R, x, y, w, h, base, a) {
+    KW.blob(D, R, x, y, w / 2, h / 2, lighten(base, 0.18), a === undefined ? 0.75 : a, 0.35);
+    D.pass++; D.seg(x - w * 0.35, y + h * 0.42, x + w * 0.3, y + h * 0.46, Math.min(0.03, h * 0.12), darken(base, 0.4), 0.5); D.pass--;
+  },
+  // Moss or weed along a base line: a row of soft bumps.
+  moss(D, R, x0, x1, y, h, hex, a) {
+    for (let x = x0; x < x1; x += R.r(h * 0.8, h * 2.6)) { const r = h * R.r(0.5, 1.1); D.ell(x, y + r * 0.2, r * R.r(1, 1.8), r, hex, a === undefined ? 0.85 : a); }
+  },
+};
+
+// ---- small things lying about, added to a detail layer -------------------------------
+// All of them are low and drawn behind the people on their plane, or on a wall: none is
+// big enough to pass for cover. x is the left end and y the ground unless it says otherwise.
+const KC = {
+  // A wooden crate with its boards and the darker frame across them.
+  crate(D, x, y, w, h, hex) {
+    const d = darken(hex, 0.28), l = lighten(hex, 0.14);
+    D.rect(x, y, w, h, hex); D.pass++;
+    D.rect(x, y + h - 0.04, w, 0.04, l); D.rect(x, y, 0.06, h, d); D.rect(x + w - 0.06, y, 0.06, h, d); D.rect(x, y, w, 0.06, d); D.rect(x, y + h - 0.1, w, 0.06, d);
+    for (let k = 1; k < 3; k++) D.rect(x + 0.06, y + (h * k) / 3, w - 0.12, 0.015, d, 0.7);
+    D.seg(x + 0.08, y + 0.08, x + w - 0.08, y + h - 0.12, 0.05, d, 0.85);
+    D.pass--;
+  },
+  // A pallet lying flat, or several stacked: n of them.
+  pallets(D, x, y, n, hex) {
+    const d = darken(hex, 0.35);
+    for (let i = 0; i < n; i++) { const yy = y + i * 0.15; D.rect(x, yy + 0.1, 1.2, 0.05, hex); D.rect(x + 0.02, yy, 0.12, 0.1, hex); D.rect(x + 0.54, yy, 0.12, 0.1, hex); D.rect(x + 1.06, yy, 0.12, 0.1, hex); D.rect(x + 0.14, yy + 0.02, 0.4, 0.06, d, 0.9); D.rect(x + 0.66, yy + 0.02, 0.4, 0.06, d, 0.9); }
+  },
+  // A coil of rope or hose seen from the side: flat rings, a lighter top.
+  coil(D, cx, y, r, hex) {
+    const d = darken(hex, 0.3), l = lighten(hex, 0.18);
+    for (let i = 0; i < 3; i++) D.ell(cx, y + 0.04 + i * 0.05, r - i * r * 0.12, 0.05, i % 2 ? d : hex);
+    D.pass++; D.ell(cx, y + 0.16, r * 0.62, 0.025, l, 0.8); D.ell(cx, y + 0.16, r * 0.3, 0.018, d, 0.9); D.pass--;
+  },
+  // A run of chain hanging between two points (or lying, if sag is 0): small links.
+  chain(D, x0, y0, x1, y1, sag, hex) {
+    const n = Math.max(3, Math.round(Math.hypot(x1 - x0, y1 - y0) / 0.07));
+    for (let i = 0; i <= n; i++) { const u = i / n, x = lerp(x0, x1, u), y = lerp(y0, y1, u) - sag * 4 * u * (1 - u); D.ell(x, y, i % 2 ? 0.035 : 0.022, i % 2 ? 0.02 : 0.03, hex, 0.95); }
+  },
+  // An old tyre lying flat, or a stack of them: n high.
+  tyres(D, cx, y, n, r) {
+    for (let i = 0; i < n; i++) { const yy = y + i * r * 0.62; D.rect(cx - r, yy, r * 2, r * 0.58, '#1a1c20'); D.ell(cx, yy + r * 0.58, r, r * 0.16, '#24272c'); D.pass++; D.ell(cx, yy + r * 0.58, r * 0.5, r * 0.08, '#0e0f12'); D.rect(cx - r, yy + r * 0.24, r * 2, r * 0.05, '#2c3036', 0.8); D.pass--; }
+  },
+  // A rock: a lumpy mound with its lit top and a shadow at its foot. k shifts its colour.
+  rock(D, R, cx, y, w, h, hex) {
+    const p = [cx - w / 2, y], n = 7;
+    for (let i = 1; i < n; i++) { const u = i / n, an = Math.PI * (1 - u); p.push(cx + Math.cos(an) * w / 2 * R.r(0.85, 1.05), y + Math.sin(an) * h * R.r(0.75, 1.1)); }
+    p.push(cx + w / 2, y);
+    D.poly(p, hex); D.pass++;
+    D.poly([cx - w * 0.3, y + h * 0.7, cx + w * 0.05, y + h * R.r(0.92, 1.02), cx + w * 0.28, y + h * 0.66, cx, y + h * 0.78], lighten(hex, 0.16), 0.8);
+    D.rect(cx - w / 2, y, w, h * 0.12, darken(hex, 0.3), 0.6); D.pass--;
+  },
+  // A tuft of grass or scrub: thin blades, as one shape (a zig-zag along the ground).
+  tuft(D, R, x, y, h, hex) {
+    const n = R.i(3, 5), p = [x - h * 0.3, y];
+    for (let i = 0; i < n; i++) { const bx = x + (i - (n - 1) / 2) * h * 0.15; p.push(bx + R.r(-0.35, 0.35) * h, y + h * R.r(0.6, 1), bx + h * 0.06, y + h * 0.08); }
+    p.push(x + h * 0.3, y);
+    D.poly(p, hex, 0.95, h * 0.3);
+  },
+  // A low bush: a few overlapping round clumps, darker underneath.
+  bush(D, R, cx, y, w, h, hex) {
+    const n = Math.max(3, Math.round(w / (h * 0.7)));
+    for (let i = 0; i < n; i++) { const u = (i + 0.5) / n, r = h * R.r(0.45, 0.65); D.ell(cx - w / 2 + u * w, y + r * 0.9, r * 1.1, r, hex); }
+    D.pass++;
+    for (let i = 0; i < n; i++) { const u = (i + 0.4) / n, r = h * R.r(0.2, 0.32); D.ell(cx - w / 2 + u * w - r * 0.3, y + h * 0.95, r, r * 0.8, lighten(hex, 0.12), 0.8); }
+    D.rect(cx - w / 2, y, w, h * 0.15, darken(hex, 0.3), 0.6); D.pass--;
+  },
+};
+
 CB.K = K; CB.makeScene = makeScene; CB.CARS = CARS;
 
 
@@ -6329,6 +6559,8 @@ Sim.prototype.setRoutine = function (id, routine, keepState) {
   const a = typeof id === 'string' ? this.byId[id] : id; if (!a || a.dead) return;
   a.routine = routine.slice(); a.pc = 0; a.wait = 0; a.goal = null; a.stack = []; a.waitFor = null;
   if (!keepState) a.state = 'calm';
+  // half way up (or down) to a change of plane that will now never come: lose it as they walk on
+  if (a.lift && a.lift.y1) this.ease(a, a.y - a.lift.base, 0, { dist: 1.5 });
 };
 Sim.prototype.alive = function (id) { const a = this.byId[id]; return !!a && !a.dead; };
 Sim.prototype.fail = function (code, text, delay) {
@@ -6610,11 +6842,108 @@ Sim.prototype.place = function (a, p) {
   ['plane', 'room', 'behind', 'zone', 'x', 'y', 'face'].forEach((k) => { if (p[k] !== undefined) a[k] = p[k]; });
   if (p.room === undefined && p.plane) { a.room = null; }
   if (p.behind === undefined && p.plane) a.behind = !!p.room;
+  if (p.plane || p.y !== undefined) a.lift = null;
 };
+
+// ---- changes of level ------------------------------------------------------------
+// The picture is a stack of flat planes, so somebody who goes from one plane to another (a room
+// to the terrace in front of it, the road to the pavement, a car seat to the street) would jump:
+// from up on a roof, a nearer plane shows the same ground lower down the screen. Instead they
+// change plane at the spot that looks the same from the shooter, and a.lift carries the
+// difference in height: an offset from the ground (base) that eases from y0 to y1 as they walk
+// `dist` metres, or over `time` seconds. On screen they walk smoothly nearer or further, or climb
+// in and out. The spot along the road moves a little too (by an amount that depends on where
+// the shooter is), so the walk that follows goes a touch faster or slower and they still arrive
+// where and when the routine says, from every firing position.
+// Where a point on plane P0 appears on plane P1, seen from the shooter's position.
+Sim.prototype.onPlane = function (x, y, P0, P1) {
+  const e = this.eye0, k = (P1.z - e.z) / (P0.z - e.z);
+  return { x: e.x + (x - e.x) * k, y: e.y + (y - e.y) * k };
+};
+Sim.prototype.ease = function (a, y0, y1, o) {
+  o = o || {};
+  const base = o.base !== undefined ? o.base : a.lift ? a.lift.base : a.y;
+  a.lift = { base, y0, y1, u: 0, dist: o.dist || 0, time: o.dist ? 0 : o.time || 0.35 };
+  a.y = base + y0;
+};
+function liftStep(a, moved, dt) {
+  const L = a.lift;
+  if (a.inVeh || a.dead || a.gone) { a.lift = null; return; }
+  L.u = Math.min(1, L.u + (L.dist ? moved / L.dist : dt / L.time));
+  a.y = (a.yFn ? a.yFn(a.x) : L.base) + lerp(L.y0, L.y1, smooth(L.u));
+  if (L.u >= 1 && !L.y1) a.lift = null;
+}
+// The walk that is next in the routine, if it is one.
+function nextWalk(a) { const op = a.routine[a.pc]; return op && (op[0] === 'walk' || op[0] === 'run') ? op : null; }
+// How fast to take a walk to x from `from` so as to arrive as if it had started at `was`.
+function hurryFor(x, from, was) { const d = Math.abs(x - was); return d > 0.05 ? clamp(Math.abs(x - from) / d, 0.5, 2.5) : 1; }
+// ['step', placement, dist]: onto placement's plane (and zone, room) where they stand on screen,
+// losing the difference in height over the next walk (or `dist` metres; or a third of a second).
+Sim.prototype.stepTo = function (a, p, dist) {
+  const was = a.lift && a.lift.at !== undefined ? a.lift.at : a.x, q = this.onPlane(a.x, a.y, a.plane, p.plane), base = p.y === undefined ? 0 : p.y, op = nextWalk(a);
+  this.place(a, Object.assign({}, p, { x: q.x, y: base }));
+  if (op) { a.hurryOp = op; a.hurryV = hurryFor(op[1], q.x, was); }
+  this.ease(a, q.y - base, 0, { base, dist: dist || (op ? Math.max(0.3, Math.abs(op[1] - q.x) * 0.85) : 0) });
+};
+// ['rise', placement], then a walk to x: the other way round. They stay on this plane and walk
+// to the spot that lines up with x on placement's plane, climbing (or sinking) on the way to the
+// height from which a 'step' to placement lands them exactly on its ground at x. For when they
+// must be drawn on this plane until the moment they change (walking up to a door in the wall
+// behind them, say). True if it set them walking.
+Sim.prototype.riseFor = function (a, p) {
+  const e = this.eye0, base = a.yFn ? a.yFn(a.x) : a.lift ? a.lift.base : a.y, py = p.y === undefined ? 0 : p.y, op = nextWalk(a);
+  const k = (p.plane.z - e.z) / (a.plane.z - e.z), want = e.y + (py - e.y) / k - base;
+  if (!op) { this.ease(a, a.y - base, want, { base }); return false; }
+  const x = e.x + (op[1] - e.x) / k;
+  a.pc++; a.goal = x; a.running = op[0] === 'run'; if (op[2] && op[0] === 'walk') a.speed = op[2];
+  const d = Math.abs(op[1] - a.x); a.hurryNow = d > 0.05 ? clamp(Math.abs(x - a.x) / d, 0.5, 2.5) : 1;
+  this.ease(a, a.y - base, want, { base, dist: Math.max(0.3, Math.abs(x - a.x) * 0.85) });
+  a.lift.at = op[1]; // where they are on the routine's reckoning when they get there
+  return true;
+};
+
+// ---- in and out of vehicles -------------------------------------------------------
+// Where somebody sits in a vehicle (drawn there, through the window). Their door is at the seat.
+Sim.prototype.seatPos = function (v, i) {
+  const c = v.def;
+  return { x: v.x + v.dir * c.seats[i] * c.len, y: v.y + (c.body + c.h) / 2 - 1.2 };
+};
+// Out through the door at their seat (or at `door`, {x, y} on the vehicle's plane, for back
+// doors), onto the plane, ground and zone of placement p. Left out, that is the vehicle's own
+// plane and road: they stand in front of it. A plane beyond the vehicle is the far door, and
+// they stand behind it. They come out at the height they sat at and stand up over a moment
+// before their routine goes on (so set any new routine first).
+Sim.prototype.getOut = function (a, p, door) {
+  const v = a.inVeh; if (!v) return;
+  p = p || {};
+  const s = door || this.seatPos(v, a.seat), P = p.plane || v.plane, base = p.y !== undefined ? p.y : P === v.plane ? v.y : 0;
+  const q = this.onPlane(s.x, s.y, v.plane, P);
+  if (v.seats[a.seat] === a.id) v.seats[a.seat] = null;
+  a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; a.goal = null;
+  this.place(a, { plane: P, x: q.x, y: base, zone: p.zone || 'street', room: null, behind: false });
+  this.ease(a, q.y - base, 0, { base, time: 0.4 });
+  a.wait = Math.max(a.wait || 0, 0.45);
+};
+// Before taking a seat: walk to the door (the spot that lines up with the seat from the
+// shooter, on whatever plane they are on), then sit down into it over a moment. True while
+// that is still going on. Somebody already there (as near as one step) gets straight in.
+Sim.prototype.boardStep = function (a, v, seat) {
+  if (!v || v.gone || !a.plane) return false;
+  const s = this.seatPos(v, seat), q = this.onPlane(s.x, s.y, v.plane, a.plane), k = (v.plane.z - this.eye0.z) / (a.plane.z - this.eye0.z);
+  if (Math.abs(q.x - a.x) * k <= 0.1 && Math.abs(q.y - a.y) * k <= 0.1) return false;
+  if (Math.abs(q.x - a.x) > 0.02) { a.goal = q.x; a.hurryNow = 1; return true; }
+  const base = a.lift ? a.lift.base : a.y;
+  this.ease(a, a.y - base, q.y - base, { base, time: clamp(0.25 + Math.abs(q.y - a.y) * 0.5, 0.3, 0.7) });
+  a.wait = a.lift.time; a.anim = a.idle = 'stand';
+  return true;
+};
+
 // One person, one step. The wrapper notes when the pose or the facing changes so the
 // figure can ease from one to the other instead of snapping (see figPoseChange).
 Sim.prototype.stepActor = function (a, dt) {
+  const x0 = a.x, L = a.lift;
   this.stepActorCore(a, dt);
+  if (a.lift) liftStep(a, a.lift === L ? Math.abs(a.x - x0) : 0, dt); // (a lift begun this step: they have not walked yet)
   if (a.anim !== a.animCur) figPoseChange(a);
   if (!a.dead) a.faceS = approach(a.faceS === undefined ? a.face : a.faceS, a.face, dt * 9);
 };
@@ -6623,7 +6952,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
-  if (a.inVeh) { const v = a.inVeh, c = v.def; a.x = v.x + v.dir * c.seats[a.seat] * c.len; a.y = v.y + (c.body + c.h) / 2 - 1.2; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
   if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
@@ -6646,7 +6975,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   }
   // moving toward a goal
   if (a.goal !== null) {
-    const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1), dx = a.goal - a.x, stepd = sp * dt;
+    const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1) * (a.hurryNow || 1), dx = a.goal - a.x, stepd = sp * dt;
     a.face = sign(dx) || a.face; a.vx = a.face * sp;
     a.anim = a.running ? (a.state === 'panic' ? 'panic' : 'run') : 'walk';
     a.ph += dt * sp * (a.running ? FIG_GAIT.run : FIG_GAIT.walk).k; // the stride is worked out from this, so the feet stay put on the ground
@@ -6664,14 +6993,16 @@ Sim.prototype.stepActorCore = function (a, dt) {
     if (!op) { a.anim = a.idle; return; }
     a.pc++;
     switch (op[0]) {
-      case 'walk': a.goal = op[1]; a.running = false; if (op[2]) a.speed = op[2]; return;
-      case 'run': a.goal = op[1]; a.running = true; return;
+      case 'walk': a.goal = op[1]; a.running = false; if (op[2]) a.speed = op[2]; a.hurryNow = op === a.hurryOp ? a.hurryV : 1; a.hurryOp = null; return;
+      case 'run': a.goal = op[1]; a.running = true; a.hurryNow = op === a.hurryOp ? a.hurryV : 1; a.hurryOp = null; return;
       case 'wait': a.wait = op[1]; if (op[2]) { a.anim = op[2]; a.idle = op[2]; } else a.anim = a.idle; if (op[3]) a.face = op[3]; return;
       case 'anim': a.anim = a.idle = op[1]; break;
       case 'face': a.face = op[1]; a.faceHome = op[1]; break;
       case 'hide': a.hidden = true; break;
       case 'show': a.hidden = false; break;
       case 'to': sim.place(a, op[1]); break;
+      case 'step': sim.stepTo(a, op[1], op[2]); break;
+      case 'rise': if (sim.riseFor(a, op[1])) return; break;
       case 'emit': sim.emit(op[1]); break;
       case 'waitFor': a.waitFor = op[1]; if (!sim.did(op[1])) { a.anim = a.idle; return; } a.waitFor = null; break;
       case 'say': sim.bubble(a, op[1], op[2] || 2.5); break;
@@ -6683,7 +7014,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
       case 'call': op[1](sim, a); break;
       case 'speed': a.speed = op[1]; break;
       case 'role': a.role = op[1]; break;
-      case 'veh': { const v = sim.byId[op[1]]; a.inVeh = v; a.seat = op[2] || 0; v.seats[a.seat] = a.id; a.anim = 'drive'; a.plane = v.plane; a.room = null; a.behind = false; a.zone = 'veh:' + v.id; return; }
+      case 'veh': { const v = sim.byId[op[1]]; if (sim.boardStep(a, v, op[2] || 0)) { a.pc--; return; } a.inVeh = v; a.lift = null; a.seat = op[2] || 0; v.seats[a.seat] = a.id; a.anim = 'drive'; a.plane = v.plane; a.room = null; a.behind = false; a.zone = 'veh:' + v.id; return; }
       case 'back': { const s = a.stack.pop(); if (s) { a.routine = s.routine; a.pc = Math.max(0, s.pc - (s.goal !== null ? 1 : 0)); a.wait = s.wait; a.anim = a.idle = s.anim; } break; }
       default: break;
     }
@@ -6776,7 +7107,7 @@ Sim.prototype.stepVehicle = function (v, dt) {
     else if (op[0] === 'emit') sim.emit(op[1]);
     else if (op[0] === 'gone') { v.gone = true; sim.emit('gone:' + v.id); v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) sim.leave(a); }); return; }
     else if (op[0] === 'brake') { v.goal = v.x + v.dir * Math.max(2, v.v * 0.9); v.maxV = 0; v.flatTire = true; return; }
-    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead) { a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; sim.place(a, { x: v.x + (op[2] || 0), y: op[5] === undefined ? v.y : op[5], plane: op[4] || v.plane, zone: op[3] || 'street', room: null, behind: false }); v.seats[a.seat] = null; } }
+    else if (op[0] === 'out') { const a = sim.byId[op[1]]; if (a && !a.dead && a.inVeh === v) sim.getOut(a, op[2]); }
     else if (op[0] === 'call') op[1](sim, v);
     else if (op[0] === 'loop') v.pc = op[1] || 0;
   }
@@ -8346,6 +8677,7 @@ SCN.street = function (o) {
     const B = K.building(S, PB, Object.assign({ x, id: 'b' + (i + 1), seed: (o.seed || 3) * 13 + i * 7, dish: i % 2 === 0 ? 0.42 + i * 0.07 : undefined }, bd));
     H.b.push(B); H['b' + (i + 1)] = B; x += bd.w + (o.gap || 0);
   });
+  const rowEnd = PB.items[PB.items.length - 1]; H.dress = [];   // where the detail layer for the walls goes, and what stands along their foot
   // dressing along the foot of the row and on its walls. All of it sits on the building
   // plane, seven metres behind anyone on the pavement.
   const DR = makeRng((o.seed || 3) * 977 + 31), inks = ['#b3312b', '#27457a', '#2f6b4a', '#8a6a2a', '#5a3a6a'], papers = ['#e9dcc0', '#f1ede2', '#e8c98a', '#cfe0e8'], words = ['DANCE', 'VOTE', 'BOXING', 'SALE', 'CIRCUS', 'ROOMS', 'JAZZ', 'LOST DOG'];
@@ -8355,7 +8687,7 @@ SCN.street = function (o) {
       const piers = []; for (let c = 1; c < B.cols; c++) if (bd.door === undefined || (c !== bd.door && c !== bd.door + 1)) piers.push(B.x + c * pw);
       const kinds = ['box', 'bike', 'bin', 'poster', 'poster', 'tag', 'hydrant', 'poster'];
       piers.forEach((px0) => {
-        const k = DR.pick(kinds), u = DR.f();
+        const k = DR.pick(kinds), u = DR.f(); H.dress.push([k, px0, u]);
         if (k === 'box' && u < 0.6) K.postBox(S, PB, px0);
         else if (k === 'bike' && u < 0.75) K.bicycle(S, PB, px0, { col: DR.pick(['#2f6b4a', '#27457a', '#8a2a2a', '#2a2e36']), flip: DR.chance(0.5) });
         else if (k === 'bin') { K.bin(S, PB, px0 - 0.3); if (u > 0.5) K.bin(S, PB, px0 + 0.42, { col: '#6f7a6a' }); }
@@ -8368,7 +8700,7 @@ SCN.street = function (o) {
     } else {
       // outside a shop: produce crates under the window, a bill or two on the pilaster
       if (String(bd.shop.sign || '').indexOf('DELI') >= 0) { const cx = B.x + 1.2; PB.add({ x0: cx - 0.2, x1: cx + 3.6, layer: 0, draw(ctx, env) { if (env.s < 7) return; const wd = S.tone('#8a6a45', PB), wd2 = S.tone('#6b5034', PB), fr = ['#d9482b', '#e8a23a', '#7fae45', '#b56bb0']; for (let k = 0; k < 4; k++) { const bx = cx + k * 0.82; R4(ctx, bx, 0, 0.74, 0.3, wd); R4(ctx, bx, 0.12, 0.74, 0.03, wd2); if (env.s > 14) { ctx.fillStyle = S.tone(fr[k], PB); ctx.beginPath(); for (let q = 0; q < 5; q++) { ctx.moveTo(bx + 0.12 + q * 0.13 + 0.075, 0.32 + (q % 2) * 0.035); ctx.arc(bx + 0.12 + q * 0.13, 0.32 + (q % 2) * 0.035, 0.075, 0, TAU); } ctx.fill(); } } } }); }
-      else if (DR.chance(0.7)) K.bin(S, PB, B.x + B.w - 0.5 - (bd.shop.door ? 2.3 : 0), { col: '#6f7a6a' });
+      else if (DR.chance(0.7)) { const bx = B.x + B.w - 0.5 - (bd.shop.door ? 2.3 : 0); K.bin(S, PB, bx, { col: '#6f7a6a' }); H.dress.push(['bin', bx, 0]); }
     }
   });
   const PS = S.plane(z, 'street');
@@ -8396,8 +8728,362 @@ SCN.street = function (o) {
   H.street = (xx, extra) => Object.assign({ plane: PS, x: xx, y: 0, zone: 'street', behind: false, room: null }, extra || {});
   H.inWin = (B, f, c, dx, extra) => { const op = B.win(f, c); return Object.assign({ plane: B.P, x: B.winX(c) + (dx || 0), y: B.floorY(f), room: op.room, zone: op.room, behind: true }, extra || {}); };
   H.onRoof = (B, xx, extra) => Object.assign({ plane: B.P, x: xx, y: B.roofY, room: B.roofRoom, zone: B.roofRoom, behind: true }, extra || {});
+  stDetail(S, H, { styles, rowEnd, seed: o.seed || 3 });
   return H;
 };
+
+// ---- a lived-in street ----------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco) and a few cheap moving
+// things. On the row: soot and rain run down from the cornices, salt bleeds from the string
+// courses, damp rises at the foot of the walls, cracks step out from the window corners; old
+// repairs, tie plates, rust under the air conditioners, a cable or two, a dish, a bell panel by
+// the door, a weed on a cornice, and a hotel sign on a pier. On the ground: litter, gum, stains
+// and leaves on the pavements and in the gutters, tar seams and skid marks on the road, a waste
+// lot past each end of the row, and after dark the light of the shop windows lying on the
+// paving. Moving: pigeons on the cornices, steam from the laundry vent, a sheet of newspaper
+// blowing along the road, the sign's tubes stuttering at night. All of it is painted on a wall
+// that already hides what is behind it, lies flat on the ground, or sits low in the lots seven
+// metres behind the pavement; nothing is solid or shootable.
+// How the ground of plane P lies as seen from the eye: card height of a point dz in front of it.
+function stEye(D, P) {
+  const e = D.env ? kxSee(D.env, P) : null, eyr = e && e.ok ? Math.max(4, e.ey - (P.groundY || 0)) : 16, d = e && e.ok ? P.z - e.ez : P.z;
+  return { eyr, d, tilt: eyr / d, hOf: (dz) => (eyr * dz) / Math.max(1, d - dz) };
+}
+// A flat patch lying on the ground: a squashed wobbly oval, judged for size by its width.
+function stFlat(D, R, x, y, rx, ry, hex, a) {
+  const p = [], ph = R.r(0, TAU);
+  for (let i = 0; i < 7; i++) { const an = ph + (i / 7) * TAU, r = R.r(0.75, 1.15); p.push(x + Math.cos(an) * rx * r, y + Math.sin(an) * ry * r); }
+  D.poly(p, hex, a, rx * 1.4);
+}
+// Rubbish trodden into a pavement or blown along a road, between card heights yA (far) and
+// yB (near): scraps of paper, cans and cups, leaves, gum, cigarette ends. sq is how flat a
+// thing lying down looks from up here; dens is pieces to the metre.
+function stLitter(D, R, x0, x1, yA, yB, sq, dens) {
+  const paper = ['#ebe6d8', '#d8cdaa', '#c9d3da'], tin = ['#9aa3ab', '#3b6ea5', '#c9a24a', '#2f6b4a'], leaf = ['#7a5a32', '#94683a', '#5d4a2a'];
+  for (let i = 0, n = Math.round((x1 - x0) * dens); i < n; i++) {
+    const x = R.r(x0, x1), y = R.r(yB, yA), k = R.f();
+    if (k < 0.2) { D.at = 5; const w = R.r(0.16, 0.34), h = Math.max(0.03, w * sq * R.r(0.8, 1.5)); D.poly([x, y, x + w, y + h * 0.15, x + w * 0.85, y + h, x + w * 0.1, y + h * 0.85], R.pick(paper), 0.9, w); }
+    else if (k < 0.28) { D.at = 10; D.poly([x, y, x + 0.13, y, x + 0.13, y + 0.065, x, y + 0.065], R.pick(tin), 1, 0.13); D.pass = 1; D.poly([x, y + 0.045, x + 0.13, y + 0.045, x + 0.13, y + 0.06, x, y + 0.06], '#ffffff', 0.35, 0.13); D.pass = 0; }
+    else if (k < 0.33) { D.at = 10; D.poly([x, y, x + 0.07, y, x + 0.085, y + 0.11, x - 0.015, y + 0.11], '#f1ede2', 1, 0.11); }
+    else if (k < 0.55) { D.at = 10; const l = R.r(0.07, 0.13), hh = Math.max(0.012, l * sq * 0.7); D.poly([x, y, x + l * 0.5, y + hh, x + l, y, x + l * 0.5, y - hh], R.pick(leaf), 0.9, l); }
+    else if (k < 0.8) { D.at = 20; stFlat(D, R, x, y, R.r(0.035, 0.06), 0.012 + sq * 0.03, '#2b2d30', 0.4); }
+    else { D.at = 40; D.poly([x, y, x + 0.045, y, x + 0.045, y + 0.014, x, y + 0.014], '#e6dcc4', 1, 0.05); }
+  }
+  D.at = 0;
+}
+// Weather and wear on the faces of a row of K.building walls Bs standing on plane P, as one
+// static layer drawn just after the item o.after: soot or rain running down from the
+// cornices, salt or grime under the string courses, damp at the foot, cracks from the window
+// corners, old repairs, tie plates, rust under the air conditioners, a cable, a dish, a bell
+// panel, weeds at the foot and a buddleia on a cornice. All of it keeps off the windows, doors,
+// shop fronts and fixings already on the walls. o.birds: where pigeons sit (the cornice is
+// whitened under them). Returns clear(x0, y0, x1, y1): whether that box of wall is free.
+function stFacade(S, P, Bs, o) {
+  const birds = o.birds || [];
+  // what must stay clear on the faces: windows, doors, shop fronts, and the pipes,
+  // vents, alarm boxes and air conditioners already fixed to the walls
+  const obs = [];
+  Bs.forEach((B) => {
+    for (const k in B.wins) { const op = B.wins[k]; obs.push([op.x - 0.2, op.y - 0.18, op.x + op.w + 0.2, op.y + op.h + 0.32]); }
+    if (B.shop) obs.push([B.x - 0.05, B.base - 1, B.x + B.w + 0.05, B.base + B.fh + 0.6]);
+    if (B.doorC !== undefined && !B.shop) {
+      if (B.doorOp) { const d = B.doorOp; obs.push([d.x - 0.42, B.base - 1, d.x + d.w + 0.82, d.y + d.h + 0.5]); }
+      else { const cx = B.winX(B.doorC); obs.push([cx - 0.85, B.base - 1, cx + 1.45, B.base + 3.1]); }
+    }
+    (B.pipes || []).forEach((px) => obs.push([px - 0.2, B.base - 1, px + 0.2, B.roofY]));
+    (B.vents || []).forEach((v) => obs.push([v[0] - 0.06, v[1] - (v[2] ? 0.75 : 0.06), v[0] + 0.4, v[1] + 0.32]));
+    if (B.alarm) obs.push([B.alarm.x - 0.06, B.alarm.y - 0.06, B.alarm.x + 0.42, B.alarm.y + 0.36]);
+    (B.acs || []).forEach((op) => obs.push([op.x + 0.1, op.y - 0.8, op.x + 1.2, op.y]));
+  });
+  // how far down from (x, y) the wall is clear, a strip hw either side; and whether a box is clear
+  const roomDown = (x, y, hw) => { let d = y - 0.62; for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x + hw < o[0] || x - hw > o[2]) continue; if (y > o[1] && y < o[3]) return 0; if (o[3] <= y) d = Math.min(d, y - o[3]); } return d; };
+  const clear = (x0, y0, x1, y1) => { for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x1 > o[0] && x0 < o[2] && y1 > o[1] && y0 < o[3]) return false; } return true; };
+  K.deco(S, P, { after: o.after, seed: o.seed }, (D, R) => {
+    const soot = '#1a1512', salt = '#f0eadc', wash = '#20242a', rust = '#7a3c1e', iron = '#24211f', cab = '#1f2227', green = '#3c4a32';
+    const streak = (x, y, w, l, hex, a) => D.poly([x - w / 2, y, x + w / 2, y, x + w * 0.4, y - l * 0.55, x + w * 0.2, y - l, x - w * 0.12, y - l * 0.96, x - w * 0.36, y - l * 0.5], hex, a, w);
+    Bs.forEach((B) => {
+      if (B.kStyle === 'glass') return;
+      const brick = B.kStyle === 'brick', x0 = B.x, x1 = B.x + B.w, top = B.roofY - 0.18, pw = B.w / B.cols;
+      // soot (on brick) or rain (on cast concrete) running down from under the cornice
+      D.at = 5;
+      for (let i = 0, n = Math.round(B.w * 0.9); i < n; i++) {
+        const w = R.r(0.06, 0.2), x = R.r(x0 + 0.35, x1 - 0.5), l = Math.min(R.r(0.8, brick ? 2.6 : 5), roomDown(x, top, w / 2) - 0.05);
+        if (l > w * 3) streak(x, top, w, l, brick ? soot : wash, brick ? 0.13 : 0.15);
+      }
+      // salt bleeding out under each string course, or the grime that gathers under it
+      for (let f = 1; f < B.floors; f++) {
+        const y = B.floorY(f) - 0.11;
+        for (let i = 0, n = Math.round(B.w * 0.35); i < n; i++) {
+          const w = R.r(0.05, 0.16), x = R.r(x0 + 0.3, x1 - 0.4), l = Math.min(R.r(0.3, brick ? 0.9 : 1.6), roomDown(x, y, w / 2) - 0.05);
+          if (l > w * 3) streak(x, y, w, l, brick ? salt : wash, brick ? 0.12 : 0.11);
+        }
+      }
+      if (!brick) {
+        // long rain marks down the piers of cast concrete, rust weeping from its tie bolts, a spalled patch
+        for (let c = 0; c <= B.cols; c++) {
+          const px = c === 0 ? x0 + 0.6 : c === B.cols ? x1 - 1.15 : x0 + c * pw;
+          for (let k = 0; k < 2; k++) { const x = px + R.r(-0.32, 0.32), w = R.r(0.12, 0.3), l = roomDown(x, top, w / 2) * R.r(0.4, 0.95); if (l > 0.6) streak(x, top, w, l, wash, 0.1); }
+        }
+        for (let i = 0; i < 2; i++) {
+          const x = x0 + R.i(1, Math.max(1, B.cols - 1)) * pw + R.r(-0.3, 0.3), y = B.floorY(R.i(1, B.floors - 1)) + R.r(0.4, 2.4);
+          if (!clear(x - 0.34, y - 0.26, x + 0.34, y + 0.26)) continue;
+          D.at = 10; KW.blob(D, R, x, y, R.r(0.18, 0.3), R.r(0.12, 0.2), '#ffffff', 0.14, 0.35);
+          D.pass = 1; D.seg(x - 0.14, y + 0.04, x + 0.15, y + 0.05, 0.025, '#2a1a12', 0.85); D.seg(x - 0.12, y - 0.05, x + 0.13, y - 0.05, 0.025, '#2a1a12', 0.85); D.pass = 0;
+          const l = Math.min(R.r(0.5, 1.2), roomDown(x, y - 0.15, 0.05)); if (l > 0.2) streak(x, y - 0.15, 0.14, l, rust, 0.28);
+        }
+        D.at = 20;
+        for (let f = 0; f < B.floors; f++) for (let c = 0; c <= B.cols; c++) for (let k = 0; k < 2; k++) {
+          if (R.f() > 0.25) continue;
+          const mx = x0 + c * pw + (R.chance(0.5) ? 0.205 : -0.205), hy = B.floorY(f) + B.fh * (0.14 + k * 0.72), l = Math.min(R.r(0.15, 0.55), roomDown(mx, hy, 0.03));
+          if (l > 0.1 && mx > x0 + 0.1 && mx < x1 - 0.1) streak(mx, hy, 0.05, l, rust, 0.3);
+        }
+      }
+      // cracks running out from the corners of a few windows: stepping along the joints in brick
+      D.at = 14;
+      for (const key in B.wins) {
+        const op = B.wins[key]; if (op.door || R.f() > 0.3) continue;
+        const sx = R.chance(0.5) ? -1 : 1, sy = R.chance(0.6) ? 1 : -1, cx = sx < 0 ? op.x - 0.16 : op.x + op.w + 0.16, cy = sy > 0 ? op.y + op.h + 0.23 : op.y - 0.06;
+        const p = [cx, cy]; let px = cx, py = cy;
+        if (brick) for (let j = 0, n = R.i(4, 9); j < n; j++) { px += sx * R.pick([0.1125, 0.225, 0.1125]); p.push(px, py); py += sy * 0.075; p.push(px, py); }
+        else for (let j = 0; j < 5; j++) { px += sx * R.r(0.04, 0.16); py += sy * R.r(0.07, 0.17); p.push(px, py); }
+        if (clear(px - 0.02, py - 0.02, px + 0.02, py + 0.02)) D.line(p, 0.022, brick ? '#1c1512' : '#1a1d22', 0.55);
+      }
+      // damp rising at the foot of the wall, with a tide line of salt on brick, green on concrete
+      D.at = 5;
+      { const yb = B.base + 0.57; let seg = null;
+        const flush = () => {
+          if (seg && seg.length >= 6) { const n = seg.length; D.poly(seg.concat([seg[n - 2], yb, seg[0], yb]), brick ? '#1e1915' : green, brick ? 0.18 : 0.2, 0.3); if (brick) { D.pass = 1; D.line(seg, 0.03, salt, 0.14); D.pass = 0; } }
+          seg = null;
+        };
+        const ph = R.r(0, TAU), ph2 = R.r(0, TAU), hb = brick ? R.r(0.2, 0.3) : R.r(0.14, 0.22);
+        for (let x = x0 + 0.05; x <= x1 - 0.04; x += 0.25) {
+          let hm = 0.5;
+          for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (x > o[0] - 0.04 && x < o[2] + 0.04 && o[1] < yb + 0.9) hm = Math.min(hm, o[1] - yb + 0.08); }
+          if (hm < 0.1) { flush(); continue; }
+          (seg = seg || []).push(x, yb + Math.min(hm, hb * (1 + 0.22 * Math.sin(x * 1.1 + ph) + 0.1 * Math.sin(x * 3.3 + ph2))));
+        }
+        flush();
+      }
+      // weeds where the paving meets the wall
+      D.at = 10;
+      for (let i = 0, n = Math.round(B.w * 0.25); i < n; i++) { const x = R.r(x0 + 0.3, x1 - 0.3); if (clear(x - 0.15, 0, x + 0.15, 0.3)) KC.tuft(D, R, x, 0, R.r(0.1, 0.24), R.chance(0.5) ? '#55683a' : '#6b7448'); }
+      // old repairs: a stepped patch of newer brick, or fresh render
+      for (let i = 0, n = R.i(2, 4); i < n; i++) {
+        const w = R.r(0.5, 1.3), h = R.r(0.3, 0.75), x = Math.round(R.r(x0 + 0.5, x1 - w - 0.6) / 0.1125) * 0.1125, y = Math.round(R.r(B.base + 1.2, top - h - 0.4) / 0.075) * 0.075;
+        if (!clear(x - 0.12, y, x + w + 0.12, y + h)) continue;
+        if (brick) {
+          const rows = Math.max(2, Math.round(h / 0.15)), p = [];
+          for (let r = 0; r < rows; r++) { const xr = x + w + (r % 2 ? 0.1125 : 0); p.push(xr, y + r * 0.15, xr, y + (r + 1) * 0.15); }
+          for (let r = rows - 1; r >= 0; r--) { const xl = x + (r % 2 ? 0.1125 : 0); p.push(xl, y + (r + 1) * 0.15, xl, y + r * 0.15); }
+          D.poly(p, R.chance(0.5) ? '#000000' : '#ffffff', 0.08, Math.min(w, h));
+        } else KW.blob(D, R, x + w / 2, y + h / 2, w / 2, h / 2, '#ffffff', 0.09, 0.2);
+      }
+      // iron tie plates at each floor up one pier, each weeping a little rust
+      if (brick && B.cols > 1 && R.chance(0.7)) {
+        const px = x0 + R.i(1, B.cols - 1) * pw;
+        for (let f = 1; f < B.floors; f++) {
+          const y = B.floorY(f) + 0.34; if (!clear(px - 0.2, y - 0.16, px + 0.2, y + 0.16)) continue;
+          D.at = 10; streak(px + 0.02, y - 0.06, 0.09, R.r(0.25, 0.65), rust, 0.28);
+          D.at = 12; D.pass = 1; D.seg(px - 0.12, y - 0.08, px + 0.12, y + 0.08, 0.04, iron, 0.8); D.seg(px - 0.12, y + 0.08, px + 0.12, y - 0.08, 0.04, iron, 0.8); D.ell(px, y, 0.045, 0.045, iron, 0.9); D.pass = 0;
+        }
+      }
+      // rust run down from the brackets of the air conditioners
+      D.at = 10;
+      (B.acs || []).forEach((op) => { for (const sx of [op.x + 0.32, op.x + 0.98]) { const l = Math.min(R.r(0.4, 1.2), roomDown(sx, op.y - 0.82, 0.04)); if (l > 0.12) streak(sx, op.y - 0.75, 0.07, l + 0.07, rust, 0.22); } });
+      // a television cable down a pier from the roof and in at a window
+      if (brick && B.cols > 2 && B.floors > 3 && R.chance(0.65)) {
+        const c = R.i(1, B.cols - 1), side = R.chance(0.5) ? -1 : 1, px = x0 + c * pw + side * 0.42, f = R.i(1, B.floors - 2), yE = B.floorY(f) + 1.7, wl = B.win(f, side < 0 ? c - 1 : c);
+        if (wl && clear(px - 0.04, yE - 0.04, px + 0.04, top - 0.1)) {
+          D.at = 10; D.line([px, top - 0.05, px, yE, side < 0 ? wl.x + wl.w + 0.03 : wl.x - 0.03, yE], 0.03, cab, 0.9);
+          D.at = 30; for (let y = top - 0.5; y > yE + 0.2; y -= 0.65) D.rect(px - 0.025, y, 0.05, 0.035, cab);
+        }
+      }
+      // pigeons have whitened the cornice where they sit
+      D.at = 10;
+      birds.forEach((b) => { if (b[0] < x0 || b[0] > x1) return; for (let k = 0; k < 3; k++) { const x = b[0] + R.r(-0.35, 0.35), l = Math.min(R.r(0.12, 0.5), roomDown(x, B.roofY - 0.15, 0.03)); if (l > 0.08) streak(x, B.roofY - 0.15, R.r(0.04, 0.09), l, '#ecebe4', 0.4); } });
+    });
+    // a dish bolted to a pier on one building, its cable run in at the window below
+    { const cands = Bs.filter((B) => B.kStyle === 'brick' && B.floors >= 4 && B.cols > 2);
+      if (cands.length) {
+        const B = cands[R.i(0, cands.length - 1)], px = B.x + R.i(1, B.cols - 1) * (B.w / B.cols) + 0.3, y = B.floorY(B.floors - 2) + 1.5;
+        if (clear(px - 0.4, y - 0.42, px + 0.5, y + 0.36)) {
+          D.at = 6; D.rect(px - 0.05, y - 0.32, 0.1, 0.5, '#3a3f48'); D.ell(px + 0.04, y, 0.27, 0.31, '#c9ced3');
+          D.pass = 1; D.ell(px + 0.08, y + 0.01, 0.19, 0.23, '#a7aeb5'); D.seg(px + 0.06, y - 0.02, px + 0.4, y - 0.08, 0.03, '#2a2e36'); D.rect(px + 0.37, y - 0.13, 0.08, 0.08, '#2a2e36'); D.pass = 0;
+          D.at = 10; const l = roomDown(px, y - 0.34, 0.03); D.line([px, y - 0.32, px, y - 0.32 - Math.min(1.2, l * 0.9)], 0.025, cab, 0.9);
+        }
+      } }
+    // a bell panel beside each street door
+    Bs.forEach((B) => {
+      if (!B.doorOp) return; const d = B.doorOp, bx = d.x - 0.72, by = B.base + 1.2; if (!clear(bx - 0.02, by, bx + 0.22, by + 0.36)) return;
+      D.at = 10; D.rect(bx + 0.02, by, 0.16, 0.3, '#5d636b'); D.pass = 1; D.at = 20; for (let k = 0; k < 4; k++) D.poly([bx + 0.06, by + 0.04 + k * 0.055, bx + 0.14, by + 0.04 + k * 0.055, bx + 0.14, by + 0.07 + k * 0.055, bx + 0.06, by + 0.07 + k * 0.055], '#c9b98a', 1, 0.08); D.pass = 0;
+    });
+    // a buddleia rooted in the joint above a cornice, as they do
+    { const B = Bs[R.i(0, Bs.length - 1)], bx = B.x + B.w * R.r(0.3, 0.75), by = B.roofY + 0.16;
+      if (B.kStyle !== 'glass' && clear(bx - 0.45, by, bx + 0.45, by + 0.5)) {
+        D.at = 6; KW.blob(D, R, bx, by + 0.03, 0.22, 0.06, '#3c4a32', 0.6, 0.3);
+        const tips = []; for (let k = 0; k < 5; k++) { const tx = bx + (k - 2) * 0.1 + R.r(-0.05, 0.05), ty = by + R.r(0.22, 0.42); D.seg(bx + (k - 2) * 0.02, by, tx, ty, 0.025, '#4a5a34'); tips.push([tx, ty]); }
+        D.pass = 1; tips.forEach((t) => { D.ell(t[0], t[1] - 0.04, 0.09, 0.045, '#56723c'); D.ell(t[0] - 0.05, t[1] - 0.12, 0.07, 0.035, '#4c6635'); });
+        D.pass = 2; for (let k = 0; k < 3; k++) { const t = tips[k * 2]; D.ell(t[0] + 0.02, t[1] + 0.06, 0.03, 0.07, '#8a5aa8'); } D.pass = 0;
+      } }
+  });
+  return clear;
+}
+function stDetail(S, H, q) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
+  const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
+  // where the pigeons sit on the cornices (and so where the cornice is whitened under them)
+  const birds = [];
+  { const R = makeRng(5131 + seed * 7); H.b.forEach((B) => { if (B.kStyle === 'glass') return; for (let i = 0, n = R.i(0, 3); i < n; i++) birds.push([B.x + R.r(0.8, B.w - 1.4), B.roofY + 0.16, R.r(0, 20), R.chance(0.5) ? 1 : -1]); }); }
+
+  const clear = stFacade(S, PB, H.b, { after: q.rowEnd, seed: 5101 + seed, birds });
+
+  // ---- the pavement along the row, and the lots past its ends ----
+  K.deco(S, PB, { ground: true, seed: 5121 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    stLitter(D, R, -75, 75, -0.03, -bd, sq, 1.1);
+    // stains and spilt rubbish round the bins, wet under the deli's crates
+    (H.dress || []).forEach((d) => {
+      if (d[0] !== 'bin') return;
+      D.at = 5; stFlat(D, R, d[1] + R.r(-0.2, 0.3), -bd * R.r(0.15, 0.35), R.r(0.5, 0.9), Math.max(0.05, 0.8 * sq), '#000000', 0.1);
+      stLitter(D, R, d[1] - 0.8, d[1] + 1.2, -0.03, -bd * 0.6, sq, 4);
+    });
+    // the bare ground of a waste lot past each end of the row: cinders, rubble, weeds, an old tyre or two
+    let trolley = 1, mattress = 1;
+    for (const side of [-1, 1]) {
+      const a = side > 0 ? rowX1 + 0.5 : rowX0 - 0.5, b = a + side * 26, lo = Math.min(a, b), hi = Math.max(a, b);
+      D.at = 0;
+      const edge = [hi, -0.02, lo, -0.02]; for (let x = lo; x <= hi; x += R.r(0.5, 1.4)) edge.push(x, -bd * R.r(0.3, 0.55)); edge.push(hi, -bd * 0.4);
+      D.poly(edge, '#4a4038', 0.55, 2);
+      for (let x = lo + 0.6; x < hi - 0.6; x += R.r(1.1, 2.8)) {
+        const y = -R.r(0.04, bd * 0.42), k = R.f();
+        if (k < 0.45) { // a heap of broken brick and plaster
+          const w = R.r(0.8, 2), h = R.r(0.15, 0.4); D.at = 5; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.7, x - w * 0.05, y + h, x + w * 0.25, y + h * 0.8, x + w / 2, y], '#6e665e', 1, h);
+          D.pass = 1; D.at = 14; for (let j = 0; j < 4; j++) D.rect(x + R.r(-w * 0.35, w * 0.3), y + R.r(0.02, h * 0.6), 0.2, 0.07, R.chance(0.6) ? '#8a5444' : '#b9b0a2'); D.pass = 0;
+        } else if (k < 0.8) { D.at = 8; KC.tuft(D, R, x, y, R.r(0.2, 0.5), R.chance(0.5) ? '#55683a' : '#77744a'); }
+        else if (k < 0.88) { D.at = 8; KC.tyres(D, x, y, R.i(1, 2), 0.3); }
+        else if (k < 0.94 && mattress) { // a mattress dumped flat, stained, its ticking striped
+          mattress = 0; D.at = 6; D.rect(x - 0.9, y, 1.8, 0.14, '#a59d8e'); D.pass = 1; D.at = 14; for (let j = 0; j < 6; j++) D.rect(x - 0.85 + j * 0.3, y + 0.02, 0.05, 0.1, '#6f7f92', 0.6); D.ell(x + 0.3, y + 0.08, 0.3, 0.05, '#5a4a32', 0.4); D.rect(x - 0.9, y, 1.8, 0.04, '#000000', 0.2); D.pass = 0;
+        } else if (trolley) { // a shopping trolley on its side
+          trolley = 0;
+          D.at = 10; D.line([x - 0.45, y + 0.05, x + 0.4, y + 0.05, x + 0.45, y + 0.5, x - 0.4, y + 0.45, x - 0.45, y + 0.05], 0.03, '#9aa3ab', 0.9);
+          D.at = 20; for (let j = 1; j < 5; j++) D.seg(x - 0.45 + j * 0.17, y + 0.05, x - 0.43 + j * 0.17, y + 0.47, 0.015, '#9aa3ab', 0.8);
+          D.at = 10; D.ell(x - 0.35, y + 0.02, 0.06, 0.06, '#24272c'); D.ell(x + 0.3, y + 0.02, 0.06, 0.06, '#24272c');
+        }
+      }
+    }
+    // after dark the lit shop windows lay their light on the paving, and in the wet it runs towards you
+    if (night) H.b.forEach((B) => {
+      const r = B.shop && S.rooms[B.shop.room]; if (!r || !r.lit) return;
+      const sx = B.shop.x, sw = B.shop.w; D.lit = true; D.at = 0;
+      for (let k = 0; k < 3; k++) { const fl = 0.3 + k * 0.5, dep = bd * (0.3 + k * 0.28); D.poly([sx + 0.1 + k * 0.4, -0.01, sx + sw - 0.1 - k * 0.4, -0.01, sx + sw - 0.3 + fl, -dep, sx + 0.3 - fl, -dep], '#ffdfa0', 0.07, 1); }
+      if (wet) for (let i = 0, n = Math.round(sw * 1.5); i < n; i++) { const x = R.r(sx + 0.2, sx + sw - 0.2), l = bd * R.r(0.4, 0.95); D.poly([x - 0.05, -0.01, x + 0.05, -0.01, x + 0.02, -l, x - 0.02, -l], '#ffe6b0', 0.15, 0.1); }
+      D.lit = false;
+    });
+  });
+
+  // ---- the pavement on the street side and the far gutter ----
+  K.deco(S, PS, { ground: true, seed: 5141 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), gy = -(hk + face), sq = Math.max(0.12, E.tilt * 1.5), rb = E.hOf(7);
+    stLitter(D, R, -75, 75, -0.02, -hk * 0.9, sq, 0.7);
+    // leaves and rubbish drifted against the kerb
+    const leaf = ['#7a5a32', '#94683a', '#5d4a2a', '#a07a3a'], paper = ['#ebe6d8', '#d8cdaa'];
+    for (let x = -75; x < 75; x += R.r(0.8, 4.5)) for (let k = 0, n = R.i(2, 6); k < n; k++) {
+      const lx = x + R.r(0, 1.3), ly = gy - R.r(0.005, 0.05);
+      if (R.f() < 0.8) { D.at = 8; const l = R.r(0.08, 0.15); D.poly([lx, ly, lx + l * 0.5, ly + 0.012, lx + l, ly, lx + l * 0.5, ly - 0.012], R.pick(leaf), 0.95, l); }
+      else { D.at = 5; D.poly([lx, ly, lx + 0.26, ly + 0.005, lx + 0.24, ly + 0.03, lx + 0.02, ly + 0.026], R.pick(paper), 0.9, 0.26); }
+    }
+    D.at = 0;
+    if (gy - 0.03 > -rb) stLitter(D, R, -75, 75, gy - 0.03, -rb * 0.97, sq, 0.25);
+  });
+
+  // ---- the road and the near pavement ----
+  K.deco(S, PR, { ground: true, seed: 5151 + seed }, (D, R) => {
+    const near = 5.3;
+    // tar run into old cracks: glossy black seams wandering across the lanes
+    D.at = 5;
+    for (let i = 0; i < 16; i++) { let x = R.r(-75, 70), y = -R.r(0.3, near - 0.4); const p = [x, y]; for (let j = 0; j < 7; j++) { x += R.r(0.5, 1.4); y = clamp(y + R.r(-0.25, 0.25), -near + 0.25, -0.2); p.push(x, y); } D.line(p, 0.05, '#121418', 0.5); }
+    // rubber left by hard braking, two tyres' worth at a time
+    for (let i = 0; i < 4; i++) { const x = R.r(-45, 40), y = -R.pick([1.1, 3.3]) + R.r(-0.4, 0.4), l = R.r(3, 7); for (const dy of [0, -0.42]) D.poly([x, y + dy, x + l, y + dy + 0.02, x + l * 0.98, y + dy - 0.05, x, y + dy - 0.07], '#0e1013', 0.16, 0.5); }
+    // leaves and rubbish in the near gutter, and trodden into the near pavement
+    const leaf = ['#7a5a32', '#94683a', '#5d4a2a', '#a07a3a'];
+    for (let x = -75; x < 75; x += R.r(0.8, 4)) for (let k = 0, n = R.i(2, 5); k < n; k++) { const lx = x + R.r(0, 1.3), ly = -near + R.r(0.03, 0.22), l = R.r(0.08, 0.15); D.at = 8; D.poly([lx, ly, lx + l * 0.5, ly + 0.025, lx + l, ly, lx + l * 0.5, ly - 0.025], R.pick(leaf), 0.95, l); }
+    stLitter(D, R, -75, 75, -near - 0.35, -near - 5, 0.22, 0.9);
+    stLitter(D, R, -75, 75, -0.15, -near + 0.3, 0.16, 0.12);
+  });
+
+  // ---- pigeons on the cornices, by day ----
+  if (S.pal.dark < 0.45 && !wet && birds.length) {
+    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB);
+    PB.add({ x0: rowX0 - 1, x1: rowX1 + 1, layer: 0, draw(ctx, env) {
+      if (env.s < 7) return;
+      const t = env.t, st = [];
+      for (let i = 0; i < birds.length; i++) {
+        const b = birds[i]; if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
+        // every few seconds each one pecks, turns about, or gives a little hop
+        const cyc = (t + b[2]) / 3.7, c = Math.floor(cyc), u = cyc - c, hk = kxH(c, b[2]), dir = hk > 0.5 ? b[3] : -b[3];
+        const hop = hk > 0.82 && u < 0.2 ? Math.sin((u / 0.2) * Math.PI) * 0.12 : 0, peck = hk > 0.3 && hk < 0.7 && u > 0.4 && u < 0.6 ? Math.sin(((u - 0.4) / 0.2) * Math.PI) : 0;
+        st.push([b[0], b[1] + hop, dir, peck]);
+      }
+      if (!st.length) return;
+      ctx.fillStyle = body; ctx.beginPath();
+      for (const [x, y, d] of st) { ctx.moveTo(x + 0.15, y + 0.1); ctx.ellipse(x, y + 0.1, 0.15, 0.085, -0.15 * d, 0, TAU); ctx.moveTo(x - d * 0.1, y + 0.13); ctx.lineTo(x - d * 0.28, y + 0.07); ctx.lineTo(x - d * 0.26, y + 0.12); ctx.closePath(); }
+      ctx.fill();
+      ctx.fillStyle = head; ctx.beginPath();
+      for (const [x, y, d, p] of st) { const hx = x + d * (0.13 + p * 0.06), hy = y + 0.22 - p * 0.13; ctx.moveTo(hx + 0.05, hy); ctx.arc(hx, hy, 0.05, 0, TAU); ctx.moveTo(x + d * 0.04, y + 0.12); ctx.lineTo(hx, hy - 0.03); ctx.lineTo(hx - d * 0.04, hy + 0.02); ctx.closePath(); }
+      ctx.fill();
+      if (env.s > 16) { ctx.fillStyle = dk; ctx.beginPath(); for (const [x, y, d, p] of st) { const hx = x + d * (0.13 + p * 0.06), hy = y + 0.22 - p * 0.13; ctx.moveTo(hx + d * 0.04, hy + 0.005); ctx.lineTo(hx + d * 0.1, hy - 0.015); ctx.lineTo(hx + d * 0.04, hy - 0.02); ctx.closePath(); ctx.rect(x - 0.03, y, 0.015, 0.03); ctx.rect(x + 0.02, y, 0.015, 0.03); } ctx.fill(); }
+    } });
+  }
+
+  // ---- a hotel sign fixed flat to a pier of the last building, its tubes lit after dark ----
+  { const B = last, R = makeRng(5171 + seed);
+    let sx = null; const sh = 3.3, sy = B.floorY(1) + 0.55;
+    if (!B.shop && B.floors >= 4 && B.kStyle !== 'glass') for (let c = 1; c < B.cols && sx === null; c++) { const px = B.x + c * (B.w / B.cols); if (clear(px - 0.5, sy - 0.1, px + 0.5, sy + sh + 0.1)) sx = px; }
+    if (sx !== null) {
+      const brd = S.tone('#5a1e1c', PB), brdK = S.tone('#20262c', PB), trim = S.tone('#c9b98a', PB), letD = S.tone('#efe4c8', PB), neon = '#ff6a48', ph = R.r(0, 50), word = 'HOTEL';
+      PB.add({ x0: sx - 1.5, x1: sx + 1.5, layer: 0, draw(ctx, env) {
+        const s = env.s, on = S.pal.dark > 0.3;
+        R4(ctx, sx - 0.4, sy, 0.8, sh, on ? brdK : brd);
+        if (s > 6) { R4(ctx, sx - 0.5, sy + sh - 0.12, 1.0, 0.07, brdK); R4(ctx, sx - 0.5, sy + 0.08, 1.0, 0.07, brdK); ctx.strokeStyle = trim; ctx.lineWidth = Math.max(0.025, env.px * 0.6); ctx.strokeRect(sx - 0.33, sy + 0.07, 0.66, sh - 0.14); }
+        // mostly steady, a stutter every few seconds, and the T that never quite took
+        let flick = 1, dead = 1;
+        if (on) { const t = env.t + ph, cyc = Math.floor(t / 4.7), u = t / 4.7 - cyc, hk = kxH(cyc, ph); if (u > 0.85 && hk > 0.4) flick = Math.sin(t * 57) > 0.2 ? 1 : 0.35; dead = Math.sin(t * 23) > 0.6 || (hk < 0.3 && u < 0.3) ? 0.25 : 1; }
+        if (on && s > 2) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.32 * flick * S.pal.dark; ctx.drawImage(kxBlob(neon), sx - 1.1, sy - 0.3, 2.2, sh + 0.6); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+        for (let i = 0; i < word.length; i++) {
+          const a = on ? flick * (i === 2 ? dead : 1) : 1; if (a < 0.3 && on) { env.text(ctx, word[i], sx, sy + sh - 0.64 * (i + 1) - 0.02, 0.52, S.tone('#5a2a24', PB), 'center'); continue; }
+          ctx.globalAlpha = a; env.text(ctx, word[i], sx, sy + sh - 0.64 * (i + 1) - 0.02, 0.52, on ? '#ffd8c8' : letD, 'center'); ctx.globalAlpha = 1;
+        }
+      } });
+    }
+  }
+
+  // ---- steam from the laundry's vent, drifting up the pier beside it ----
+  H.b.forEach((B, i) => {
+    const sd = q.styles[i] && q.styles[i].shop; if (!sd || String(sd.sign || '').toUpperCase().indexOf('LAUNDRY') < 0) return;
+    const vx = B.x + 0.62, vy = B.base + B.fh + 0.25, sc = S.tone('#f4f6f7', PB), gr = S.tone('#3a3f47', PB), gr2 = S.tone('#5d636c', PB);
+    PB.add({ x0: vx - 1.5, x1: vx + 1.5, layer: 0, draw(ctx, env) {
+      if (env.s < 4) return;
+      R4(ctx, vx - 0.17, vy - 0.1, 0.34, 0.22, gr);
+      if (env.s > 14) { ctx.fillStyle = gr2; ctx.beginPath(); for (let k = 0; k < 4; k++) ctx.rect(vx - 0.14, vy - 0.07 + k * 0.05, 0.28, 0.02); ctx.fill(); }
+      for (let k = 0; k < 7; k++) { const u = (env.t * 0.3 + k / 7) % 1, r = 0.12 + u * 0.26; kxPuff(ctx, sc, vx - u * 0.3 + Math.sin(u * 7 + k) * 0.05, vy + 0.1 + u * 1.4, r * 1.25, r, 0.5 * (1 - u) * Math.min(1, u * 6)); }
+    } });
+  });
+
+  // ---- a sheet of newspaper blowing along the road, when it is dry ----
+  if (!wet) {
+    const pc = S.tone('#e4dfd0', PR), pk = S.tone('#8d8a80', PR);
+    PR.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+      if (env.s < 3) return;
+      const t = env.t, w = env.wind || 1, dir = w >= 0 ? 1 : -1, sp = 0.6 + Math.min(2, Math.abs(w)) * 0.35, run = 150;
+      const g = t * sp + Math.sin(t * 0.6) * 1.8 + Math.sin(t * 1.7) * 0.4, xx = -75 + (((g % run) + run) % run), x = dir * xx;
+      if (x < env.x0 - 1 || x > env.x1 + 1) return;
+      const y = -0.6 - Math.sin(t * 0.37) * 0.25, lift = Math.max(0, Math.sin(t * 2.3 + Math.sin(t))) * 0.22, fl = Math.cos(t * 3.1), hw = 0.3 * (0.35 + 0.65 * Math.abs(fl)), hh = 0.05 + lift * 0.6;
+      R4(ctx, x - 0.25, y - 0.015, 0.5, 0.025, 'rgba(0,0,0,0.14)');
+      poly(ctx, [x - hw, y + lift, x + hw, y + lift + 0.03, x + hw * 0.85, y + lift + hh, x - hw * 0.9, y + lift + hh * 0.8], pc);
+      if (env.s > 14 && hh > 0.07) { ctx.fillStyle = pk; for (let k = 1; k < 4; k++) ctx.fillRect(x - hw * 0.7, y + lift + (hh * k) / 4, hw * 1.3, Math.max(0.008, env.px * 0.5)); }
+    } });
+  }
+}
 
 CB.SCN = SCN;
 
@@ -9674,6 +10360,7 @@ SCN.docks = function (o) {
   H.PB = PB;
   const wx = -62, ww = 26, wh = 8.2;                        // the warehouse
   const condC = S.tone('#8d949a', PB);                     // electrical conduit on the office wall
+  let shedItem = null, boxEnd = null;                      // (the detail pass draws over these)
   { // the top of the quay as you look down on it: paving, the crane rails, a painted line, puddles, and the lamp light lying on it
     const joint = S.tone(darken(gHex, 0.17), PB), patch = S.tone(darken(gHex, 0.1), PB), patchL = S.tone(lighten(gHex, 0.06), PB), railC = S.tone('#8f969c', PB), yel = S.tone('#c79a2e', PB);
     const pudC = mix(S.tone(darken(gHex, 0.3), PB), S.tone(S.pal.skyBot, PB), 0.16), pudHi = mix(pudC, S.tone(S.pal.skyBot, PB, true), 0.22), ringC = rgba(S.tone('#dfe6ee', PB), 0.5);
@@ -9719,7 +10406,7 @@ SCN.docks = function (o) {
     const plinth = S.tone('#4c555d', PB), rustA = rgba(S.tone('#7a4a2e', PB), 0.42), grime = rgba(S.tone('#1c2026', PB), 0.3), pipe = S.tone('#2a3138', PB), board = S.tone('#27323c', PB), palletC = S.tone('#8a6f4a', PB), pallet2 = S.tone('#5f4b30', PB), drumC = S.tone('#3f5870', PB), drum2 = S.tone('#2c4054', PB), yelC = S.tone('#c79a2e', PB), shade = 'rgba(0,0,0,0.12)';
     const streaks = []; for (let i = 0; i < 14; i++) streaks.push(wx + 0.6 + A.f() * (ww - 1.2), A.r(0.5, 2.6), A.r(0.06, 0.16));
     if (lit && !o.gate) dkLight(S, { P: PB, x: wx + 19.15, y: 2.8, rgb: lampRgb, a: 0.22, w: 2.0 });
-    PB.add({ x0: wx - 1, x1: wx + ww + 1, layer: 0, draw(ctx, env) {
+    shedItem = PB.add({ x0: wx - 1, x1: wx + ww + 1, layer: 0, draw(ctx, env) {
       const s = env.s, px = env.px, th = Math.max(0.03, px * 0.8);
       R4(ctx, wx, 0, ww, wh, wall);
       if (s > 2.2) { ctx.fillStyle = rib; const x0 = Math.max(wx + 0.3, Math.floor(env.x0 / 0.45) * 0.45 + 0.3), x1 = Math.min(wx + ww, env.x1); for (let x = x0; x < x1; x += 0.45) ctx.fillRect(x, 0.1, 0.1, wh - 0.2);
@@ -9787,6 +10474,7 @@ SCN.docks = function (o) {
     for (let i = 0; i < n; i++) { const ci = R.i(0, DOCK_BOX_COLS.length - 1); K.cbox(S, PB, sx, i * 2.6, (st[2] && st[2][i]) || DOCK_BOX_COLS[ci], { text: R.chance(0.6) ? DOCK_BOX_NAMES[R.i(0, DOCK_BOX_NAMES.length - 1)] : null, door: R.chance(0.25) }); }
     H.stacks.push({ x0: sx, x1: sx + 6.1, top: n * 2.6 });
   });
+  boxEnd = PB.items[PB.items.length - 1];
   H.stackTop = (x) => { let t = 0; H.stacks.forEach((s) => { if (x >= s.x0 && x <= s.x1) t = Math.max(t, s.top); }); return t; };
   H.onContainers = (x, extra) => Object.assign({ plane: PB, x, y: H.stackTop(x), zone: 'stack', behind: false, room: null }, extra || {});
   if (o.fuse !== false) {
@@ -10072,8 +10760,89 @@ SCN.docks = function (o) {
     } });
     K.pennant(S, PN, mx, my, 1.7, o.flagCol || '#c0392b', { sway: (t) => lean(t) * (my - piv) });
   }
+  dkDetail(S, H, { PB, PL, shedItem, boxEnd, wx, ww, wy, gulls, night, o });
   return H;
 };
+
+// ---- a working harbour ---------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco) and a few cheap moving
+// things: rust blooming at the corners of the boxes, dents and hazard placards on them; a
+// lifebuoy, a fire point, posters and a painted tag on the shed; gulls wheeling over the
+// freighter; rubbish and weed drifting on the water of the boat lane. Everything sits on a
+// surface that already hides what is behind it, floats low on the water away from the boats,
+// or flies high over the ship; nothing is solid or shootable.
+function dkDetail(S, H, q) {
+  const PB = q.PB, wx = q.wx, wy = q.wy;
+  // ---- the boxes on the quay ----
+  K.deco(S, PB, { after: q.boxEnd, seed: 4201 }, (D, R) => {
+    const rust = '#6e3520', rust2 = '#8a4a2a';
+    for (const st of H.stacks) for (let yb = 0; yb < st.top - 0.1; yb += 2.6) {
+      const x = st.x0, w = 6.1, h = 2.6, y = yb;
+      for (const cx of [x + 0.48, x + w - 0.48]) KW.blob(D, R, cx, y + 0.42, R.r(0.18, 0.28), R.r(0.16, 0.24), rust, 0.5, 0.3);   // rust blooming round the corner castings
+      for (let k = 0; k < 4; k++) D.rect(x + R.r(0.3, w - 1.3), y + 0.13, R.r(0.3, 1.1), R.r(0.06, 0.12), R.chance(0.5) ? rust : rust2, 0.55);
+      D.rect(x + 0.16, y + h - 0.62, w - 0.32, 0.45, '#ffffff', 0.08);                   // the top of the side bleached by the sun
+      for (let k = 0; k < R.i(1, 2); k++) { const dx = x + R.r(0.8, w - 1.2), dy = y + R.r(0.5, 1.4), dh = R.r(0.5, 1.0); D.rect(dx, dy, 0.18, dh, '#000000', 0.16); D.rect(dx + 0.18, dy, 0.12, dh, '#ffffff', 0.12); }   // dents: a shadowed side and a lit side
+      if (R.chance(0.3)) { const px = x + w * 0.82, py = y + h * 0.42, r = 0.2; D.pass = 1; D.poly([px, py - r, px + r, py, px, py + r, px - r, py], '#20242b'); D.poly([px, py - r * 0.8, px + r * 0.8, py, px, py + r * 0.8, px - r * 0.8, py], R.chance(0.5) ? '#e8872c' : '#f1ede2'); D.pass = 0; }
+    }
+  });
+  // ---- on the shed wall: a lifebuoy, a fire point, posters, a painted tag ----
+  K.deco(S, PB, { after: q.shedItem, seed: 4211 }, (D, R) => {
+    const lx = wx + 3.4, ly = 2.4;
+    D.ell(lx, ly, 0.4, 0.4, '#e2572b'); D.pass = 1; D.ell(lx, ly, 0.24, 0.24, '#556470');
+    for (let k = 0; k < 4; k++) { const an = k * Math.PI / 2 + 0.4; D.poly([lx + Math.cos(an) * 0.25, ly + Math.sin(an) * 0.25, lx + Math.cos(an + 0.35) * 0.25, ly + Math.sin(an + 0.35) * 0.25, lx + Math.cos(an + 0.35) * 0.4, ly + Math.sin(an + 0.35) * 0.4, lx + Math.cos(an) * 0.4, ly + Math.sin(an) * 0.4], '#f1ede2'); }
+    D.rect(lx - 0.05, ly + 0.38, 0.1, 0.18, '#2a3138'); D.pass = 0;
+    // fire point: a red box with a white band, a hose reel showing through its glass
+    D.rect(wx + 5.4, 1.1, 0.75, 0.95, '#b8352b'); D.pass = 1; D.rect(wx + 5.45, 1.75, 0.65, 0.12, '#f1ede2'); D.ell(wx + 5.78, 1.38, 0.2, 0.2, '#6e1f1a'); D.pass = 0;
+    // posters, one half torn away, and the paste marks of old ones
+    D.rect(wx + 1.0, 1.0, 0.75, 1.0, '#e4dfd0'); D.rect(wx + 1.9, 1.15, 0.62, 0.85, '#d9c79a');
+    D.pass = 1; for (let k = 0; k < 4; k++) D.rect(wx + 1.08, 1.75 - k * 0.15, 0.55 - (k % 2) * 0.2, 0.05, '#3a3f47', 0.7); D.rect(wx + 1.98, 1.6, 0.46, 0.28, '#b8352b', 0.8);
+    D.poly([wx + 1.9, 1.15, wx + 2.52, 1.15, wx + 2.52, 1.5, wx + 2.2, 1.3], '#556470'); D.rect(wx + 2.7, 1.2, 0.5, 0.6, '#ffffff', 0.18); D.pass = 0;
+    // a painted tag across the lower wall, in two colours
+    const tx = wx + 8.4, ty = 1.2, tag = [tx, ty, tx + 0.4, ty + 0.55, tx + 0.7, ty + 0.1, tx + 1.0, ty + 0.6, tx + 1.3, ty + 0.05, tx + 1.75, ty + 0.5, tx + 2.0, ty + 0.15, tx + 2.5, ty + 0.45];
+    D.line(tag, 0.12, '#2f7f86', 0.9); D.pass = 1; D.line(tag.map((v, i) => v + (i % 2 ? 0.05 : 0.04)), 0.04, '#f1d24a', 0.9);
+    D.line([tx + 2.6, ty + 0.1, tx + 2.9, ty + 0.55, tx + 3.0, ty + 0.15], 0.1, '#2f7f86', 0.9); D.pass = 0;
+  });
+  // ---- gulls wheeling over the freighter, by day and in half light ----
+  if (q.gulls && S.pal.dark < 0.5 && H.ship) {
+    const P = H.PSH, gc = S.tone('#f2f2ee', P), gk = S.tone('#8f979e', P), cx = H.ship.sx + H.ship.L * 0.5, D0 = H.ship.deckY;
+    const birds = []; const R = makeRng(4221); for (let i = 0; i < 6; i++) birds.push([cx + R.r(-30, 30), D0 + R.r(12, 22), R.r(6, 16), R.r(0.18, 0.32), R.r(0, TAU), R.chance(0.5) ? 1 : -1]);
+    P.add({ x0: cx - 60, x1: cx + 60, layer: 0, draw(ctx, env) {
+      if (env.s < 2) return;
+      const t = env.t; ctx.lineWidth = Math.max(env.px * 1.1, 0.1); ctx.lineJoin = 'round';
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = pass ? gc : gk; ctx.beginPath();
+        for (let i = 0; i < birds.length; i++) {
+          const b = birds[i], a = t * b[3] * b[5] + b[4], x = b[0] + Math.cos(a) * b[2], y = b[1] + Math.sin(a * 1.3) * b[2] * 0.25, sp = 0.55;
+          if (x < env.x0 - 2 || x > env.x1 + 2) continue;
+          const up = 0.12 + 0.28 * Math.max(-0.3, Math.sin(t * (3.4 + i * 0.3) + i)) * (Math.sin(t * 0.4 + i * 1.9) > 0.1 ? 1 : 0.15), o2 = pass ? 0 : 0.04;
+          ctx.moveTo(x - sp, y + up - o2); ctx.quadraticCurveTo(x - sp * 0.45, y + up * 1.5 + 0.06 - o2, x, y - o2); ctx.quadraticCurveTo(x + sp * 0.45, y + up * 1.5 + 0.06 - o2, x + sp, y + up - o2);
+        }
+        ctx.stroke();
+      }
+      ctx.lineJoin = 'miter';
+    } });
+  }
+  // ---- rubbish and weed drifting on the boat lane, kept clear of the boats ----
+  { const P = q.PL, o = q.o, keep = [];
+    if (o.barge) keep.push(o.barge.x); if (o.yacht) keep.push(o.yacht.x); if (o.skiff) keep.push(o.skiff.x); if (o.bell !== undefined && o.bell !== false) keep.push(typeof o.bell === 'number' ? o.bell : o.bell.x);
+    const R = makeRng(4231), bits = [], cols = ['#8a6e4e', '#e8e4d6', '#4f7a5a', '#3a4a34', '#c9c2ae', '#c9a24a'];
+    for (let x = -60; x < 70; x += R.r(3, 7)) { if (keep.some((k) => Math.abs(x - k) < 24)) continue; bits.push([x, wy - R.r(0.5, 2.6), R.i(0, 5), R.r(0.5, 1.4), R.r(0, TAU)]); }
+    const tone = cols.map((c) => S.tone(c, P)), foam = rgba(S.tone('#e6edf2', P), 0.5);
+    P.add({ x0: -70, x1: 80, layer: 0, draw(ctx, env) {
+      if (env.s < 3 || wy < env.y0 - 1 || wy - 3 > env.y1) return;
+      const t = env.t;
+      for (let i = 0; i < bits.length; i++) {
+        const b = bits[i], x = b[0] + Math.sin(t * 0.13 + b[4]) * 0.6; if (x < env.x0 - 2 || x > env.x1 + 2) continue;
+        const y = b[1] + Math.sin(t * 0.9 + b[4]) * 0.03, k = b[2], l = b[3];
+        if (k === 0) { ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 0.7 + b[4]) * 0.04); R4(ctx, -l, -0.03, l * 2, 0.12, tone[0]); ctx.restore(); }               // a plank
+        else if (k === 1) R4(ctx, x - l * 0.3, y - 0.03, l * 0.6, 0.12, tone[1]);                                                                                         // a lump of white foam block
+        else if (k === 2 || k === 3) { ctx.fillStyle = tone[k]; ctx.beginPath(); ctx.ellipse(x, y, l * 1.2, 0.06, 0, 0, TAU); ctx.fill(); }                                // weed
+        else { R4(ctx, x - 0.07, y - 0.03, 0.14, 0.24, tone[k]); }                                                                                                         // a bottle or a can
+        ctx.fillStyle = foam; ctx.fillRect(x - l * 1.6, y - 0.06, l * 3.2, Math.max(0.025, env.px * 0.9));                                                                // the scum it gathers round it
+      }
+    } });
+  }
+}
 
 
 // ===== 07c_scene_valley.js =====
@@ -11358,6 +12127,7 @@ SCN.valley = function (o) {
   K.ground(S, PD, { col: meadow, edge: snowy ? '#ffffff' : '#9cc078' });
   H.deckX0 = dx0; H.deckX1 = dx1;
   const padX = 49, doorX = B.winX(B.door), towerX = o.towerX === undefined ? -64 : o.towerX, gateX = o.gateX === undefined ? -62 : o.gateX;
+  let turfItem = null;      // (the meadow detail is drawn just after it)
   {
     const T = (hex, self) => S.tone(hex, PD, self);
     const wood = T('#7a5234'), wood2 = T('#5a3c26'), wood3 = T('#8f6744'), rail = T('#3e2b1d'), pathC = T(snowy ? '#d5dde5' : '#b9b09a'), pathL = T(snowy ? '#e3e9ee' : '#c9c1ad'), pathD = T(snowy ? '#b9c3cc' : '#8f8873'), worn = T(snowy ? '#d9e0e7' : darken(meadow, 0.13));
@@ -11371,7 +12141,7 @@ SCN.valley = function (o) {
     for (let i = 0; i < 150; i++) peb.push([D.r(-44, 68), D.r(-1.45, -0.6), D.r(0.03, 0.06), D.chance(0.5) ? 0 : 1]);
     peb.sort((a, b) => a[0] - b[0]);
     for (let i = 0; i < 9; i++) { const x = D.r(-140, 140), y = D.r(-8, -2.4); if (!offGrass(x, y) && Math.abs(x - padX) > 14) rocks.push([x, y, D.r(0.35, 0.8)]); }
-    PD.add({ x0: -4000, x1: 4000, layer: 0, draw(ctx, env) { // paths, paving and the meadow's own texture
+    turfItem = PD.add({ x0: -4000, x1: 4000, layer: 0, draw(ctx, env) { // paths, paving and the meadow's own texture
       const s = env.s;
       turf(ctx, env);
       // a trodden line out to the hunting tower
@@ -11650,8 +12420,135 @@ SCN.valley = function (o) {
     PS.solid(tx - w * 0.95, by + h * 0.12, w * 1.9, h * 0.3, 'wood'); PS.solid(tx - w * 0.68, by + h * 0.42, w * 1.36, h * 0.25, 'wood'); PS.solid(tx - w * 0.3, by + h * 0.67, w * 0.6, h * 0.2, 'wood'); PS.solid(tx - h * 0.018, by - 60, h * 0.036, 60 + h * 0.14, 'wood');
     return { x: tx, top: by + h, w, plane: PS };
   };
+  vlyDetail(S, H, { snowy, meadow, padX, sunD, E, dx0, dx1, stairW, turfItem });
   return H;
 };
+
+// ---- a lived-in valley -------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): molehills, drifts of
+// flowers and a worn track in the meadow (footprints and ski tracks when it has snowed),
+// weather on the lodge's stone and logs, a bench, churns and skis against its wall, scrub and
+// rocks on the slope, and a wooden trough with water running into it. Everything lies on the
+// ground, stands against a wall, or (the trough) stands low on the yard behind whoever passes;
+// nothing is shootable or solid, and nothing touches a mission's random streams.
+function vlyDetail(S, H, q) {
+  const snowy = q.snowy, PD = H.PD, PL = H.PL, B = H.lodge, padX = q.padX, sunD = q.sunD;
+  const tilt = q.E / H.zD;                             // how much a metre of depth shows as height on the yard
+  const offPath = (x, y) => !((y > -1.8 && y < -0.25 && x > -59 && x < 71) || (Math.pow((x - padX) / 11.6, 2) + Math.pow((y + 1.5) / 1.9, 2) < 1));
+  // ---- the meadow in front of the lodge ----
+  K.deco(S, PD, { after: q.turfItem, seed: 3301 }, (D, R) => {   // over the grass, under the deck and whoever walks there
+    if (!snowy) {
+      // darker clover and longer grass, in soft drifts
+      for (let i = 0; i < 26; i++) { const rx = R.r(1.5, 4.5); KW.blob(D, R, R.r(-150, 150), -R.r(1.9, 8), rx, Math.max(0.12, rx * tilt * 1.4), darken(q.meadow, 0.12), 0.45, 0.25); }
+      // the track the fuel truck has worn up to the helicopter pad: two ruts of flattened, yellowed grass
+      const rut = (dy) => { const p = []; for (let k = 0; k <= 16; k++) { const u = k / 16, x = lerp(150, padX + 8, u), y = lerp(-7.2, -2.3, Math.pow(u, 0.8)) + Math.sin(u * 5) * 0.12 + dy; p.push(x, y); } D.line(p, 0.2, mix(q.meadow, '#c9b98a', 0.45), 0.7); };
+      rut(0); rut(-0.24);
+      D.pass = 1;
+      // the kitchen garden at the end of the lodge: dug beds of dark earth, rows of greens, a cane row
+      const gx0 = -57, gx1 = -45, gy = -2.5;
+      for (let b = 0; b < 3; b++) {
+        const y0 = gy - b * 0.72, y1 = y0 - 0.5;
+        D.rect(gx0, y1, gx1 - gx0, 0.5, '#4a3a2a');
+        D.pass = 2; for (let x = gx0 + 0.25; x < gx1 - 0.1; x += 0.42) D.ell(x, y0 - 0.12, 0.17, 0.09, b === 1 ? '#5c8a3a' : '#4f7a3a'); D.pass = 1;
+        if (b === 0) { D.pass = 2; for (let x = gx0 + 0.3; x < gx1; x += 0.8) D.seg(x, y0 - 0.12, x + 0.05, y0 + 0.9, 0.03, '#8a7448'); D.pass = 1; }
+      }
+      D.rect(gx0 - 0.1, gy - 2.0, 0.06, 1.95, '#5a4634'); D.rect(gx1 + 0.04, gy - 2.0, 0.06, 1.95, '#5a4634');
+      // a wheelbarrow left by the beds
+      D.pass = 2; D.poly([gx1 + 0.5, gy - 0.6, gx1 + 1.6, gy - 0.6, gx1 + 1.8, gy - 0.15, gx1 + 0.35, gy - 0.15], '#3d6a8a'); D.ell(gx1 + 0.55, gy - 0.72, 0.16, 0.16, '#1f2227'); D.seg(gx1 + 1.6, gy - 0.3, gx1 + 2.4, gy - 0.45, 0.04, '#5a4634'); D.pass = 1;
+      // molehills: a little heap of dark earth with its crumbly top
+      for (let i = 0; i < 60; i++) {
+        const x = R.r(-150, 150), y = -R.r(1.9, 8), w = R.r(0.55, 0.95), h = w * R.r(0.3, 0.42); if (!offPath(x, y) || (x > gx0 - 1 && x < gx1 + 3 && y > gy - 2.2)) continue;
+        D.poly([x - w / 2, y, x - w * 0.25, y + h * 0.75, x, y + h, x + w * 0.28, y + h * 0.7, x + w / 2, y], '#5a4632');
+        D.pass = 2; D.ell(x - w * 0.08, y + h * 0.82, w * 0.22, h * 0.18, '#7a6446', 0.9); D.pass = 1;
+      }
+      // drifts of flowers, each of one kind: white daisies, buttercups, clover, gentians
+      const kinds = ['#f4f1e4', '#f1d24a', '#c58ad6', '#5f84d6'];
+      for (let i = 0; i < 34; i++) {
+        const cx = R.r(-150, 150), cy = -R.r(2.0, 8), c = R.pick(kinds), n = R.i(5, 11);
+        for (let k = 0; k < n; k++) { const fx = cx + R.gauss() * 0.9, fy = cy + R.gauss() * 0.25; if (offPath(fx, fy) && fy < -0.4) D.ell(fx, fy, 0.075, 0.06, c); }
+      }
+    } else {
+      // when it has snowed: the trodden tracks of the morning, ski tracks across the yard, and the
+      // blue of shadow along the drifts the wind has left
+      const shade = '#a9b6c6', print = '#9aa8b8';
+      for (let i = 0; i < 18; i++) { const x = R.r(-150, 150), y = -R.r(2, 8), l = R.r(4, 12); D.poly([x - l / 2, y, x, y + R.r(0.08, 0.14), x + l / 2, y, x, y - 0.03], shade, 0.55, 0.1); }
+      const trail = (pts, every) => { // footprints, left and right, along a line of points
+        for (let k = 0; k + 3 < pts.length; k += 2) { const ax = pts[k], ay = pts[k + 1], bx = pts[k + 2], by = pts[k + 3], d = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(d / every)); for (let j = 0; j < n; j++) { const u = j / n, side = j % 2 ? 0.06 : -0.06; D.ell(lerp(ax, bx, u), lerp(ay, by, u) + side, 0.09, 0.04, print, 0.85); } }
+      };
+      const dxF = q.dx1 + q.stairW;
+      trail([dxF - 0.5, -0.4, dxF + 4, -2.2, dxF + 2, -4.2, dxF + 9, -6.6], 0.45);
+      trail([B.winX(B.door), -0.3, B.winX(B.door) + 3, -1.1, 18, -0.9, 18.6, -0.25], 0.45);
+      trail([-43, -1.0, -50, -1.4, -57, -0.6], 0.45);
+      for (const dy of [0, -0.12]) { const p = []; for (let x = -150; x <= 150; x += 10) p.push(x, -5.3 + Math.sin(x * 0.03) * 0.9 + dy); D.line(p, 0.035, print, 0.8); }
+    }
+    // the wet patch round the trough, and the stones it stands on
+    D.pass = 3; KW.blob(D, R, 32.2, -0.2, 2.0, 0.16, snowy ? '#b9c6d2' : '#3e5a3a', 0.6, 0.2);
+  });
+
+  // ---- the trough: a hollowed log on stone feet, fed by a spout on a post ----
+  { const tx = 31, tw = 2.6, th = 0.62;
+    K.deco(S, PD, { seed: 3311 }, (D) => {
+      D.rect(tx + 0.2, 0, 0.36, 0.14, '#8d8a80'); D.rect(tx + tw - 0.56, 0, 0.36, 0.14, '#8d8a80');
+      D.rect(tx, 0.12, tw, th, '#6e4a2e'); D.rect(tx + tw - 0.05, 0.12, 0.28, 1.45, '#5a3c26');     // the log, and the post at its end
+      D.pass = 1; D.rect(tx, 0.12 + th - 0.08, tw, 0.08, '#8a6544'); D.rect(tx + 0.05, 0.16, tw - 0.1, 0.05, '#4a3220', 0.8);
+      D.rect(tx + 0.3, 0.3, 0.9, 0.025, '#4a3220', 0.7); D.rect(tx + 1.4, 0.45, 0.8, 0.025, '#4a3220', 0.7);
+      D.rect(tx + tw - 0.4, 1.27, 0.38, 0.07, '#2a2e36');                                             // the iron spout
+      if (snowy) { D.pass = 2; D.rect(tx - 0.04, 0.12 + th, tw + 0.08, 0.1, '#f4f7fa'); D.rect(tx + tw - 0.08, 1.57, 0.34, 0.1, '#f4f7fa'); }
+    });
+    const water = S.tone(snowy ? '#cfe0ee' : '#bfe3f2', PD, true), sheen = S.tone('#e9f6fb', PD, true);
+    PD.add({ x0: tx - 0.5, x1: tx + tw + 0.5, layer: 0, draw(ctx, env) {
+      if (env.s < 4 || 1.6 < env.y0 || 0 > env.y1) return;
+      const t = env.t, sx = tx + tw - 0.38, wob = Math.sin(t * 9) * 0.008;
+      // the stream falls in a gentle curve, the wind bends it a little
+      ctx.strokeStyle = water; ctx.lineWidth = Math.max(0.03, env.px); ctx.beginPath(); ctx.moveTo(sx, 1.29); ctx.quadraticCurveTo(sx - 0.12 + wob + (env.wind || 0) * 0.004, 1.2, sx - 0.16 + wob, 0.12 + th - 0.04); ctx.stroke();
+      if (env.s > 9) { // the surface, and rings where it lands
+        R4(ctx, tx + 0.06, 0.12 + th - 0.1, tw - 0.12, 0.04, water);
+        const u = (t * 1.6) % 1; ctx.strokeStyle = sheen; ctx.globalAlpha = 1 - u; ctx.lineWidth = Math.max(0.015, env.px * 0.7); ctx.beginPath(); ctx.ellipse(sx - 0.16, 0.12 + th - 0.08, 0.08 + u * 0.35, 0.02 + u * 0.03, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+    } });
+  }
+
+  // ---- the lodge: weather on stone and logs, and what stands against the wall ----
+  K.deco(S, PL, { seed: 3321 }, (D, R) => {
+    const x0 = B.x, x1 = B.x + B.w, fh = B.fh, wins = Object.keys(B.wins).map((k) => B.wins[k]);
+    // lichen on the stone of the ground floor, and green creeping up from the ground
+    for (let i = 0; i < 70; i++) { const x = R.r(x0 + 0.2, x1 - 0.2), y = R.r(0.25, fh - 0.4); if (wins.some((op) => x > op.x - 0.3 && x < op.x + op.w + 0.3 && y > op.y - 0.2 && y < op.y + op.h + 0.3)) continue; D.ell(x, y, R.r(0.05, 0.14), R.r(0.04, 0.09), snowy ? '#b8c2b4' : '#a8b38a', 0.6); }
+    if (!snowy) KW.moss(D, R, x0, x1, 0.2, 0.12, '#5f7048', 0.7);
+    // under each window sill: the stain the rain has washed down; under the flower boxes, darker water marks on the logs
+    for (const op of wins) {
+      if (op.f === 0) KW.streaks(D, R, op.x + 0.05, op.x + op.w - 0.05, op.y - 0.13, '#4a463e', { n: 3, len: [0.35, 0.9], w: [0.06, 0.14], a: 0.28 });
+      else if (op.f === 2 && !snowy) KW.streaks(D, R, op.x, op.x + op.w, op.y - 0.34, '#3a2414', { n: 3, len: [0.5, 1.3], w: [0.06, 0.14], a: 0.3 });
+    }
+    // the logs are bleached paler low down where the sun gets at them, and darker under the eaves
+    D.rect(x0, fh + 0.2, B.w, 1.1, '#e8d8b8', 0.08); D.rect(x0, B.roofY - 1.9, B.w, 1.2, '#2a1a10', 0.1);
+    // rust weeping from the lantern bracket by the door
+    const dx = B.winX(B.door); KW.streaks(D, R, dx + 1.66, dx + 1.82, 1.92, '#7a4a2a', { n: 2, len: [0.4, 0.7], w: [0.04, 0.07], a: 0.4 });
+    // a bench under a window, two milk churns, skis and poles leaning by the door
+    D.pass = 1;
+    const bx = B.winX(5) - 1.2;
+    D.rect(bx, 0.42, 2.4, 0.08, '#6e4a2e'); D.rect(bx + 0.15, 0, 0.1, 0.42, '#5a3c26'); D.rect(bx + 2.15, 0, 0.1, 0.42, '#5a3c26'); D.rect(bx, 0.5, 2.4, 0.03, '#8a6544');
+    for (const cx of [B.winX(4) + 1.35, B.winX(4) + 1.85]) { D.rect(cx - 0.17, 0, 0.34, 0.5, '#9aa3a8'); D.rect(cx - 0.12, 0.5, 0.24, 0.12, '#9aa3a8'); D.rect(cx - 0.15, 0.62, 0.3, 0.05, '#7d868c'); D.pass = 2; D.rect(cx - 0.17, 0.16, 0.34, 0.03, '#7d868c'); D.rect(cx - 0.17 + (sunD > 0 ? 0.24 : 0), 0, 0.1, 0.5, '#c4ccd0', 0.6); D.pass = 1; }
+    const sk = B.winX(2) + 1.05;
+    for (let k = 0; k < 2; k++) { const kx = sk + k * 0.16; D.poly([kx, 0, kx + 0.08, 0, kx + 0.34, 1.75, kx + 0.27, 1.78], k ? '#b8372d' : '#2f4a7a'); }
+    D.seg(sk + 0.45, 0, sk + 0.62, 1.3, 0.025, '#2a2e36'); D.seg(sk + 0.55, 0, sk + 0.7, 1.28, 0.025, '#2a2e36');
+    if (snowy) { // snow banked against the foot of the wall
+      D.pass = 3; for (let x = x0 - 0.5; x < x1 + 0.5; x += R.r(1.6, 2.8)) { const r = R.r(1.3, 2.2); D.ell(x, 0.0, r, R.r(0.16, 0.3), '#f4f7fa'); }
+    }
+  });
+
+  // ---- the slope below the yard: scrub and rocks among the grass ----
+  const PSL = H.PSL, hA = PSL.heightAt;
+  K.deco(S, PSL, { seed: 3331 }, (D, R) => {
+    for (let i = 0; i < 46; i++) {
+      const x = R.r(-160, 160), d = R.r(1.2, 8.5), y = hA(x) - d, w = R.r(0.9, 2.2), h = Math.min(w * R.r(0.4, 0.6), d * 0.6);
+      if (Math.abs(x + 98) < 6) continue;                                                       // not in the brook
+      if (snowy) { D.ell(x, y + h * 0.3, w * 0.55, h * 0.45, '#e9eef3'); D.pass = 1; D.ell(x + sunD * w * 0.1, y + h * 0.6, w * 0.3, h * 0.2, '#ffffff', 0.9); D.rect(x - w * 0.4, y, w * 0.8, h * 0.12, '#b9c3cc', 0.7); D.pass = 0; continue; }
+      KC.bush(D, R, x, y, w, h, R.chance(0.6) ? '#2f4a32' : '#3d5a36');
+      if (R.chance(0.35)) { D.pass = 2; for (let k = 0; k < 6; k++) D.ell(x + R.r(-w * 0.4, w * 0.4), y + h * R.r(0.5, 0.95), 0.07, 0.06, '#d0507a'); D.pass = 0; }   // alpenrose in flower
+    }
+    for (let i = 0; i < 22; i++) { const x = R.r(-160, 160), d = R.r(1.5, 9), y = hA(x) - d, w = R.r(0.5, 1.4); KC.rock(D, R, x, y, w, Math.min(w * 0.55, d * 0.5), snowy ? '#9aa4ae' : '#8b8f8c'); if (snowy) { D.pass = 2; D.ell(x, y + w * 0.5, w * 0.4, w * 0.12, '#f4f7fa'); D.pass = 0; } }
+  });
+}
 
 // ---- thin cover, hung in front of what it hides -----------------------------------------------
 // Used by the three armour-piercing contracts (c3m8, c4m8, c5m8). A bullet tests the people on a
@@ -12461,6 +13358,7 @@ K.twBackTowers = function (S, z, o) {
       if (env.y0 < 20) twGlowE(ctx, gx, 7, 30, 12, k & 1 ? '#ffb070' : '#7fa8ff', 0.11 + 0.04 * vnoise(env.t * 0.15 + k * 3.1, 9));
     }
   } });
+  twBackDetail(S, P, tw);
   K.ground(S, P, { col: '#3a4658', noEdge: true });
   return P;
 };
@@ -13213,6 +14111,7 @@ SCN.towers = function (o) {
   const F = K.building(S, PF, { x: -46, w: 18, floors: 6, fh: 3.3, id: 'F', cols: 5, wall: of.wall || '#74483e', seed: seed * 7 + 3, tank: 0.82,
     shop: Object.assign({ sign: 'OKORO LOCKS', awning: '#2f5d6b', door: true, lit: false }, of.shop || {}), spans: of.spans, wins: of.wins });
   H.F = F;
+  const fEnd = PF.items[PF.items.length - 1];   // the weathering of its walls goes just after it
   K.fireEscape(S, PF, F, 3, 1, 5);
   S.litZones.fe = true; S.litZones.road = true;
   PF.add({ x0: F.winX(3) - 1.6, x1: F.winX(3) + 1.6, layer: 2, draw(ctx, env) { const c = S.tone('#1b1e24', PF); line(ctx, F.winX(3) + 1.1, 0.3, F.winX(3) + 1.1, F.floorY(1), c, 0.06, env); line(ctx, F.winX(3) + 0.75, 0.3, F.winX(3) + 0.75, F.floorY(1), c, 0.06, env); if (env.s > 4) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.03, env.px * 0.5); ctx.beginPath(); for (let y = 0.5; y < F.floorY(1); y += 0.3) { ctx.moveTo(F.winX(3) + 0.75, y); ctx.lineTo(F.winX(3) + 1.1, y); } ctx.stroke(); } } });
@@ -13268,7 +14167,7 @@ SCN.towers = function (o) {
   // ---- close by: the roof you are shooting over, for depth ----
   const zN = Math.max(90, (z0 - 44) * 0.42), PN = S.plane(zN, 'nearroof'); H.PN = PN;
   const ny = eyeY - 13.5;
-  PN.add({ x0: -400, x1: 400, layer: 0, draw(ctx, env) {
+  const pnBlock = PN.add({ x0: -400, x1: 400, layer: 0, draw(ctx, env) {
     const c = S.tone('#161b24', PN), c2 = S.tone('#222a36', PN), c3 = S.tone('#2c3644', PN), s = env.s;
     R4(ctx, -400, ny - 60, 800, 60, c); R4(ctx, -400, ny - 0.25, 800, 0.25, c2);
     if (s > 12) {   // coping stones along the parapet, and the brick below them
@@ -13311,6 +14210,7 @@ SCN.towers = function (o) {
     } };
     return { veh, trig };
   };
+  twDetail(S, H, { fEnd, pnBlock, zN, ny, seed });
   return H;
 };
 
@@ -13385,6 +14285,133 @@ K.armourGlass = function (S, P, vehId, kind, o) {
   };
   return A;
 };
+
+// ---- wear and a little life downtown ---------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): the old brick of the
+// apartment block weathered like the street's (see stFacade); litter, gum, stains and
+// cigarette ends on the pavements; tar seams and skid marks on the road; ruts, puddles and
+// offcuts in the mud of the building site; and on the face of the roof you are shooting over,
+// rain streaks, lichen, rusty scuppers and the ghost of an old painted sign. Everything is
+// painted on a wall that already hides what is behind it, or lies flat on the ground; nothing
+// is solid or shootable.
+function twDetail(S, H, q) {
+  const seed = q.seed || 4;
+  // the apartment block
+  stFacade(S, H.PF, [H.F], { after: q.fEnd, seed: 6101 + seed });
+  // the near pavement, as far down as the roof you are shooting over lets it show
+  K.deco(S, H.PF, { ground: true, seed: 6111 + seed }, (D, R) => {
+    const E = stEye(D, H.PF), e = D.env ? kxSee(D.env, H.PF) : null, sq = Math.max(0.12, E.tilt * 1.5);
+    const cut = e && e.ok ? clamp(-(e.ey + ((q.ny - e.ey) * (H.PF.z - e.ez)) / Math.max(1, q.zN - e.ez)), 0.3, 6) : 2.4;
+    stLitter(D, R, -60, 60, -0.03, -cut * 0.97, sq, 1.2);
+    D.at = 5; for (let i = 0; i < 12; i++) stFlat(D, R, R.r(-55, 55), -R.r(0.1, cut * 0.9), R.r(0.4, 1.1), Math.max(0.04, 0.9 * sq), '#000000', 0.12);
+    D.at = 0;
+  });
+  // the pavement under the towers: thicker round the benches and the bus shelter
+  K.deco(S, H.PS, { ground: true, seed: 6121 + seed }, (D, R) => {
+    const E = stEye(D, H.PS), bd = E.hOf(8) * 0.95, sq = Math.max(0.12, E.tilt * 1.5);
+    stLitter(D, R, -60, 60, -0.03, -bd, sq, 0.8);
+    for (const bx of [-24.5, 1.5, 11.5]) stLitter(D, R, bx - 1.5, bx + 2.5, -0.03, -bd * 0.6, sq, 5);
+    D.at = 5; for (let i = 0; i < 8; i++) stFlat(D, R, R.r(-55, 55), -R.r(0.05, bd * 0.8), R.r(0.3, 0.9), Math.max(0.03, 0.7 * sq), '#000000', 0.12);
+    D.at = 0;
+  });
+  // the road: tar run into old cracks, rubber from hard braking, a little rubbish
+  K.deco(S, H.PR, { ground: true, seed: 6131 + seed }, (D, R) => {
+    const deep = 2.2 * 2.35;
+    D.at = 5;
+    for (let i = 0; i < 14; i++) { let x = R.r(-65, 60), y = -R.r(0.3, deep - 0.4); const p = [x, y]; for (let j = 0; j < 7; j++) { x += R.r(0.5, 1.4); y = clamp(y + R.r(-0.25, 0.25), -deep + 0.25, -0.2); p.push(x, y); } D.line(p, 0.05, '#0c0e12', 0.5); }
+    for (let i = 0; i < 3; i++) { const x = R.r(-40, 35), y = -R.pick([1.1, 3.3]) + R.r(-0.4, 0.4), l = R.r(3, 7); for (const dy of [0, -0.42]) D.poly([x, y + dy, x + l, y + dy + 0.02, x + l * 0.98, y + dy - 0.05, x, y + dy - 0.07], '#08090c', 0.18, 0.5); }
+    stLitter(D, R, -60, 60, -0.15, -deep + 0.2, 0.16, 0.15);
+  });
+  // the building site's yard: ruts from the gate with water lying in them, offcuts, a split bag
+  K.deco(S, H.PC, { ground: true, seed: 6141 + seed }, (D, R) => {
+    const E = stEye(D, H.PC), bd = E.hOf(5) * 0.95, sq = Math.max(0.12, E.tilt * 1.5), x0 = 17, x1 = 50;
+    D.at = 3;
+    for (const k of [0.35, 0.62]) { const p = []; for (let x = x0; x <= x1; x += 1.5) p.push(x, -bd * k + R.r(-0.02, 0.02) * bd); D.line(p, Math.max(0.03, bd * 0.07), '#1a1815', 0.55); }
+    for (let i = 0; i < 6; i++) {
+      const x = R.r(x0 + 1, x1 - 1), y = -bd * R.pick([0.35, 0.62]) + R.r(-0.03, 0.03) * bd;
+      stFlat(D, R, x, y, R.r(0.5, 1.2), Math.max(0.03, 0.6 * sq), '#3e4a5e', 0.6); D.pass = 1; stFlat(D, R, x - 0.15, y + 0.005, R.r(0.15, 0.35), 0.012, '#9fb0c8', 0.3); D.pass = 0;
+    }
+    for (let i = 0; i < 12; i++) {
+      const x = R.r(x0, x1 - 2), y = -bd * R.r(0.1, 0.9), k = R.f();
+      if (k < 0.4) { D.at = 6; const l = R.r(0.8, 2.2); D.poly([x, y, x + l, y + 0.02, x + l, y + 0.06, x, y + 0.05], '#7a6448', 1, l); }
+      else if (k < 0.75) { D.at = 8; D.seg(x, y, x + R.r(0.8, 2), y + R.r(-0.04, 0.04), 0.03, '#5a3a2a', 0.9); }
+      else { D.at = 8; D.poly([x, y, x + 0.4, y, x + 0.42, y + 0.1, x - 0.02, y + 0.1], '#c9c2ae', 1, 0.4); stFlat(D, R, x + 0.55, y - 0.005, 0.28, 0.02, '#d8d2c2', 0.6); }
+    }
+    D.at = 0;
+  });
+  // the face of the roof you are shooting over
+  const PN = H.PN, ny = q.ny, top = ny - 0.27;
+  K.deco(S, PN, { after: q.pnBlock, seed: 6151 + seed }, (D, R) => {
+    const streak = (x, y, w, l, hex, a) => D.poly([x - w / 2, y, x + w / 2, y, x + w * 0.4, y - l * 0.55, x + w * 0.2, y - l, x - w * 0.12, y - l * 0.96, x - w * 0.36, y - l * 0.5], hex, a, w);
+    D.at = 3;
+    for (let x = -130; x < 130; x += R.r(0.4, 2.2)) streak(x, top, R.r(0.06, 0.22), R.r(0.6, 4.5), R.chance(0.6) ? '#2e3746' : '#07090c', 0.5);
+    for (let x = -130; x < 130; x += R.r(1.5, 6)) KW.blob(D, R, x, top - R.r(0.06, 0.2), R.r(0.15, 0.4), R.r(0.04, 0.09), '#3e4c46', 0.35, 0.45);
+    for (let x = -120 + R.r(0, 20); x < 130; x += R.r(18, 32)) { D.rect(x - 0.13, top - 0.2, 0.26, 0.16, '#050608'); streak(x, top - 0.2, 0.22, R.r(1.5, 4), '#5a3424', 0.55); }
+    D.at = 0;
+  });
+  { const gx = -q.zN * 0.06, gy = ny - 3.2, pc = S.tone('#9a8e74', PN);
+    PN.add({ x0: gx - 11, x1: gx + 11, layer: 0, draw(ctx, env) {
+      if (env.s < 2.5 || (env.y0 !== undefined && (gy + 2.6 < env.y0 || gy - 0.8 > env.y1))) return;
+      ctx.globalAlpha = 0.06; R4(ctx, gx - 9.6, gy - 0.55, 19.2, 2.9, pc);
+      ctx.globalAlpha = 0.17; env.text(ctx, 'COLD STORE', gx, gy, 1.5, pc, 'center');
+      ctx.globalAlpha = 0.13; env.text(ctx, 'PORT CALDER ICE COMPANY', gx, gy + 1.62, 0.5, pc, 'center');
+      ctx.globalAlpha = 1;
+    } });
+  }
+}
+// On the big towers behind: masts, dishes and window-cleaning gantries on the roofs, red
+// lights winking on the roof corners, lights going on and off in the windows now and then,
+// and traffic moving along the street at their feet. All of it far behind everything else.
+function twBackDetail(S, P, tw) {
+  const R = makeRng(6201), body = S.tone('#3b4960', P), body2 = S.tone('#2c3850', P), body3 = S.tone('#212b3f', P), steel = S.tone('#55657f', P);
+  const warm = S.tone('#ffd9a0', P, true), cool = S.tone('#d6e6ff', P, true);
+  const masts = [], dishes = [], gants = [], corners = [], on = [[], []], off = [];
+  tw.forEach((T) => {
+    const t = T.t, x0 = t.x, x1 = t.x + t.w;
+    if (!t.top && !T.pad) {
+      for (let k = 0; k < 3; k++) masts.push(x0 + t.w * R.r(0.46, 0.92), t.h, R.r(3, 8));
+      dishes.push([x0 + t.w * R.r(0.3, 0.44), t.h + 3.3, R.r(0.6, 1.0)]);
+      gants.push([x1 - 1.6, t.h, -1]);
+    } else if (t.top === 'step') { masts.push(x0 + t.w * 0.42, t.h + 13, R.r(3, 5), x0 + t.w * 0.58, t.h + 13, R.r(2, 4)); }
+    corners.push(x0 + 0.35, t.h + 0.2, x1 - 0.35, t.h + 0.2);
+    // windows that come on now and then, and lit ones that go dark
+    const nf = Math.floor((t.h - 9) / 3.6);
+    for (let k = 0; k < 4; k++) { const fl = R.i(7, nf); if (fl % 12 === 9) continue; const c = R.i(0, T.n - 1); on[k % 2].push(t.x + c * T.cw + 0.4, 5 + fl * 3.6, T.cw - 0.8, 1.9, R.r(18, 50), R.r(0, 60), R.r(0.35, 0.65)); }
+    for (let k = 0; k < 8; k++) {
+      const a = T.cells[R.i(0, 7)]; if (!a.length) continue; const j = R.i(0, a.length / 4 - 1) * 4; if (a[j + 1] < 30) continue;
+      off.push(a[j], a[j + 1], a[j + 2], a[j + 3], R.r(20, 60), R.r(0, 60), R.r(0.25, 0.5), a[j] >= x0 + t.w * 0.72 ? 1 : 0);
+    }
+  });
+  // headlights one way and tail lights the other, along the street at the towers' feet
+  const cars = []; for (let i = 0; i < 14; i++) cars.push(R.r(0, 700), R.r(9, 15), i % 2);
+  P.add({ x0: -400, x1: 400, layer: 0, draw(ctx, env) {
+    const s = env.s, t = env.t, x0 = env.x0 - 2, x1 = env.x1 + 2, dot = Math.max(0.22, env.px * 1.1);
+    // windows: some lit ones go dark for a while, some dark ones come on
+    for (let i = 0; i < off.length; i += 8) { const u = ((t + off[i + 5]) / off[i + 4]) % 1; if (u > off[i + 6] || off[i] > x1 || off[i] + off[i + 2] < x0) continue; const m = Math.min(0.3, env.px * 1.2); R4(ctx, off[i] - m, off[i + 1] - m, off[i + 2] + m * 2, off[i + 3] + m * 2, off[i + 7] ? body2 : body); }
+    for (let k = 0; k < 2; k++) { const a = on[k]; let any = false; for (let i = 0; i < a.length; i += 7) { const u = ((t + a[i + 5]) / a[i + 4]) % 1; if (u > a[i + 6] || a[i] > x1 || a[i] + a[i + 2] < x0) continue; if (!any) { ctx.fillStyle = k ? cool : warm; any = true; } ctx.fillRect(a[i], a[i + 1], a[i + 2], a[i + 3]); } }
+    if (s > 1.5) {
+      // masts, gantries and dishes on the roofs
+      ctx.strokeStyle = body3; ctx.lineWidth = Math.max(0.16, env.px * 0.8); ctx.beginPath();
+      for (let i = 0; i < masts.length; i += 3) { if (masts[i] < x0 || masts[i] > x1) continue; ctx.moveTo(masts[i], masts[i + 1]); ctx.lineTo(masts[i], masts[i + 1] + masts[i + 2]); if (s > 4) { ctx.moveTo(masts[i] - 0.5, masts[i + 1] + masts[i + 2] * 0.7); ctx.lineTo(masts[i] + 0.5, masts[i + 1] + masts[i + 2] * 0.7); } }
+      for (let i = 0; i < gants.length; i++) { const g = gants[i]; if (g[0] < x0 - 6 || g[0] > x1 + 6) continue; ctx.moveTo(g[0], g[1] + 1.4); ctx.lineTo(g[0] + g[2] * 4.2, g[1] + 2.1); ctx.lineTo(g[0] + g[2] * 4.2, g[1] + 0.6); }
+      ctx.stroke();
+      ctx.fillStyle = body3;
+      for (let i = 0; i < gants.length; i++) { const g = gants[i]; if (g[0] < x0 - 6 || g[0] > x1 + 6) continue; ctx.fillRect(g[0] - 1, g[1], 2, 1.4); ctx.fillRect(g[0] + g[2] * 4.2 - 0.7, g[1] + 0.25, 1.4, 0.35); }
+      if (s > 3) { ctx.fillStyle = steel; ctx.beginPath(); for (let i = 0; i < dishes.length; i++) { const d = dishes[i]; if (d[0] < x0 || d[0] > x1) continue; ctx.moveTo(d[0] + d[2] * 0.6, d[1] + d[2]); ctx.ellipse(d[0], d[1] + d[2], d[2] * 0.6, d[2], -0.4, 0, TAU); } ctx.fill(); }
+    }
+    // red lights on the roof corners, all winking together
+    if (((t * 0.5) % 1) < 0.55) {
+      ctx.fillStyle = '#ff4a3d'; ctx.beginPath(); for (let i = 0; i < corners.length; i += 2) { if (corners[i] < x0 || corners[i] > x1) continue; ctx.moveTo(corners[i] + dot, corners[i + 1]); ctx.arc(corners[i], corners[i + 1], dot, 0, TAU); } ctx.fill();
+      if (s > 3) for (let i = 0; i < corners.length; i += 2) if (corners[i] > x0 && corners[i] < x1) twGlow(ctx, corners[i], corners[i + 1], 1.4, '#ff4a3d', 0.35);
+    }
+    // traffic
+    if (env.y0 === undefined || env.y0 < 2) for (let k = 0; k < 2; k++) {
+      ctx.fillStyle = k ? '#ff5a4a' : '#fff1d0'; ctx.beginPath();
+      for (let i = 0; i < cars.length; i += 3) { if (cars[i + 2] !== k) continue; const d = k ? -1 : 1, x = (((cars[i] + d * t * cars[i + 1]) % 700) + 700) % 700 - 350, y = k ? 0.55 : 0.75; if (x < x0 || x > x1) continue; ctx.moveTo(x + dot, y); ctx.arc(x, y, dot, 0, TAU); ctx.moveTo(x + 1.5 + dot, y); ctx.arc(x + 1.5, y, dot, 0, TAU); }
+      ctx.fill();
+    }
+  } });
+}
 
 
 // ===== 07e_scene_yard.js =====
@@ -14400,8 +15427,229 @@ SCN.yard = function (o) {
     const hides = (x) => [q.at + (190 + dir * x) / sp, q.at + (190 + L + dir * x) / sp];
     return { veh, trig, t0, t1, hides };
   };
+  ydDetail(S, H);
   return H;
 };
+
+// ---- the lived-in yard ------------------------------------------------------------
+// Detail for looks only, added after everything else and drawn from the scene kit's static
+// layers (K.deco), so a few fills a frame carry all of it. The rules it keeps:
+//   - on the ground strips it lies flat, inside the band of ground each plane really shows
+//     (seen from the grain elevator 30 m up, a nearer plane's ground covers the rest);
+//   - anything that stands up is low and stands either on the far planes behind everybody
+//     (the tower and shed rows) or against a wall that already hides what is behind it;
+//   - nothing goes on the strip itself (where people walk) except flat things on its ground.
+// Nothing here is shootable, and nothing is added to a mission's random streams.
+// The band of ground a plane shows, from its ground line down: [eye height x gap to the next
+// nearer plane / that plane's distance], worked out for the grain elevator.
+function ydBand(P, Pn) { return 30 * (P.z - Pn.z) / Pn.z; }
+// Flat things on a strip of cinder ground: patches of darker and paler cinder, oil, ash, bits
+// of scrap, lost plates and bolts, a dropped sleeper or two, old tyres, and weeds. tilt is how
+// much a metre of depth shows as height here. o.weeds, o.scrap and o.patch scale how much.
+function ydStrew(D, R, x0, x1, band, gc, tilt, o) {
+  o = o || {};
+  const dk = darken(gc, 0.42), dk2 = darken(gc, 0.65), lt = lighten(gc, 0.22), rust = '#8a4a2a', rust2 = '#a8653a', iron = '#1e2024', wood = '#3e3128', wood2 = '#6a5544';
+  const top = -0.04, bot = -band + 0.05, n = (x1 - x0) / 10, fa = Math.min(band, 6) / 3, sq = Math.max(tilt * 1.6, 0.09);   // seen this low a puddle is a sliver: drawn a little rounder so it reads
+  // big soft patches of darker cinder and paler ash, and the black of spilt oil
+  for (let i = 0; i < n * 4 * fa * (o.patch || 1); i++) { const rx = R.r(0.8, 3.2), y = R.r(bot + rx * sq, top - rx * sq * 0.5); KW.blob(D, R, R.r(x0, x1), y, rx, Math.max(0.04, rx * sq * R.r(0.8, 1.3)), R.chance(0.6) ? dk : lt, R.r(0.28, 0.45), 0.2); }
+  for (let i = 0; i < n * 1.2 * fa; i++) { const rx = R.r(0.3, 1.2), y = R.r(bot + 0.1, top - 0.05); D.ell(R.r(x0, x1), y, rx, Math.max(0.03, rx * sq * 0.9), dk2, R.r(0.4, 0.6)); }
+  D.pass = 1;
+  // scrap: rusty offcuts, chair plates, a coil of wire, bolts
+  for (let i = 0; i < n * 3 * fa * (o.scrap || 1); i++) {
+    const x = R.r(x0, x1), y = R.r(bot + 0.05, top - 0.02), k = R.f();
+    if (k < 0.45) D.rect(x, y, R.r(0.2, 0.8), R.r(0.05, 0.1), R.chance(0.6) ? rust : rust2, 0.95);
+    else if (k < 0.75) D.rect(x, y, R.r(0.14, 0.3), R.r(0.05, 0.08), iron, 0.95);
+    else if (k < 0.85) D.seg(x, y, x + R.r(0.4, 1.2), y + R.r(-0.04, 0.04), 0.035, iron, 0.9);
+    else D.ell(x, y, R.r(0.14, 0.28), Math.max(0.035, 0.2 * sq), iron, 0.9);
+  }
+  // an old sleeper or two thrown down, and tyres lying flat
+  for (let i = 0; i < n * 0.8 * (o.scrap || 1); i++) { const x = R.r(x0, x1), y = R.r(bot + 0.15, top - 0.1), l = R.r(1.8, 2.6); D.poly([x, y, x + l, y + R.r(-0.04, 0.04), x + l + 0.05, y + 0.1, x + 0.05, y + 0.1], wood); D.pass = 2; D.rect(x, y + 0.075, l, 0.025, wood2, 0.8); D.pass = 1; }
+  for (let i = 0; i < n * 0.35 * (o.scrap || 1); i++) { const x = R.r(x0, x1), y = R.r(bot + 0.2, top - 0.1), r = R.r(0.32, 0.42), ry = Math.max(0.07, r * sq * 1.6); D.ell(x, y, r, ry, '#16171a'); D.pass = 2; D.ell(x, y + ry * 0.1, r * 0.52, ry * 0.5, dk2); D.pass = 1; }
+  // weeds, and here and there the pink spikes of willowherb (only where the ground is deep enough to stand them on)
+  D.pass = 3;
+  const wN = n * 5 * fa * (o.weeds || 1);
+  for (let i = 0; i < wN; i++) {
+    const x = R.r(x0, x1), y = R.r(bot + 0.08, top - 0.02), h = Math.min(R.r(0.18, 0.45), 0.2 - y);   // never more than a hand above the ground line
+    KC.tuft(D, R, x, y, h, R.chance(0.5) ? '#64803f' : '#7d8a46');
+    const sh = h * R.r(1.4, 2.0);
+    if (h > 0.3 && sh < -y && R.chance(0.25)) { D.poly([x - 0.02, y, x + 0.02, y, x + 0.01, y + sh, x - 0.01, y + sh], '#4d5a36', 0.95, 0.03); D.pass = 4; for (let k = 0; k < 4; k++) D.ell(x + R.r(-0.03, 0.03), y + sh * (0.6 + k * 0.1), 0.05, 0.04, '#b0577a', 0.95); D.pass = 3; }
+  }
+  D.pass = 0;
+}
+function ydDetail(S, H) {
+  const night = S.pal.dark > 0.5;
+  // ---- the ground strips, nearest first ----
+  const strips = [
+    [H.PN, null, 14, '#3b4038', { weeds: 1.6, scrap: 1.4, patch: 0.8 }],
+    [H.PY, H.PN, 0, '#4a4a44', { weeds: 1.1, scrap: 1.7 }],
+    [H.PT0, H.PY, 0, '#5f5850', { weeds: 0.7, scrap: 1.3 }],
+    [H.PM, H.PT1, 0, '#746a60', { weeds: 0.5, scrap: 0.6 }],
+    [H.PW, H.PSd, 0, '#5a5450', { scrap: 1.4 }],
+    [H.PSh, H.PW, 0, '#55504e', { scrap: 1.2 }],
+  ];
+  strips.forEach((q, i) => {
+    const P = q[0], band = q[1] ? ydBand(P, q[1]) : q[2], tilt = 30 / P.z;
+    K.deco(S, P, { ground: true, seed: 7310 + i * 19 }, (D, R) => {
+      // (drawn with the ground itself, so the tracks laid on a strip go over the top of it)
+      ydStrew(D, R, -175, 175, band, q[3], tilt, q[4]);
+      if (P === H.PY) { // at the foot of the fence: a line of weeds, rubbish blown against the mesh
+        D.pass = 2; for (let x = -120; x < 120; x += R.r(0.7, 2.4)) KC.tuft(D, R, x, -0.03, R.r(0.18, 0.42), R.chance(0.5) ? '#64803f' : '#7d8a46');
+        for (let x = -118; x < 118; x += R.r(4, 14)) { D.rect(x, -0.02, R.r(0.2, 0.5), R.r(0.1, 0.25), R.pick(['#c9c4b4', '#8f9aa4', '#6e7f5a']), 0.85); }
+        // coal spilt along the old siding outside the fence, and ash in the four-foot
+        D.pass = 0; for (let x = -150; x < 150; x += R.r(2.5, 7)) KW.blob(D, R, x, -3.6 - R.r(0.1, 0.5), R.r(0.4, 1.6), R.r(0.04, 0.1), '#1b1b1f', R.r(0.3, 0.5), 0.4);
+      }
+      if (P === H.PN) { // broken concrete slabs with their cracks, and brick ends from the sheds
+        D.pass = 0;
+        for (let x = -160; x < 160; x += R.r(9, 26)) { const w = R.r(2, 5), y = -R.r(2, 12), h = w * tilt * R.r(1.2, 1.8), c = '#5e6058'; D.poly([x, y, x + w, y + R.r(-0.1, 0.1), x + w - R.r(0, 0.4), y + h, x + R.r(0, 0.4), y + h], c, 0.9); D.pass = 1; D.seg(x + w * 0.3, y + h * 0.1, x + w * 0.55, y + h * 0.9, 0.03, '#2a2c2a', 0.7); D.rect(x, y - 0.06, w, 0.06, '#1c1e1c', 0.4); D.pass = 0; }
+        // heaps of rubble from a shed that came down: a low mound, brick ends and lumps of concrete
+        for (let x = -165 + R.r(0, 20); x < 165; x += R.r(22, 48)) {
+          const y = -R.r(3, 12), w = R.r(2.5, 5), h = R.r(0.35, 0.7);
+          D.pass = 1; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.7, x, y + h, x + w * 0.35, y + h * 0.6, x + w / 2, y], '#3a3433');
+          D.pass = 2; for (let i = 0; i < 14; i++) { const u = R.r(-0.45, 0.45), bx = x + u * w, by = y + R.r(0, h * (1 - Math.abs(u) * 1.8)); D.rect(bx, by, R.r(0.2, 0.3), R.r(0.08, 0.11), R.pick(['#7a4a3c', '#6a3e32', '#8a5a48', '#6c6c66', '#55524e']), 0.95); }
+        }
+        // buddleia, the purple weed that grows out of every railway yard, in clumps
+        for (let x = -165 + R.r(0, 10); x < 165; x += R.r(9, 24)) {
+          const y = -R.r(1.6, 13), h = R.r(0.6, 1.1);
+          D.pass = 2; KC.bush(D, R, x, y, h * 1.4, h, '#4a5a3a');
+          D.pass = 4; for (let i = 0; i < 5; i++) { const fx = x + R.r(-h * 0.6, h * 0.6), fy = y + h * R.r(0.7, 1.05); D.poly([fx - 0.05, fy, fx + 0.05, fy, fx + R.r(-0.06, 0.06), fy + R.r(0.22, 0.34)], '#8a5a9a', 0.95, 0.06); }
+        }
+        D.pass = 0;
+      }
+      if (P === H.PT0 || P === H.PT1) { // concrete cable troughs along the line, in lengths
+        const y = P === H.PT0 ? -1.12 : -1.1;
+        // long runs with a gap here and there where a lid is missing; the joints only when close
+        for (let x = -170; x < 170;) { const l = R.r(12, 40); D.pass = 1; D.rect(x, y, l, 0.1, '#8d877c'); D.pass = 2; D.rect(x, y + 0.085, l, 0.015, '#a8a294', 0.8); x += l + R.r(0.8, 2.5); }
+        D.pass = 2; D.at = 30; for (let x = -170; x < 170; x += 1.0) D.rect(x, y, 0.03, 0.1, '#5c5850', 0.8); D.at = 0;
+        D.pass = 0;
+      }
+    });
+  });
+
+  // ---- the back of the yard, out towards the works: a fan of sidings full of wagons ----
+  // It lies on the works plane's own ground, which fills a wide band of the picture behind the
+  // sheds. Each row is worked out at a real distance and drawn where it would be seen from 30 m up.
+  const masts = [], MR = makeRng(7392), Zi = H.PI.z;
+  for (const zr of [1150, 960, 810, 690]) for (let x = -700 + MR.r(0, 140); x < 700; x += MR.r(110, 260)) masts.push([x * Zi / zr, 30 * (1 - Zi / zr), Zi / zr]);
+  K.deco(S, H.PI, { ground: true, seed: 7391 }, (D, R) => {
+    // Far off, each row of wagons reads as one colour, paler and bluer the further it is: so a
+    // row costs four fills (bed, underframes, bodies, the light along the tops), not one a wagon.
+    const Z = H.PI.z, rows = [1150, 1000, 880, 780, 700, 630];                   // far rows first, so nearer wagons stand in front
+    for (let ri = 0; ri < rows.length; ri++) {
+      const zr = rows[ri], k = Z / zr, yg = 30 * (1 - k), p0 = ri * 3, far = 1 - ri / (rows.length - 1);
+      const body = mix(ri % 2 ? '#5a3c32' : '#4a4c54', '#8a8090', far * 0.35), top = lighten(body, 0.2), under = mix('#16171b', '#5a5560', far * 0.4);
+      D.pass = p0; D.rect(-900, yg - 0.5 * k, 1800, 0.62 * k, '#2e2a2e', 0.45);          // the stone bed
+      D.pass = p0 + 2; D.rect(-900, yg - 0.05 * k, 1800, Math.max(0.06, 0.06 * k), top, 0.6);  // a rail catching the light
+      // strings of wagons standing in the siding, with gaps where a shunter has taken some away
+      for (let x = -880 + R.r(0, 60); x < 880;) {
+        const n = R.i(2, 9), kind = R.f(), L = 16.4 * k, h = 3.2 * k;
+        if (R.chance(0.35)) { x += R.r(30, 120) * k; continue; }
+        for (let i = 0; i < n; i++) {
+          const wx = x + i * (L + 1.0 * k), y1 = yg + 0.8 * k;
+          D.pass = p0 + 1; D.rect(wx, yg + 0.25 * k, L, 0.55 * k, under);                 // underframe and wheels as one
+          if (kind < 0.55) { D.rect(wx, y1, L, h, body); D.pass = p0 + 2; D.rect(wx, y1 + h - 0.25 * k, L, 0.25 * k, top); }
+          else if (kind < 0.8) { const r = h * 0.48; D.rect(wx + r, y1 + h / 2 - r, L - 2 * r, 2 * r, body); D.ell(wx + r, y1 + h / 2, r, r, body); D.ell(wx + L - r, y1 + h / 2, r, r, body); D.pass = p0 + 2; D.rect(wx + r, y1 + h / 2 + r * 0.5, L - 2 * r, r * 0.25, top); }
+          else { D.rect(wx, y1, L, 0.3 * k, under); D.rect(wx + 0.3 * k, y1 + 0.3 * k, L * 0.48, 2.6 * k, body); D.pass = p0 + 2; D.rect(wx + L * 0.51, y1 + 0.3 * k, L * 0.47, 2.6 * k, top); }
+        }
+        x += n * (L + 1.0 * k) + R.r(10, 80) * k;
+      }
+      // a platelayers' hut by the line now and then
+      D.pass = p0 + 1;
+      for (let x = -880 + R.r(0, 200); x < 880; x += R.r(160, 360)) { D.rect(x, yg - 0.7 * k, 4 * k, 2.6 * k, body); D.poly([x - 0.3 * k, yg + 1.9 * k, x + 4.3 * k, yg + 1.9 * k, x + 2 * k, yg + 2.9 * k], under); }
+    }
+    // lamp masts over the sidings
+    D.pass = 99;
+    for (const m of masts) { const x = m[0], yg = m[1], k = m[2]; D.rect(x, yg - 0.6 * k, 0.35 * k, 14 * k, '#26262c'); D.rect(x - 1 * k, yg + 13.4 * k, 2.35 * k, 0.6 * k, '#26262c'); if (S.pal.dark > 0.25) { D.lit = true; D.rect(x - 0.8 * k, yg + 13.1 * k, 1.95 * k, 0.35 * k, '#ffe7b3'); D.lit = false; } }
+    D.pass = 0;
+  });
+  if (S.pal.dark > 0.25) H.PI.add({ x0: -1600, x1: 1600, layer: 2, draw(ctx, env) { // and their light, soft in the haze
+    if (env.s < 0.6) return;
+    for (const m of masts) { const x = m[0], y = m[1] + 13.3 * m[2]; if (x < env.x0 - 12 || x > env.x1 + 12 || y < env.y0 - 12 || y > env.y1 + 12) continue; kxGlow(ctx, '#ffe2a8', x + 0.2 * m[2], y, 7 * m[2], 0.35 * S.pal.dark + 0.08); }
+  } });
+  // ---- scrap against the far planes, behind everybody ----
+  // on the tower plane, between the water tower and the hoppers: a heap of scrap, wheelsets,
+  // bent rail and a stack of old tyres, with a torn tarpaulin over part of it that lifts in the wind
+  K.deco(S, H.PW, { seed: 7411 }, (D, R) => {
+    const x0 = -24, x1 = -9;
+    const p = [x0, 0]; for (let x = x0 + 0.4; x < x1; x += R.r(0.35, 0.8)) { const u = (x - x0) / (x1 - x0); p.push(x, Math.sin(u * Math.PI) * R.r(1.0, 1.7) + 0.1); } p.push(x1, 0);
+    D.poly(p, '#3a3230');
+    D.pass = 1;
+    for (let i = 0; i < 26; i++) { const u = R.f(), x = lerp(x0 + 0.6, x1 - 0.6, u), y = Math.sin(u * Math.PI) * R.r(0.2, 1.1), l = R.r(0.5, 2.2), an = R.r(-0.6, 0.6); D.seg(x, y, x + Math.cos(an) * l, y + Math.sin(an) * l, R.r(0.05, 0.12), R.pick(['#6e4430', '#4a4f56', '#8a5a3a', '#2a2c30']), 0.95); }
+    for (let i = 0; i < 9; i++) { const u = R.r(0.15, 0.85), x = lerp(x0, x1, u), y = Math.sin(u * Math.PI) * R.r(0.3, 1.0); D.rect(x, y, R.r(0.4, 1.1), R.r(0.2, 0.5), R.pick(['#5a3a2a', '#4a4f56', '#6e4430']), 0.95); }
+    // a pair of old wheelsets standing on a length of rail at its foot
+    D.pass = 2; D.rect(x1 + 0.5, 0, 6, 0.1, '#6e5a4a');
+    for (const wx of [x1 + 1.6, x1 + 4.3]) { D.ell(wx, 0.5, 0.46, 0.46, '#26282d'); D.pass = 3; D.ell(wx, 0.5, 0.3, 0.3, '#3e4148'); D.ell(wx, 0.5, 0.08, 0.08, '#1a1b1f'); D.pass = 2; }
+    D.rect(x1 + 1.6, 0.46, 2.7, 0.08, '#2a2c30');
+    // tyres stacked at the other end
+    D.pass = 2; KC.tyres(D, x0 - 1.4, 0, 4, 0.42); KC.tyres(D, x0 - 2.5, 0, 2, 0.42);
+  });
+  { // the tarpaulin: one corner pinned under the scrap, the loose end lifting and dropping
+    const P = H.PW, tc = S.tone('#3f5a4a', P), tc2 = S.tone('#2f4438', P);
+    P.add({ x0: -22, x1: -12, layer: 0, draw(ctx, env) {
+      if (env.s < 2 || 2 < env.y0 || 0 > env.y1) return;
+      const w = env.wind || 0, t = env.t, lift = 0.25 + 0.2 * Math.sin(t * 2.3) * Math.abs(w) * 0.25 + 0.08 * Math.sin(t * 5.1), dir = w < 0 ? -1 : 1;
+      const ex = -15.4 + dir * 0.6, ey = 1.35 + lift;
+      poly(ctx, [-20.2, 1.15, -17.8, 1.6, -16.2, 1.5, ex, ey, -15.6, 1.05 + lift * 0.4, -19.6, 0.75], tc);
+      if (env.s > 5) poly(ctx, [-17.8, 1.6, -16.2, 1.5, ex, ey, -16.6, 1.32], tc2);
+    } });
+  }
+  // coal spilt on the ground round the coaling stage (under the track, so it goes with the ground)
+  K.deco(S, H.PSh, { ground: true, seed: 7437 }, (D, R) => {
+    for (let i = 0; i < 30; i++) KW.blob(D, R, R.r(-38, -6), -R.r(0.1, 2.6), R.r(0.4, 1.8), R.r(0.05, 0.14), '#141418', R.r(0.35, 0.6), 0.4);
+    D.pass = 1; for (let i = 0; i < 40; i++) D.rect(R.r(-38, -8), -R.r(0.05, 2.5), 0.12, 0.05, '#34343c', 0.9);
+  });
+  // ---- weathering on the engine sheds and the roofs near the eye ----
+  const shedWear = (x, w, h) => K.deco(S, H.PSh, { seed: 7451 + Math.round(x) }, (D, R) => {
+    const n = Math.max(2, Math.floor(w / 13)), bw = w / n;
+    KW.moss(D, R, x, x + w, 0.45, 0.16, '#3c5236', 0.8);                 // green creeping up from the ground
+    KW.grime(D, R, x, x + w, 0, 1.4, '#1e1a1a', 0.3);
+    KW.streaks(D, R, x + 0.3, x + w - 0.3, h - 0.5, '#d8d0bc', { per: 0.35, len: [0.8, 2.8], w: [0.08, 0.2], a: 0.22 });   // lime washed out of the mortar
+    KW.streaks(D, R, x + 0.3, x + w - 0.3, h - 0.5, '#4a2e22', { per: 0.25, len: [1, 3], w: [0.06, 0.14], a: 0.3 });
+    D.pass = 1;
+    for (let i = 0; i < n; i++) { // panes gone from the glazed side of each roof tooth
+      const cx = x + (i + 0.5) * bw, gx0 = cx - bw / 2 + 0.4, gw = (bw - 1.0) / 6;
+      for (let q = 1; q < 6; q++) { if (R.f() > 0.32) continue; const gx = gx0 + q * gw, gh = 2.7 * (q / 6); const y0 = h + 0.1 + R.r(0, gh * 0.5); D.rect(gx + 0.04, y0, gw - 0.08, Math.min(R.r(0.4, 0.9), h + 0.1 + gh - y0 - 0.05), '#121418', 0.9); }
+      // the wet stain at the foot of each down pipe
+      KW.blob(D, R, cx - bw / 2 + 0.57, 0.5, 0.3, 0.5, '#1e1a1a', 0.3, 0.3);
+    }
+    D.pass = 0;
+  });
+  shedWear(-96, 70, 9); shedWear(30, 44, 7.5);
+  // on the shed plane: sleepers and a wheelset on a stub of track by the left shed, and coal
+  // spilt round the coaling stage
+  K.deco(S, H.PSh, { seed: 7433 }, (D, R) => {
+    for (let k = 0; k < 4; k++) for (let j = 0; j < 4 - k; j++) { const bx = -84 + j * 2.7 + k * 1.35; D.rect(bx, k * 0.26, 2.6, 0.23, k % 2 ? '#4d3f33' : '#3a2f28'); D.pass = 1; D.rect(bx, k * 0.26, 0.12, 0.23, '#231c17'); D.rect(bx + 2.48, k * 0.26, 0.12, 0.23, '#231c17'); D.pass = 0; }
+    D.rect(-70, 0, 9, 0.12, '#6e5a4a'); for (const wx of [-68, -64.2]) { D.ell(wx, 0.55, 0.5, 0.5, '#26282d'); D.pass = 1; D.ell(wx, 0.55, 0.32, 0.32, '#3e4148'); D.pass = 0; } D.rect(-68, 0.5, 3.8, 0.1, '#2a2c30');
+    // the steam pipe that leaks at the foot of the left shed
+    D.pass = 1; D.rect(-57.2, 0.42, 2.2, 0.13, '#2a2c30'); D.rect(-55.5, 0.42, 0.16, 0.32, '#2a2c30'); D.rect(-55.58, 0.7, 0.32, 0.06, '#3e4148'); D.pass = 0;
+    // a row of oil drums against the right shed, the paint long gone to rust
+    for (let i = 0; i < 4; i++) { const dx = 33 + i * 0.68; D.rect(dx, 0, 0.6, 0.9, i % 3 ? '#3f4a52' : '#6e4430'); D.pass = 1; D.rect(dx, 0.28, 0.6, 0.05, '#2a2e36'); D.rect(dx, 0.6, 0.6, 0.05, '#2a2e36'); KW.streaks(D, R, dx, dx + 0.6, 0.9, '#6a4832', { n: 2, len: [0.2, 0.6], w: [0.04, 0.08], a: 0.5 }); D.pass = 0; }
+  });
+
+  // the warehouse roofs below the line of sight: rust under the gutters, a patched sheet or two
+  K.deco(S, H.PN, { seed: 7477 }, (D, R) => {
+    for (const r of [[-150, 62, 4.2], [-80, 44, 3.4], [22, 52, 4.0], [82, 70, 3.2]]) {
+      KW.streaks(D, R, r[0] + 0.3, r[0] + r[1] - 0.3, r[2] - 0.3, '#6a4030', { per: 0.45, len: [0.5, 2.2], w: [0.08, 0.22], a: 0.4 });
+      KW.grime(D, R, r[0], r[0] + r[1], 0, 0.6, '#151714', 0.35);
+      for (let i = 0; i < r[1] / 9; i++) { const px = R.r(r[0] + 1, r[0] + r[1] - 3), pw = R.r(1.2, 2.6); D.rect(px, R.r(0.4, r[2] * 0.4), pw, R.r(0.8, r[2] * 0.5), R.chance(0.5) ? '#5a5a62' : '#3c3a44', 0.75); }
+    }
+  });
+
+  // ---- lineside: boards on posts by the spare road, thin enough to see past ----
+  { const P = H.PT0, post = S.tone('#2a2e36', P), white = S.tone('#e8e4d6', P), ink = S.tone('#15171c', P), yel = S.tone('#e2b33c', P);
+    const boards = [[-36, '10'], [12, 'W'], [44, '15']];
+    P.add({ x0: -40, x1: 48, layer: 0, draw(ctx, env) {
+      if (env.s < 2.5 || 1.8 < env.y0 || -1.2 > env.y1) return;
+      for (const b of boards) { if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue; R4(ctx, b[0] - 0.04, -1.25, 0.08, 1.9, post); R4(ctx, b[0] - 0.3, 0.3, 0.6, 0.42, b[1] === 'W' ? white : yel); if (env.s > 7) env.text(ctx, b[1], b[0], 0.38, 0.3, ink, 'center'); }
+    } });
+  }
+  // ---- small motion: steam from a leaking pipe at the foot of the left shed ----
+  { const P = H.PSh;
+    P.add({ x0: -60, x1: -50, layer: 0, draw(ctx, env) {
+      if (env.s < 1.5 || 6 < env.y0 || 0 > env.y1) return;
+      ydSmoke(ctx, env, -55.4, 0.6, night ? 'rgb(120,126,140)' : 'rgb(214,210,212)', 5, 4.5, 0.15, 0.9, 0.22, 0.32, (env.wind || 0) * 1.6, 0.4);
+    } });
+  }
+}
 
 // a small pitched slate roof, drawn in front
 function P_roof(S, P, x, y, w, col) {
@@ -15009,7 +16257,7 @@ SCN.estate = function (o) {
   const ry = B.roofY + 0.3, ch = { x0: 14.5, x1: 16.4, y1: 13.3 }, dx = B.winX(3), hfC = {}, hwC = {}, capC = S.tone('#8f8370', PH);
   // on the wall itself (behind anyone at a window): corner stones, the plinth, the shade
   // under the eaves, downpipes, and the stains the sills leave
-  PH.add({ x0: B.x - 0.5, x1: B.x + B.w + 0.5, layer: 0, draw(ctx, env) {
+  const houseWall = PH.add({ x0: B.x - 0.5, x1: B.x + B.w + 0.5, layer: 0, draw(ctx, env) {
     if (ry + 0.5 < env.y0 || 0 > env.y1) return;
     const s = env.s;
     R4(ctx, B.x, 0, B.w, 0.42, stoneD); R4(ctx, B.x, 0.4, B.w, 0.06, stoneHi);
@@ -15221,7 +16469,7 @@ SCN.estate = function (o) {
   const gate = H.gate = { x0: 47.4, x1: 54.2 };
   // the lane outside the wall: a dirt road with two ruts and a grassy middle
   const ln = { road: S.tone(night ? '#2a2a26' : '#b3a582', PF), rut: S.tone(night ? '#1e1e1b' : '#998a68', PF), grav: S.tone(night ? '#34342e' : '#c7bb9c', PF) };
-  PF.add({ x0: -110, x1: 110, layer: 0, draw(ctx, env) {
+  const laneItem = PF.add({ x0: -110, x1: 110, layer: 0, draw(ctx, env) {
     if (0.2 < env.y0 || -3.6 > env.y1) return;
     const a = Math.max(-110, env.x0 - 1), b = Math.min(110, env.x1 + 1);
     R4(ctx, a, -3.2, b - a, 1.9, ln.road); ctx.fillStyle = ln.rut; ctx.beginPath(); ctx.rect(a, -1.75, b - a, 0.18); ctx.rect(a, -2.9, b - a, 0.2); ctx.fill();
@@ -15279,8 +16527,169 @@ SCN.estate = function (o) {
   H.study = (x, extra) => Object.assign({ plane: PH, x, y: 0, room: 'house:study', zone: 'house:study', behind: true }, extra || {});
   H.inHut = (extra) => Object.assign({ plane: PD, x: hut.x + 1.7, y: 0, room: 'gatehut', zone: 'gatehut', behind: true }, extra || {});
   H.onBalcony = (x, extra) => Object.assign({ plane: PH, x, y: H.bal.y, room: null, zone: H.bal.zone, behind: false }, extra || {});
+  esDetail(S, H, { houseWall, laneItem, PHl, night, rain, side, trees: [-96, -78, -61, -47, -30, -14, 3, 19, 37, 52, 70, 88].map((x, i) => x + (i % 3) * 1.5) });
   return H;
 };
+
+// ---- an estate that is lived in ------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): hairline cracks in
+// the render, rising damp, patched plaster and green streaks on the house, lichen and cracks
+// on the walls, harvest nets, poppies and beehives in the olive grove, gravel and ruts on the
+// drive and the lane, lemon trees in pots and a sprinkler in the east garden, and a farm with
+// a cypress avenue on the vineyard hill. Everything lies on the ground, sits on a wall that
+// already hides what is behind it, or stands low at the far end of the garden where nobody
+// goes; nothing is solid or shootable.
+function esDetail(S, H, q) {
+  const B = H.house, PH = H.PH, night = q.night, rain = q.rain, side = q.side;
+  const wins = Object.keys(B.wins).map((k) => B.wins[k]);
+  const onWin = (x, y, m) => wins.some((op) => x > op.x - m && x < op.x + op.w + m && y > op.y - m && y < op.y + op.h + m);
+  // ---- the house front: plaster that has lived through a lot of summers ----
+  K.deco(S, PH, { after: q.houseWall, seed: 5101 }, (D, R) => {
+    const x0 = B.x, x1 = B.x + B.w, top = B.roofY;
+    // rising damp above the plinth: a darker band with a ragged edge, a salt line along its top
+    KW.grime(D, R, x0 + 0.9, x1 - 0.9, 0.46, 0.75, '#8a7a5a', 0.3);
+    for (let x = x0 + 1; x < x1 - 1; x += R.r(0.4, 1.0)) D.rect(x, 0.46 + R.r(0.45, 0.72), R.r(0.3, 0.9), 0.03, '#f4efe2', 0.45);
+    // patches where the plaster has been made good, a shade off the rest
+    for (let i = 0; i < 9; i++) { const w = R.r(0.7, 1.8), h = R.r(0.5, 1.2), x = R.r(x0 + 1, x1 - 1 - w), y = R.r(1.0, top - 1.5 - h); if (onWin(x + w / 2, y + h / 2, 0.6 + w / 2)) continue; D.rect(x, y, w, h, R.chance(0.5) ? '#efe6d0' : '#d8ccb0', 0.7); }
+    // hairline cracks running out from the corners of the windows, the way old plaster goes
+    for (const op of wins) {
+      if (R.chance(0.45)) KW.cracks(D, R, op.x + op.w + 0.05, op.y + op.h + 0.05, R.r(0.5, 1.1), '#8a7c62', { dir: R.r(0.5, 1.1), w: 0.018, a: 0.6 });
+      if (R.chance(0.35)) KW.cracks(D, R, op.x - 0.05, op.y - 0.05, R.r(0.4, 0.9), '#8a7c62', { dir: Math.PI + R.r(0.5, 1.0), w: 0.018, a: 0.6 });
+    }
+    // green and grey streaks where the gutter overflows at each end
+    for (const ex of [x0 + 1.4, x1 - 1.6]) KW.streaks(D, R, ex - 0.5, ex + 0.5, top - 0.35, '#6a7a52', { n: 4, len: [1.2, 3.2], w: [0.1, 0.22], a: 0.25 });
+    // paint coming away from the plinth here and there
+    for (let i = 0; i < 6; i++) KW.peel(D, R, R.r(x0 + 1, x1 - 1), 0.22, R.r(0.3, 0.6), 0.16, '#b2a68a', 0.6);
+  });
+  // the garage and the loggia front: cracks, a stain where the gutter drips, oil on the apron
+  K.deco(S, PH, { seed: 5113 }, (D, R) => {
+    const g = H.garage;
+    for (let i = 0; i < 4; i++) KW.cracks(D, R, R.r(g.x0 + 0.5, g.x1 - 0.5), R.r(3.2, 3.8), R.r(0.4, 0.9), '#8a7c62', { w: 0.018, a: 0.55 });
+    KW.streaks(D, R, g.x0 + 0.2, g.x1 - 0.2, g.h - 0.35, '#7a6a4a', { per: 0.5, len: [0.3, 1.0], w: [0.06, 0.14], a: 0.22 });
+    KW.grime(D, R, g.x0, g.x1, 0, 0.5, '#5a5040', 0.25);
+  });
+  K.deco(S, PH, { seed: 5117 }, (D, R) => {                 // (over the gravel path in front)
+    const g = H.garage;
+    for (let i = 0; i < 2; i++) KW.blob(D, R, g.x0 + 3.8 + i * 6.4, -0.25, 1.1, 0.12, '#3a3630', 0.4, 0.25);
+  });
+
+  // ---- the rear wall and the tower: lichen, and cracks in the old stone ----
+  K.deco(S, H.PRW, { seed: 5121 }, (D, R) => {
+    for (let i = 0; i < 160; i++) D.ell(R.r(-90, 90), R.r(0.2, 2.3), R.r(0.06, 0.16), R.r(0.04, 0.1), R.chance(0.6) ? '#a8ac84' : '#8a9466', 0.6);
+    for (let i = 0; i < 14; i++) KW.cracks(D, R, R.r(-88, 88), R.r(1.4, 2.4), R.r(0.4, 1.0), '#7a6e58', { w: 0.02, a: 0.5 });
+    KW.grime(D, R, -90, 90, 0, 0.45, '#5a5a3e', 0.25);
+  });
+  K.deco(S, H.PB, { seed: 5125 }, (D, R) => {
+    const x0 = 13, x1 = 19;
+    for (let i = 0; i < 30; i++) D.ell(R.r(x0 + 0.2, x1 - 0.2), R.r(0.3, 8.6), R.r(0.05, 0.14), R.r(0.04, 0.09), '#a8ac84', 0.55);
+    KW.streaks(D, R, x0 + 0.2, x1 - 0.2, 8.8, '#6a6a4a', { n: 6, len: [1, 3.5], w: [0.08, 0.2], a: 0.22 });
+    KW.cracks(D, R, x0 + 4.6, 6.2, 1.2, '#7a6e58', { w: 0.02, a: 0.5 });
+  });
+
+  // ---- the front wall and the lane outside it ----
+  const gate = H.gate;
+  K.deco(S, H.PF, { seed: 5131 }, (D, R) => {
+    for (let i = 0; i < 150; i++) { const x = R.r(-110, 110); if (x > gate.x0 - 1.2 && x < gate.x1 + 1.2) continue; D.ell(x, R.r(0.15, 1.8), R.r(0.06, 0.16), R.r(0.04, 0.1), R.chance(0.6) ? '#a8ac84' : '#8a9466', 0.6); }
+    for (let i = 0; i < 16; i++) { const x = R.r(-108, 108); if (x > gate.x0 - 2 && x < gate.x1 + 2) continue; KW.cracks(D, R, x, R.r(1.2, 1.9), R.r(0.4, 1.0), '#7a6e58', { w: 0.02, a: 0.5 }); }
+    for (let x = -110; x < 110; x += R.r(3, 9)) { if (x > gate.x0 - 2 && x < gate.x1 + 2) continue; KW.moss(D, R, x, x + R.r(0.8, 2.4), 0.02, 0.1, night ? '#2a3a26' : '#5a6a3c', 0.85); }
+  });
+  K.deco(S, H.PF, { after: q.laneItem, seed: 5133 }, (D, R) => {
+    // grass down the middle of the lane, potholes holding water, stones thrown out of the ruts
+    for (let x = -110; x < 110; x += R.r(0.4, 1.4)) KC.tuft(D, R, x, -2.35 + R.r(-0.12, 0.12), R.r(0.12, 0.26), night ? '#24301e' : '#7a8a48');
+    for (let i = 0; i < 18; i++) { const x = R.r(-108, 108), y = R.chance(0.5) ? -1.66 : -2.8, rx = R.r(0.4, 1.0); D.ell(x, y, rx, 0.09, night ? '#16161a' : '#7a6c50', 0.7); if (rain || !night) { D.pass = 1; D.ell(x - rx * 0.1, y + 0.01, rx * 0.7, 0.05, rain ? (night ? '#2a3448' : '#9fb0bc') : '#8f8062', 0.8); D.pass = 0; } }
+    D.pass = 2; for (let i = 0; i < 160; i++) D.rect(R.r(-110, 110), -R.r(1.4, 3.1), R.r(0.06, 0.14), 0.05, night ? '#40403a' : '#d8ccae', 0.9); D.pass = 0;
+  });
+
+  // ---- the drive: more gravel, the marks the cars leave ----
+  K.deco(S, H.PD, { ground: true, seed: 5141 }, (D, R) => {
+    const st = night ? '#4a4c52' : '#d2c8b2', st2 = night ? '#26282c' : '#948a74';
+    for (let i = 0; i < 420; i++) D.rect(R.r(-90, 90), -R.r(0.05, 0.95), R.r(0.05, 0.11), 0.04, R.chance(0.5) ? st : st2, 0.95);
+    for (let i = 0; i < 12; i++) KW.blob(D, R, R.r(-88, 88), -R.r(0.2, 0.7), R.r(0.4, 1.2), 0.07, night ? '#1c1d20' : '#7a705c', 0.35, 0.25);
+    for (let i = 0; i < 6; i++) { const x = R.r(-80, 70), l = R.r(5, 14); D.line([x, -0.42, x + l * 0.5, -0.45 + R.r(-0.04, 0.04), x + l, -0.4], 0.05, night ? '#202226' : '#9a8f78', 0.6); }
+  });
+
+  // ---- the olive grove outside the wall: harvest nets under the trees, poppies, beehives ----
+  K.deco(S, H.PT, { ground: true, seed: 5151 }, (D, R) => {
+    const dry = night ? '#20281c' : '#a8a46a', dry2 = night ? '#161c14' : '#8a8a52';
+    for (let i = 0; i < 70; i++) { const rx = R.r(1.5, 5); KW.blob(D, R, R.r(-200, 200), -R.r(0.6, 22), rx, R.r(0.12, 0.3), R.chance(0.5) ? dry : dry2, 0.5, 0.25); }
+    // nets spread under the trees for the picking, green and black, with olives lying on them
+    for (const tx of q.trees) {
+      if (R.chance(0.3)) continue;
+      const c = R.chance(0.5) ? (night ? '#1c2a22' : '#4f7a5a') : (night ? '#141616' : '#3a3e3a'), w = R.r(5, 8), p = [tx - w / 2, -0.12];
+      for (let k = 1; k <= 4; k++) p.push(tx - w / 2 + (w * k) / 4, -0.1 + R.r(-0.04, 0.04));
+      p.push(tx + w / 2 + 0.6, -0.95); for (let k = 3; k >= 1; k--) p.push(tx - w / 2 - 0.4 + ((w + 1) * k) / 4, -0.95 + R.r(-0.06, 0.06)); p.push(tx - w / 2 - 0.4, -0.95);
+      D.poly(p, c, 0.55, 0.5);
+      if (!night) { D.pass = 1; for (let k = 0; k < 20; k++) D.ell(tx + R.r(-w / 2, w / 2), -R.r(0.25, 0.85), 0.05, 0.035, '#3a3a2a', 0.9); D.pass = 0; }
+    }
+    // a pair of crates of picked olives, and a ladder lying in the grass
+    D.pass = 1; KC.crate(D, q.trees[5] + 2.8, -1.6, 0.7, 0.45, '#8a6a45'); KC.crate(D, q.trees[5] + 3.6, -1.65, 0.7, 0.45, '#7a5c3c');
+    D.poly([q.trees[8] - 3, -1.9, q.trees[8] + 0.8, -1.7, q.trees[8] + 0.8, -1.6, q.trees[8] - 3, -1.8], '#8a6a45');
+    // poppies along the terraces, and a few white campion among them
+    if (!night) for (let i = 0; i < 90; i++) {
+      const cx = R.r(-200, 200), cy = -R.r(1, 20), n = R.i(3, 8);
+      D.pass = 1; for (let k = 0; k < n; k++) D.ell(cx + R.gauss() * 0.6, cy + R.gauss() * 0.12, 0.1, 0.08, R.chance(0.8) ? '#d9372b' : '#f1ede2');
+    }
+    // a stone field hut among the olives: rough walls, a pantiled roof, a plank door
+    { const hx = 26, hy = -10.6, w = 4.2, h = 2.4, st = night ? '#2a2c26' : '#b8ad8e', stD = night ? '#1c1e1a' : '#8f8668';
+      D.pass = 2; D.rect(hx, hy, w, h, st); D.poly([hx - 0.4, hy + h, hx + w + 0.4, hy + h, hx + w - 0.3, hy + h + 1.1, hx + 0.3, hy + h + 1.1], night ? '#2a1e1a' : '#a84e34');
+      D.pass = 3; D.rect(hx + 1.6, hy, 0.95, 1.8, night ? '#161412' : '#5a4632'); D.rect(hx + 0.4, hy + 1.2, 0.6, 0.5, night ? '#121210' : '#3a3630');
+      for (let k = 0; k < 18; k++) D.rect(hx + R.r(0.1, w - 0.5), hy + R.r(0.1, h - 0.3), R.r(0.25, 0.5), 0.16, stD, 0.7);
+      for (let k = 1; k < 4; k++) D.rect(hx - 0.3 + k * 0.1, hy + h + k * 0.27, w + 0.6 - k * 0.2, 0.05, night ? '#1e1612' : '#8a3e2a', 0.8);
+      D.pass = 0; }
+    // beehives on one terrace: white boxes on stands, their roofs a little darker
+    for (let k = 0; k < 4; k++) { const hx = -122 + k * 1.4, hy = -6.9; D.pass = 2; D.rect(hx + 0.08, hy, 0.06, 0.25, '#4a3a2c'); D.rect(hx + 0.62, hy, 0.06, 0.25, '#4a3a2c'); D.rect(hx, hy + 0.25, 0.76, 0.5, night ? '#5a5c58' : '#efe8d6'); D.pass = 3; D.rect(hx - 0.05, hy + 0.75, 0.86, 0.1, night ? '#3a3c3a' : '#b8b0a0'); D.rect(hx + 0.2, hy + 0.3, 0.36, 0.04, '#2a2420'); }
+    D.pass = 0;
+  });
+
+  // ---- the east garden: lemon trees in pots, and a sprinkler going round ----
+  const PG = H.PG;
+  K.deco(S, PG, { seed: 5161 }, (D, R) => {
+    for (const px of [63.6, 66.8]) {
+      D.poly([px - 0.38, 0, px + 0.38, 0, px + 0.46, 0.62, px - 0.46, 0.62], '#b5583a'); D.rect(px - 0.5, 0.58, 1.0, 0.1, '#c96a48');
+      D.rect(px - 0.04, 0.68, 0.08, 0.5, '#5a4632');
+      KC.bush(D, R, px, 1.05, 1.2, 0.7, '#3f6a3c');
+      D.pass = 2; for (let k = 0; k < 9; k++) D.ell(px + R.r(-0.5, 0.5), 1.1 + R.r(0.1, 0.6), 0.08, 0.09, '#f1d24a'); D.pass = 0;
+    }
+  });
+  if (!night && !rain) {
+    const sx = 71.5, wc = S.tone('#dfeef6', PG, true);
+    PG.add({ x0: sx - 5, x1: sx + 5, layer: 0, draw(ctx, env) {
+      if (env.s < 3 || 2.4 < env.y0 || -0.3 > env.y1) return;
+      R4(ctx, sx - 0.06, -0.05, 0.12, 0.3, S.tone('#2a2e36', PG));
+      // drops thrown up from the head, each flying its own arc; the head swings slowly side to side,
+      // so the spray fans out one way and then the other
+      const t = env.t, r = Math.max(0.03, env.px * 0.8);
+      ctx.fillStyle = wc; ctx.globalAlpha = 0.8; ctx.beginPath();
+      for (let k = 0; k < 26; k++) {
+        const age = ((t + k / 26) % 1) * 0.95, te = t - age, an = Math.PI / 2 + 0.95 * Math.sin(te * 0.7), v = 4.4 + (k % 3) * 0.3;
+        const x = sx + Math.cos(an) * v * age, y = 0.28 + Math.sin(an) * v * age - 4.9 * age * age; if (y < 0) continue;
+        ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+      }
+      ctx.fill(); ctx.globalAlpha = 1;
+    } });
+  }
+
+  // ---- far off: a farm on the vineyard hill, with a line of cypresses up its track ----
+  const PHl = q.PHl, hA = PHl.heightAt;
+  K.deco(S, PHl, { seed: 5171 }, (D, R) => {
+    for (const fx of [-138, 112]) {
+      const y = hA(fx) - 9;
+      D.rect(fx - 4, y, 8, 4.2, night ? '#3a3a3c' : '#e6dcc4'); D.rect(fx + 1.2, y, 4.5, 3.0, night ? '#323234' : '#d8ccb0');
+      D.rect(fx - 2.45, y + 4.3, 0.5, 1.7, night ? '#2a2a2c' : '#c9bea4'); D.poly([fx - 4.6, y + 4.2, fx + 4.6, y + 4.2, fx, y + 6.2], night ? '#2a1e1a' : '#b5583a'); D.poly([fx + 0.8, y + 3.0, fx + 6.1, y + 3.0, fx + 3.4, y + 4.3], night ? '#2a1e1a' : '#a84e34');
+      D.pass = 1; for (let k = 0; k < 3; k++) D.rect(fx - 3.2 + k * 2.1, y + 1.8, 0.8, 1.0, night ? '#ffd98a' : '#4a4038'); D.rect(fx + 2.4, y, 1.4, 2.0, night ? '#20201e' : '#6a5440'); D.pass = 0;
+      // the track down the hill, lined with cypresses
+      const dir = fx < 0 ? 1 : -1, trk = [fx + dir * 4, y - 0.2], cyp = [];
+      for (let k = 1; k <= 7; k++) { const tx = fx + dir * (4 + k * 6.5), ty = Math.min(hA(tx) - 3, y - 0.2 - k * 1.7); trk.push(tx, ty); cyp.push(tx + dir * 0.9, ty + 0.2); }
+      D.line(trk, 0.7, night ? '#26261e' : '#c9b98a', 0.85);
+      D.pass = 1; for (let k = 0; k < cyp.length; k += 2) { const tx = cyp[k], ty = cyp[k + 1], h = 5.5 + R.r(0, 1.2); D.poly([tx - 0.45, ty, tx - 0.62, ty + h * 0.25, tx - 0.4, ty + h * 0.65, tx, ty + h, tx + 0.4, ty + h * 0.65, tx + 0.62, ty + h * 0.25, tx + 0.45, ty], night ? '#121a14' : '#2d4a32'); } D.pass = 0;
+    }
+  });
+  // smoke from the farms' chimneys, leaning with the wind
+  PHl.add({ x0: -150, x1: 125, layer: 0, draw(ctx, env) {
+    if (env.s < 0.8) return;
+    for (const fx of [-138, 112]) { const y = hA(fx) - 9 + 6.0; if (fx < env.x0 - 20 || fx > env.x1 + 20) continue; ydSmoke(ctx, env, fx - 2.2, y, night ? 'rgb(70,76,90)' : 'rgb(236,232,226)', 4, 9, 0.5, 2.6, 0.06, 0.32, (env.wind || 0) * 3, (Math.abs(fx) * 0.013) % 1); }
+  } });
+}
 
 
 // ===== 07g_scene_bridge.js =====
@@ -17851,8 +19260,85 @@ SCN.ridge = function (o) {
   H.yard = spot(PM, 'yard'); H.back = spot(PB, 'back'); H.rear = spot(PRr, 'rear'); H.front = spot(PF, 'front'); H.road = spot(PA, 'road');
   H.onPad = (x, extra) => Object.assign({ plane: PM, x, y: 0, zone: 'pad', room: null, behind: false }, extra || {});
   H.milOf = (z, y) => ((y - E) / d(z)) * 1000;
+  rgDetail(S, H, { bands: { PRr: band(zRr, zB), PB: band(zB, zc), PM: band(zc, zF), PF: band(zF, zA), PA: 30 }, snowC });
   return H;
 };
+
+// ---- a compound that people live in -----------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco): rocks and dead scrub
+// through the snow, an old fence line and fox tracks on the approach, a snowmobile's loops
+// round the yard, soot on the snow by the generator and the fuel tanks, a tarpaulin over
+// stores against the back bunker, and far off a herdsman's hut with its smoke. Everything
+// lies in the snow, sits against a wall that already hides what is behind it, or stands on
+// the face of a hill below its crest; nothing is solid or shootable.
+function rgDetail(S, H, q) {
+  const L = rgSun(S), snowC = q.snowC, sh = mix(snowC, '#6f86a8', 0.34), dusk = S.pal.dark > 0.3;
+  const rock = '#59636f', rockD = '#3f4852', stalk = '#4a3e34';
+  // rocks and dead scrub through the snow on a strip of ground (band deep), avoiding the strip's top metre
+  const strew = (D, R, band, nR, nS, x0, x1) => {
+    for (let i = 0; i < nR; i++) {
+      const x = R.r(x0, x1), y = -R.r(1.2, band - 0.5), w = R.r(0.6, 2.2), h = w * R.r(0.25, 0.45);
+      D.pass = 0; D.ell(x + L.side * w * 0.4, y - 0.02, w * 0.75, h * 0.25, sh, 0.6);           // its blue shadow
+      D.pass = 1; D.poly([x - w / 2, y, x - w * 0.3, y + h * 0.8, x + w * 0.1, y + h, x + w * 0.45, y + h * 0.6, x + w / 2, y], R.chance(0.5) ? rock : rockD);
+      D.pass = 2; D.poly([x - w * 0.38, y + h * 0.7, x + w * 0.1, y + h * 1.06, x + w * 0.4, y + h * 0.66, x + w * 0.05, y + h * 0.82], '#f4f7fa');   // the snow lying on top
+    }
+    D.pass = 1;
+    for (let i = 0; i < nS; i++) {
+      const x = R.r(x0, x1), y = -R.r(1, band - 0.3), n = R.i(3, 7);
+      for (let k = 0; k < n; k++) { const lx = x + R.r(-0.3, 0.3), h = R.r(0.3, 0.9); D.seg(lx, y, lx + R.r(-0.25, 0.25), y + h, 0.05, stalk, 0.85); }
+    }
+    D.pass = 0;
+  };
+  // ---- the approach: rocks, scrub, an old fence line half buried, a fox's line of prints ----
+  K.deco(S, H.PA, { ground: true, seed: 6101 }, (D, R) => {
+    strew(D, R, q.bands.PA, 46, 36, -130, 130);
+    const fy = -11.5;
+    D.pass = 1; for (let x = -128; x < 128; x += R.r(3.2, 4.2)) { if (R.chance(0.12)) continue; const lean = R.r(-0.12, 0.12), h = R.r(0.7, 1.1); D.seg(x, fy, x + lean, fy + h, 0.14, '#5a4634'); D.pass = 2; D.rect(x - 0.1 + lean, fy + h, 0.2, 0.08, '#f4f7fa'); D.ell(x, fy, 0.35, 0.08, '#f4f7fa'); D.pass = 1; }
+    const wire = []; for (let x = -128; x < 128; x += 2) wire.push(x, fy + 0.75 + Math.sin(x * 0.7) * 0.06 - Math.abs(Math.sin(x * 0.42)) * 0.12); D.line(wire, 0.02, '#3a3f47', 0.7);
+    // a fox crossing: small prints in a wandering single line
+    let fx = -120, fyy = -20; D.pass = 2;
+    while (fx < 120) { fx += R.r(0.55, 0.75); fyy = clamp(fyy + R.r(-0.35, 0.35), -27, -3); D.ell(fx, fyy, 0.06, 0.03, sh, 0.85); }
+    D.pass = 0;
+  });
+  // ---- the front row and the yard: rocks and scrub at the edges, a snowmobile's loops ----
+  K.deco(S, H.PF, { ground: true, seed: 6111 }, (D, R) => { strew(D, R, q.bands.PF, 22, 18, -120, 120); });
+  K.deco(S, H.PM, { ground: true, seed: 6121 }, (D, R) => {
+    const b = q.bands.PM;
+    for (const off of [0, -0.14]) { // two runner lines, swinging out round the yard and back
+      const p = []; for (let k = 0; k <= 60; k++) { const u = k / 60, x = lerp(-70, 30, u) + Math.sin(u * 7) * 8, y = -b * (0.35 + 0.25 * Math.sin(u * 5 + 1)) + off; p.push(x, y); }
+      D.line(p, 0.09, sh, 0.7);
+    }
+    strew(D, R, b, 10, 10, -110, -60); strew(D, R, b, 10, 10, 80, 120);
+  });
+  // ---- the back row: soot on the snow by the generator and the tanks ----
+  K.deco(S, H.PB, { ground: true, seed: 6131 }, (D, R) => {
+    for (let i = 0; i < 14; i++) KW.blob(D, R, -30 + R.r(-3, 4), -R.r(0.2, 1.6), R.r(0.6, 1.8), R.r(0.08, 0.2), '#3a3e46', R.r(0.2, 0.4), 0.3);
+    for (let i = 0; i < 10; i++) KW.blob(D, R, R.r(40, 60), -R.r(0.2, 1.4), R.r(0.6, 1.6), R.r(0.08, 0.18), '#2a2e36', R.r(0.25, 0.45), 0.3);
+    strew(D, R, q.bands.PB, 8, 10, -110, -40); strew(D, R, q.bands.PB, 8, 10, 66, 120);
+  });
+  // ---- stores under a tarpaulin against the back bunker, and spare tyres ----
+  const b1 = H.b1;
+  K.deco(S, H.PB, { seed: 6141 }, (D, R) => {
+    const x0 = b1.x + b1.w - 4.4, w = 2.6, h = 1.1;
+    D.poly([x0, 0, x0 + w, 0, x0 + w - 0.1, h * 0.8, x0 + w * 0.7, h, x0 + w * 0.3, h * 0.96, x0 + 0.08, h * 0.75], '#4f5a3e');
+    D.pass = 1; D.seg(x0 + 0.2, 0.05, x0 + w * 0.4, h * 0.95, 0.03, '#2a2e2a', 0.8); D.seg(x0 + w - 0.2, 0.05, x0 + w * 0.6, h * 0.98, 0.03, '#2a2e2a', 0.8); D.rect(x0 + 0.05, h * 0.3, w - 0.1, 0.03, '#2a2e2a', 0.6);
+    D.pass = 2; D.poly([x0 + 0.1, h * 0.76, x0 + w * 0.3, h * 1.04, x0 + w * 0.7, h * 1.08, x0 + w - 0.1, h * 0.82, x0 + w * 0.5, h * 0.92], '#f4f7fa');
+    D.pass = 0; KC.tyres(D, x0 + w + 0.9, 0, 3, 0.4); D.pass = 3; D.ell(x0 + w + 0.9, 3 * 0.4 * 0.62 + 0.03, 0.42, 0.07, '#f4f7fa'); D.pass = 0;
+  });
+  // ---- far off: a herdsman's hut on the hill behind the compound, its stove smoking ----
+  const PV = H.PV, hA = PV.heightAt, huts = [-118, 126];
+  K.deco(S, PV, { seed: 6151 }, (D) => {
+    for (const hx of huts) {
+      const y = hA(hx) - 4.2;     // the hut sits on the face of the hill, its roof below the crest
+      D.rect(hx - 2, y, 4, 2.2, '#5a4a3c'); D.poly([hx - 2.5, y + 2.2, hx + 2.5, y + 2.2, hx, y + 3.4], '#f4f7fa'); D.rect(hx + 0.9, y + 2.4, 0.3, 0.8, '#2a2e36');
+      D.pass = 1; D.rect(hx - 1.2, y + 0.9, 0.7, 0.6, dusk ? '#ffd98a' : '#2a2420'); D.rect(hx + 0.2, y, 0.8, 1.6, '#3a2e24'); D.pass = 0;
+    }
+  });
+  PV.add({ x0: -130, x1: 140, layer: 0, draw(ctx, env) {
+    if (env.s < 0.7) return;
+    for (const hx of huts) { if (hx < env.x0 - 15 || hx > env.x1 + 15) continue; rgSmoke(ctx, env, hx + 1.05, hA(hx) - 4.2 + 3.3, { n: 5, rise: 5, speed: 0.22, r0: 0.25, r1: 1.4, a: 0.35, col: S.tone('#9aa3ad', PV), lean: 1.2, ph: hx * 0.07 }); }
+  } });
+}
 
 
 // ===== 09_save.js =====
@@ -26709,6 +28195,9 @@ function passersBy(H, o) {
     if (o.plane) a.plane = o.plane;
   } };
 }
+// Where the door of a seat is, along the road, for a vehicle of this kind standing at x facing
+// dir: walk people there before ['veh', ...] (it walks them the rest of the way if they are not).
+function doorX(kind, x, dir, seat) { const c = CARS[kind]; return x + dir * c.seats[seat || 0] * c.len; }
 // Radio line from a character at a given time.
 function say(at, who, text, dur) { return { at, do(sim) { sim.msg(who, text, dur); } }; }
 function hint(at, text, dur) { return { at, do(sim) { sim.msg('hint', typeof text === 'function' ? text() : text, dur || 10); } }; }
@@ -26994,7 +28483,8 @@ mission({
   triggers(H) { return [
     hint(1.5, 'A car is coming from the left. It will stop just past the laundry. The man you want is in the back seat.'),
     onEv('leaving', (sim) => sim.msg('Marlow', 'He is moving. Lead him or let him go.')),
-    { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead) return; a.inVeh = null; a.hidden = false; sim.place(a, { plane: H.PS, x: sim.byId.car.x - 1.5, y: 0, zone: 'street', room: null, behind: false }); a.anim = a.idle = 'stand'; a.state = 'flee'; a.routine = [['run', -50], ['gone']]; a.pc = 0; sim.raiseAlarm('target', 0.3); } },
+    // a flat tyre: he gets out of his door on this side and runs for it
+    { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead || !a.inVeh) return; sim.setRoutine(a, [['run', -50], ['gone']]); sim.getOut(a); a.state = 'flee'; sim.raiseAlarm('target', 0.3); } },
   ]; },
   challenge: { id: 'moving', text: 'Hit him while the car is moving', test: (sim) => sim.kills.some((k) => k.id === 't' && k.moving) },
   solve: [['until', (s) => s.did('parked')], ['wait', 0.7], ['shoot', 't', 'head']],
@@ -27064,6 +28554,9 @@ mission({
   reward: { cr: 1000, xp: 240 },
 });
 
+// Dutch's car pulls up in the near lane at C1M7_CAR. C1M7_NOSE is just clear of its nose, where
+// he and his guard change between the road and the pavement.
+const C1M7_CAR = -8.1, C1M7_NOSE = -5.0;
 mission({
   id: 'c1m7', ch: 1, title: 'Dutch', range: 168,
   objective: 'Dutch Pell: the big bald man with the red scarf. Do not touch the detective.',
@@ -27087,12 +28580,16 @@ mission({
     return H;
   },
   cast(H) {
+    // They get out on the road side, walk round the nose of the car and step up onto the pavement
+    // (plane PS, seven metres further back) just past it, and come back the same way.
+    const road = H.street(0, { plane: H.PR }), door = (i) => doorX('suv', C1M7_CAR, 1, i);
+    const back = (seat) => [['rise', road], ['walk', C1M7_NOSE], ['step', road], ['walk', door(seat)]];
     return [
       { id: 'drv', role: 'guard', look: { hat: 'cap' } },
       { id: 'dutch', role: 'target', look: { build: 'big', beard: '#9a9fa6', coat: '#15171b', long: true, scarf: COL.red, h: 1.08 },
-        routine: [['walk', 2.2], ['wait', 11, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -9.5], ['emit', 'dutch_in'], ['veh', 'suv', 1]], escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
+        routine: [['walk', C1M7_NOSE], ['step', H.street(0)], ['walk', 2.2], ['wait', 11.25, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -2]].concat(back(1), [['emit', 'dutch_in'], ['veh', 'suv', 1]]), escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
       { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' },
-        routine: [['walk', -0.8], ['wait', 12, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -11.5], ['veh', 'suv', 2]] },
+        routine: [['walk', C1M7_NOSE], ['step', H.street(0)], ['walk', -0.8], ['wait', 13.1, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -2]].concat(back(2), [['veh', 'suv', 2]]) },
       Object.assign(H.street(3.8), { id: 'sgt', role: 'civ', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, failText: 'You shot a police sergeant. Every officer in Port Calder is now looking for you.',
         routine: [['waitFor', 'arrived'], ['wait', 21.5, 'talk', -1], ['walk', -47], ['gone']] }),
       Object.assign(H.street(27.5), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#39404a' }, routine: [['wait', 999, 'arms', -1]] }),
@@ -27104,7 +28601,7 @@ mission({
     H._train = t;
     return [
       { id: 'suv', kind: 'suv', plane: H.PR, x: -80, y: 0, dir: 1, col: '#0e0f12', seats: ['drv', 'dutch', 'g1'],
-        routine: [['wait', 5], ['drive', -12, 9], ['emit', 'arrived'], ['wait', 1.2], ['out', 'dutch', 3, 'street', H.PS, 0], ['out', 'g1', 1, 'street', H.PS, 0], ['waitFor', 'dutch_in'], ['wait', 1.6], ['drive', 95, 11], ['gone']] },
+        routine: [['wait', 4.57], ['drive', C1M7_CAR, 9], ['emit', 'arrived'], ['wait', 0.77], ['out', 'dutch'], ['out', 'g1'], ['waitFor', 'dutch_in'], ['wait', 1.6], ['drive', 95, 11], ['gone']] },
       { id: 'vcar', kind: 'sedan', plane: H.PR, x: 35, y: 0, dir: -1, col: '#3a3f49', seats: ['varga'], routine: [] },
       t.veh,
     ];
@@ -27624,13 +29121,11 @@ function c3Door(H, ids, near) {
   K.swingDoor(H.S, B.P, { H, x: dx - 1.05, y: 0.14, w: 2.1, h: 2.41, hinge: 0, col: '#3a2a20', open: (sim) => K.doorBusy(sim, ids, dx, near || 1.6) });
 }
 
-// Take someone out of a vehicle and stand them on the road (used when the
-// convoy is stopped).
-function c3Out(sim, H, id, x) {
+// Take someone out of a vehicle (used when the convoy is stopped): they step out of their
+// door onto the road, on this side, and then go about `routine`.
+function c3Out(sim, H, id, routine) {
   const a = sim.byId[id]; if (!a || a.dead || a.gone || !a.inVeh) return null;
-  const v = a.inVeh; if (v.seats[a.seat] === id) v.seats[a.seat] = null;
-  a.inVeh = null; a.hidden = false; a.anim = a.idle = 'stand'; a.state = 'calm'; a.susp = 0;
-  sim.place(a, H.road(x));
+  a.susp = 0; sim.setRoutine(a, routine); sim.getOut(a, H.road(0));
   return a;
 }
 
@@ -27823,16 +29318,14 @@ function c3Halt(sim, H, why) {
   const crew = (front.seats || []).filter((id) => id && sim.alive(id) && id !== 't');
   sim.after(2.4, () => {
     if (sim.alarmT !== null) return;
-    crew.forEach((id, i) => { const seat = sim.byId[id].seat, a = c3Out(sim, H, id, front.x + 1.2 - i * 1.6); if (!a) return;
-      sim.setRoutine(a, [['walk', spot + i * 1.3], ['wait', 21, i ? 'work' : 'kneel', -1], ['walk', front.x + 1.2 - i * 1.6], ['veh', front.id, seat]]); });
+    crew.forEach((id, i) => { const seat = sim.byId[id].seat; c3Out(sim, H, id, [['walk', spot + i * 1.3], ['wait', 21, i ? 'work' : 'kneel', -1], ['veh', front.id, seat]]); });
   });
   // the banker gets out of his own car to see what the delay is
   const tv = sim.byId.rear;
   if (tv.gone || tv.wrecked || (why === 'logs' && tv.x < lx - 4)) return;
-  sim.after(5.2, () => {
+  sim.after(4.7, () => {
     if (sim.alarmT !== null) return;
-    const a = c3Out(sim, H, 't', tv.x + 0.4); if (!a) return;
-    sim.setRoutine(a, [['walk', tv.x - tv.def.len / 2 - 2.3], ['wait', 15, 'phone', -1], ['walk', tv.x + 0.4], ['veh', 'rear', 1], ['emit', 'c3back']]);
+    c3Out(sim, H, 't', [['walk', tv.x - tv.def.len / 2 - 2.3], ['wait', 15, 'phone', -1], ['veh', 'rear', 1], ['emit', 'c3back']]);
   });
   sim.after(31, () => { if (sim.alarmT === null) { if (H.logs) H.logs.logs.cleared = true; sim.emit('c3go'); } });
 }
@@ -28108,28 +29601,29 @@ mission({
   },
   start(sim, H) { H.sim = sim; },
   cast(H) {
-    const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true });
+    const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true }), cabin = (seat) => doorX('chopper', H.pad.x, -1, seat);
     return [
       Object.assign(at(), { id: 'valet', role: 'civ', speed: 1.1, look: { hat: 'cap', hatCol: '#22252b', coat: '#3f8f4f', bag: 'duffel', bagCol: '#7b5a36' }, failText: 'That was the valet. Green coat, yes. White hair and a cane, no.',
         routine: [['wait', 3], ['show'], ['walk', 42.5], ['look', { bag: null }], ['wait', 999, 'work', 1]] }),
       Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['wait', 5], ['show'], ['walk', 5], ['wait', 0.6, 'guard', -1], ['waitFor', 'aug_go1'], ['walk', 39], ['wait', 9, 'guard', 1], ['wait', 999, 'guard', -1]] }),
       Object.assign(at(), { id: 'august', role: 'target', speed: 0.8, look: { hair: 'white', coat: '#3f8f4f', long: true, bag: 'cane', h: 0.97 },
-        routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]],
-        flee: [['run', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
+        routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', cabin(1)], ['emit', 'boarded'], ['veh', 'heli', 1]],
+        flee: [['run', cabin(1)], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
       Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 10.4], ['show'], ['walk', -7.6], ['wait', 999, 'guard', 1]] }),
       Object.assign(H.yard(43), { id: 'pilot', role: 'civ', face: 1, anim: 'work', look: { hat: 'helmet', hatCol: '#ece8dc', vest: COL.orange }, flee: [['wait', 999, 'cower']], failText: 'You shot the pilot. He flies whoever pays. The contract is void.',
-        routine: [['wait', 8.5, 'work', 1], ['veh', 'heli', 0]] }),
+        routine: [['wait', 5.9, 'work', 1], ['walk', cabin(0)], ['veh', 'heli', 0]] }),
       Object.assign(H.road(H.gate.x + 2.6, { zone: 'gate' }), { id: 'gg', role: 'guard', face: -1, anim: 'arms', look: { hat: 'peaked', hatCol: '#27365a', coat: '#39404a' }, routine: [['wait', 999, 'arms', -1]] }),
+      // she gets out of her car on this side and walks round its nose to stand at the gate
       { id: 'varga', role: 'vip', eyes: 1.6, look: { hair: 'bun', hairCol: '#2a2019', glasses: true, coat: '#6f5f4c', long: true }, failText: 'You shot Detective Varga. The Ledger has cut you loose.',
-        routine: [['wait', 1.5, 'stand', 1], ['wait', 999, 'look', 1]] },
+        routine: [['walk', H.gate.x - 1.1], ['wait', 999, 'look', 1]] },
     ];
   },
   vehicles(H) {
     return [
       { id: 'heli', kind: 'chopper', plane: H.PD, x: H.pad.x, y: 0, dir: -1, col: '#e4e0d4', seats: [null, null], yFn: () => H.lift || 0, routine: [['waitFor', 'boarded'], ['wait', 3.2], ['emit', 'liftoff'], ['wait', 4.2], ['gone']] },
-      { id: 'vcar', kind: 'sedan', plane: H.PR, x: -128, y: H.roadY, dir: 1, col: '#3a3f49', seats: ['varga'], routine: [['wait', 6], ['drive', H.gate.x - 4.6, 7], ['wait', 1.4], ['out', 'varga', 3.5, 'gate', H.PR, H.roadY], ['emit', 'varga_here']] },
+      { id: 'vcar', kind: 'sedan', plane: H.PR, x: -128, y: H.roadY, dir: 1, col: '#3a3f49', seats: ['varga'], routine: [['wait', 6], ['drive', H.gate.x - 4.6, 7], ['wait', 1.4], ['out', 'varga', H.road(0, { zone: 'gate' })], ['emit', 'varga_here']] },
     ];
   },
   tick(sim, H, dt) {
@@ -28879,6 +30373,7 @@ const CH5_FLAGS = [{}, { sparedReyes: true }, { savedBrandt: true }, { sparedRey
 const POLICE = { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' };
 const POLICE_FAIL = 'You shot a police officer. Detective Varga will never stop looking for you now.';
 
+const C5M1_CAR = 15.51; // where the fixer's car stops: his door is at 16
 mission({
   id: 'c5m1', ch: 5, title: 'Dead Drop', range: 450,
   objective: 'The fixer in the pale coat. After the clerk has gone, and with nobody the wiser.',
@@ -28921,7 +30416,7 @@ mission({
     const c = [
       { id: 'drv', role: 'guard', look: { hat: 'cap', hatCol: '#1d2026' } },
       { id: 'fixer', role: 'target', look: { coat: '#e3dcc6', long: true, hat: 'cap', hatCol: '#8a8f96', build: 'big' }, escapeText: 'The fixer drove out of the yard with the papers on the seat beside him.',
-        routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', 16.2], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
+        routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', doorX('suv', C5M1_CAR, -1, 1)], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
       Object.assign(H.strip(3.2), { id: 'clerk', role: 'civ', face: 1, look: { build: 'thin', glasses: true, coat: COL.brown, hair: 'short', hairCol: '#3a2a20', bag: 'case', bagCol: '#7b5a36' }, failText: 'You shot the clerk. He was the only one who knew where the copies are.',
         routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: null }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
       Object.assign(H.inBox(-1.5), { id: 'sigman', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
@@ -28929,17 +30424,18 @@ mission({
       Object.assign(H.strip(-33), { id: 'w2', role: 'civ', face: -1, anim: 'work', look: Object.assign({ build: 'big' }, yardman), routine: [['wait', 999, 'work', -1]] }),
     ];
     if (!help) {
-      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] });
+      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['walk', 22], ['wait', 999, 'guard', 1]] });
       c.push(Object.assign(H.siding(48), { id: 'cop', role: 'vip', look: POLICE, failText: POLICE_FAIL, routine: pace(38, 52, 5, 4, 'stand') }));
     }
     return c;
   },
   vehicles(H, f) {
-    const out = [['out', 'fixer', -2.6, 'meet', H.PM, 0]];
-    if (!vargaHelps(f)) out.push(['out', 'bg', 3.4, 'meet', H.PM, 0]);
+    // they get out on this side: the fixer walks off to the meeting, his minder round the back of the car
+    const out = [['out', 'fixer', H.strip(20)]];
+    if (!vargaHelps(f)) out.push(['out', 'bg', H.strip(20)]);
     return [
       { id: 'car', kind: 'suv', plane: H.PM, x: 88, y: 0, dir: -1, col: '#101216', seats: vargaHelps(f) ? ['drv', 'fixer'] : ['drv', 'fixer', 'bg'],
-        routine: [['wait', 3], ['drive', 18.6, 9], ['emit', 'arrived'], ['wait', 0.8]].concat(out, [['waitFor', 'fixer_in'], ['wait', 1.4], ['drive', 130, 10], ['gone']]) },
+        routine: [['wait', 2.66], ['drive', C5M1_CAR, 9], ['emit', 'arrived'], ['wait', 0.35]].concat(out, [['waitFor', 'fixer_in'], ['wait', 1.4], ['drive', 130, 10], ['gone']]) },
       H.n1.veh, H.f1.veh, H.n2.veh,
     ];
   },
@@ -29185,7 +30681,7 @@ mission({
     'You need a rifle that reaches 700 m, such as the Orlov SVK. The prisoner sits behind the barred window of the GREY van, and the traffic constable and the man on the far kerb are innocent.',
     'The freight train below covers your shots from about 8 seconds in. The convoy drives in from the left and stops at the toll about 24 seconds in.',
     'Within 5 seconds of that stop, shoot the front (right-hand) tyre of the grey van. A flat keeps it on the bridge.',
-    'The escorts get out and walk to the back of the van. Shoot each one as soon as he stands still there (about 27 to 34 seconds in), before his countdown ends.',
+    'The escorts get out and walk to the back of the van. Shoot each one as soon as he stands still there (about 29 to 34 seconds in), before his countdown ends.',
     'HOLD reads about 6.8 up (almost 5 m) and 1.9 left (about 1.4 m). On the Orlov\'s scope, put the V-shaped mark labelled 7 on the target, then shift your aim left by about 2 of the small side marks.',
     'The wind blows left to right and the bullet takes over a second to land, so only shoot men who are standing still. You have spare rounds: if you miss, fire again at once.',
   ],
@@ -29235,19 +30731,22 @@ mission({
     const halt = (sim) => { ['lead', 'tail'].forEach((id) => { const v = sim.byId[id]; if (!v || v.gone || v.flatTire) return; v.routine = [['brake']]; v.pc = 0; v.goal = null; v.wait = 0; v.waitFor = null; }); };
     const dismount = (sim) => {
       const vx = sim.byId.van.x;
-      const out = (id, veh, dx) => { const a = sim.byId[id], v = sim.byId[veh]; if (!a || a.dead || !v || v.gone || a.inVeh !== v) return null; a.inVeh = null; a.hidden = false; v.seats[a.seat] = null; sim.place(a, H.deck(v.x + dx)); a.anim = a.idle = 'stand'; a.state = 'alert'; return a; };
-      const g1 = out('g1', 'lead', -3.4), g3 = out('g3', 'tail', 3.4);
-      if (g1) sim.setRoutine(g1, [['speed', 1.2], ['walk', vx - 4.4], ['wait', 0.6, 'aimrifle', 1], ['threat', 'pris', 8]], true);
-      if (g3) sim.setRoutine(g3, [['walk', vx - 6.0], ['wait', 9, 'guard', 1], ['threat', 'pris', 8]], true);
+      // each steps out of his door onto the kerb on this side and walks briskly to the van's back doors
+      const out = (id, veh, routine) => { const a = sim.byId[id], v = sim.byId[veh]; if (!a || a.dead || !v || v.gone || a.inVeh !== v) return null; sim.setRoutine(a, routine, true); a.state = 'alert'; sim.getOut(a, H.deck(0)); return a; };
+      const g1 = out('g1', 'lead', [['speed', 1.45], ['walk', vx - 4.4], ['wait', 0.6, 'aimrifle', 1], ['threat', 'pris', 8]]);
+      const g3 = out('g3', 'tail', [['speed', 1.2], ['walk', vx - 6.0], ['wait', 6.93, 'guard', 1], ['threat', 'pris', 8]]);
       if (g1 || g3) sim.msg('Pip', 'They are out and heading for the back doors. Each one who gets there is a countdown.');
     };
     const t = [H.frt.trig, standFast(['g1', 'g3']),
       { at: 0, do(sim) { H.vanRef.v = sim.byId.van; } },
       hint(1.5, 'The convoy comes from the left and stops at the toll on the right. Wait for the freight train: its noise is your cover. Then flatten a tyre on the grey van.', 11),
       onEv('at_toll', (sim) => { if (!sim.byId.van.flatTire) { H.barrier.up = true; sim.emit('barrier_up'); sim.msg('Pip', 'The barrier is up. They are moving.'); } }, 5.5),
-      onEv('flat:van', halt), onEv('crash:van', halt), onEv('stopped:van', dismount, 1.0),
+      onEv('flat:van', halt), onEv('crash:van', halt), onEv('stopped:van', dismount, 0.3),
       onEv('gone:van', (sim) => sim.fail('escaped', 'The van reached the far bank with him still inside it.', 0.6)),
-      { when: (sim) => !!sim.winAt, do(sim) { const p = sim.byId.pris, v = sim.byId.van; if (p.dead) return; p.inVeh = null; p.hidden = false; v.seats[1] = null; sim.place(p, H.deck(v.x - 4.6)); p.anim = p.idle = 'stand'; sim.setRoutine(p, [['wait', 0.8, 'hands', -1], ['run', v.x - 70], ['gone']]);
+      // he climbs through to the back doors (out of sight behind the bars), jumps down and runs for it
+      { when: (sim) => !!sim.winAt, do(sim) { const p = sim.byId.pris, v = sim.byId.van; if (p.dead || p.inVeh !== v) return;
+        sim.setRoutine(p, [['wait', 0.4], ['call', (s, a) => s.ease(a, 0.7, 0, { time: 0.3 })], ['show'], ['wait', 0.8, 'hands', -1], ['step', H.deck(0)], ['run', v.x - 70], ['gone']]);
+        sim.getOut(p, null, { x: v.x - v.dir * (v.def.len / 2 + 0.35), y: v.y }); p.hidden = true;
         sim.msg(vargaHelps(f) ? 'Varga' : 'Pip', vargaHelps(f) ? 'I see him. He is running to my car. That was well done, whoever you are today.' : 'He is out and running. I have the van waiting at the bank. Come home.'); } },
     ];
     if (vargaHelps(f)) t.push(say(4, 'Varga', 'Varga. I pulled their rear car over at the junction. I am half a minute behind the van. Stop it on the bridge.'));
@@ -29324,26 +30823,32 @@ mission({
   },
   start(sim, H) { H.sim = sim; },
   cast(H, f) {
-    const door = H.lawn(23.75), inDoor = H.study(23.75);
+    // Her study (plane PH), the terrace (PG) and the drive (PD) are each about 15 m nearer than
+    // the last. She goes between them at the study door and just left of her car, with a 'step'
+    // or a 'rise' (src/05_sim.js), so on screen she walks down out of the door, down off the
+    // terrace and round the back of the car to its door, and the same way back.
+    const door = H.lawn(23.75), inDoor = H.study(23.75), off = H.lawn(29), drive = H.drive(29), carDoor = doorX('sedan', 34, 1, 0);
     const atRadio = (sim, a) => {
       if (sim.radioDown) { sim.setRoutine(a, [['wait', 999, 'sit', 1]], true); return; }
       sim.msg('Pip', 'She is on the radio, calling for a car. Kill it now or she is gone.');
       sim.setRoutine(a, [['wait', 7, 'phone', -1], ['call', (s) => { if (!s.radioDown && !s.winAt) s.fail('escaped', 'Marlow got through on the radio. Aurel\'s people lifted her off the terrace within the hour.', 1.0); }], ['wait', 999, 'sit', 1]], true);
     };
-    const toRadio = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['to', inDoor], [mv, 19.4], ['call', atRadio]]; };
+    const toRadio = (run) => { const mv = run ? 'run' : 'walk'; return [['rise', inDoor], [mv, 23.75], ['step', inDoor], [mv, 19.4], ['call', atRadio]]; };
+    // from the car's door back up onto the terrace (clear of the car before she climbs)
+    const fromCar = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 31.2], ['rise', off], [mv, 29], ['step', off]].concat(toRadio(run)); };
     const atCar = (run) => (sim, a) => {
       const v = sim.byId.mcar;
       if (!v.flatTire) { sim.setRoutine(a, [['emit', 'marlow_in'], ['veh', 'mcar', 0]], true); return; }
       sim.bubble(a, '!', 2);
-      sim.setRoutine(a, [['wait', 2.2, 'kneel', 1], ['to', H.lawn(33.3)]].concat(toRadio(run)), true);
+      sim.setRoutine(a, [['wait', 2.2, 'kneel', 1]].concat(fromCar(run)), true);
     };
-    const leave = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['to', door], [mv, 33.3], ['to', H.drive(33.3)], ['call', atCar(run)]]; };
-    H.toRadio = toRadio;
+    const leave = (run) => { const mv = run ? 'run' : 'walk'; return [[mv, 23.75], ['step', door], [mv, 29], ['step', drive, 2.6], [mv, carDoor], ['call', atCar(run)]]; };
+    H.fromCar = fromCar;
     let loops = 0;
     const c = [
       Object.assign(H.study(19.4), { id: 'marlow', role: 'target', face: -1, anim: 'work', look: { coat: '#7c838c', long: true, hair: 'bun', hairCol: '#d3d7dc', glasses: true }, flee: leave(true),
         // (the files go into the fire as she reaches it; the flare is drawn from H.burnT)
-        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
+        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['step', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['rise', inDoor], ['walk', 23.75], ['step', inDoor], ['walk', 19.4],
           ['call', (sim, a) => { if (++loops >= 3) { sim.msg('Pip', 'That is the last of the files. She has her case. She is going to the car.'); sim.setRoutine(a, [['look', { bag: 'case' }], ['wait', 1.5, 'stand', 1]].concat(leave(false))); } }], ['loop']] }),
       Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' }, routine: pace(-6, 16, 4, 4, 'guard') }),
       // the housekeeper, washing up in the kitchen. She has never heard of the Ledger.
@@ -29363,9 +30868,9 @@ mission({
       hint(1.5, 'This one is your choice. Shoot Marlow, or leave her stranded: flatten a tyre on the pale car and break her radio (the set on her desk, or the dish on the tower). Fire inside the thunder.', 12),
       onEv('gone:mcar', (sim) => sim.fail('escaped', 'Marlow drove out of the gate with her case on the seat beside her. Nobody will find her now.', 0.6)),
       // if the tyre goes while she is already in the car, she gets out and tries the radio
-      { when: (sim) => { const v = sim.byId.mcar, a = sim.byId.marlow; return !!v.flatTire && a.inVeh === v && v.v < 0.2 && !a.dead; }, do(sim) { const v = sim.byId.mcar, a = sim.byId.marlow; a.inVeh = null; a.hidden = false; v.seats[0] = null; sim.place(a, H.drive(v.x - 1.4)); a.anim = a.idle = 'stand'; sim.setRoutine(a, [['wait', 1.2, 'stand', 1], ['walk', 33.3], ['to', H.lawn(33.3)]].concat(H.toRadio(false)), true); } },
+      { when: (sim) => { const v = sim.byId.mcar, a = sim.byId.marlow; return !!v.flatTire && a.inVeh === v && v.v < 0.2 && !a.dead; }, do(sim) { const a = sim.byId.marlow; sim.setRoutine(a, [['wait', 0.75, 'stand', 1]].concat(H.fromCar(false)), true); sim.getOut(a, H.drive(0)); } },
       onEv('flat:mcar', (sim) => { const g = sim.byId.g2; if (g && !g.dead && g.state === 'calm') { sim.bubble(g, '?', 2); sim.setRoutine(g, [['wait', 1], ['walk', 36.7], ['wait', 5, 'kneel', -1], ['call', (s) => s.raiseAlarm('guard', 0)]]); } }),
-      { when: (sim) => !!sim.winAt && !sim.byId.marlow.dead, do(sim) { const a = sim.byId.marlow; if (!a.inVeh && a.plane !== H.PD) sim.setRoutine(a, a.behind ? [['walk', 23.75], ['to', H.lawn(23.75)], ['walk', 25.2], ['wait', 99, 'sit', 1]] : [['walk', 25.2], ['wait', 99, 'sit', 1]], true);
+      { when: (sim) => !!sim.winAt && !sim.byId.marlow.dead, do(sim) { const a = sim.byId.marlow; if (!a.inVeh && a.plane !== H.PD) sim.setRoutine(a, a.behind ? [['walk', 23.75], ['step', H.lawn(23.75)], ['walk', 25.2], ['wait', 99, 'sit', 1]] : [['walk', 25.2], ['wait', 99, 'sit', 1]], true);
         sim.msg(vargaHelps(f) ? 'Varga' : 'Pip', vargaHelps(f) ? 'No car and no radio. She is not going anywhere. I am on the hill road now. Thank you.' : 'No car, no radio. I have just told the police where to find her. Varga can work out the rest.'); } },
     ];
     if (vargaHelps(f)) t.push(say(3, 'Varga', 'Varga. If she is breathing when I get there, I can put all of it in front of a judge. Her car and her radio. But it is your choice, Kestrel, not mine.'));
