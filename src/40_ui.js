@@ -26,6 +26,7 @@ const ICON = {
   cross: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
   box: '<svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v9l-9 5-9-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 8l9 5 9-5M12 13v9" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 10-3-3M3 14h15a3 3 0 11-3 3M3 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  room: '<svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 9.5h12M6 15.5h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="8.5" cy="17.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="17.6" r="1.1" fill="currentColor"/></svg>',
   guide: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 17c5-1.2 1.5-7.8 7-9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.4 2.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
@@ -337,7 +338,7 @@ UI.shell = function (head, body, cls) {
   const tab = (id, icon, label, badge) => `<button class="tabb ${UI.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${ICON[icon]}<span>${label}</span>${badge ? '<em>' + badge + '</em>' : ''}</button>`;
   return `<div class="scr hub ${cls || ''}">
     <nav class="tabs">
-      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
+      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
     </nav>
     <div class="hubmain">
       <div class="top">
@@ -351,6 +352,7 @@ UI.shell = function (head, body, cls) {
 UI.shellHandlers = function (h) {
   return Object.assign({
     tab(ds) { UI.tab = ds.tab; UI.hub(); },
+    gunroom() { UI.gallery(); }, // the gun room (43_ui_gallery.js), from the rail or any screen in the shell
     rankinfo() { UI.rankInfo(); },
   }, h || {});
 };

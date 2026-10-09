@@ -503,6 +503,27 @@ textarea { display: block; width: 100%; height: 84px; margin: 0 0 8px; border-ra
 .gnote { margin-bottom: 9px; padding: 10px 13px; border-radius: 12px; border: 1px solid rgba(111, 182, 255, .55); background: rgba(111, 182, 255, .1); }
 .gnote b { display: block; font: 800 13.5px var(--head); letter-spacing: .1em; text-transform: uppercase; color: #cfe6ff; } .gnote span { display: block; font-size: 12.5px; line-height: 1.4; color: var(--dim); margin-top: 3px; }
 
+/* the gun room: a wall of canvases you swipe along, a slim bar over the top */
+.scr.gunroom { padding: 0; background: #0c0805; overflow: hidden; }
+.gr-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.gr-strip { position: absolute; left: 0; top: 0; bottom: 0; display: flex; transition: transform .38s cubic-bezier(.2, .8, .2, 1); will-change: transform; }
+.gr-sec { position: relative; flex: none; overflow: hidden; }
+.gr-sec canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.gr-hit { position: absolute; border-radius: 12px; }
+.gr-hit:active { background: rgba(255, 200, 120, .08); }
+.gr-bar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: var(--sat) calc(10px + var(--sar)) 14px calc(6px + var(--sal)); background: linear-gradient(rgba(8, 5, 3, .9), rgba(8, 5, 3, .55) 70%, rgba(8, 5, 3, 0)); pointer-events: none; }
+.gr-bar > * { pointer-events: auto; } .gr-bar .bar-t { pointer-events: none; }
+.gr-bar .eyebrow { margin: 0; color: #e8c27a; } .gr-bar h2 { font-size: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f3e6cc; }
+.gr-pager { position: absolute; top: calc(var(--sat) + 3px); right: calc(10px + var(--sar)); display: flex; align-items: center; gap: 2px; }
+body.portrait .gr-pager { top: auto; right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--sab) + 6px); padding: 0 6px; border-radius: 26px; background: rgba(8, 5, 3, .72); border: 1px solid rgba(232, 194, 122, .25); }
+.gr-pager .gr-next svg { transform: scaleX(-1); }
+.gr-pager .ib.off { opacity: .25; pointer-events: none; }
+.gr-dots { display: flex; }
+.gr-dot { width: 16px; height: 44px; display: grid; place-items: center; }
+.gr-dot i { width: 8px; height: 8px; border-radius: 50%; background: rgba(243, 230, 204, .3); transition: all .2s; }
+.gr-dot.on i { background: #e8c27a; transform: scale(1.3); }
+.tabb.room { color: #c9a35e; }
+
 /* narrow sideways screens: drop what is only nice to have */
 @media (max-width: 780px) {
   .rank span { display: none; }
