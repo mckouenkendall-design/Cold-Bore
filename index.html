@@ -97,15 +97,6 @@ body.cine #hud > *:not(.h-fade) { opacity: 0 !important; pointer-events: none !i
 .h-reload { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--dim); font-size: 9.5px; }
 .h-reload.need { color: #1b0f02; background: var(--amber); animation: pulse .45s infinite alternate; }
 .h-reload.off { opacity: .35; } .h-reload.down { background: var(--line2); }
-/* MARK: locks the distance to what the crosshair is on. Lit amber, with the distance, while a mark is set. */
-.h-mark { background: rgba(18, 24, 33, .9); border: 1px solid var(--line2); color: var(--ink); font-size: 10px; line-height: 1.05; align-content: center; gap: 2px; }
-.h-mark em { display: none; font: 700 11.5px var(--mono); font-style: normal; letter-spacing: -.02em; color: var(--amber2); }
-.h-mark.on { border-color: var(--amber); color: var(--amber); background: rgba(40, 26, 8, .9); box-shadow: 0 0 14px rgba(255, 170, 60, .35); }
-.h-mark.on em { display: block; }
-.h-mark.down { background: var(--line2); }
-body.landscape .h-mark { opacity: .92; }
-.h-strip .cell-range.marked { border-color: var(--amber); }
-.h-strip .cell-range.marked i, .h-strip .cell-range.marked b { color: var(--amber); }
 .h-ammo { position: absolute; pointer-events: none; text-align: right; }
 .h-ammo .pips { display: flex; gap: 3px; justify-content: flex-end; margin-bottom: 3px; }
 .h-ammo .pips i { width: 5px; height: 15px; border-radius: 2px 2px 1px 1px; background: var(--amber); } .h-ammo .pips i.e { background: #2a323d; }
@@ -119,7 +110,7 @@ body.landscape .h-mark { opacity: .92; }
 .h-keys { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 11.5px; color: var(--mute); display: none; pointer-events: none; }
 .h-keys b { color: var(--dim); font-weight: 600; }
 body:not(.touch) .h-keys { display: block; }
-body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-mark, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
+body:not(.touch) .h-fire, body:not(.touch) .h-breath, body:not(.touch) .h-reload, body:not(.touch) .h-zoom { opacity: .0; pointer-events: none; }
 body:not(.touch) .h-ammo { right: 24px !important; bottom: 40px !important; }
 body:not(.touch) #stage.aiming { cursor: none; }
 .h-fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 1s; pointer-events: none; }
@@ -654,7 +645,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 2:32 PM";
+const BUILD = "Oct 9, 2:40 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -994,13 +985,13 @@ const SCOPES = [
   { id: 'night', name: 'Nightjar NV 3-10x', zoom: [3, 10], ret: 'mildot', nv: true, price: 4200, rank: 4,
     desc: 'Night vision. Turns a dark scene into green daylight, so unlit targets stand out. Washes out near bright lamps.' },
   { id: 'lrf', name: 'Corvus LRF 4-16x', zoom: [4, 16], ret: 'milhash', lrf: true, turret: true, price: 5200, rank: 5,
-    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass. Tap MARK with the crosshair on a target and its distance stays locked, so the numbers stay right when you aim high.' },
+    desc: 'A built-in laser rangefinder. The exact distance to whatever is under the crosshair is printed in the glass.' },
   { id: 'tree', name: 'Kestrel Tree 6-24x', zoom: [6, 24], ret: 'tree', turret: true, price: 7500, rank: 6,
     desc: 'A grid of dots spreading out below the crosshair like a pine tree, for holding drop and wind at the same time.' },
   { id: 'comp', name: 'Meridian 8-32x', zoom: [8, 32], ret: 'fine', turret: true, price: 11000, rank: 7,
     desc: 'Competition glass. Enormous magnification and a hair-thin reticle marked every fifth of a mil. Narrow view: easy to get lost in.' },
   { id: 'oracle', name: 'Oracle 5-25x Smart', zoom: [5, 25], ret: 'milhash', lrf: true, smart: true, turret: true, price: 18000, rank: 8,
-    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target. Tap MARK on a target to lock its distance: the diamond stays right for it however you move the scope.' },
+    desc: 'A ballistic computer in a scope. It measures range and wind and draws a small amber diamond where the bullet will land. Put the diamond on the target.' },
 ];
 
 // ---- parts ----------------------------------------------------------------
@@ -6129,7 +6120,6 @@ Sim.prototype.noiseAll = function (kind, dist) {
   // an unsuppressed shot heard across the whole scene
   const sim = this, st = sim.st;
   if (sim.state !== 'play' && !sim.winAt) return;
-  if (sim.M.practice) return; // nobody at the Range to hear it (see raiseAlarm)
   const alarmR = st.noise, suspR = st.noise * 1.7;
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
@@ -6208,10 +6198,6 @@ Sim.prototype.beginFlee = function (a) {
 };
 Sim.prototype.raiseAlarm = function (by, delay) {
   const sim = this;
-  // Never at the Range (a practice mission): there is nobody there to raise one. A loud rifle
-  // used to set it off with its own bang (noiseAll), which brought the banner, the pill, the
-  // siren and a racing pulse that shakes the aim. Stopping it here stops every way in.
-  if (sim.M.practice) return;
   if (sim.alarmT !== null || sim.alarmPending) return;
   sim.alarmPending = true;
   sim.after(delay || 0, () => {
@@ -7286,7 +7272,7 @@ View.prototype.drawLens = function (sim, cam) {
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
 
-  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
+  if (V.mode !== 'plain' && !V.noReticle) V.drawReticle(sim, cx, cy, ppm);
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -7389,12 +7375,9 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   if ((st.scope.lrf || st.scope.smart) && info) {
     ctx.fillStyle = nvc ? 'rgba(220,255,225,0.95)' : 'rgba(255,170,60,0.95)';
     ctx.font = '700 ' + clamp(Rv * 0.075, 11, 17) + 'px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    // Sideways the picture runs up under the objective line, so the game says where there is room (V.lrfY).
-    const ly = !V.round && V.lrfY ? V.lrfY : cy - Math.min(R * 0.72, Rv - 34);
-    ctx.fillText(info.d ? (info.mark ? 'MARK ' : '') + Math.round(info.d) + ' m' : '- - -', cx, ly);
+    ctx.fillText(info.d ? Math.round(info.d) + ' m' : '- - -', cx, cy - Math.min(R * 0.72, Rv - 34));
   }
-  // The pip sits where the round would land right now (see Sim.impactAt), not at the hold for the
-  // crosshair's range. With a mark it sits at the drop and drift for the marked distance instead.
+  // the pip sits where the round would land right now (see Sim.impactAt), not at the hold for the crosshair's range
   const pip = V.pip;
   if ((st.scope.smart || V.assist === 'full') && pip && pip.ok) {
     const px = cx - pip.right * ppm, py = cy + pip.up * ppm;
@@ -7411,66 +7394,12 @@ View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   }
 };
 
-// ---- the mark: a distance the player has locked -------------------------------------------
-// Without a mark the read-outs measure whatever is in the middle of the scope, and the amber
-// marker follows the bullet's own path to whatever it meets first. Both go wrong the moment the
-// scope is raised to allow for drop: the middle of the scope is then on whatever is behind the
-// target, and once the bullet's path clears the target the marker jumps to the drop for the
-// backdrop (it can sit on the target while the round would pass over). A mark fixes that: put the
-// crosshair on the target and mark it, and its distance is measured once and kept. Until the
-// player marks something else or clears it, RANGE, HOLD and the amber marker use that distance
-// however the scope moves. It is a fixed distance, not a person: if they move, mark them again.
-// Display only, like the read-outs: nothing in the simulation reads it.
-// Who gets it: everyone on Full help, and anyone whose scope has a built-in rangefinder.
-View.prototype.canMark = function (sim) { return this.assist === 'full' || !!(sim && sim.st.scope.lrf); };
-// Measure what is under the crosshair right now and lock it. Nothing there (the open sky) clears the mark.
-View.prototype.setMark = function (sim) {
-  const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), e = sim.eye();
-  this.holdT = 0; // fresh numbers on the next frame
-  if (!r || !(r.d > 1)) { this.mark = null; return null; }
-  // the spot on the line of sight at that distance, for the little marker drawn in the world
-  this.mark = { sim, d: r.d, x: e.x + (a.x / 1000) * r.d, y: e.y + (a.y / 1000) * r.d, z: e.z + r.d, at: this.rt };
-  return this.mark;
-};
-View.prototype.clearMark = function () { this.mark = null; this.holdT = 0; };
-// the mark, if there is one for this mission (a mark never carries over to another one)
-View.prototype.markFor = function (sim) { const m = this.mark; return m && m.sim === sim ? m : null; };
-
-// The marked spot, out in the world: four short ticks pointing in at it (unlike the coach's
-// corners, the amber diamond or the coach's ring) and the locked distance beside it. It stays
-// where the target was when it was marked, so a target who walks away walks out of it.
-View.prototype.drawMark = function (sim, cam) {
-  const V = this, mk = V.markFor(sim); if (!mk) return;
-  const ctx = V.ctx, p = V.project(sim, mk.x, mk.y, mk.z), x = p[0], y = p[1];
-  if (Math.abs(x - cam.cx) > cam.hw - 6 || Math.abs(y - cam.cy) > cam.hh - 6) return;
-  const nv = !!sim.st.scope.nv, col = nv ? 'rgba(225,255,230,0.95)' : 'rgba(150,226,255,0.95)';
-  const pop = clamp((V.rt - mk.at) / 0.25, 0, 1), r0 = 5 + (1 - pop) * 12, r1 = r0 + 6; // closes in on the spot when it is set
-  ctx.lineCap = 'round';
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.strokeStyle = pass ? col : 'rgba(0,0,0,0.55)'; ctx.lineWidth = pass ? 1.7 : 3.6;
-    ctx.beginPath();
-    [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach((q) => { ctx.moveTo(x + q[0] * r0, y + q[1] * r0); ctx.lineTo(x + q[0] * r1, y + q[1] * r1); });
-    ctx.stroke();
-  }
-  ctx.font = '700 10.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  const s = Math.round(mk.d) + ' m', tx = x + r1 + 3, ty = y - r1 + 2;
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(s, tx, ty);
-  ctx.fillStyle = col; ctx.fillText(s, tx, ty);
-  ctx.lineCap = 'butt';
-};
-
 // Refresh the spotter's numbers a few times a second (range and hold).
 View.prototype.updateReadout = function (sim, dt) {
   this.holdT -= dt;
   if (this.holdT > 0) return;
   this.holdT = 0.14;
-  const mk = this.markFor(sim);
-  if (mk) { // a marked distance: the same numbers wherever the crosshair goes
-    this.rangeInfo = { d: mk.d, mark: true };
-    this.hold = mk.d > 20 ? sim.holdFor(mk.d) : null;
-    this.pip = this.hold ? Object.assign({ d: mk.d, what: 'mark' }, this.hold) : null;
-    return;
-  }
+  const aim = sim.aimNow();
   const r = sim.rangeAt(sim.sh.ax, sim.sh.ay);
   this.rangeInfo = r ? { d: r.d, ground: r.ground } : { d: 0 };
   this.hold = r && r.d > 20 ? sim.holdFor(r.d) : null;
@@ -22343,7 +22272,7 @@ Game.buildHud = function () {
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
   h.strip = mk('h-strip');
-  h.sRange = mk('cell cell-range', '<i>RANGE</i><b>--</b>', h.strip);
+  h.sRange = mk('cell', '<i>RANGE</i><b>--</b>', h.strip);
   h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
   h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
@@ -22353,10 +22282,8 @@ Game.buildHud = function () {
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
   h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
-  // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
-  h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -22380,19 +22307,15 @@ Game.placeHud = function () {
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
     document.body.classList.toggle('short', small);
-    // MARK sits low on the left, just right of the zoom slider, level with HOLD BREATH. On a short
-    // phone the ammo count moves up above it to make room.
     if (small) {
       P(h.fire, { right: 16, bottom: 22, width: 100, height: 100, left: 'auto', top: 'auto' });
       P(h.breath, { right: 126, bottom: 18, width: 74, height: 74, left: 'auto', top: 'auto' });
       P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
-      P(h.mark, { left: 76, bottom: 22, width: 56, height: 56, right: 'auto', top: 'auto' });
-      P(h.ammo, { left: 70, bottom: h.mark.style.display === 'none' ? 26 : 92, right: 'auto', top: 'auto' });
+      P(h.ammo, { left: 70, bottom: 26, right: 'auto', top: 'auto' });
     } else {
       P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
-      P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
       P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
     }
   } else {
@@ -22406,17 +22329,13 @@ Game.placeHud = function () {
     P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
     P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
-    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150, sb = B + (G.touch ? 8 : 30);
-    P(h.strip, { left: sl, top: 'auto', bottom: sb, width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
-    // MARK sits on top of the RANGE read-out it locks, beside the zoom slider, under the left thumb
-    P(h.mark, { left: sl, bottom: sb + (h.strip.offsetHeight || 38) + 10, width: rl, height: rl, right: 'auto', top: 'auto' });
+    const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
+    P(h.strip, { left: sl, top: 'auto', bottom: B + (G.touch ? 8 : 30), width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
     // On a guided run the coach's card takes the place of the objective line, top left beside
     // the notebook button, well clear of the middle of the picture. The pills drop below it.
     const cw = Math.max(220, Math.min(320, W * 0.36));
     P(h.coach, { left: L + 64, top: sf.t + 6, width: cw, right: 'auto', bottom: 'auto' });
-    const pt = G.coach ? sf.t + 100 : 50;
-    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: pt });
-    V.lrfY = pt + 36; // the rangefinder's number in the glass goes just under the pills, clear of the objective and the coach
+    P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: G.coach ? sf.t + 100 : 50 });
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
   }
 };
@@ -22424,10 +22343,8 @@ Game.placeHud = function () {
 Game.updateHud = function (dt) {
   const G = Game, h = G.hud, sim = G.sim, sh = sim.sh, st = sim.st, V = G.view, A = Save.data.settings.assist;
   const set = (e, s) => { if (e._s !== s) { e._s = s; e.innerHTML = s; } };
-  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf, mark = V.markFor(sim);
-  set(h.sRange.firstChild, mark ? 'MARKED' : 'RANGE'); h.sRange.classList.toggle('marked', !!mark);
+  const r = V.rangeInfo, canRange = A !== 'veteran' || st.scope.lrf;
   set(h.sRange.lastChild, canRange ? (r && r.d ? Math.round(r.d) + (r.d >= 1000 ? 'm' : ' m') : 'sky') : 'by eye');
-  h.mark.classList.toggle('on', !!mark); set(h.mark.lastChild, mark ? Math.round(mark.d) + ' m' : '');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
   let hold = '--';
@@ -22513,10 +22430,6 @@ Game.start = function (missionId, opts) {
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
-  // every mission starts with no mark; the MARK button and the M key only for players who get it
-  G.view.mark = null; clearTimeout(G.markT);
-  const canMark = G.view.canMark(G.sim);
-  G.hud.mark.style.display = canMark ? '' : 'none'; G.hud.keys.querySelector('.k-mark').style.display = canMark ? '' : 'none';
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -22535,7 +22448,6 @@ Game.start = function (missionId, opts) {
 Game.stop = function () {
   const G = Game;
   G.state = 'menu'; G.sim = null; G.oracle = null; G.coach = null; G.cine = false; document.body.classList.remove('in-mission'); document.body.classList.remove('cine'); document.body.classList.remove('guided');
-  G.view.mark = null; clearTimeout(G.markT);
   if (CB.KillCam && CB.KillCam.active) CB.KillCam.stop();
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   Sfx.missionEnd();
@@ -22650,19 +22562,6 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
 Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
-// MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
-// sky it clears the mark instead. Holding the button (or the M key) down clears it too.
-Game.markTarget = function () {
-  const G = Game, sim = G.sim, V = G.view;
-  if (!sim || G.state !== 'mission' || G.paused || G.cine || sim.state !== 'play' || !V.canMark(sim)) return false;
-  const had = !!V.markFor(sim), m = V.setMark(sim);
-  if (m || had) Sfx.ui(m ? 'tap' : 'back');
-  return !!m;
-};
-Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.sim)) return; G.view.clearMark(); Sfx.ui('back'); };
-const MARK_HOLD = 0.6; // seconds held down that clear the mark
-Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
-Game.markUp = function () { clearTimeout(Game.markT); };
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -22720,7 +22619,6 @@ Game.bindInput = function () {
   press(h.fire, () => G.fire());
   press(h.breath, () => { if (G.sim) G.sim.holdBreath(!G.sim.sh.holding); });
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
-  press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
@@ -22739,15 +22637,14 @@ Game.bindInput = function () {
     if (G.cine) { if ((e.key === ' ' || e.key === 'Enter') && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
-    else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
     else if (e.key === '=' || e.key === '+') G.zoomBy(1.15);
     else if (e.key === '-' || e.key === '_') G.zoomBy(1 / 1.15);
   });
-  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); });
-  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
+  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); });
+  window.addEventListener('blur', () => { G.keys = {}; if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
 };
 
@@ -22771,32 +22668,63 @@ Game.bindInput = function () {
 //   0  THE RIFLE    the player's rifle side on, the flash, the round leaving the muzzle.
 //   1  THE FLIGHT   a camera riding just behind the round through the real scene.
 //   2  THE SWING    the camera lets go of the round and swings round the target until it
-//                   looks across the line of fire. The scene fades into "X-ray space".
-//   3  THE X-RAY    the round goes through the body. Bones and organs on its line break.
+//                   looks across the line of fire, a little from the shooter's side (75
+//                   degrees off the line, drifting to 80), so the round is seen going into,
+//                   through and out of the body rather than flat across it. The scene fades
+//                   into "X-ray space".
+//   3  THE X-RAY    the deep slow motion. The round brakes over its last hand spans, all but
+//                   stops as it touches the skin, then crawls through the body. Bones and
+//                   organs on its line break; it comes out of the far side (or stays in).
 //   4  THE HOLD     the world speeds back up toward real time and the body is seen to fall
 //                   (the ragdoll, src/13_ragdoll.js); a moment after it lands, a flash back to
 //                   the scope, where the same body carries on from where the film left it.
+//
+// Timeline (real seconds, a 155 m chest shot with a .308): rifle 0.95, flight 1.3 to 2.1 by
+// distance, swing 1.3, then the slow motion: approach 1.05, the touch 0.35, through the body
+// about 1.6, the exit hanging in the air 0.85; then the hold until the body is down. About
+// 10.5 s in all; a tap skips it at any point (KillCam.skip).
+//
+// Sound: the film tells the sound engine every beat as it happens on screen (kcSay, below) and
+// keeps KillCam.rate up to date: how fast time is passing in the picture, 1 = real time. It is
+// the speed the world's clock is running at (world seconds per film second), never below
+// kcTune.rateMin: in the flight it rises and falls with the round's apparent speed (a short
+// shot never gets near real time), at the rifle and from the swing until the hold the picture
+// is far slower than the sound engine can follow and it sits at rateMin, and in the hold it
+// is exactly the speed the falling body is shown at, rising toward 0.55.
 //
 // Two kinds of space are used. "World" is the game's own: x across, y up, z down range,
 // in metres. "X-ray space" is the same axes but measured from the target's feet, so the
 // body always stands at the origin however the target was moving.
 // ---------------------------------------------------------------------------
-const KillCam = CB.KillCam = { active: false, done: false, rate: 0.2 };
+const KillCam = CB.KillCam = { active: false, done: false, rate: 0.05 };
 
 const kcTune = {
   beat: 0.95,        // seconds spent at the rifle
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
-  swing: 1.3,        // seconds for the camera to come round to side on
+  swing: 1.3,        // seconds for the camera to come round
+  angle: 75,         // degrees off the line of fire the swing ends at (90 would be square across it)
+  angleX: 80,        // and drifts toward during the X-ray
+  lensX: 0.62,       // the X-ray's lens, as a share of the flight's (wider, from closer in)
+  approach: 1.05,    // seconds from the end of the swing to the round touching the skin
+  touchV: 0.09,      // metres per second the round is down to as it touches
+  touch: 0.35,       // seconds it all but stops there, the moment of impact
+  crawl: 0.36,       // metres per second the round is shown moving through the body
+  linger: 0.85,      // seconds the exit hangs in the air before the hold
+  rest: 0.5,         // seconds held on a round that stopped (in the body or just past it)
+  insideMax: 4.6,    // seconds inside the body at most, whatever happens
+  creep: 0.02,       // world seconds per film second while the round is inside the body
+  rateMin: 0.05,     // the slowest KillCam.rate ever reported (the sound engine's own floor)
   hold: 0.85,        // seconds holding on the result, at least
   holdMax: 3.0,      // and at most, waiting for the body to come down
   out: 0.34,         // seconds of flash back to the scope
   swingFrom: 2.6,    // metres from the target at which the camera lets go of the round
   standOff: 0.55,    // metres short of the skin at which the swing ends
-  crawl: 0.5,        // metres per second the round is shown moving through the body
   bulletScale: 2.1,  // the round is drawn this many times life size so its shape can be read
+  maxParts: 1100,    // bits in the air at once, at most
   deg: Math.PI / 180,
 };
+KillCam.tune = kcTune; // (for tests and tuning; nothing in the game changes it)
 // bullet diameters in millimetres, by the rifle's calibre
 const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
 const kcPalDefault = { skyTop: '#22234f', skyBot: '#ef8a55', ink: '#0e1016', rim: 'rgba(255,225,205,0.45)', dark: 0.35, star: 0 };
@@ -22910,9 +22838,25 @@ const kcHash = (n) => { const x = Math.sin(n * 127.1 + 11.7) * 43758.5453; retur
 const kcOwnSound = () => { const X = CB.Sfx; return !(X && X.kc); };
 function kcNoise(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.noise) X.noise(p); } catch (e) { /* sound is optional */ } }
 function kcTone(p) { try { const X = CB.Sfx; if (kcOwnSound() && X && X.ok && X.tone) X.tone(p); } catch (e) { /* sound is optional */ } }
-// One beat: 'fly', 'near', 'cover', 'enter', 'bone', 'exit', 'fall' or 'end'. Every beat carries the
-// film's speed (rate, 1 = real time), the part hit, the calibre, how hard the round hits (power,
-// 0 to 1) and whether gore is on, plus whatever the beat itself adds (mat, bone, size).
+// One beat, in the order they come:
+//   'fly'     the round leaves the muzzle (0.08 s into the film)
+//   'cover'   it goes through cover, in the flight or just before the body (mat; behind: the wall
+//             behind the body)
+//   'slow'    the swing is over and the deep slow motion begins (len: about how many real seconds
+//             it lasts, until 'resume'): the round brakes toward the body, touches, goes through
+//   'near'    half a second on screen before the round touches the skin
+//   'enter'   it touches the skin: the moment of impact (spray: 0 to 1, how much blood is blown
+//             back out of the hole, 0 with gore off)
+//   'bone'    the tip reaches a bone (bone: skull, rib, spine or limb)
+//   'organ'   the tip reaches an organ, only with gore on (organ: heart, lungL, lungR, liver,
+//             stomach, kidL, kidR, gut or brain; key: true for the one the film slows down on and names)
+//   'exit'    it breaks out of the far side (size: 0 to 1, how big the hole is; spray: 0 to 1, how
+//             violent the burst of blood, mist and tissue is, 0 with gore off)
+//   'resume'  the slow motion ends: the world speeds back up toward real time over about a second
+//   'fall'    the body lands (mat: the ground; speed)
+//   'end'     the film is over or was skipped
+// Every beat carries the film's speed (rate, see KillCam.rate above), the part hit, the calibre,
+// how hard the round hits (power, 0 to 1) and whether gore is on, plus whatever the beat adds.
 function kcSay(K, stage, extra) {
   try {
     const X = CB.Sfx; if (!X || !X.kc) return;
@@ -22962,6 +22906,11 @@ KillCam.start = function (o) {
   K.exit = rdExits(aid, K.part, K.cal, pen) || K.simThrough === true;
   K.exitK = K.exit ? Math.max(0.2, rdExitSize(aid, K.part, K.cal, Math.max(pen, K.simThrough ? 1.2 : 0))) : 0;
   K.through = K.exit; K.spent = K.exit && K.simThrough === false;
+  // How violent the wounds are drawn, from how hard the round hits: about 0.16 for a .22, 0.55
+  // for a .308 and 0.85 for a .50 (so a .50 throws five times what a .22 does). gx is the same
+  // for the way out, which also depends on how big a hole the round makes there.
+  K.gk = 0.15 + 0.85 * Math.pow(K.power, 1.6);
+  K.gx = K.exit ? clamp(K.exitK * (0.35 + 0.75 * K.power), 0.08, 1.1) : 0;
   // which side the camera swings to: the side the target is facing, so we end up looking at their front
   const a = o.actor;
   K.side = a && (a.face || 1) < 0 ? -1 : 1;
@@ -22970,14 +22919,15 @@ KillCam.start = function (o) {
   // book-keeping
   K.ret = Math.min(o.sim.t, o.tHit - step * 0.25); K.prevRet = K.ret; K.simDt = 0;
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
+  K.Td = K.Tc + kcTune.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.cap = null; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.gunLay = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
-  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.follow = null;
+  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null;
   K.covers = kcCoverList(K, o, h, a0); K.wallB = kcWallList(K, o, h, a0);
-  K.active = true; K.done = false; K.skipped = false; K.rate = 0.12;
+  K.active = true; K.done = false; K.skipped = false; K.wr = 0; K.rate = kcTune.rateMin;
   return true;
 };
 KillCam.stop = function () { const K = KillCam; if (K.o) kcSayEnd(K); K.active = false; K.o = null; K.parts = []; K.wparts = []; K.fig = null; K.plan = null; };
@@ -23016,23 +22966,25 @@ function kcAdvance(K, o, dt) {
   K.T += dt; K.spin += dt * 9;
   const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
   K.prevRet = K.ret;
+  let wr = 0; // how fast the world's clock runs this frame (world seconds per film second), for KillCam.rate
   if (!K.snd.fly && T >= 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
   if (T < K.Ta) {
     // ---- 0: at the rifle. Time is all but stopped.
-    K.stage = 0; K.rate = 0.12; K.speedK = 0;
+    K.stage = 0; K.speedK = 0;
   } else if (T < K.Tb) {
     // ---- 1: the flight. Distance covered follows a curve that starts slowly, runs fast in the
     // middle and arrives slowly: a cubic that leaves with slope k0 and lands with slope k1.
     if (K.stage < 1) { K.stage = 1; kcNoise({ type: 'bandpass', f: 150, f1: 640, sweep: K.Tf * 0.6, q: 0.9, dur: K.Tf * 0.9, att: K.Tf * 0.5, gain: 0.06, brown: true }); }
-    const u = (T - K.Ta) / K.Tf, D = Math.max(0.5, K.zS - K.zA);
+    const u = (T - K.Ta) / K.Tf, D = Math.max(0.5, K.zS - K.zA), t0 = K.bp[3];
     const k0 = clamp((7 * K.Tf) / D, 0, 0.8), k1 = clamp((kcSwingV0(K) * K.Tf) / D, 0, 0.8);
     const g = (u * u * u - 2 * u * u + u) * k0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * k1;
     const gv = (3 * u * u - 4 * u + 1) * k0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * k1;
     kcPathAtZ(K, lerp(K.zA, K.zS, clamp(g, 0, 1)), K.bp);
     K.speedK = clamp(gv / 1.5, 0, 1); K.fu = u;
-    K.rate = clamp(0.2 + 0.85 * K.speedK, 0.2, 1);
+    if (dt > 0) wr = Math.max(0, K.bp[3] - t0) / dt; // the round's own flight time covered this frame
     K.ret = Math.max(K.ret, Math.min(K.bp[3], cap));
-    kcFlightCovers(K); kcStepParts(K, dt * K.rate, K.wparts, true);
+    // (the bits thrown off cover out there fly at the pace the round seems to rush along)
+    kcFlightCovers(K); kcStepParts(K, dt * clamp(0.2 + 0.85 * K.speedK, 0.2, 1), K.wparts, true);
   } else {
     // ---- 2 to 4: the round is on its last straight few metres. s is how far its tip is past
     // the middle of the body, in metres (negative while it is still on its way).
@@ -23043,35 +22995,46 @@ function kcAdvance(K, o, dt) {
         // the swing: the round eases down from the flight's last speed
         const u = (T - K.Tb) / kcTune.swing, D = Math.max(0.05, K.dS - pl.sFrom);
         K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / kcTune.swing;
-        K.rate = lerp(0.2, 0.1, u);
         if (!K.snd.h1 && u > 0.12) { K.snd.h1 = 1; kcBeat(0.1); }
         if (!K.snd.h2 && u > 0.7) { K.snd.h2 = 1; kcBeat(0.12); }
       } else {
+        // The approach: the round brakes over its last hand spans and is all but stopped when it
+        // touches the skin, exactly approach seconds after the swing (a cubic in time that starts
+        // at the swing's last speed and ends at touchV).
         K.stage = 3;
-        K.spd = lerp(1.0, kcTune.crawl * 1.15, smooth((K.s + pl.sFrom) / Math.max(0.05, pl.sFrom + pl.sIn)));
-        K.s += K.spd * dt; K.rate = 0.1;
+        if (!K.snd.slow) { K.snd.slow = 1; kcSay(K, 'slow', { len: +kcSlowLen(K).toFixed(2) }); }
+        const Ta = kcTune.approach, u = clamp((T - K.Tc) / Ta, 0, 1), D = Math.max(0.01, pl.sIn - pl.sA);
+        const m0 = clamp((pl.vA * Ta) / D, 0, 2.9), m1 = clamp((kcTune.touchV * Ta) / D, 0, 1);
+        const h = (u * u * u - 2 * u * u + u) * m0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * m1;
+        const hv = (3 * u * u - 4 * u + 1) * m0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * m1;
+        K.s = pl.sA + D * h; K.spd = (D * hv) / Ta;
       }
+      wr = K.spd / K.v;
       K.ret = Math.max(K.ret, Math.min(o.tHit + K.s / K.v, cap));
       // half a second (on screen) before the round reaches the body
-      if (!K.snd.near) { const left = T < K.Tc ? K.Tc - T + 0.6 : (pl.sIn - K.s) / Math.max(0.3, K.spd); if (left <= 0.5) { K.snd.near = 1; kcSay(K, 'near'); } }
-      if (K.s >= pl.sIn - 1e-4) {
+      if (!K.snd.near && T >= K.Td - 0.5) { K.snd.near = 1; kcSay(K, 'near'); }
+      if (T >= K.Td) {
         // the tip touches the skin: this is the frame the world is allowed to make the kill
-        K.hitT = T; K.stage = 3; K.s = Math.max(K.s, pl.sIn);
+        K.hitT = T; K.stage = 3; K.s = pl.sIn;
         K.ret = Math.max(K.ret, o.tHit + K.step * 1.002);
       }
     } else {
-      // inside the body: a slow crawl that all but stops as the round reaches the main thing it hits
-      let sp = kcTune.crawl * (1 - 0.74 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.034, 2)));
-      if (K.exit && !K.spent) { if (K.s > pl.sOut) sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 15); }
+      // Inside the body. For a moment after it touches, the round hardly moves (the hit lands);
+      // then a slow crawl that all but stops again as it reaches the main thing it hits.
+      const since = T - K.hitT, a = o.actor, tch = kcTune.touch;
+      const wake = since < tch ? lerp(kcTune.touchV / kcTune.crawl, 0.12, smooth(since / (tch * 0.4))) : lerp(0.12, 1, smooth((since - tch) / 0.45));
+      let sp = kcTune.crawl * (since < tch ? wake : wake * (1 - 0.8 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.04, 2))));
+      if (K.exit && !K.spent) { if (K.s > pl.sOut) { if (K.exitT === undefined) K.exitT = T; sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 5); } }
       else if (K.spent) {
         // out of the far side with nothing left: it tumbles a hand's width further and drops
         if (K.s > pl.sOut) { if (K.spentT === undefined) K.spentT = T; sp = kcTune.crawl * 1.6 * clamp((pl.sSpent - K.s) / 0.12, 0, 1); }
         if (pl.sSpent - K.s < 0.004) K.stopped = true;
       } else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
+      if (K.stopped && K.stopT === undefined) K.stopT = T;
       K.spd = sp; K.s += sp * dt;
-      const since = T - K.hitT, a = o.actor;
-      if (K.holdT0 === null && ((K.exit && !K.spent && K.s > pl.sOut + 0.3) || K.stopped || since > 2.5)) {
-        K.holdT0 = T; K.stage = 4;
+      // the exit hangs in the air a moment; a round that stayed in is held on a moment
+      if (K.holdT0 === null && ((K.exitT !== undefined && T - K.exitT > kcTune.linger) || (K.stopT !== undefined && T - K.stopT > kcTune.rest) || since > kcTune.insideMax)) {
+        K.holdT0 = T; K.stage = 4; kcSay(K, 'resume');
         kcTone({ at: 0.18, f: 55, dur: 1.3, att: 0.05, gain: 0.07, verb: 0.4 }); kcTone({ at: 0.18, f: 110, dur: 0.9, att: 0.05, gain: 0.018, verb: 0.4 });
       }
       // the body hitting the ground, as the film shows it
@@ -23080,19 +23043,28 @@ function kcAdvance(K, o, dt) {
       // moment after the body is down (or after a few seconds at most).
       if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > kcTune.hold) || ht > kcTune.holdMax) K.outT0 = T; }
       if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; kcSayEnd(K); try { o.view.flash = Math.max(o.view.flash || 0, 1); } catch (e) { /* the scope picture is not ours to break */ } }
-      const hr = K.holdT0 !== null ? lerp(0.12, 0.55, smooth((T - K.holdT0 - 0.2) / 0.8)) : 0;
-      K.rate = K.outT0 !== null ? Math.max(0.3, hr) : K.holdT0 !== null ? Math.max(0.16, hr) : 0.22;
-      K.ret += dt * (K.outT0 !== null ? Math.max(0.22, hr) : K.holdT0 !== null ? hr : 0.03);
+      wr = K.holdT0 === null ? kcTune.creep : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
+      if (K.outT0 !== null) wr = Math.max(0.3, wr);
+      K.ret += dt * wr;
     }
     // things on the round's line break as its tip reaches them (cover before it reaches the body)
     for (let i = 0; i < pl.evs.length; i++) { const ev = pl.evs[i]; if (!ev.done && K.s >= ev.s && (ev.kind === 'skin0' || ev.kind === 'cover' || K.hitT !== null)) { ev.done = true; kcFire(K, ev); } }
-    kcStepParts(K, dt * (K.holdT0 !== null ? Math.max(0.3, K.rate) : 0.15));
+    kcStepParts(K, dt * (K.holdT0 !== null ? Math.max(0.3, wr) : 0.15));
   }
+  // what the sound is told: the world's clock, a little smoothed, never below the floor
+  K.wr = K.T <= dt + 1e-9 ? wr : K.wr + (wr - K.wr) * Math.min(1, dt * 18);
+  K.rate = clamp(K.wr, kcTune.rateMin, 1);
   K.simDt = Math.max(0, K.ret - K.prevRet);
   return K.ret;
 }
 // the speed the round is shown at as the swing begins (metres per second), so the flight can land on it
 function kcSwingV0(K) { return (1.28 * Math.max(0.2, K.dS - kcTune.standOff - 0.2)) / kcTune.swing; }
+// About how long the deep slow motion lasts, from the end of the swing to the hold (for the sound).
+function kcSlowLen(K) {
+  const pl = K.plan; if (!pl) return 3;
+  const inside = ((K.exit ? pl.sOut : pl.sStop) - pl.sIn) / kcTune.crawl;
+  return kcTune.approach + kcTune.touch + 0.3 + inside * 1.25 + (K.exit && !K.spent ? kcTune.linger + 0.1 : kcTune.rest + 0.2);
+}
 function kcBeat(g) { kcTone({ f: 62, f1: 40, dur: 0.09, gain: g }); kcTone({ at: 0.16, f: 54, f1: 36, dur: 0.11, gain: g * 0.7 }); }
 
 // ---- the plan: what the round will meet, worked out from where it goes in ----------------
@@ -23159,6 +23131,7 @@ function kcBeginSwing(K, o) {
   evs.sort((p, q) => p.s - q.s);
   pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
   pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
+  { const D = Math.max(0.05, K.dS - pl.sFrom); pl.sA = -K.dS + D; pl.vA = (D * 0.72) / kcTune.swing; } // exactly where, and how fast it is going
   pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
   pl.sSpent = pl.sOut + 0.1 + 0.2 * K.exitK;             // one with nothing left after the far side stops here
   // the caption goes to the most important thing the round actually reaches
@@ -23177,7 +23150,13 @@ function kcBeginSwing(K, o) {
   const vx = cx - Hx[0], vy = cy - Hx[1], vz = cz - Hx[2], R0 = Math.hypot(vx, vy, vz);
   const top = K.look.bag === 'umbrella' ? Math.max(J.head[1] + fig.hr, 2.55 * sc) : J.head[1] + fig.hr + (K.look.hat ? 0.24 : 0.04) * sc, low = Math.min(J.ftL[1], J.ftR[1], J.hip[1]);
   const mid = [J.hip[0] * 0.5, Math.max(top - 0.78 * sc, (top + low) / 2), 0];
-  K.sw = { f, R0, phi0: Math.atan2(K.side * vx, -vz), el0: Math.asin(clamp(vy / R0, -0.9, 0.9)), H: Hx.slice(), mid, focus: [Hx[0], Hx[1] + 0.02, 0],
+  // The swing is measured from the round's own line, so that "75 degrees off the line of fire"
+  // means just that however the round came in (across from a long way to one side, or down from
+  // a roof): b points back along the line toward the shooter, n level and square to it, u = n x b.
+  const d = K.dir, nl = Math.hypot(d[0], d[2]) || 1, B = [-d[0], -d[1], -d[2]], Nn = [d[2] / nl, 0, -d[0] / nl];
+  const U = [Nn[1] * B[2] - Nn[2] * B[1], Nn[2] * B[0] - Nn[0] * B[2], Nn[0] * B[1] - Nn[1] * B[0]];
+  const vb = vx * B[0] + vy * B[1] + vz * B[2], vn = vx * Nn[0] + vz * Nn[2], vu = vx * U[0] + vy * U[1] + vz * U[2];
+  K.sw = { f, R0, B, N: Nn, U, phi0: Math.atan2(K.side * vn, vb), el0: Math.asin(clamp(vu / R0, -0.9, 0.9)), H: Hx.slice(), mid, focus: [Hx[0], Hx[1] + 0.02, 0],
     sW: W, sH: H, R1: f / Math.min(W / 1.5, vis / 1.62), R2: f / Math.min(W / 0.86, vis / 0.6), phx: g.sx, phy: g.sy,
     px0: g.sx - (f * (Hx[0] - cx)) / (Hx[2] - cz), py0: g.sy + (f * (Hx[1] - cy)) / (Hx[2] - cz), // where the chase camera's centre line was on screen
     // where the X-ray origin sits in the world: first as the flight has it, then pinned to the live target
@@ -23194,45 +23173,66 @@ function kcFire(K, ev) {
   K.dmg[ev.ref] = K.T;
   if (pl.key === ev) K.cap = { text: ev.label, t0: K.T, s: ev.s };
   // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
+  // Everything with blood in it is scaled by how hard the round hits (K.gk, K.gx: see KillCam.start),
+  // so a .22 leaves a small neat hole and a puff, and a .50 tears the body open.
+  const G = K.gk, N = (x) => Math.max(0, Math.round(x));
   if (ev.kind === 'skin0') {
-    kcSay(K, 'enter');
-    if (K.gore) { kcSpray(K, 0, 18, at, -1, 0.9, 0.3, 1.7, 0.003, 0.0065, 0.4); kcSpray(K, 1, K.through === false ? 12 : 6, at, -1, 0.5, 0.8, 2.8, 0.003, 0.008, 2.5); kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 }); }
-    else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
+    kcSay(K, 'enter', { spray: K.gore ? +clamp(G, 0, 1).toFixed(2) : 0 });
+    K.rip.push({ t0: K.T, s: ev.s, k: G, way: -1 }); // the shock of it running out over the skin
+    if (K.gore) {
+      // blown back out of the hole toward the shooter: a puff of mist, drops, flecks of skin and cloth
+      kcSpray(K, 0, N(10 + 40 * G), at, -1, 0.8, 0.3, 1.2 + 2.6 * G, 0.003, 0.005 + 0.005 * G, 0.4 + 0.3 * G);
+      kcSpray(K, 1, N((K.through === false ? 8 : 4) + 26 * G), at, -1, 0.5, 0.6, 2 + 4 * G, 0.0025, 0.006 + 0.005 * G, 2.5);
+      if (G > 0.3) kcSpray(K, 10, N(12 * (G - 0.25)), at, -1, 0.6, 0.5, 1.4 + 2.4 * G, 0.004, 0.008 + 0.006 * G, 2.5);
+      kcSpray(K, 9, N(0.6 + 2.6 * G), at, -1, 0.4, 0.12, 0.3 + 0.5 * G, 0.03 + 0.02 * G, 0.045 + 0.05 * G, 1.4);
+      kcNoise({ type: 'lowpass', f: 480, f1: 180, dur: 0.16, gain: 0.14 }); kcTone({ f: 95, f1: 48, dur: 0.14, gain: 0.11 });
+    } else { kcSpray(K, 4, 8, at, -1, 0.9, 0.2, 1.1, 0.004, 0.008, 0.4); kcTone({ f: 110, f1: 60, dur: 0.08, gain: 0.08 }); }
   } else if (ev.kind === 'bone' || ev.kind === 'spine') {
     K.mush = Math.min(1, K.mush + (ev.kind === 'spine' ? 0.3 : 0.22));
     const rf = ev.ref; kcSay(K, 'bone', { bone: ev.kind === 'spine' ? 'spine' : /^(skull|jaw)/.test(rf) ? 'skull' : /^rib/.test(rf) ? 'rib' : 'limb' });
-    kcSpray(K, 2, Math.round((ev.kind === 'spine' ? 11 : 7) * (0.6 + 0.9 * K.power)), at, 1, 0.75, 0.4, 2.6 + 2 * K.power, 0.01, 0.026, K.through === false ? 0.22 : 2);
-    if (K.gore) kcSpray(K, 1, 5, at, 1, 0.7, 0.2, 1.3, 0.003, 0.007, 0.13);
+    kcSpray(K, 2, N((ev.kind === 'spine' ? 1.5 : 1) * (4 + 14 * G)), at, 1, 0.75, 0.4, 2 + 4 * G, 0.008, 0.02 + 0.012 * G, K.through === false ? 0.22 : 2);
+    if (K.gore) { kcSpray(K, 1, N(3 + 10 * G), at, 1, 0.7, 0.2, 1.1 + 1.4 * G, 0.003, 0.006 + 0.004 * G, 0.15); if (G > 0.4) kcSpray(K, 10, N(8 * (G - 0.3)), at, 1, 0.7, 0.3, 1 + 2 * G, 0.004, 0.009, 0.2); }
     kcNoise({ type: 'bandpass', f: 1500, q: 1.6, dur: 0.03, gain: 0.11 }); kcTone({ type: 'square', f: 520, f1: 180, dur: 0.035, gain: 0.03, lp: 2000 });
-    if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * 1.5 + K.side * 0.5, vy: 0.9, vz: d[2] * 1.7, rot: 0, vr: 5 };
+    if (ev.ref === 'skullOut' && K.through !== false) K.plate = { t0: K.T, x: 0, y: 0, z: 0, vx: d[0] * (1.2 + 1.2 * K.gx) + K.side * 0.5, vy: 0.9, vz: d[2] * (1.4 + 1.4 * K.gx), rot: 0, vr: 5 + 4 * K.gx };
   } else if (ev.kind === 'organ') {
     K.mush = Math.min(1, K.mush + 0.12);
-    kcSpray(K, 1, ev.ref === 'heart' ? 22 : 13, at, 1, 0.9, 0.2, 1.6, 0.003, 0.009, 0.15);
-    if (ev.ref === 'brain') kcSpray(K, 3, 8, at, 1, 0.8, 0.3, 1.5, 0.005, 0.011, 0.16);
+    kcSay(K, 'organ', { organ: ev.ref, key: pl.key === ev });
+    // (organs are only on the round's line with gore on, so all of this is gore)
+    kcSpray(K, 1, N((ev.ref === 'heart' ? 1.6 : 1) * (8 + 20 * G)), at, 1, 0.9, 0.2, 1.2 + 1.6 * G, 0.003, 0.007 + 0.005 * G, 0.15);
+    kcSpray(K, 0, N(3 + 10 * G), at, 1, 0.9, 0.1, 0.6 + 0.8 * G, 0.003, 0.007, 0.12);
+    if (ev.ref === 'brain') kcSpray(K, 3, N(5 + 14 * G), at, 1, 0.8, 0.3, 1.5 + 1.5 * G, 0.005, 0.011, 0.16);
     kcNoise({ type: 'bandpass', f: 520, f1: 220, q: 1.2, dur: 0.12, att: 0.01, gain: 0.07 });
   } else if (ev.kind === 'skin1') {
-    // out of the far side: how much comes with it depends on the round (a magnum or a .50 makes a
-    // large exit and throws out blood, mist and bits of bone; a round with nothing left, less)
-    const ek = K.exitK * (K.spent ? 0.65 : 1);
-    kcSay(K, 'exit', { size: ek });
+    // Out of the far side: how much comes with it depends on the round. A .308 makes a ragged hole
+    // and a cone of blood; a magnum or a .50 bursts the far side open, a jet of blood and mist, torn
+    // tissue and bone, and a red cloud that hangs in the air. A round with nothing left, much less.
+    const ek = K.exitK * (K.spent ? 0.65 : 1), X = K.gx * (K.spent ? 0.55 : 1);
+    kcSay(K, 'exit', { size: +ek.toFixed(2), spray: K.gore ? +clamp(X, 0, 1).toFixed(2) : 0 });
+    K.rip.push({ t0: K.T, s: ev.s, k: Math.max(G * 0.6, X), way: 1 });
     if (K.gore) {
-      kcSpray(K, 1, Math.round(35 + 90 * ek), at, 1, 0.34 + 0.12 * ek, 1, 5 + 7 * ek, 0.0025, 0.011 + 0.007 * ek, 3); kcSpray(K, 0, Math.round(14 + 34 * ek), at, 1, 0.6, 0.4, 2 + 2.4 * ek, 0.003, 0.007 + 0.007 * ek, 0.6);
-      if (pl.part === 'head') kcSpray(K, 3, Math.round(6 + 12 * ek), at, 1, 0.4, 1, 3 + 4 * ek, 0.005, 0.012, 3);
-      if (pl.part === 'head' || K.dmg.spine !== undefined || K.dmg.ribOut !== undefined) kcSpray(K, 2, Math.round(2 + 10 * ek), at, 1, 0.45, 1.2, 3 + 4 * ek, 0.008, 0.02, 2.5); // bone carried out with it
+      kcSpray(K, 0, N(16 + 50 * X), at, 1, 0.2, 2, 6 + 10 * X, 0.003, 0.007 + 0.008 * X, 0.45);                    // the jet, straight on along the line
+      kcSpray(K, 1, N(30 + 140 * X), at, 1, 0.3 + 0.22 * X, 1, 5 + 8 * X, 0.0025, 0.011 + 0.01 * X, 3);          // drops, a widening cone
+      kcSpray(K, 0, N(14 + 50 * X), at, 1, 0.6, 0.4, 2 + 3 * X, 0.003, 0.008 + 0.008 * X, 0.7);                  // mist
+      kcSpray(K, 9, N(1 + 9 * X), at, 1, 0.45, 0.25, 1.1 + 2.4 * X, 0.025 + 0.03 * X, 0.05 + 0.09 * X, 2.2);     // the cloud that hangs
+      kcSpray(K, 10, N(2 + 20 * X), at, 1, 0.45, 1, 3.5 + 5 * X, 0.005, 0.011 + 0.017 * X, 3);                   // torn tissue
+      if (pl.part === 'head') kcSpray(K, 3, N(6 + 26 * X), at, 1, 0.4, 1, 3 + 5 * X, 0.005, 0.012 + 0.008 * X, 3);
+      if (pl.part === 'head' || K.dmg.spine !== undefined || K.dmg.ribOut !== undefined) kcSpray(K, 2, N(2 + 18 * X), at, 1, 0.45, 1.2, 3 + 5 * X, 0.008, 0.02 + 0.01 * X, 2.5); // bone carried out with it
       // a few strings of drops that stretch out as they fly
-      for (let j = 0, nj = 2 + Math.round(4 * ek); j < nj; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
-      if (kcHash(H[0] * 31 + H[1] * 17) < 0.7) for (let i = 0; i < 3; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * 9, sd: R.f() * 9 });
+      for (let j = 0, nj = 2 + N(7 * X); j < nj; j++) { const ax = (R.f() - 0.5) * 0.5, ay = (R.f() - 0.2) * 0.5; for (let i = 0; i < 6; i++) { const sp = 2.2 + i * 1.05 + j * 0.3; K.parts.push({ k: 1, x: at[0], y: at[1], z: at[2], vx: (d[0] + K.side * 0.25 + ax) * sp, vy: (d[1] + ay) * sp, vz: d[2] * sp, r: 0.008 - i * 0.0009, age: 0, life: 3, rot: 0, vr: 0, stuck: false }); } }
+      if (kcHash(H[0] * 31 + H[1] * 17) < 0.4 + X) for (let i = 0, nl = 3 + N(3 * X); i < nl; i++) K.lens.push({ t0: K.T + 0.22 + i * 0.13, x: 0.5 + (K.side > 0 ? 1 : -1) * (0.16 + R.f() * 0.26), y: 0.25 + R.f() * 0.45, r: 5 + R.f() * (9 + 6 * X), sd: R.f() * 9 });
       kcNoise({ type: 'bandpass', f: 900, f1: 400, q: 0.8, dur: 0.2, att: 0.01, gain: 0.04 });
     } else kcSpray(K, 4, 10, at, 1, 0.7, 0.3, 1.6, 0.004, 0.008, 0.4);
     if (K.hat && !K.hat.fly) K.hat.fly = K.T;
   }
 }
-// Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust.
+// Throw n bits from a point. kind: 0 fine mist, 1 blood drops, 2 bone splinters, 3 brain matter, 4 pale dust,
+// 9 a cloud of blood mist that hangs, 10 torn tissue (5 to 8 are cover: see kcCoverBurst).
 // way: +1 along the round's travel, -1 back toward the shooter. spread: 0 a jet, 1 nearly a ball.
 // sp0..sp1 speeds in metres per second, r0..r1 sizes in metres, life in seconds of the spray's own time.
 function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
   const L = list || K.parts;
-  if (L.length > 520) return;
+  if (L.length > kcTune.maxParts) return;
+  n = Math.min(n, kcTune.maxParts + 40 - L.length);
   const R = K.rng, d = K.dir;
   for (let i = 0; i < n; i++) {
     let rx = R.f() * 2 - 1, ry = R.f() * 2 - 1, rz = R.f() * 2 - 1; const rl = Math.hypot(rx, ry, rz) || 1;
@@ -23242,8 +23242,9 @@ function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
   }
 }
 // how the bits in the air slow down (drag) and fall (gravity), by kind: 0 mist, 1 drops, 2 bone,
-// 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster
-const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8];
+// 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster, 9 a hanging
+// cloud of mist, 10 tissue
+const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5, 4.5, 0.6], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8, 0.35, 9.8];
 function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spray flies in slow motion
   const ps = list || K.parts, wz = !world && K.wallB ? K.wallB.dz : 1e9;
   for (let i = ps.length - 1; i >= 0; i--) {
@@ -23253,8 +23254,9 @@ function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spr
     const drag = kcDrag[p.k] || 0.5, g = kcFall[p.k] || 9.8;
     p.vx -= p.vx * drag * dt; p.vy -= (p.vy * drag + g) * dt; p.vz -= p.vz * drag * dt;
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.rot += p.vr * dt;
+    if (p.k === 9) { if (p.y < p.r) { p.y = p.r; p.vy = Math.max(0, p.vy); } if (p.z > wz - p.r) { p.z = wz - p.r; p.vz = Math.min(0, p.vz); } continue; } // a cloud only drifts
     if (!world && p.y < 0.004) { p.y = 0.004; p.stuck = true; p.life = p.age + 3; } // landed: a mark on the floor
-    else if (p.z >= wz && p.k !== 7) { p.z = wz; p.stuck = true; p.wall = true; p.life = p.age + (p.k === 1 || p.k === 0 ? 9 : 2); } // the wall behind: blood stays on it
+    else if (p.z >= wz && p.k !== 7) { p.z = wz; p.stuck = true; p.wall = true; p.life = p.age + (p.k === 1 || p.k === 0 || p.k === 10 ? 9 : 2); } // the wall behind: blood stays on it
   }
   if (!list && K.plate) { const q = K.plate; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.rot += q.vr * dt; }
 }
@@ -23694,6 +23696,9 @@ function kcWake(ctx, c, tx, ty, tz, dx, dy, dz, o) {
 // ---- stages 2 to 4: the swing, the X-ray, the hold --------------------------------------------
 // The camera circles the target. phi is how far round it has come (0 = behind the round,
 // a quarter turn = looking square across the line of fire), R how far away it is, el how high.
+// It stops short of a quarter turn (kcTune.angle, then drifting to angleX), on the shooter's
+// side, so it still looks a little along the round's path: the round is seen to go into the
+// body, through it and out, instead of sliding flat across the picture.
 function kcOrbitCam(K, V) {
   const W = V.W, H = V.H, sw = K.sw, c = K.cam, T = K.T, deg = kcTune.deg;
   if (sw.sW !== W || sw.sH !== H) { // the phone was turned: frame the shots again for the new shape
@@ -23705,13 +23710,17 @@ function kcOrbitCam(K, V) {
   // in the hold the camera draws back, comes round toward the shooter's side a little (so a wall
   // behind is seen, not edge on) and follows the body down
   const hold = K.holdT0 !== null ? smooth((T - K.holdT0 - 0.15) / 1.1) : 0, fl = K.follow;
-  const phi = lerp(lerp(sw.phi0, 80 * deg, e) + (9 * (1 - Math.exp(-tau * 2.2)) + 2.2 * tau) * deg, (K.wallB ? 52 : 70) * deg, hold);
-  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2, push) * (1 + 0.85 * hold), el = lerp(lerp(sw.el0, 0.11, e), 0.22, hold);
+  const phi = lerp(lerp(sw.phi0, kcTune.angle * deg, e) + (kcTune.angleX - kcTune.angle) * (1 - Math.exp(-tau * 0.6)) * deg, (K.wallB ? 52 : 70) * deg, hold);
+  // For the X-ray the camera comes in closer with a wider lens (the body is framed the same): the
+  // stronger perspective makes the round's path read in depth, the near end coming toward us.
+  const fk = lerp(1, kcTune.lensX, push * (1 - hold));
+  const R = lerp(lerp(sw.R0, sw.R1, e), sw.R2 * fk, push) * (1 + 0.85 * hold), el = lerp(lerp(sw.el0, 0.11, e), 0.22, hold);
   const k1 = smooth(u * 1.2);
   let px = lerp(lerp(sw.H[0], sw.mid[0], k1), sw.focus[0], push), py = lerp(lerp(sw.H[1], sw.mid[1], k1), sw.focus[1], push), pz = 0;
   if (fl && hold > 0) { px = lerp(px, fl[0], hold); py = lerp(py, fl[1], hold); pz = lerp(pz, fl[2], hold); }
-  c.x = px + R * K.side * Math.sin(phi) * Math.cos(el); c.y = py + R * Math.sin(el); c.z = pz - R * Math.cos(phi) * Math.cos(el);
-  c.f = sw.f;
+  const B = sw.B, Nn = sw.N, U = sw.U, cb = Math.cos(phi) * Math.cos(el), cn = K.side * Math.sin(phi) * Math.cos(el), cu = Math.sin(el);
+  c.x = px + R * (B[0] * cb + Nn[0] * cn + U[0] * cu); c.y = py + R * (B[1] * cb + U[1] * cu); c.z = pz + R * (B[2] * cb + Nn[2] * cn + U[2] * cu);
+  c.f = sw.f * fk;
   // The chase camera looked straight down range with its picture slid sideways. Over the first
   // third of the swing that turns into a camera that really looks at the target.
   kcLook(c, px, py, pz);
@@ -23756,7 +23765,7 @@ function kcDrawXray(K, V, ctx, dt) {
   const xr = smooth((T - (K.Tc - 0.5)) / 0.55), infl = smooth((u - 0.12) / 0.5);
   kcShell(ctx, K, c, fig, figA, xr, infl, pal);
   if (xr > 0.01) kcInnards(ctx, K, c, fig, figA * xr);
-  if (K.hitT !== null) kcTrack(ctx, K, c, fig);
+  if (K.hitT !== null) { kcTrack(ctx, K, c, fig); kcRipples(ctx, K, c, fig); }
   // the round, while any of it is still to be seen
   const tipx = pl.H[0] + d[0] * K.s, tipz = pl.H[2] + d[2] * K.s;
   let tipy = pl.H[1] + d[1] * K.s, tum = 0;
@@ -23765,8 +23774,16 @@ function kcDrawXray(K, V, ctx, dt) {
   const inside = K.hitT !== null ? clamp((K.s - pl.sIn) / 0.25, 0, 1) : 0;
   const bo = { len: K.len, rad: K.rad, spin: K.spin * (K.hitT !== null ? 0.5 : 2.2), mush: K.mush * 0.9, steel: K.steel || !K.gore, hot: 0.2 * (1 - inside), tilt: (K.through === false ? 0.42 : 0.2) * inside * Math.sin(inside * 2.1) + tum };
   if (K.hitT === null) kcWake(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], { len: K.len, rad: K.rad, a: (K.sonic ? 0.9 : 0.35) * (1 - 0.5 * u), t: T, cone: K.sonic });
-  kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   kcDrawParts(ctx, K, c);
+  // The round is drawn over the spray, so it can always be followed through the body. While it is
+  // inside, a soft light round it lifts it off the gore (it is the one thing the eye must not lose).
+  const glow = K.hitT !== null && (!K.exit || K.s < pl.sOut + 0.25) && !(K.spent && K.spentT !== undefined) ? smooth((K.s - pl.sIn + 0.01) / 0.03) : 0;
+  if (glow > 0.01 && kcProj(c, tipx - d[0] * K.len * 0.5, tipy - d[1] * K.len * 0.5, tipz - d[2] * K.len * 0.5, kcQ)) {
+    const gr = Math.max(8, K.len * kcQ[2] * 1.1), gg = ctx.createRadialGradient(kcQ[0], kcQ[1], 0, kcQ[0], kcQ[1], gr);
+    gg.addColorStop(0, K.gore ? 'rgba(255,236,200,0.5)' : 'rgba(225,242,255,0.5)'); gg.addColorStop(1, 'rgba(255,236,200,0)');
+    ctx.globalAlpha = glow; ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], gr, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+  }
+  kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   kcCaption(ctx, K, c, V);
 }
 // The floor of X-ray space: faint rings and spokes round the target's feet, and a soft shadow.
@@ -23953,11 +23970,11 @@ function kcShell(ctx, K, c, fig, alpha, xr, infl, pal) {
       if (i === 1 && K.dmg.skin1 === undefined) break;
       kcLoc(fr, (i ? pl.sOut : pl.sIn) * fig.fs, bb, pl.c0, kcL0);
       if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) continue;
-      // the way in is a small neat hole; the way out is larger and torn, more so for a big round
-      const r = Math.max(1.5, (i ? 0.01 + 0.024 * K.exitK : 0.007 + 0.005 * K.power) * kcQ[2]);
-      if (K.gore) { ctx.fillStyle = '#8c1219'; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.3, 0, TAU); ctx.fill(); }
+      // the way in is a small neat hole; the way out is larger and torn, far more so for a big round
+      const r = Math.max(1.5, (i ? 0.01 + 0.04 * K.gx : 0.006 + 0.01 * K.gk) * kcQ[2]);
+      if (K.gore) { ctx.fillStyle = '#8c1219'; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * (1.3 + (i ? 0.5 * K.gx : 0.3 * K.gk)), 0, TAU); ctx.fill(); }
       ctx.fillStyle = K.gore ? '#3a0408' : '#0a1018'; ctx.beginPath();
-      if (i) for (let j = 0; j < 6; j++) { const an = j * 1.05 + kcHash(j + pl.c0 * 40) * 0.7, rr = r * (0.55 + 0.6 * kcHash(j * 3.7 + pl.sOut * 20)); ctx.moveTo(kcQ[0] + Math.cos(an) * r * 0.4 + rr, kcQ[1] + Math.sin(an) * r * 0.4); ctx.arc(kcQ[0] + Math.cos(an) * r * 0.4, kcQ[1] + Math.sin(an) * r * 0.4, rr, 0, TAU); }
+      if (i) for (let j = 0, nj = 6 + Math.round(4 * K.gx); j < nj; j++) { const an = j * (TAU / nj) + kcHash(j + pl.c0 * 40) * 0.7, rr = r * (0.55 + 0.6 * kcHash(j * 3.7 + pl.sOut * 20)); ctx.moveTo(kcQ[0] + Math.cos(an) * r * 0.4 + rr, kcQ[1] + Math.sin(an) * r * 0.4); ctx.arc(kcQ[0] + Math.cos(an) * r * 0.4, kcQ[1] + Math.sin(an) * r * 0.4, rr, 0, TAU); }
       else ctx.arc(kcQ[0], kcQ[1], r, 0, TAU);
       ctx.fill();
     }
@@ -24294,25 +24311,64 @@ function kcSkull(ctx, K, c, fig, al, bone, boneD, dark) {
   ctx.globalAlpha = 1;
 }
 // The track the round leaves: a hollow that balloons open just behind it and falls shut again,
-// leaving a thin dark line. Its width at each point depends on how long ago the tip went by.
+// leaving a ragged dark channel. Its width at each point depends on how long ago the tip went by,
+// and on the round: a .22 leaves a pencil line, a .50 a hollow the width of a fist that leaves a
+// channel as thick as a thumb. With gore on, the channel bleeds out into the flesh round it.
 function kcTrack(ctx, K, c, fig) {
-  const pl = K.plan, sm = pl.samples, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0, fs = fig.fs;
-  const lim = K.through === false ? pl.sStop : pl.sOut;
+  const pl = K.plan, sm = pl.samples, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0, fs = fig.fs, G = K.gk;
+  const lim = K.through === false ? pl.sStop : pl.sOut, open = 0.16 + 0.22 * G;
   let n = 0;
   for (let i = 0; i < sm.length; i += 2) { if (sm[i + 1] < 0 && K.s >= sm[i]) sm[i + 1] = T; if (sm[i + 1] >= 0 && sm[i] <= lim + 0.012) n++; }
   if (n < 2) return;
-  const xs = [], ys = [], ws = [], wl = [];
+  const xs = [], ys = [], ws = [], wl = [], wb = [];
   for (let i = 0; i < n; i++) {
     kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcL0);
     if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
-    const x = (T - sm[i * 2 + 1]) / 0.16, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
-    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push((0.02 + 0.03 * K.power) * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push((0.005 + 0.004 * K.exitK) * Math.min(1, ends * 1.6) * kcQ[2]);
+    const age = T - sm[i * 2 + 1], x = age / open, ends = Math.min(1, (sm[i * 2] - pl.sIn) / 0.04 + 0.25, (pl.sOut - sm[i * 2]) / 0.04 + 0.25);
+    const core = (0.004 + 0.012 * G) * (0.7 + 0.6 * kcHash(i * 3.1 + G * 7)) * Math.min(1, ends * 1.6) * kcQ[2]; // torn, so never quite even
+    xs.push(kcQ[0]); ys.push(kcQ[1]); ws.push((0.012 + 0.075 * G) * x * Math.exp(1 - x) * ends * kcQ[2]); wl.push(core);
+    wb.push(core * (1.4 + (1.6 + 2.2 * G) * smooth(age / 1.6))); // the bleed spreading out from it
   }
   let ax = xs[n - 1] - xs[0], ay = ys[n - 1] - ys[0]; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
   const shape = (w, add) => { ctx.beginPath(); for (let i = 0; i < n; i++) { const x = xs[i] - ay * (w[i] + add), y = ys[i] + ax * (w[i] + add); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } for (let i = n - 1; i >= 0; i--) ctx.lineTo(xs[i] + ay * (w[i] + add), ys[i] - ax * (w[i] + add)); ctx.closePath(); };
   ctx.lineJoin = 'round';
-  if (K.gore) { ctx.globalAlpha = 0.34; ctx.fillStyle = '#ff6a5c'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffb0a4'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.92; ctx.fillStyle = '#3a0408'; shape(wl, 0); ctx.fill(); }
-  else { ctx.globalAlpha = 0.2; ctx.fillStyle = '#e6f3ff'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#e6f3ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.88; ctx.fillStyle = '#06101a'; shape(wl, 0); ctx.fill(); }
+  if (K.gore) {
+    ctx.globalAlpha = 0.42; ctx.fillStyle = '#7a0a12'; shape(wb, 0); ctx.fill();
+    ctx.globalAlpha = 0.34; ctx.fillStyle = '#ff6a5c'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffb0a4'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalAlpha = 0.95; ctx.fillStyle = '#3a0408'; shape(wl, 0); ctx.fill();
+    // shreds of flesh hanging into the channel along its edges
+    ctx.strokeStyle = '#a3141c'; ctx.lineWidth = Math.max(1, wl[0] * 0.35); ctx.globalAlpha = 0.8; ctx.beginPath();
+    for (let i = 1; i < n - 1; i++) { const sd = i & 1 ? 1 : -1, l = wl[i] * (1.2 + 1.6 * kcHash(i * 5.7)), sl = (kcHash(i * 2.3) - 0.5) * wl[i] * 2; ctx.moveTo(xs[i] - ay * wl[i] * sd, ys[i] + ax * wl[i] * sd); ctx.lineTo(xs[i] - ay * (wl[i] + l) * sd + ax * sl, ys[i] + ax * (wl[i] + l) * sd + ay * sl); }
+    ctx.stroke();
+  } else { ctx.globalAlpha = 0.2; ctx.fillStyle = '#e6f3ff'; shape(ws, wl[0] * 0.5); ctx.fill(); ctx.globalAlpha = 0.45; ctx.strokeStyle = '#e6f3ff'; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 0.88; ctx.fillStyle = '#06101a'; shape(wl, 0); ctx.fill(); }
+  ctx.globalAlpha = 1;
+}
+// The shock of the round going in (and coming out) running out over the skin as a ring, and just
+// before a round breaks out, the skin of the far side pushed out ahead of it. Bigger for a bigger round.
+function kcRipples(ctx, K, c, fig) {
+  const pl = K.plan, d = K.dir, T = K.T, fr = pl.part === 'head' ? fig.hd : fig.tor, bb = pl.part === 'head' ? pl.u0 : pl.b0;
+  // two directions square to the round's line: across (level) and up
+  let e1x = d[2], e1z = -d[0]; const l1 = Math.hypot(e1x, e1z) || 1; e1x /= l1; e1z /= l1;
+  const e2x = d[1] * e1z, e2y = d[2] * e1x - d[0] * e1z, e2z = -d[1] * e1x;
+  const col = K.gore ? '#ffc2b8' : '#e6f3ff', fill = K.gore ? '#d0303a' : '#bfe0ff';
+  for (let i = 0; i < K.rip.length; i++) {
+    const r = K.rip[i], dur = 0.35 + 0.45 * r.k, u = (T - r.t0) / dur; if (u < 0 || u > 1) continue;
+    kcLoc(fr, r.s * fig.fs, bb, pl.c0, kcL1);
+    for (let j = 0; j < 2; j++) {
+      const rad = (0.012 + (0.04 + 0.15 * r.k) * easeOut(clamp(u * (j ? 1.6 : 1), 0, 1))) * (j ? 0.6 : 1);
+      ctx.beginPath(); if (!kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcSet(kcV1, e1x * rad, 0, e1z * rad), kcSet(kcV2, e2x * rad, e2y * rad, e2z * rad))) break;
+      if (j === 0) { ctx.globalAlpha = 0.22 * (1 - u) * (0.4 + r.k); ctx.fillStyle = fill; ctx.fill(); }
+      ctx.globalAlpha = (j ? 0.35 : 0.6) * (1 - u); ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, (1.5 + 2 * r.k) * (1 - u)); ctx.stroke();
+    }
+  }
+  // the far side tenting out as the tip comes up to it
+  const togo = pl.sOut - K.s;
+  if (K.exit && K.hitT !== null && togo > 0 && togo < 0.07) {
+    const k = 1 - togo / 0.07, b = (0.012 + 0.03 * K.gx) * k * k;
+    kcLoc(fr, (pl.sOut + b * 0.45) * fig.fs, bb, pl.c0, kcL1);
+    kcSet(kcV1, e1x * b * 0.85, 0, e1z * b * 0.85); kcSet(kcV2, e2x * b * 0.85, e2y * b * 0.85, e2z * b * 0.85); kcMul(kcV3, d, b * 0.6);
+    ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2, kcV3)) { ctx.globalAlpha = 0.55; ctx.fillStyle = K.gore ? '#9a6f7a' : '#9cc6ea'; ctx.fill(); ctx.globalAlpha = 0.8; ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); }
+  }
   ctx.globalAlpha = 1;
 }
 // Blood, bone and dust in flight. Each bit is a point in space put through the camera; drops
@@ -24321,13 +24377,23 @@ function kcDrawParts(ctx, K, c, list) {
   const ps = list || K.parts; if (!ps.length) return;
   ctx.lineCap = 'round';
   const flat = Math.max(0.12, Math.abs(Math.sin(c.pitch)));
-  // mist and dust: soft dots that swell and thin
+  // the hanging cloud: soft red puffs that swell, drift and thin out, behind everything else
+  for (let i = 0; i < ps.length; i++) {
+    const p = ps[i]; if (p.k !== 9 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+    const u = clamp(p.age / p.life, 0, 1), r = Math.max(2, p.r * kcQ[2] * (1 + 2.2 * Math.sqrt(u))), a = 0.34 * smooth(p.age / 0.04) * (1 - u) * (1 - u);
+    if (a < 0.01) continue;
+    const g = ctx.createRadialGradient(kcQ[0], kcQ[1], 0, kcQ[0], kcQ[1], r);
+    g.addColorStop(0, 'rgba(150,14,24,' + a.toFixed(3) + ')'); g.addColorStop(0.55, 'rgba(120,10,20,' + (a * 0.55).toFixed(3) + ')'); g.addColorStop(1, 'rgba(90,6,14,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
+  }
+  // mist and dust: soft dots that swell and thin (a faint wider ring round each, so they blur together)
   for (let pass = 0; pass < 5; pass += 4) {
     ctx.fillStyle = pass === 0 ? '#a3141c' : '#cfe4f5';
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
-      const u = p.age / p.life;
-      ctx.globalAlpha = 0.4 * (1 - u) * (1 - u * 0.5); ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], Math.max(1, p.r * kcQ[2] * (1 + u * 2.4)), 0, TAU); ctx.fill();
+      const u = p.age / p.life, a = 0.4 * (1 - u) * (1 - u * 0.5), r = Math.max(1, p.r * kcQ[2] * (1 + u * 2.4));
+      ctx.globalAlpha = a * 0.3; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.9, 0, TAU); ctx.fill();
+      ctx.globalAlpha = a * 0.75; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
     }
   }
   // drops: a round head and a tail drawn back along the way it came. Tails and heads are
@@ -24348,6 +24414,22 @@ function kcDrawParts(ctx, K, c, list) {
       }
       ctx.fill();
     }
+  }
+  // torn tissue: ragged dark lumps with a wet edge, turning as they fly (flattened once they land)
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.fillStyle = pass ? '#c23a40' : '#5c0910'; ctx.beginPath();
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i]; if (p.k !== 10 || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
+      const r = Math.max(1.2, p.r * kcQ[2]) * (pass ? 0.45 : 1) * (0.4 + 0.6 * clamp((p.life - p.age) / 0.06, 0, 1)), sq = p.stuck ? flat : 0.6 + 0.4 * Math.abs(Math.sin(p.rot * 0.7));
+      const x = kcQ[0] - (pass ? r * 0.35 : 0), y = kcQ[1] - (pass ? r * 0.4 : 0), ro = p.rot, ca = Math.cos(ro), sa = Math.sin(ro);
+      for (let j = 0; j < 5; j++) { // five lobes of uneven size round the middle
+        const an = j * 1.2566, rr = r * (0.7 + 0.5 * kcHash(j * 7.3 + p.r * 9e3)), lx = Math.cos(an) * rr, ly = Math.sin(an) * rr * sq;
+        const px = x + lx * ca - ly * sa, py = y + lx * sa + ly * ca;
+        if (j) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+    ctx.globalAlpha = pass ? 0.55 : 0.95; ctx.fill();
   }
   // splinters (of bone, of wood) and chips of brick: short sticks, turning
   for (let pass = 0; pass < 3; pass++) {
@@ -29235,10 +29317,10 @@ UI.howTo = function () {
     <p class="lead">Read the brief. Find the right person through the scope. Wait for the right moment. Take one shot.</p>
     <div class="howcols">
     <div><h4>Controls</h4>
-    ${touch ? '<ul><li><b>Hold the phone sideways.</b> The picture fills the whole screen.</li><li><b>Drag anywhere</b> to move the scope. Slow drags move it finely.</li><li><b>Zoom slider</b> on the left, or pinch with two fingers.</li><li><b>Hold breath</b> steadies the crosshair for a few seconds.</li><li><b>Fire</b> fires the instant you touch it.</li><li><b>Reload</b> when the magazine is empty.</li><li><b>Mark</b> locks the distance to whatever the crosshair is on. Hold it down to clear it.</li></ul>'
-      : '<ul><li><b>Mouse</b> aims. <b>Left click</b> fires. <b>Wheel</b> zooms.</li><li><b>Shift</b> holds your breath. <b>R</b> reloads.</li><li><b>Q and E</b> turn the zero dial on scopes that have one.</li><li><b>M</b> locks the distance to whatever the crosshair is on. Hold M down to clear it.</li><li><b>Arrow keys</b> nudge the aim. <b>Esc</b> opens your notebook.</li></ul>'}</div>
+    ${touch ? '<ul><li><b>Hold the phone sideways.</b> The picture fills the whole screen.</li><li><b>Drag anywhere</b> to move the scope. Slow drags move it finely.</li><li><b>Zoom slider</b> on the left, or pinch with two fingers.</li><li><b>Hold breath</b> steadies the crosshair for a few seconds.</li><li><b>Fire</b> fires the instant you touch it.</li><li><b>Reload</b> when the magazine is empty.</li></ul>'
+      : '<ul><li><b>Mouse</b> aims. <b>Left click</b> fires. <b>Wheel</b> zooms.</li><li><b>Shift</b> holds your breath. <b>R</b> reloads.</li><li><b>Q and E</b> turn the zero dial on scopes that have one.</li><li><b>Arrow keys</b> nudge the aim. <b>Esc</b> opens your notebook.</li></ul>'}</div>
     <div><h4>The numbers under the scope</h4>
-    <ul><li><b>Range</b>: distance to whatever the crosshair is on.</li><li><b>Marked</b>: with Full help, or with a scope that has a rangefinder, you can lock a target's distance. Put the crosshair on them and mark. RANGE then says MARKED, and RANGE, HOLD and the amber marker stay set for that distance while you aim higher to make up for the drop. If they move, mark them again. Marking the open sky clears it.</li><li><b>Wind</b>: the arrow shows which way it pushes the bullet.</li><li><b>Hold</b>: how far to aim off, in mils. One mil is one mark on the scope glass. "Up 2.9" means put the third mark below the centre on the target.</li></ul></div>
+    <ul><li><b>Range</b>: distance to whatever the crosshair is on.</li><li><b>Wind</b>: the arrow shows which way it pushes the bullet.</li><li><b>Hold</b>: how far to aim off, in mils. One mil is one mark on the scope glass. "Up 2.9" means put the third mark below the centre on the target.</li></ul></div>
     <div><h4>Staying unseen</h4>
     <ul><li>A loud rifle is heard by everyone. Fire while something louder is happening, or fit a suppressor (a tube on the muzzle that takes away the bang).</li><li>A body in the light gets found. Darkness, timing and distance are your friends.</li><li>Some things in a scene can be shot to change it: lamps, hooks, bells, fuse boxes.</li></ul></div>
     <div><h4>Stars</h4><p>One for finishing, one for staying clean, one for not wasting shots. Every mission also has a challenge and a hidden rubber duck.</p></div>
@@ -29786,7 +29868,7 @@ UI.settings = function (fromTitle) {
   const d = Save.data, s = d.settings;
   const tog = (key, label, sub) => `<button class="setrow" data-a="tog" data-k="${key}"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><span class="sw ${s[key] ? 'on' : ''}"><i></i></span></button>`;
   const sld = (key, label, min, max, step, sub) => `<div class="setrow col"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}" aria-label="${label}"></div>`;
-  const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target. MARK locks a target\'s distance so the marker stays right while you aim high.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
+  const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
   const body = `<div class="scroll">
     <div class="setcols">
     <div class="setgroup tester-group"><div class="eyebrow">Tester mode (temporary)</div>
