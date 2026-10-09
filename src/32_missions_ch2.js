@@ -75,8 +75,9 @@ mission({
   cast(H) {
     const cyc = (w, a, b, f) => { const r = []; for (let i = 0; i < 3; i++) r.push(['wait', w, 'work', -f], ['walk', b], ['wait', 6.8, 'talk', f], ['walk', a]); r.push(['wait', 4, 'work', -f], ['walk', -68], ['gone']); return r; };
     return [
-      Object.assign(H.quay(-3), { id: 't1', role: 'target', face: -1, look: { hat: 'cap', hatCol: '#2a2d33', coat: COL.grey, long: true, h: 1.05, build: 'thin' }, routine: cyc(13.82, -3, 3.0, 1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
-      Object.assign(H.quay(13), { id: 't2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big' }, routine: cyc(12.13, 13, 4.6, -1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
+      // (each carries his list on a clipboard: they "compare lists" under the net)
+      Object.assign(H.quay(-3), { id: 't1', role: 'target', face: -1, look: { hat: 'cap', hatCol: '#2a2d33', coat: COL.grey, long: true, h: 1.05, build: 'thin', bag: 'clip' }, routine: cyc(13.82, -3, 3.0, 1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
+      Object.assign(H.quay(13), { id: 't2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big', bag: 'clip' }, routine: cyc(12.13, 13, 4.6, -1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
       Object.assign(H.quay(8.6), { id: 'c1', role: 'civ', face: -1, look: { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' }, failText: 'The docker was under the net too. He was only checking the slings.',
         routine: [['wait', 10, 'work', -1], ['walk', 5.7], ['wait', 10, 'work', -1], ['walk', 8.6], ['wait', 33.4, 'work', -1], ['loop']] }),
       Object.assign(H.quay(18), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', gun: 'rifle' }, routine: [['walk', -26], ['wait', 5, 'guard', 1], ['walk', 18], ['wait', 5, 'guard', -1], ['loop']] }),
