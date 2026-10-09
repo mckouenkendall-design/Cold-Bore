@@ -69,6 +69,8 @@ Sim.prototype.addActor = function (d) {
   }, d);
   if (d.at) Object.assign(a, d.at);
   a.look = Object.assign({}, d.look || {});
+  // anyone the mission shows holding a rifle carries it all the time, and aims it rather than a pistol (see figAimAs)
+  if (a.look.gun === undefined && figHoldsRifle(d)) a.look.gun = 'rifle';
   a.idle = a.anim; a.animCur = a.anim; a.animFrom = null; a.animAt = -9; a.faceS = a.face;
   a.routine = (d.routine || []).slice();
   sim.actors.push(a); sim.byId[a.id] = a;
@@ -374,10 +376,10 @@ Sim.prototype.place = function (a, p) {
   if (p.behind === undefined && p.plane) a.behind = !!p.room;
 };
 // One person, one step. The wrapper notes when the pose or the facing changes so the
-// figure can ease from one to the other instead of snapping (see actorJoints).
+// figure can ease from one to the other instead of snapping (see figPoseChange).
 Sim.prototype.stepActor = function (a, dt) {
   this.stepActorCore(a, dt);
-  if (a.anim !== a.animCur) { a.animFrom = a.animCur; a.animCur = a.anim; a.animAt = a.t; }
+  if (a.anim !== a.animCur) figPoseChange(a);
   if (!a.dead) a.faceS = approach(a.faceS === undefined ? a.face : a.faceS, a.face, dt * 9);
 };
 Sim.prototype.stepActorCore = function (a, dt) {
@@ -395,7 +397,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
   }
   if (a.state === 'alarm') { // guard reaching for the radio
     a.react -= dt; a.face = Math.sin(a.t * 5) > 0 ? 1 : -1;
-    if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * 11; } else a.react = Math.min(a.react, 0.2); }
+    if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * RUN * FIG_GAIT.run.k; } else a.react = Math.min(a.react, 0.2); }
     if (a.react <= 0) { sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
     return;
   }
@@ -411,7 +413,7 @@ Sim.prototype.stepActorCore = function (a, dt) {
     const sp = (a.running ? RUN : WALK) * a.speed * (a.wounded ? 0.6 : 1), dx = a.goal - a.x, stepd = sp * dt;
     a.face = sign(dx) || a.face; a.vx = a.face * sp;
     a.anim = a.running ? (a.state === 'panic' ? 'panic' : 'run') : 'walk';
-    a.ph += dt * sp * (a.running ? 2.6 : 4.3);
+    a.ph += dt * sp * (a.running ? FIG_GAIT.run : FIG_GAIT.walk).k; // the stride is worked out from this, so the feet stay put on the ground
     if (Math.abs(dx) <= stepd) { a.x = a.goal; a.goal = null; a.vx = 0; a.anim = a.idle; }
     else a.x += sign(dx) * stepd;
     return;
@@ -462,6 +464,7 @@ Sim.prototype.leave = function (a) {
 Sim.prototype.killActor = function (a, part, how, bullet, src) {
   const sim = this;
   if (a.dead) return;
+  if (a.anim !== a.animCur) figPoseChange(a); // a pose set this step and not yet eased into: the body falls from the one on screen
   a.dead = true; a.deadT = 0; a.deathAtT = sim.t; a.deathPose = a.anim; a.deathAt = a.t; a.deathPh = a.ph; a.bubble = null;
   a.deathHow = how; a.deathPart = part; a.deathDir = bullet ? (bullet.vx >= 0 ? 1 : -1) : 0; // for the artwork only
   const seated = /^(sit|type|drive|sleep|kneel)/.test(a.anim) || a.inVeh;

@@ -28,25 +28,94 @@ function figJoints(p) {
   return J;
 }
 
+// ---- walking and running ---------------------------------------------------
+// The feet are placed, not swung. Each foot stands on the ground for part of the stride and
+// travels back under the body at exactly the speed the person is walking, so on the ground it
+// stays where it was put; then it lifts, swings forward and lands again. The legs are fitted to
+// the feet (thigh and shin reaching from the hip). That only works if one cycle of the walk
+// phase (A.ph, 2 pi) covers the same ground as the body does, so the simulation advances A.ph by
+// `k` radians for every metre walked (src/05_sim.js) and the stride below is worked out from it.
+//   k     phase per metre: one whole cycle (two steps) covers 2 pi / k metres
+//   duty  the part of a cycle each foot is on the ground (more than half: both feet are down for a
+//         moment at every step when walking; less than half: nobody is on the ground for a moment
+//         when running)
+//   lift  how high the foot is carried at the top of its swing, hy the hip height, dip how far the
+//         hip sinks onto a running leg
+const FIG_GAIT = {
+  walk: { k: 4.8, duty: 0.58, lift: 0.055, hy: FIG.hip - 0.004, dip: 0, kick: 0.5 },
+  run: { k: 2.6, duty: 0.34, lift: 0.22, hy: FIG.hip - 0.035, dip: 0.04, kick: 0.6 },
+};
+const FIG_FOOT_Y = -0.018; // where the ankle joint sits when the shoe is flat on the ground (as in the standing pose)
+// Fit one leg to a foot at (fx, fy), with the hip at (0, hy). Thigh and shin are the same length.
+function figLegTo(p, side, hy, fx, fy) {
+  const l = FIG.thigh, dy = hy - fy, d = Math.min(Math.hypot(fx, dy), 2 * l - 0.002);
+  const k = 2 * Math.acos(Math.min(1, d / (2 * l))), a = Math.atan2(fx, dy);
+  if (side) { p.tR = a + k / 2; p.kR = k; } else { p.tL = a + k / 2; p.kL = k; }
+}
+// Where a foot is at leg phase s (0 to 1, 0 = the moment it lands, out in front).
+const FIG_FT = [0, 0, 0];
+function figFoot(G, D, h, s) {
+  if (s < G.duty) { // planted: straight back at the walking speed, the heel and then the toes taking the weight at either end
+    const u = s / G.duty, e = (2 * u - 1) * (2 * u - 1);
+    FIG_FT[0] = h * (1 - 2 * u); FIG_FT[1] = FIG_FOOT_Y + 0.05 * e * e; FIG_FT[2] = u; return true;
+  }
+  // in the air: forward on a curve that leaves and meets the ground moving at the same speed as the planted foot
+  const u = (s - G.duty) / (1 - G.duty), u2 = u * u, u3 = u2 * u, m = -D * (1 - G.duty);
+  FIG_FT[0] = (2 * u3 - 3 * u2 + 1) * -h + (u3 - 2 * u2 + u) * m + (-2 * u3 + 3 * u2) * h + (u3 - u2) * m;
+  // a running foot kicks up behind first and comes through low, a walking one just clears the ground
+  const bump = Math.sin(Math.PI * u) * (1 + G.kick * (0.5 - u));
+  FIG_FT[1] = FIG_FOOT_Y + 0.05 + G.lift * Math.max(0, bump); FIG_FT[2] = u; return false;
+}
+function figGait(p, G, ph) {
+  const D = TAU / G.k, h = (D * G.duty) / 2, R = 2 * FIG.thigh - 0.006;
+  let sL = (ph - Math.PI / 2) / TAU; sL -= Math.floor(sL); let sR = sL + 0.5; if (sR >= 1) sR -= 1;
+  const onL = figFoot(G, D, h, sL), xL = FIG_FT[0], yL = FIG_FT[1], uL = FIG_FT[2];
+  const onR = figFoot(G, D, h, sR), xR = FIG_FT[0], yR = FIG_FT[1], uR = FIG_FT[2];
+  // the hip rides as high as it likes, but never so high that a planted foot cannot reach the ground
+  let hy = G.hy;
+  if (onL) hy = Math.min(hy - G.dip * Math.sin(Math.PI * uL), yL + Math.sqrt(R * R - xL * xL));
+  if (onR) hy = Math.min(hy - G.dip * Math.sin(Math.PI * uR), yR + Math.sqrt(R * R - xR * xR));
+  p.hy = hy;
+  figLegTo(p, 0, hy, xL, yL); figLegTo(p, 1, hy, xR, yR);
+}
+
+// What somebody holds up when they aim: their rifle if they carry one, otherwise a pistol. The
+// simulation gives a rifle (look.gun) to anyone a mission ever shows holding one (see figHoldsRifle),
+// so a gunman never raises a pistol while a rifle hangs on his back, nor pulls a rifle out of nowhere.
+function figAimAs(A, an) { return an === 'aim' || an === 'aimrifle' ? (A.look && A.look.gun === 'rifle' ? 'aimrifle' : 'aim') : an; }
+function figHoldsRifle(d) {
+  const has = (r) => !!r && r.some((op) => Array.isArray(op) && ((op[0] === 'wait' && (op[2] === 'guard' || op[2] === 'aimrifle')) || (op[0] === 'anim' && (op[1] === 'guard' || op[1] === 'aimrifle'))));
+  return d.anim === 'guard' || d.anim === 'aimrifle' || has(d.routine) || has(d.flee);
+}
+
 // Pose for a named animation at time t (seconds). `ph` is the walk phase.
 function figPose(anim, t, ph, A) {
   const b = Math.sin(t * 1.6 + (A.seed || 0)) * 0.015;
   const p = { hy: FIG.hip + b * 0.4, lean: 0, tL: 0.04, tR: -0.04, kL: 0.02, kR: 0.02, aL: 0.06, aR: -0.06, eL: 0.12, eR: 0.12 };
-  const s = Math.sin(ph), c = Math.cos(ph);
+  const s = Math.sin(ph);
+  anim = figAimAs(A, anim);
   switch (anim) {
     case 'walk':
-      p.tL = 0.46 * s; p.tR = -0.46 * s;
-      p.kL = 0.08 + 0.6 * Math.max(0, c); p.kR = 0.08 + 0.6 * Math.max(0, -c); // the knee bends while the leg swings forward (foot in the air), not while it pushes back
-      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28;
-      p.hy = FIG.hip - 0.035 * Math.abs(s); p.lean = 0.05;
+      figGait(p, FIG_GAIT.walk, ph);
+      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28; p.lean = 0.05;
       break;
     case 'run': case 'panic':
-      p.tL = 0.85 * s; p.tR = -0.85 * s;
-      p.kL = 0.2 + 1.15 * Math.max(0, c); p.kR = 0.2 + 1.15 * Math.max(0, -c);
-      p.hy = FIG.hip - 0.07 * Math.abs(s) - 0.03; p.lean = 0.24;
+      figGait(p, FIG_GAIT.run, ph); p.lean = 0.24;
       if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }
       break;
+    case 'climb': { // up a ladder: hand over hand, a foot up to the next rung with each
+      const c = t * 3.4 + (A.seed || 0), u = Math.sin(c), v = Math.max(0, Math.sin(c + 1.2));
+      p.lean = 0.12; p.head = -0.25;
+      p.aL = 2.55 + 0.35 * u; p.eL = 0.45 - 0.3 * u; p.aR = 2.55 - 0.35 * u; p.eR = 0.45 + 0.3 * u;
+      p.tL = 0.35 + 0.55 * Math.max(0, u); p.kL = 0.3 + 1.0 * Math.max(0, u); p.tR = 0.35 + 0.55 * Math.max(0, -u); p.kR = 0.3 + 1.0 * Math.max(0, -u);
+      p.hy = FIG.hip - 0.06 - 0.04 * v;
+      break;
+    }
+    case 'held': { // the pose somebody was in when they began to change it (see figPoseChange)
+      const q = A.poseFrom; if (q) for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; if (q[key] !== undefined) p[key] = q[key]; }
+      break;
+    }
     case 'phone':
       p.aR = 0.35; p.eR = 2.45; p.head = 0.06;
       p.aL = 0.05 + 0.04 * Math.sin(t * 0.7);
@@ -123,9 +192,9 @@ function figPose(anim, t, ph, A) {
       break;
     // Handing something over. The near arm goes out over half a second (k), slower than the
     // quarter second every change of pose takes, so it reads as a reach rather than a twitch.
-    // When this is the pose being left behind (A.anim is something else) it is held fully out.
+    // When it is the pose being left behind, the figure eases out of it from wherever the arm had got to.
     case 'handover': { // standing, stooped a little, holding something out at waist height
-      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      const k = (A.animCur || A.anim) === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
       p.lean = 0.05 + 0.25 * k; p.head = 0.08 * k; p.tL = 0.14; p.tR = -0.12; p.aL = 0.12; p.eL = 0.3;
       p.aR = lerp(0.1, 1.0, k); p.eR = lerp(0.2, 0.25, k);
       break;
@@ -135,7 +204,7 @@ function figPose(anim, t, ph, A) {
     // over the shoulder to whoever sits behind. Each one starts where the one before it ends, so
     // the hand never drops out of the window on the way. The head and body stay where they are.
     case 'sitreach': case 'sitpass': case 'sitread': {
-      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      const k = (A.animCur || A.anim) === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
       p.hy = 0.5; p.tL = 1.5; p.tR = 1.45; p.kL = 1.3; p.kR = 1.3; p.aL = 1.0; p.eL = 0.5; p.lean = -0.08;
       if (anim === 'sitreach') { p.aR = lerp(1.05, 1.65, k); p.eR = lerp(0.45, 0.95, k); }
       else if (anim === 'sitread') { p.aR = lerp(1.65, 0.9, k); p.eR = lerp(0.95, 1.78, k); p.head = 0.14 * k; }
@@ -151,6 +220,45 @@ function figPose(anim, t, ph, A) {
 }
 
 const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
+
+// ---- changing pose ----------------------------------------------------------
+// Every change of pose eases over POSE_BLEND seconds, out of whatever the figure looked like at
+// that moment. The simulation calls figPoseChange when it notices that A.anim has changed (in its
+// step for that person, src/05_sim.js). Until then the figure goes on showing A.animCur, the pose
+// it was already in, so a pose set from outside the person's own step (by a shot, an alarm or a
+// mission's trigger) is never drawn for a frame before its ease begins.
+// The pose being left is frozen, exactly as it was on screen, in A.poseFrom and goes by the name
+// 'held'. Because it is the pose as drawn, a change that comes while the last one is still easing
+// in starts from that half-way pose, and nothing jumps. A pose that lasts a single step (a walker
+// reaching a waypoint goes to his idle pose for one step before setting off to the next) is
+// forgotten, and the ease that was running before it carries on as if it had never happened.
+function figAnimNow(A) { return figAimAs(A, A.animCur || A.anim || 'stand'); }
+function figLivePose(A) {
+  const t = A.t || 0, ph = A.ph || 0, p = figPose(A.animCur || A.anim || 'stand', t, ph, A);
+  if (A.animFrom && A.animAt !== undefined) {
+    const u = (t - A.animAt) / POSE_BLEND;
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+  }
+  return p;
+}
+// How much the person is walking (1) or running (2) right now, eased like the pose.
+function figMv(A) {
+  let mv = figMoving(A.animCur || A.anim);
+  if (A.animFrom && A.animAt !== undefined) {
+    const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
+    if (u >= 0 && u < 1) mv = lerp(A.animFrom === 'held' ? (A.poseFrom && A.poseFrom.mv) || 0 : figMoving(A.animFrom), mv, smooth(u));
+  }
+  return mv;
+}
+function figPoseChange(A) {
+  const to = A.anim, B = A.animBack;
+  if (B && B.anim === to && (A.t || 0) - A.animAt < 0.05) { A.animCur = to; A.animFrom = B.from; A.animAt = B.at; A.poseFrom = B.pose; A.animBack = null; return; }
+  const p = figLivePose(A), q = { mv: figMv(A) };
+  for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; q[key] = p[key] || 0; }
+  A.animBack = { anim: A.animCur, from: A.animFrom, at: A.animAt, pose: A.poseFrom };
+  A.poseFrom = q; A.animFrom = 'held'; A.animAt = A.t || 0; A.animCur = to;
+}
+
 // ---- dying -----------------------------------------------------------------
 // A dead body is a ragdoll: see src/13_ragdoll.js. The pose it died in comes from figPose
 // above; from then on the solver there moves it, and actorJoints below asks it where the
@@ -161,13 +269,7 @@ const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'k
 function actorJoints(A) {
   // the dead: wherever the ragdoll has got to (already facing the right way and scaled)
   if (A.dead) return rdJoints(A, (A.deadT || 0) + rdLead);
-  const p = figPose(A.anim || 'stand', A.t || 0, A.ph || 0, A);
-  // ease out of the previous pose over a quarter of a second
-  if (A.animFrom && A.animAt !== undefined) {
-    const u = ((A.t || 0) - A.animAt) / POSE_BLEND;
-    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, A.t || 0, A.ph || 0, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
-  }
-  const J = figJoints(p);
+  const J = figJoints(figLivePose(A));
   // turning round: the figure narrows through the turn rather than flipping in one frame
   let f = A.face || 1;
   if (A.faceS !== undefined && Math.abs(A.faceS) < 1) f = (A.faceS < 0 ? -1 : 1) * Math.max(0.22, Math.abs(A.faceS));
@@ -212,7 +314,7 @@ const FIG_LEGS = ['#2a2f3a', '#31353b', '#3a3229', '#33392d', '#25292f'];
 const FIG_SHOES = ['#101114', '#2b2119', '#1c1e23'];
 
 // The figure being drawn right now. One at a time, so one shared record and no garbage.
-const FGS = { ctx: null, A: null, L: null, env: null, st: null, px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
+const FGS = { ctx: null, A: null, L: null, env: null, st: null, anim: 'stand', px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
   sc: 1, ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
   ux: 0, uy: 1, nx: 1, ny: 0, T: 0.56, ww: 0.08, wc: 0.09, wsh: 0.1, hdx: 0, hdy: 0, htilt: 0, wind: 0,
   cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false,
@@ -1073,7 +1175,7 @@ function figClip(c, G, mode) {
 
 // ---- things that belong to what somebody is doing --------------------------
 function figRifle(c, G) {
-  const A = G.A, px = G.px, held = (A.anim === 'guard' || A.anim === 'aimrifle') && !G.dead;
+  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead;
   const a = G.haR, b = G.haL;
   let dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), ox = a[0], oy = a[1];
   if (G.dead) { ox = G.cR[0] - G.fs * 0.1; oy = Math.max(G.cR[1], 0.045); dx = G.fs; dy = 0.5 * (1 - smooth(G.dT / 0.45)); l = 0.34; }
@@ -1103,7 +1205,7 @@ function figRifle(c, G) {
   c.restore();
 }
 function figProps(c, G) {
-  const A = G.A, anim = A.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
+  const anim = G.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
   if (anim === 'aim') {
     // a pistol, pointing where the arm points
     let dx = ha[0] - G.elR[0], dy = ha[1] - G.elR[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
@@ -1539,10 +1641,9 @@ function drawFigure(ctx, A, env) {
   G.sc = sc; G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
-  const an = dead ? A.deathPose : A.anim;
+  const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
-  let mv = figMoving(A.anim);
-  if (A.animFrom && A.animAt !== undefined) { const u = ((A.t || 0) - A.animAt) / POSE_BLEND; if (u >= 0 && u < 1) mv = lerp(figMoving(A.animFrom), mv, smooth(u)); }
+  const mv = dead ? 0 : figMv(A);
   G.mv = dead ? 0 : mv; G.lag = dead ? 0 : clamp((st.s - st.vs * 0.03) * inv, -0.2, 0.2);
   // the light: how dim, and where the bright edge goes
   figDimK = env.dim || 0;
@@ -1571,7 +1672,7 @@ function drawFigure(ctx, A, env) {
     G.dR[0] = st.drop[0] + slide; G.dR[1] = Math.max(0, st.drop[1] - fall); G.dL[0] = st.drop[2] + slide; G.dL[1] = Math.max(0, st.drop[3] - fall);
     G.cR = G.dR; G.cL = G.dL;
   }
-  const K = figWear(G), bag = L.bag, anim = A.anim;
+  const K = figWear(G), bag = L.bag, anim = G.anim = an;
   const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
   const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
 
@@ -1698,8 +1799,9 @@ function figDrawFar(ctx, A, env, J, L) {
     ctx.strokeStyle = D('#d7dbe0'); ctx.lineWidth = Math.max(0.012, minw * 0.5); ctx.beginPath(); ctx.moveTo(hand[0], hand[1] + up); ctx.lineTo(hand[0] + sway * sc, 2.73 * sc + up); ctx.stroke();
     ctx.fillStyle = D(L.bagCol || '#e0413a'); ctx.beginPath(); ctx.ellipse(hand[0] + sway * sc, 2.98 * sc + up, 0.2 * sc, 0.25 * sc, 0, 0, TAU); ctx.fill();
   }
-  if ((L.gun === 'rifle' || A.anim === 'guard' || A.anim === 'aimrifle') && !dead) {
-    const held = A.anim === 'guard' || A.anim === 'aimrifle', a = J.haR, b2 = J.haL;
+  const an = figAnimNow(A);
+  if ((L.gun === 'rifle' || an === 'guard' || an === 'aimrifle') && !dead) {
+    const held = an === 'guard' || an === 'aimrifle', a = J.haR, b2 = J.haL;
     let dx = b2[0] - a[0], dy = b2[1] - a[1], l = Math.hypot(dx, dy) || 1, x0, y0, x1, y1;
     if (held && l > 0.05 * sc) { dx /= l; dy /= l; x0 = a[0] - dx * 0.3 * sc; y0 = a[1] - dy * 0.3 * sc; x1 = b2[0] + dx * 0.4 * sc; y1 = b2[1] + dy * 0.4 * sc; }
     else { x0 = tx(0.42) - f * 0.14 * sc; y0 = ty(0.42) - 0.3 * sc; x1 = x0 - f * 0.12 * sc; y1 = y0 + 1.0 * sc; }
@@ -1708,8 +1810,8 @@ function figDrawFar(ctx, A, env, J, L) {
   }
   // small lights that give people away at night: a phone screen, a cigarette end
   if (!dead && env.dark) {
-    if (A.anim === 'phone' || A.anim === 'sitphone') { ctx.fillStyle = '#cfe6ff'; ctx.fillRect(J.haR[0] - 0.035, J.haR[1] - 0.02, 0.07, 0.13); ctx.globalAlpha = 0.14; ctx.beginPath(); ctx.arc(J.haR[0], J.haR[1] + 0.04, 0.3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    else if (A.anim === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    if (an === 'phone' || an === 'sitphone') { ctx.fillStyle = '#cfe6ff'; ctx.fillRect(J.haR[0] - 0.035, J.haR[1] - 0.02, 0.07, 0.13); ctx.globalAlpha = 0.14; ctx.beginPath(); ctx.arc(J.haR[0], J.haR[1] + 0.04, 0.3, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (an === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
   }
   ctx.restore();
 }
