@@ -121,6 +121,29 @@ function figPose(anim, t, ph, A) {
     case 'sleep':
       p.hy = 0.5; p.tL = 1.5; p.tR = 1.42; p.kL = 1.5; p.kR = 1.42; p.lean = -0.25; p.head = 0.5; p.aL = 0.2; p.aR = 0.15;
       break;
+    // Handing something over. The near arm goes out over half a second (k), slower than the
+    // quarter second every change of pose takes, so it reads as a reach rather than a twitch.
+    // When this is the pose being left behind (A.anim is something else) it is held fully out.
+    case 'handover': { // standing, stooped a little, holding something out at waist height
+      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      p.lean = 0.05 + 0.25 * k; p.head = 0.08 * k; p.tL = 0.14; p.tR = -0.12; p.aL = 0.12; p.eL = 0.3;
+      p.aR = lerp(0.1, 1.0, k); p.eR = lerp(0.2, 0.25, k);
+      break;
+    }
+    // Seated in a car with the near hand busy, as a chain: 'sitreach' rises from the wheel to take
+    // something held out, 'sitread' brings it in to the chest to look at, 'sitpass' carries it back
+    // over the shoulder to whoever sits behind. Each one starts where the one before it ends, so
+    // the hand never drops out of the window on the way. The head and body stay where they are.
+    case 'sitreach': case 'sitpass': case 'sitread': {
+      const k = A.anim === anim && A.animAt !== undefined ? smooth((t - A.animAt) / 0.5) : 1;
+      p.hy = 0.5; p.tL = 1.5; p.tR = 1.45; p.kL = 1.3; p.kR = 1.3; p.aL = 1.0; p.eL = 0.5; p.lean = -0.08;
+      if (anim === 'sitreach') { p.aR = lerp(1.05, 1.65, k); p.eR = lerp(0.45, 0.95, k); }
+      else if (anim === 'sitread') { p.aR = lerp(1.65, 0.9, k); p.eR = lerp(0.95, 1.78, k); p.head = 0.14 * k; }
+      else { // the forearm turns up and over (its angle runs from 2.68 to 3.85) while the upper arm swings back
+        p.aR = lerp(0.9, -1.85, k); p.eR = k < 1 ? lerp(1.78, 5.7, k) : -0.58; p.head = lerp(0.14, -0.12, k);
+      }
+      break;
+    }
     default: // stand
       p.aL = 0.07 + b; p.aR = -0.05 - b;
   }

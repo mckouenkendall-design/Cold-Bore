@@ -92,11 +92,11 @@ mission({
   start(sim) { sim.nextWave = 8; sim.clock = (s) => fmtTime(Math.max(0, s.nextWave - s.t)); },
   cast(H) {
     return [
-      Object.assign(H.towerW.at(1.0), { id: 'w', role: 'guard', face: 1, anim: 'guard', look: C6.red(),
+      Object.assign(H.towerW.at(1.0), { id: 'w', role: 'guard', face: 1, anim: 'guard', look: C6.red({ gun: 'rifle' }),
         routine: [['wait', 8, 'guard', 1], ['walk', -49.1], ['wait', 5, 'look', -1], ['walk', -47.0], ['loop']] }),
-      Object.assign(H.towerE.at(-1.1), { id: 'e', role: 'guard', face: -1, anim: 'guard', look: C6.red({ build: 'big' }),
+      Object.assign(H.towerE.at(-1.1), { id: 'e', role: 'guard', face: -1, anim: 'guard', look: C6.red({ build: 'big', gun: 'rifle' }),
         routine: [['wait', 6, 'guard', -1], ['walk', 37.25], ['wait', 7, 'look', 1], ['walk', 34.9], ['loop']] }),
-      Object.assign(H.yard(-20), { id: 'g1', role: 'guard', anim: 'guard', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#4a515c' }, routine: pace(-34, 26, 5, 6, 'guard') }),
+      Object.assign(H.yard(-20), { id: 'g1', role: 'guard', anim: 'guard', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#4a515c', gun: 'rifle' }, routine: pace(-34, 26, 5, 6, 'guard') }),
       Object.assign(H.front(-30.6), { id: 'mech', role: 'civ', face: -1, anim: 'work', look: C6.mech, routine: [['wait', 999, 'work', -1]], failText: 'You shot the mechanic. He fixed trucks. That was all he did here.' }),
     ];
   },
@@ -172,9 +172,9 @@ mission({
   },
   cast(H) {
     return [
-      Object.assign(H.cmd.on(12), { id: 'r1', role: 'guard', face: 1, anim: 'guard', look: C6.red(),
+      Object.assign(H.cmd.on(12), { id: 'r1', role: 'guard', face: 1, anim: 'guard', look: C6.red({ gun: 'rifle' }),
         routine: [['wait', 6, 'guard', 1], ['walk', -5], ['wait', 9, 'look', -1], ['walk', 12], ['loop']] }),
-      Object.assign(H.back(-12), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: C6.red({ build: 'big' }),
+      Object.assign(H.back(-12), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: C6.red({ build: 'big', gun: 'rifle' }),
         routine: [['walk', -52], ['wait', 6, 'guard', -1], ['walk', -8], ['wait', 6, 'guard', 1], ['loop']] }),
       Object.assign(H.yard(-19.5), { id: 'g2', role: 'guard', face: 1, anim: 'smoke', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#4a515c' }, routine: [['wait', 999, 'smoke', 1]] }),
     ];
@@ -232,9 +232,12 @@ mission({
   setup() {
     const H = SCN.ridge({ z: 1000, eye: [0, 145, 0], time: 'dawn', weather: 'clear', heli: 'live', seed: 6 });
     C6.duck(H, H.PA, -43.3, 4.5);
+    // the steel door of the command bunker opens for Varga and whoever walks with her
+    K.swingDoor(H.S, H.cmd.P, { H, x: H.door - 0.65, y: H.cmd.y, w: 1.3, h: 2.2, hinge: -1, col: '#3a434e', open: (sim) => K.doorBusy(sim, ['varga', 'reyes', 'brandt'], H.door, 1.6) });
     return H;
   },
-  start(sim) {
+  start(sim, H) {
+    H.sim = sim;
     sim.clock = (s) => { let m = 99; s.actors.forEach((a) => { if (!a.dead && a.threat) m = Math.min(m, a.threat.t); }); return m < 99 ? fmtTime(Math.ceil(m)) : '-:--'; };
   },
   tick(sim, H, dt) { H.heli.step(sim, dt); },
@@ -501,7 +504,7 @@ mission({
       Object.assign(H.onPad(53.0), { id: 'aurel', role: 'target', face: f.sparedRook ? 1 : -1, look: { hair: 'white', coat: '#15171b', long: true, scarf: COL.red, bag: 'case', h: 1.06 },
         routine: [['wait', 5.4, f.sparedRook ? 'talk' : 'point', f.sparedRook ? 1 : -1], ['walk', 56.6], ['emit', 'boarded'], ['veh', 'heli', 1]], flee: [['run', 56.6], ['emit', 'boarded'], ['veh', 'heli', 1]] }),
       Object.assign(H.onPad(70.5), { id: 'marshal', role: 'civ', face: -1, anim: 'wave', look: C6.marshal, routine: [['wait', 999, 'wave', -1]], failText: 'You shot the man waving the helicopter off. He was nobody. That was the point of him.' }),
-      Object.assign(H.towerE.at(0.5), { id: 'te', role: 'guard', face: 1, anim: 'guard', look: C6.red(), routine: [['wait', 999, 'guard', 1]] }),
+      Object.assign(H.towerE.at(0.5), { id: 'te', role: 'guard', face: 1, anim: 'guard', look: C6.red({ gun: 'rifle' }), routine: [['wait', 999, 'guard', 1]] }),
     ];
     if (!f.sparedRook) c.push(Object.assign(H.onPad(51.3), { id: 'bg', role: 'guard', face: 1, look: { hat: 'helmet', hatCol: '#101216', coat: '#2a2f38', build: 'big' },
       routine: [['wait', 5.6, 'stand', 1], ['walk', 55.2], ['waitFor', 'boarded'], ['wait', 0.5], ['veh', 'heli', 2]] }));

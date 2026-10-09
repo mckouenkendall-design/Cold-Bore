@@ -122,7 +122,7 @@ mission({
         routine: [['face', -1], ['wait', 150, 'type'], ['walk', -0.3], ['gone']], escapeText: 'He left the floor with the lift and the keys to the records room. Whatever was on those shelves stays there.' }),
       Object.assign(at(9, A.winX(3)), { id: 'c1', role: 'civ', face: 1, anim: 'type', look: { hair: 'bun', hairCol: '#3a2a20', dress: COL.teal }, routine: [['face', 1], ['wait', 999, 'type']] }),
       Object.assign(at(9, A.winX(5)), { id: 'c2', role: 'civ', face: -1, anim: 'type', look: { hair: 'short', hairCol: '#2a2019', coat: COL.tan, glasses: true }, routine: [['face', -1], ['wait', 999, 'type']] }),
-      Object.assign(at(9, -8), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', build: 'big' },
+      Object.assign(at(9, -8), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', build: 'big', gun: 'rifle' },
         routine: [['walk', -24.6], ['wait', 4, 'guard', 1], ['walk', -3.6], ['wait', 4, 'guard', -1], ['loop']] }),
       Object.assign(at(5, A.winX(4)), { id: 'c3', role: 'civ', face: -1, anim: 'type', look: { hair: 'short', coat: COL.olive }, routine: [['wait', 999, 'type', -1]] }),
       Object.assign(at(6, A.winX(5)), { id: 'c4', role: 'civ', look: { hair: 'long', dress: COL.wine }, routine: pace(A.winX(3) + 0.5, A.winX(6) - 0.5, 8, 6, 'phone') }),
@@ -264,8 +264,10 @@ mission({
     K.box(S, PC, 26.0, 0, 0.62, 0.92, '#3f6fb0', { solid: false, band: 0.1 });
     K.thing(S, PC, 'can', 26.31, 1.1, { id: 'tin', r: 0.26, lure: 11, lureY: 0, drawFn(ctx, env, S2, ob) { if (!ob.alive) return; R4(ctx, ob.x - 0.17, ob.y - 0.18, 0.34, 0.36, S.tone('#c9ced3', PC, true)); R4(ctx, ob.x - 0.17, ob.y + 0.06, 0.34, 0.07, S.tone('#c8372d', PC, true)); } });
     K.thing(S, PC, 'duck', H.siteKit.craneX + 6.6, H.siteKit.jibY + 0.47);
+    K.powerTool(S, PC, { H, who: 'w2', kind: 'jackhammer', cover: 'jackhammer' }); // the night crew's jackhammer, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const K0 = H.siteKit, door = K0.cabX + 1.0, hi = { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' };
     const crew = 'One of the night crew is down. He had nothing to do with any of this, and the client wanted no questions.';
@@ -451,7 +453,7 @@ mission({
       Object.assign(r(-17.3), { id: 'b1', role: 'civ', face: -1, look: { coat: COL.navy, hair: 'short', bag: 'case' }, routine: [['wait', 999, 'stand', -1]] }),
       Object.assign(r(-13.7), { id: 'b2', role: 'civ', face: -1, look: { dress: COL.wine, hair: 'bun', bag: 'cup' }, routine: [['wait', 999, 'drink', -1]] }),
       Object.assign(r(-12.6), { id: 'b3', role: 'civ', face: -1, look: { coat: COL.olive, hat: 'fedora', hatCol: '#2a2d33', build: 'big' }, routine: [['wait', 999, 'arms', -1]] }),
-      Object.assign(r(-5.6), { id: 'g1', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026', build: 'big' }, routine: [['wait', 6, 'guard', -1], ['walk', -16.3], ['wait', 6, 'guard', -1], ['walk', -5.6], ['loop']] }),
+      Object.assign(r(-5.6), { id: 'g1', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026', build: 'big', gun: 'rifle' }, routine: [['wait', 6, 'guard', -1], ['walk', -16.3], ['wait', 6, 'guard', -1], ['walk', -5.6], ['loop']] }),
       Object.assign(r(-3.3), { id: 'g2', role: 'guard', face: -1, look: { hat: 'cap', hatCol: '#1d2026', coat: '#1d2026' }, routine: [['wait', 999, 'arms', -1]] }),
       Object.assign(H.office('A', 7, -14), { id: 'k1', role: 'civ', look: { hat: 'cap', hatCol: '#3f6fb0', vest: '#3f6fb0' }, routine: [['wait', 6, 'sweep', 1], ['walk', -6], ['wait', 6, 'sweep', -1], ['walk', -20], ['loop']] }),
     ];
@@ -502,8 +504,12 @@ mission({
       A: { lit: { 2: true, 3: false, 5: false, 7: false, 9: true }, bays: { '2,2': 'deskL', '2,3': 'none', '2,4': 'shelf+', '2,6': 'plant+' } },
       F: { shop: { lit: true }, wins: { '2,1': { lit: true, blind: 0 }, '1,3': dark, '2,3': dark, '3,3': dark, '1,2': dark, '1,4': dark } } });
     K.thing(H.S, H.PC, 'duck', H.siteKit.cabX + 4.9, 3.0);
+    // Pip's workshop door (the shop door of the brick block) opens as she comes out
+    const F = H.F, dx = F.x + F.w - 2.1;
+    K.swingDoor(H.S, F.P, { H, x: dx + 0.13, y: 0.12, w: 1.24, h: 2.16, hinge: 1, lit: true, col: '#3b2c26', open: (sim) => K.doorBusy(sim, ['pip'], dx + 0.75, 1.2, 0.6) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const A = H.A, F = H.F, door = F.x + F.w - 1.35;
     const team = { coat: '#15171b', hat: 'beanie', hatCol: '#15171b', mask: '#2a2e36' };

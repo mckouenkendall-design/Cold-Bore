@@ -52,6 +52,13 @@ Sfx.onEvent = function (e, sim) {
   }
 };
 
+// The lodge's front door (a pair of plank leaves) swings open for the people listed as they
+// go in or come out. Picture only: see K.swingDoor.
+function c3Door(H, ids, near) {
+  const B = H.lodge, dx = B.winX(B.door);
+  K.swingDoor(H.S, B.P, { H, x: dx - 1.05, y: 0.14, w: 2.1, h: 2.41, hinge: 0, col: '#3a2a20', open: (sim) => K.doorBusy(sim, ids, dx, near || 1.6) });
+}
+
 // Take someone out of a vehicle and stand them on the road (used when the
 // convoy is stopped).
 function c3Out(sim, H, id, x) {
@@ -81,8 +88,10 @@ mission({
   setup() {
     const H = SCN.valley({ z: 400, eye: 40, time: 'day', seed: 3 });
     H.kit.duck(H.S, H.PD, H.tower.x + 0.5, H.tower.roofY + 0.28, 1.25);
+    c3Door(H, ['c1']); // the porter carrying crates in
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const B = H.lodge, door = B.winX(B.door);
     return [
@@ -90,7 +99,8 @@ mission({
         routine: [['wait', 16, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 13, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 12, 'work', 1], ['walk', B.winX(4)], ['gone']],
         escapeText: 'He finished the count and went in for his lunch. The lodge is fed and armed for another week.' }),
       Object.assign(H.yard(17), { id: 'c1', role: 'civ', face: -1, look: { hat: 'beanie', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
-        routine: [['wait', 3, 'work', -1], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['look', { bag: 'box' }], ['loop']] }),
+        // (he picks the next box up at the end of his three seconds bent over the pile, not the moment he arrives)
+        routine: [['wait', 3, 'work', -1], ['look', { bag: 'box' }], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['loop']] }),
     ];
   },
   onAlarm(sim) { const t = sim.byId.t; if (t && !t.dead) t.escapeText = 'He heard the round strike and ran for the trees. The lodge knows somebody is on the mountain now.'; },
@@ -128,8 +138,10 @@ mission({
   setup() {
     const H = SCN.valley({ z: 450, eye: 46, time: 'day', seed: 5, flagX: -47 });
     H.kit.duck(H.S, H.PD, H.woodpile.x, H.woodpile.y + 0.27, 1.3);
+    c3Door(H, ['cook'], 1.9); // the cook going back to his kitchen and out again with the soup
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const T = H.tower, B = H.lodge;
     const stairTop = { plane: H.PD, x: T.stairTop, y: T.floor, zone: 'yard', room: null, behind: false };
@@ -284,8 +296,10 @@ mission({
     H.logs = H.kit.logs(S, PR, lx, ry + 9.6, { id: 'logs', floor: ry, top: ry + 11.1 });
     K.box(S, PR, 31, ry + 0.75, 7.5, 1.5, '#6a4a30', { ribs: 0.5, band: 0.12, mat: 'wood' });   // cut timber stacked on the verge
     H.kit.duck(S, PR, 37.2, ry + 2.55, 1.45);
+    K.powerTool(S, PR, { H, who: 'c1', kind: 'chainsaw', cover: 'chainsaw' }); // the woodcutter's saw, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     return [
       { id: 'd1', role: 'guard', look: { hat: 'beanie', coat: '#39404a' } },
@@ -392,10 +406,10 @@ mission({
     const B = H.lodge;
     return [
       Object.assign(H.inLodge(1, 6, -0.15), { id: 'op', role: 'target', face: -1, anim: 'type', look: { phones: COL.red, hair: 'short', coat: '#5b6875' }, routine: [['wait', 9999, 'type', -1]], escapeText: 'The operator got to the set first. The helicopter is on its way.' }),
-      Object.assign(H.inLodge(1, 5, 0), { id: 'm2', role: 'guard', face: 1, anim: 'drink', look: { hat: 'beanie', hatCol: '#5a2a2a', coat: '#3a2f2a', build: 'big' },
+      Object.assign(H.inLodge(1, 5, 0), { id: 'm2', role: 'guard', face: 1, anim: 'drink', look: { hat: 'beanie', hatCol: '#5a2a2a', coat: '#3a2f2a', build: 'big', bag: 'cup' },
         routine: [['wait', 9, 'drink', 1], ['hide'], ['to', H.inLodge(0, 1, 0)], ['wait', 26], ['to', H.inLodge(1, 5, 0)], ['show'], ['wait', 8, 'drink', 1], ['loop', 1]] }),
-      Object.assign(H.deck(-31), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { hat: 'hood', hatCol: '#3b4654', coat: '#3b4654', long: true }, routine: [['wait', 4, 'guard', 1], ['walk', 4], ['wait', 5, 'guard', -1], ['walk', -31], ['loop']] }),
-      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'hood', hatCol: '#4a3f36', coat: '#4a3f36', long: true }, routine: [['wait', 5, 'guard', -1], ['walk', -30], ['wait', 5, 'guard', 1], ['walk', 30], ['loop']] }),
+      Object.assign(H.deck(-31), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { hat: 'hood', hatCol: '#3b4654', coat: '#3b4654', long: true, gun: 'rifle' }, routine: [['wait', 4, 'guard', 1], ['walk', 4], ['wait', 5, 'guard', -1], ['walk', -31], ['loop']] }),
+      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'hood', hatCol: '#4a3f36', coat: '#4a3f36', long: true, gun: 'rifle' }, routine: [['wait', 5, 'guard', -1], ['walk', -30], ['wait', 5, 'guard', 1], ['walk', 30], ['loop']] }),
     ];
   },
   triggers(H) {
@@ -437,7 +451,7 @@ mission({
   id: 'c3m6', ch: 3, title: 'First Light', range: 480,
   objective: 'Both of August\'s guards, deck and yard. Any alarm and he is gone before breakfast.',
   brief: 'Tomorrow August flies out, so today we take away the two men he trusts to stand over him. One walks the deck, one walks the yard. Both go this morning, and nobody shouts: if August hears a thing he will be over the pass by breakfast and we start again in another country. You have a choice of ground. The near ridge is a comfortable shot, but two pines stand in the way and a rifle can be heard from there. The far peak sees everything and hears nothing, and it is seven hundred metres in a crosswind. The chapel in the valley rings at first light. Use it.',
-  intel: ['Deck guard: big man, dark beanie. Yard guard: grey cap. Both carry rifles.', 'Near ridge, 480 m: a shot is heard unless the chapel bells are ringing. Two pines hide the right-hand end of the deck.', 'Far peak, 700 m: too far for a .308 to be heard, and nothing in the way. More wind.', 'The two guards can see each other, deck to yard, when they face one another within about 30 m.', 'A maid shakes out a cloth at the left end of the deck now and then. She is not part of this.'],
+  intel: ['Deck guard: big man, dark beanie. Yard guard: grey cap. Both carry rifles.', 'Near ridge, 480 m: a shot is heard unless the chapel bells are ringing. Two pines hide the right-hand end of the deck.', 'Far peak, 700 m: too far for a .308 to be heard, and nothing in the way. More wind.', 'The two guards can see each other, deck to yard, when they face one another within about 30 m.', 'A maid comes out to sweep the left end of the deck now and then. She is not part of this.'],
   guide: [
     'These steps are for the Near ridge. Your targets are the deck guard (big, dark beanie) and the yard guard (grey cap), never the maid on the deck.',
     'Your rifle is heard from here, so fire only while the chapel bells ring: about 12 seconds in, for 10 seconds.',
@@ -459,14 +473,18 @@ mission({
     const H = SCN.valley({ z: 480, eye: 44, time: 'dawn', seed: 13, top: 138, lodge: { wins: { '2,3': { lit: true }, '0,1': { lit: true }, '0,6': { lit: true } } } });
     H.screen = [H.screenPine(near, 0.8, H.deckY + 1.1, { h: 31 }), H.screenPine(near, 6.4, H.deckY + 1.0, { h: 28 })];
     H.kit.duck(H.S, H.PR, H.gate.x - 3.5, H.roadY + 4.5, 1.4);
+    // the maid comes out through the deck door at the left end to sweep, and goes back in by it
+    const md = H.lodge.wins['1,0'];
+    K.swingDoor(H.S, H.lodge.P, { H, x: md.x, y: md.y, w: md.w, h: md.h, hinge: -1, col: '#5a4030', open: (sim) => K.doorBusy(sim, ['maid'], md.x + md.w / 2, 1.4) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const home = H.inLodge(1, 0, 0);
     return [
-      Object.assign(H.deck(-29), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: { hat: 'beanie', hatCol: '#22252b', coat: '#2a333a', build: 'big', h: 1.05 },
+      Object.assign(H.deck(-29), { id: 'g1', role: 'guard', face: -1, anim: 'guard', look: { hat: 'beanie', hatCol: '#22252b', coat: '#2a333a', build: 'big', h: 1.05, gun: 'rifle' },
         routine: [['wait', 4, 'guard', -1], ['walk', -16], ['wait', 6, 'guard', 1], ['walk', 2.5], ['wait', 6, 'guard', 1], ['walk', -16], ['wait', 6, 'guard', -1], ['walk', -29], ['loop']] }),
-      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#9aa0a8', coat: '#4a3f36' },
+      Object.assign(H.yard(30), { id: 'g2', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#9aa0a8', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 6, 'guard', -1], ['walk', -22], ['wait', 6, 'guard', 1], ['walk', 30], ['loop']] }),
       Object.assign({}, home, { id: 'maid', role: 'civ', hidden: true, face: 1, look: { hair: 'bun', dress: COL.navy, coat: '#e9e4d6' }, failText: 'You shot the maid. The contract is void, and August is awake.',
         routine: [['wait', 30], ['to', H.deck(-32)], ['show'], ['wait', 10, 'sweep', 1], ['hide'], ['to', home], ['wait', 36], ['loop', 1]] }),
@@ -516,19 +534,21 @@ mission({
   setup() {
     const H = SCN.valley({ z: 600, eye: 78, time: 'day', seed: 17 });
     H.kit.duck(H.S, H.PL, H.chimney.x - 1.6, H.chimney.y - 3.3, 1.5);
+    c3Door(H, ['valet', 'g1', 'august', 'g2']); // August and his people come out of the front door
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const door = H.lodge.winX(H.lodge.door), at = () => Object.assign(H.yard(door), { hidden: true });
     return [
       Object.assign(at(), { id: 'valet', role: 'civ', speed: 1.1, look: { hat: 'cap', hatCol: '#22252b', coat: '#3f8f4f', bag: 'duffel', bagCol: '#7b5a36' }, failText: 'That was the valet. Green coat, yes. White hair and a cane, no.',
         routine: [['wait', 3], ['show'], ['walk', 42.5], ['look', { bag: null }], ['wait', 999, 'work', 1]] }),
-      Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big' },
+      Object.assign(at(), { id: 'g1', role: 'guard', look: { hat: 'beanie', hatCol: '#1d2026', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['wait', 5], ['show'], ['walk', 5], ['wait', 0.6, 'guard', -1], ['waitFor', 'aug_go1'], ['walk', 39], ['wait', 9, 'guard', 1], ['wait', 999, 'guard', -1]] }),
       Object.assign(at(), { id: 'august', role: 'target', speed: 0.8, look: { hair: 'white', coat: '#3f8f4f', long: true, bag: 'cane', h: 0.97 },
         routine: [['wait', 7], ['show'], ['walk', -4], ['wait', 7, 'stand', 1], ['emit', 'aug_go1'], ['walk', 22], ['emit', 'aug_flag'], ['wait', 6.5, 'stand', -1], ['emit', 'aug_go2'], ['walk', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]],
         flee: [['run', 44.6], ['emit', 'boarded'], ['veh', 'heli', 1]], escapeText: 'The helicopter lifted off with August Calloway aboard. He will not come back to these mountains.' }),
-      Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36' },
+      Object.assign(at(), { id: 'g2', role: 'guard', speed: 0.8, look: { hat: 'cap', hatCol: '#3a3f49', coat: '#4a3f36', gun: 'rifle' },
         routine: [['wait', 10.4], ['show'], ['walk', -7.6], ['wait', 999, 'guard', 1]] }),
       Object.assign(H.yard(43), { id: 'pilot', role: 'civ', face: 1, anim: 'work', look: { hat: 'helmet', hatCol: '#ece8dc', vest: COL.orange }, flee: [['wait', 999, 'cower']], failText: 'You shot the pilot. He flies whoever pays. The contract is void.',
         routine: [['wait', 8.5, 'work', 1], ['veh', 'heli', 0]] }),

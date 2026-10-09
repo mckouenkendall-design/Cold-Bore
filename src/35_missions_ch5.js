@@ -44,8 +44,11 @@ mission({
     H.n1 = H.train({ id: 'n1', track: 'near', at: 9, dir: 1, speed: 14, col: '#3d5a80', seed: 0 });
     H.f1 = H.train({ id: 'f1', track: 'far', at: 33, dir: -1, speed: 12, col: '#7a3a2e', seed: 1 });
     H.n2 = H.train({ id: 'n2', track: 'near', at: 40.5, dir: 1, speed: 14, col: '#3f5a48', seed: 2 });
+    // money for paper: the clerk hands over his case and walks off with an envelope of cash
+    K.heldEnvelope(H.S, H.PM, { H, who: (sim) => (sim.did('deal') ? 'clerk' : null) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const help = vargaHelps(f);
     const yardman = { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' };
@@ -54,13 +57,13 @@ mission({
       { id: 'fixer', role: 'target', look: { coat: '#e3dcc6', long: true, hat: 'cap', hatCol: '#8a8f96', build: 'big' }, escapeText: 'The fixer drove out of the yard with the papers on the seat beside him.',
         routine: [['walk', 5.4], ['emit', 'meet'], ['wait', 10, 'talk', -1], ['look', { bag: 'case', bagCol: '#7b5a36' }], ['wait', 1.5, 'stand', -1], ['wait', 18.5, 'phone', -1], ['emit', 'leaving'], ['walk', 16.2], ['emit', 'fixer_in'], ['veh', 'car', 1]] },
       Object.assign(H.strip(3.2), { id: 'clerk', role: 'civ', face: 1, look: { build: 'thin', glasses: true, coat: COL.brown, hair: 'short', hairCol: '#3a2a20', bag: 'case', bagCol: '#7b5a36' }, failText: 'You shot the clerk. He was the only one who knew where the copies are.',
-        routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: 'paper' }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
+        routine: [['waitFor', 'meet'], ['wait', 10, 'talk', 1], ['look', { bag: null }], ['emit', 'deal'], ['wait', 1.2, 'stand', 1], ['speed', 1.45], ['walk', -5.6], ['to', H.strip(-5.6, { zone: 'west' })], ['emit', 'clerk_hid'], ['walk', -30], ['emit', 'clerk_safe'], ['walk', -84], ['gone']] }),
       Object.assign(H.inBox(-1.5), { id: 'sigman', role: 'civ', face: -1, anim: 'work', look: { hat: 'peaked', hatCol: '#3a3f47', coat: '#3a3f47' }, routine: pace(H.box.x + 2, H.box.x + 6, 5, 6, 'work') }),
       Object.assign(H.siding(-24), { id: 'w1', role: 'civ', look: yardman, routine: pace(-36, -22, 6, 7, 'work') }),
       Object.assign(H.strip(-33), { id: 'w2', role: 'civ', face: -1, anim: 'work', look: Object.assign({ build: 'big' }, yardman), routine: [['wait', 999, 'work', -1]] }),
     ];
     if (!help) {
-      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big' }, routine: [['wait', 999, 'guard', 1]] });
+      c.push({ id: 'bg', role: 'guard', look: { hat: 'beanie', coat: '#22262d', build: 'big', gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] });
       c.push(Object.assign(H.siding(48), { id: 'cop', role: 'vip', look: POLICE, failText: POLICE_FAIL, routine: pace(38, 52, 5, 4, 'stand') }));
     }
     return c;
@@ -142,10 +145,10 @@ mission({
       // the host and his guests
       Object.assign(H.lawn(2.6), { id: 'host', role: 'civ', face: 1, anim: 'talk', look: { coat: COL.cream, hair: 'white', tie: COL.red, bag: 'cup', build: 'big' }, failText: 'You shot the host. Aurel\'s lawyer was the one man at that party the papers would have named.', routine: [['wait', 999, 'talk', 1]] }),
       Object.assign(H.lawn(4.1), { id: 'gu1', role: 'civ', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#2a2019', dress: COL.wine, bag: 'cup' }, routine: [['wait', 999, 'drink', -1]] }),
-      Object.assign(H.lawn(-2.2), { id: 'gu2', role: 'civ', face: 1, anim: 'drink', look: { hat: 'sun', hatCol: '#efe6cf', dress: COL.sky }, routine: [['wait', 999, 'drink', 1]] }),
-      Object.assign(H.lawn(13.2), { id: 'gu3', role: 'civ', face: 1, anim: 'sitdrink', look: { coat: COL.tan, hair: 'short' }, routine: [['wait', 999, 'sitdrink', 1]] }),
+      Object.assign(H.lawn(-2.2), { id: 'gu2', role: 'civ', face: 1, anim: 'drink', look: { hat: 'sun', hatCol: '#efe6cf', dress: COL.sky, bag: 'cup' }, routine: [['wait', 999, 'drink', 1]] }),
+      Object.assign(H.lawn(13.2), { id: 'gu3', role: 'civ', face: 1, anim: 'sitdrink', look: { coat: COL.tan, hair: 'short', bag: 'cup' }, routine: [['wait', 999, 'sitdrink', 1]] }),
       Object.assign(H.lawn(14.8), { id: 'gu4', role: 'civ', face: -1, anim: 'sit', look: { hair: 'bun', dress: COL.pink }, routine: [['wait', 999, 'sit', -1]] }),
-      Object.assign(H.lawn(-29.2), { id: 'gu5', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'sun', hatCol: '#e8dcc0', hatBand: COL.red, dress: COL.yellow }, routine: [['wait', 999, 'sitdrink', -1]] }),
+      Object.assign(H.lawn(-29.2), { id: 'gu5', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'sun', hatCol: '#e8dcc0', hatBand: COL.red, dress: COL.yellow, bag: 'cup' }, routine: [['wait', 999, 'sitdrink', -1]] }),
       Object.assign(H.lawn(-30.8), { id: 'gu6', role: 'civ', face: 1, anim: 'sitphone', look: { coat: COL.navy, glasses: true }, routine: [['wait', 999, 'sitphone', 1]] }),
       Object.assign(H.lawn(-21.5), { id: 'gu7', role: 'civ', face: -1, anim: 'stand', look: { hair: 'long', dress: COL.teal, hairCol: '#e0c070', bag: 'cup' }, routine: pace(-26, -20.5, 6, 5, 'drink') }),
       Object.assign(H.lawn(-3.6), { id: 'wt1', role: 'civ', look: { coat: '#f1ede2', hair: 'short', bag: 'box', bagCol: '#c9ced3' }, routine: [['wait', 3, 'work', 1], ['walk', 19.5], ['wait', 3, 'work', 1], ['walk', -3.6], ['loop']] }),
@@ -154,7 +157,7 @@ mission({
       Object.assign(H.lawn(-11.0), { id: 'bd2', role: 'civ', face: 1, anim: 'talk', look: { hat: 'beret', hatCol: '#7a2438', coat: '#22252b' }, routine: [['wait', 999, 'talk', 1]] }),
       Object.assign(H.lawn(-9.5), { id: 'bd3', role: 'civ', face: -1, anim: 'work', look: { hair: 'long', dress: '#22252b', bag: 'guitar', bagCol: '#7b5a36' }, routine: [['wait', 999, 'work', -1]] }),
     ];
-    if (f && f.savedBrandt) c.push(Object.assign(H.lawn(15.6), { id: 'brandt', role: 'vip', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#c2452d', dress: COL.teal, bag: 'paper' }, failText: 'You shot Nadia Brandt. She came to that party to help you.',
+    if (f && f.savedBrandt) c.push(Object.assign(H.lawn(15.6), { id: 'brandt', role: 'vip', face: -1, anim: 'drink', look: { hair: 'long', hairCol: '#c2452d', dress: COL.teal, bag: 'cup' }, failText: 'You shot Nadia Brandt. She came to that party to help you.',
       routine: [['wait', 2.8, 'drink', -1], ['wait', 3.4, 'point', -1], ['walk', 20.1], ['wait', 999, 'sitdrink', 1]] }));
     if (!help) {
       c.push(Object.assign(H.drive(30), { id: 'sec3', role: 'guard', look: { coat: suit, glasses: 'shades', build: 'big' }, routine: pace(17, 33, 5, 5, 'arms') }));
@@ -226,6 +229,17 @@ mission({
     const drawHook = H.hook.draw;
     H.hook.draw = function (ctx, env) { drawHook(ctx, env); if (H.hook.alive) { R4(ctx, H.hook.x - 0.24, H.hook.y - 0.26, 0.48, 0.52, '#e8b53a'); R4(ctx, H.hook.x - 0.11, H.hook.y - 0.13, 0.22, 0.26, '#20242b'); } };
     H.tr = H.train({ id: 'tr', at: 5, every: 27, dir: 1, speed: 18, near: 130 });
+    // the night watchman's chair on the quay (he sat on thin air before): drawn behind him, so it hides nothing
+    { const q = H.quay(-112), wood = H.S.tone('#6b5440', q.plane), woodD = H.S.tone('#4a3a2c', q.plane), x = q.x, y = q.y;
+      q.plane.add({ x0: x - 1, x1: x + 1, layer: 0, draw(ctx, env) {
+        if (env.s < 2.5) return;
+        const lw = Math.max(0.035, env.px);
+        ctx.strokeStyle = woodD; ctx.lineWidth = lw; ctx.beginPath();
+        ctx.moveTo(x - 0.24, y); ctx.lineTo(x - 0.22, y + 0.46); ctx.moveTo(x + 0.2, y); ctx.lineTo(x + 0.18, y + 0.46); // legs
+        ctx.moveTo(x - 0.24, y + 0.44); ctx.lineTo(x - 0.4, y + 1.0); ctx.stroke();                             // the back, leaning
+        R4(ctx, x - 0.28, y + 0.42, 0.52, 0.06, wood); // seat
+        if (env.s > 8) { ctx.strokeStyle = wood; ctx.lineWidth = Math.max(0.05, env.px); ctx.beginPath(); ctx.moveTo(x - 0.3, y + 0.72); ctx.lineTo(x - 0.38, y + 0.95); ctx.stroke(); }
+      } }); }
     return H;
   },
   cast(H, f) {
@@ -251,7 +265,8 @@ mission({
     return [H.tr.trig,
       hint(1.5, 'Nobody may die here. Get the crew away from the boat first: shoot the yellow hook above the cargo net (when nobody is under it) and they will all come to look. Then the red drums.', 12),
       onEv('crash:hook_p', (sim) => { crew(sim).forEach((a, i) => { if (sendOver(sim, a, -85.6 + i * 1.5, 9, 'stand')) sim.bubble(a, '?', 2); }); sim.msg('Pip', 'There they go, every one of them. Give them a few steps more, then the drums.'); }, 0.3),
-      { at: 46, do(sim) { if (H.boat.fuel.alive && crew(sim).filter((a, i) => sendOver(sim, a, -84 + i * 1.6, 9, 'drink')).length) sim.msg('Pip', 'Tea. They always did stop for tea. Is anybody left aboard?'); } },
+      // tea: each of them takes up a mug for it (and puts down whatever he was carrying), then picks his things up again
+      { at: 46, do(sim) { if (H.boat.fuel.alive && crew(sim).filter((a, i) => { if (!sendOver(sim, a, -84 + i * 1.6, 9, 'drink')) return false; a.routine.splice(1, 0, ['look', { bag: 'cup' }]); a.routine.splice(3, 0, ['look', { bag: a.look.bag || null }]); return true; }).length) sim.msg('Pip', 'Tea. They always did stop for tea. Is anybody left aboard?'); } },
       onEv('obj:fuel', (sim) => { crew(sim).forEach((a) => sim.setRoutine(a, [['wait', 99, 'stand', 1]])); sim.msg('Pip', 'Down she goes. Look at them. Not a scratch.'); }),
       vargaHelps(f) ? say(4, 'Varga', 'Varga. I am holding the river at the lock for you. Nothing will pass that quay tonight.') : say(4, 'Pip', 'Varga has a police launch on the river tonight. If it is beside the boat when the fuel goes, we have killed a constable.'),
     ];
@@ -418,8 +433,30 @@ mission({
     H.PH.add({ x0: 18, x1: 21, layer: 0, draw(ctx) { R4(ctx, 18.42, 0.8, 1.66, 0.42, H.S.tone('#6b4f3a', H.PH, true)); } });
     K.thing(H.S, H.PF, 'duck', H.gate.x1 + 0.45, 3.32); // on the right-hand gate post
     if (!vargaHelps(f)) K.parked(H.S, H.PT, 'sedan', 41, -1, '#27365a', { y: 0 });
+    // the study's glazed door opens as she goes out to the fire and comes back in (drawn behind the
+    // people in the study, because the door is also one of its windows)
+    const sd = H.house.wins['0,7'];
+    K.swingDoor(H.S, H.PH, { H, x: sd.x, y: sd.y, w: sd.w, h: sd.h, hinge: -1, lit: true, col: '#f6f1e4', layer: 0, open: (sim) => K.doorBusy(sim, ['marlow'], sd.x + sd.w / 2, 1.5) });
+    // the fire flares up each time Marlow drops an armful of files into the drum (H.burnT, set from her routine)
+    const bz = H.brazier, BP = bz.plane;
+    BP.add({ x0: bz.x - 3, x1: bz.x + 3, layer: 2, draw(ctx, env) {
+      const u = (env.t - (H.burnT === undefined ? -99 : H.burnT)) / 1.8; if (u < 0 || u > 1 || !bz.alive || env.s < 2) return;
+      const x = bz.x, top = bz.y - 0.1, k = 1 - u, drift = (env.wind || 0) * 0.12 * u;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, top + 0.5, 0.05, x, top + 0.5, 1.8 * k + 0.2);
+      g.addColorStop(0, 'rgba(255,190,90,' + (0.55 * k).toFixed(3) + ')'); g.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, top + 0.5, 1.8 * k + 0.2, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      const hh = 1.5 * Math.sqrt(k); ctx.fillStyle = H.S.tone('#ff9a2e', BP, true); ctx.beginPath(); ctx.moveTo(x - 0.26, top); ctx.quadraticCurveTo(x - 0.3, top + hh * 0.6, x + drift, top + hh); ctx.quadraticCurveTo(x + 0.3, top + hh * 0.55, x + 0.26, top); ctx.closePath(); ctx.fill();
+      for (let i = 0; i < 8; i++) { // scraps of burning paper and sparks lifting off it
+        const q = ((i * 37) % 10) / 10, ex = x + Math.sin(i * 2.3) * 0.3 + drift * (1 + q), ey = top + 0.3 + u * (1.6 + 1.4 * q);
+        ctx.globalAlpha = k; if (i % 2) circ(ctx, ex, ey, Math.max(0.03, env.px), H.S.tone('#ffb050', BP, true)); else R4(ctx, ex, ey, 0.08, 0.05, H.S.tone('#2a2420', BP));
+      }
+      ctx.globalAlpha = 1;
+    } });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const door = H.lawn(23.75), inDoor = H.study(23.75);
     const atRadio = (sim, a) => {
@@ -439,9 +476,10 @@ mission({
     let loops = 0;
     const c = [
       Object.assign(H.study(19.4), { id: 'marlow', role: 'target', face: -1, anim: 'work', look: { coat: '#7c838c', long: true, hair: 'bun', hairCol: '#d3d7dc', glasses: true }, flee: leave(true),
-        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['wait', 5, 'work', 1], ['look', { bag: null }], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
+        // (the files go into the fire as she reaches it; the flare is drawn from H.burnT)
+        routine: [['wait', 7, 'work', -1], ['look', { bag: 'paper' }], ['walk', 23.75], ['to', door], ['walk', 26.9], ['look', { bag: null }], ['call', (sim) => { H.burnT = sim.t; }], ['wait', 5, 'work', 1], ['walk', 23.75], ['to', inDoor], ['walk', 19.4],
           ['call', (sim, a) => { if (++loops >= 3) { sim.msg('Pip', 'That is the last of the files. She has her case. She is going to the car.'); sim.setRoutine(a, [['look', { bag: 'case' }], ['wait', 1.5, 'stand', 1]].concat(leave(false))); } }], ['loop']] }),
-      Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big' }, routine: pace(-6, 16, 4, 4, 'guard') }),
+      Object.assign(H.lawn(4), { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' }, routine: pace(-6, 16, 4, 4, 'guard') }),
       // the housekeeper, washing up in the kitchen. She has never heard of the Ledger.
       Object.assign(H.inWin(0, 1), { id: 'cook', role: 'civ', face: 1, anim: 'work', look: { hair: 'bun', hairCol: '#5a3a22', dress: COL.sky }, failText: 'You shot the housekeeper. She thought she worked for an insurance firm.', routine: pace(H.house.winX(1) - 0.5, H.house.winX(1) + 0.4, 6, 5, 'work') }),
     ];
@@ -516,8 +554,12 @@ mission({
       row: { cafe: { wins: { '2,1': { open: true, blind: 0, lit: true } } }, rec: { wins: { '0,2': { lit: true }, '0,4': { lit: true } } }, mill: { wins: { '2,2': { open: true, blind: 0, lit: true }, '4,4': { blind: 0, lit: true } } } } });
     K.table(H.S, H.PSt, 188, { y: H.QY, umbrella: '#b33a3a' }); K.table(H.S, H.PSt, 192, { y: H.QY, umbrella: '#e8dcc0' });
     K.thing(H.S, H.PO, 'duck', H.b.ten.x + 16 * 0.3 + 1.25, H.b.ten.roofY + 0.9 + 5.05); // on the tenement water tank
+    // the office's glazed doors open for the officers going in, and again when they come out with the boxes
+    const R = H.b.rec, dop = R.wins['0,3'];
+    K.swingDoor(H.S, H.PO, { H, x: dop.x, y: H.QY, w: dop.w, h: dop.y + dop.h - H.QY, hinge: 0, lit: true, col: '#3b2c26', open: (sim) => K.doorBusy(sim, ['v1', 'v2'], R.winX(3) + 0.45, 1.4) });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H, f) {
     const help = vargaHelps(f), R = H.b.rec, doorX = R.winX(3);
     const gun = (o) => Object.assign({ role: 'hostile', state: 'alert', calmOnAlarm: true, hidden: true, look: { mask: '#16181d', coat: '#2a2d33', hat: 'beanie', hatCol: '#16181d', gun: 'rifle' } }, o);
@@ -533,7 +575,7 @@ mission({
       gun(Object.assign(H.inWin(H.b.cafe, 2, 1, -0.9), { id: 'gE', routine: [['waitFor', 'out'], ['wait', 4.2], ['show'], ['emit', 'show_gE'], ['walk', H.b.cafe.winX(1)], ['wait', 0.6, 'aim', -1], ['threat', 'v1', 6]] })),
       // bystanders: all of them more than a scream away from where the gunmen stand
       Object.assign(H.inWin(H.b.mill, 2, 2), { id: 'res', role: 'civ', face: -1, anim: 'work', look: { hair: 'white', dress: COL.wine }, routine: [['wait', 999, 'work', -1]] }),
-      Object.assign(H.street(187.2), { id: 'cf1', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'beret', hatCol: '#27365a', coat: COL.tan }, routine: [['wait', 999, 'sitdrink', -1]] }),
+      Object.assign(H.street(187.2), { id: 'cf1', role: 'civ', face: -1, anim: 'sitdrink', look: { hat: 'beret', hatCol: '#27365a', coat: COL.tan, bag: 'cup' }, routine: [['wait', 999, 'sitdrink', -1]] }),
       Object.assign(H.street(192.8), { id: 'cf2', role: 'civ', face: 1, anim: 'sitphone', look: { hair: 'long', dress: COL.teal }, routine: [['wait', 999, 'sitphone', 1]] }),
       Object.assign(H.inWin(H.b.mill, 4, 4), { id: 'nb', role: 'civ', anim: 'phone', look: { hair: 'short', coat: COL.olive }, routine: pace(H.b.mill.winX(4) - 0.5, H.b.mill.winX(4) + 0.5, 7, 6, 'phone') }),
       Object.assign(H.street(110), { id: 'paper', role: 'civ', face: -1, speed: 1.25, look: { hat: 'cap', hatCol: '#5a4634', coat: COL.grey, bag: 'paper' }, routine: [['walk', 90], ['gone']] }),

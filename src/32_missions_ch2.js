@@ -90,8 +90,9 @@ mission({
   cast(H) {
     const cyc = (w, a, b, f) => { const r = []; for (let i = 0; i < 3; i++) r.push(['wait', w, 'work', -f], ['walk', b], ['wait', 6.8, 'talk', f], ['walk', a]); r.push(['wait', 4, 'work', -f], ['walk', -68], ['gone']); return r; };
     return [
-      Object.assign(H.quay(-3), { id: 't1', role: 'target', face: -1, look: { hat: 'cap', hatCol: '#2a2d33', coat: COL.grey, long: true, h: 1.05, build: 'thin' }, routine: cyc(13.82, -3, 3.0, 1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
-      Object.assign(H.quay(13), { id: 't2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big' }, routine: cyc(12.13, 13, 4.6, -1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
+      // (each carries his list on a clipboard: they "compare lists" under the net)
+      Object.assign(H.quay(-3), { id: 't1', role: 'target', face: -1, look: { hat: 'cap', hatCol: '#2a2d33', coat: COL.grey, long: true, h: 1.05, build: 'thin', bag: 'clip' }, routine: cyc(13.82, -3, 3.0, 1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
+      Object.assign(H.quay(13), { id: 't2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big', bag: 'clip' }, routine: cyc(12.13, 13, 4.6, -1), escapeText: 'They finished the count and the shipment went out on the tide.' }),
       Object.assign(H.quay(8.6), { id: 'c1', role: 'civ', face: -1, look: { hat: 'hardhat', hatCol: '#e2b33c', vest: '#e07b2a', vestStripe: '#f1ede2' }, failText: 'The docker was under the net too. He was only checking the slings.',
         routine: [['wait', 10, 'work', -1], ['walk', 5.7], ['wait', 10, 'work', -1], ['walk', 8.6], ['wait', 33.4, 'work', -1], ['loop']] }),
       Object.assign(H.quay(18), { id: 'g', role: 'guard', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', gun: 'rifle' }, routine: [['walk', -26], ['wait', 5, 'guard', 1], ['walk', 18], ['wait', 5, 'guard', -1], ['loop']] }),
@@ -145,7 +146,7 @@ mission({
         failText: 'You hit Tomas Reyes. He was the one you were sent to save.', lostText: 'They shot Tomas Reyes on the end of the pier. You were there to stop that.' }),
       Object.assign(H.pier(15.8), { id: 'g1', role: 'target', face: 1, look: { hat: 'cap', hatCol: '#2a2d33', coat: '#39404a', long: true }, flee: rush,
         routine: [['walk', 49.8], ['say', 'On your knees.', 2.2], ['wait', 2.5, 'point', 1], ['emit', 'count'], ['threat', 'reyes', 13]] }),
-      Object.assign(H.pier(11), { id: 'g2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big' }, flee: rush,
+      Object.assign(H.pier(11), { id: 'g2', role: 'target', face: 1, look: { hat: 'beanie', hatCol: COL.red, coat: '#3a2f2a', build: 'big', gun: 'rifle' }, flee: rush,
         routine: [['walk', 40], ['wait', 9, 'guard', -1], ['wait', 3, 'guard', 1], ['loop', 1]] }),
       Object.assign({}, H.skiff, { id: 'c1', role: 'civ', face: 1, anim: 'sit', look: { hat: 'sun', hatCol: '#7a6a4a', coat: COL.olive, beard: '#d9d9d2' }, flee: [['wait', 999, 'cower']], routine: [['wait', 999, 'sit', 1]] }),
       Object.assign(H.quay(-20), { id: 'c2', role: 'civ', face: 1, look: { hat: 'hardhat', hatCol: '#e07b2a', vest: '#e2b33c', bag: 'box' }, routine: [['walk', -6], ['wait', 6, 'work', 1], ['walk', -30], ['wait', 6, 'work', -1], ['loop']] }),
@@ -203,7 +204,7 @@ mission({
     return [
       { id: 'bm', role: 'civ', look: { hat: 'cap', hatCol: '#27365a', coat: '#d8b52a' }, failText: 'You shot the boatman. He was hired by the hour and knew nothing.' },
       { id: 't', role: 'target', look: { hat: 'beanie', hatCol: '#16181c', coat: '#6b4a32', bag: 'duffel' }, escapeText: 'The launch slipped back into the dark with the courier aboard.' },
-      Object.assign(H.pier(38.4), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#2a333a', build: 'big' }, routine: [['wait', 999, 'guard', -1]] }),
+      Object.assign(H.pier(38.4), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { hat: 'cap', hatCol: '#2a2d33', coat: '#2a333a', build: 'big', gun: 'rifle' }, routine: [['wait', 999, 'guard', -1]] }),
       Object.assign(H.quay(-2), { id: 'c1', role: 'civ', face: 1, look: { hat: 'beanie', hatCol: '#5a4634', coat: COL.olive }, routine: [['wait', 999, 'smoke', 1]] }),
     ];
   },
@@ -367,7 +368,7 @@ mission({
   id: 'c2m7', ch: 2, title: 'Maeve', range: 320,
   objective: 'Maeve Calloway: white hair AND a long red coat. Guests and crew are not targets.',
   brief: 'Last one on the water. Maeve Calloway is giving a party aboard her yacht, the Silver Tide, before she sails on the tide. White hair and a long red coat, and she is the only one aboard with both. The saloon is full of guests who have done nothing worse than accept an invitation. Her bodyguards never look away from her while there is light to see by. There is a storm coming in: thunder for your shot, and a hard gusting wind against it. She takes her telephone calls alone on the top deck. Do not let her sail.',
-  intel: ['Maeve: WHITE hair and a long RED coat. One guest has white hair. Another wears red. Neither is her.', 'Lightning, then about two and a half seconds of thunder, roughly every ten seconds.', 'Each deck has its own lamp. In the dark a bodyguard sees four metres and no more.', 'The crane is swinging a crate aboard over the aft deck. She will want to look at it.', 'Wind 5 m/s and gusting. Read HOLD just before you fire.'],
+  intel: ['Maeve: WHITE hair and a long RED coat. One guest has white hair. Another wears red. Neither is her.', 'Lightning, then about two and a half seconds of thunder, roughly every ten seconds.', 'Each deck has its own lamp. In the dark a bodyguard sees four metres and no more.', 'The crane holds a crate over the aft deck, waiting to lower it aboard. She will want to look at it.', 'Wind 5 m/s and gusting. Read HOLD just before you fire.'],
   guide: [
     'These steps are for the Harbour master\'s tower. Maeve has WHITE hair AND a long RED coat; the guest with white hair and the one in red are not her.',
     'She starts in the saloon among the guests, so do not shoot there. First put out the lamp on the top deck, just above where she will stand.',
@@ -398,18 +399,19 @@ mission({
     const Y = H.yacht, s0 = Y.stairs[0], s1 = Y.stairs[1];
     const up = (x) => Y.deckY + clamp((x - s0) / (s1 - s0), 0, 1) * (Y.sunY - Y.deckY);
     return [
-      Object.assign(H.saloon(21), { id: 'maeve', role: 'target', face: 1, anim: 'drink', look: { hair: 'white', coat: COL.red, long: true, h: 0.97 },
-        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 5, 'talk', -1], ['walk', 16.3], ['to', H.deck(14.6)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
+      // (she leaves her glass in the saloon when she goes out on deck, and picks one up again when she comes back in)
+      Object.assign(H.saloon(21), { id: 'maeve', role: 'target', face: 1, anim: 'drink', look: { hair: 'white', coat: COL.red, long: true, h: 0.97, bag: 'cup' },
+        routine: [['wait', 5, 'drink', 1], ['walk', 17.6], ['wait', 5, 'talk', -1], ['walk', 16.3], ['look', { bag: null }], ['to', H.deck(14.6)], ['walk', 6.0], ['emit', 'at_crate'], ['wait', 7, 'point', -1],
           ['walk', s0], ['call', (sim, a) => { a.yFn = up; }], ['walk', s1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.sun(s1)); }], ['walk', 20.4], ['emit', 'on_call'], ['wait', 17, 'phone', 1],
-          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 14.6], ['to', H.saloon(16.3)], ['walk', 21], ['wait', 9, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
+          ['walk', s1], ['call', (sim, a) => { sim.place(a, H.deck(s1)); a.yFn = up; }], ['walk', s0], ['call', (sim, a) => { a.yFn = null; }], ['walk', 14.6], ['to', H.saloon(16.3)], ['look', { bag: 'cup' }], ['walk', 21], ['wait', 9, 'drink', 1], ['emit', 'sailing'], ['hide'], ['gone']],
         escapeText: 'She went below and the Silver Tide sailed on the tide, with Maeve Calloway aboard.' }),
-      Object.assign(H.sun(15.5), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { coat: '#1d2026', build: 'big', glasses: 'shades', h: 1.05 }, routine: [['wait', 999, 'guard', 1]] }),
+      Object.assign(H.sun(15.5), { id: 'g1', role: 'guard', face: 1, anim: 'guard', look: { coat: '#1d2026', build: 'big', glasses: 'shades', h: 1.05, gun: 'rifle' }, routine: [['wait', 999, 'guard', 1]] }),
       Object.assign(H.deck(11), { id: 'g2', role: 'guard', face: -1, anim: 'arms', look: { coat: '#1d2026', hat: 'cap', hatCol: '#1d2026' }, routine: [['wait', 999, 'arms', -1]] }),
       Object.assign(H.deck(9.8), { id: 'dk', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#e9e6dd', coat: '#27365a' }, failText: 'The deckhand was under the crate with her. He only works there.',
         routine: [['wait', 4, 'work', -1], ['walk', 7.4], ['wait', 17.3, 'work', -1], ['walk', 9.8], ['wait', 999, 'stand', -1]] }),
-      Object.assign(H.saloon(24.6), { id: 'c1', role: 'civ', face: -1, anim: 'drink', look: { hair: 'white', dress: COL.navy }, routine: pace(23.6, 25.4, 6, 7, 'drink'), failText: 'White hair, but a blue dress. That was a guest, not Maeve Calloway.' }),
+      Object.assign(H.saloon(24.6), { id: 'c1', role: 'civ', face: -1, anim: 'drink', look: { hair: 'white', dress: COL.navy, bag: 'cup' }, routine: pace(23.6, 25.4, 6, 7, 'drink'), failText: 'White hair, but a blue dress. That was a guest, not Maeve Calloway.' }),
       Object.assign(H.saloon(19.6), { id: 'c2', role: 'civ', face: 1, anim: 'talk', look: { hair: 'bun', hairCol: '#2a2019', dress: COL.red }, routine: [['wait', 999, 'talk', 1]], failText: 'A red dress, but dark hair. That was a guest, not Maeve Calloway.' }),
-      Object.assign(H.saloon(22.4), { id: 'c3', role: 'civ', face: -1, anim: 'drink', look: { hair: 'white', beard: '#e8e8e2', coat: '#22252b', tie: COL.wine }, routine: [['wait', 999, 'drink', -1]] }),
+      Object.assign(H.saloon(22.4), { id: 'c3', role: 'civ', face: -1, anim: 'drink', look: { hair: 'white', beard: '#e8e8e2', coat: '#22252b', tie: COL.wine, bag: 'cup' }, routine: [['wait', 999, 'drink', -1]] }),
       Object.assign(H.saloon(17.2), { id: 'c4', role: 'civ', face: 1, look: { hair: 'short', coat: '#ece8dc', bag: 'cup' }, routine: pace(17.0, 25.8, 5, 5, 'stand'), speed: 0.8 }),
       Object.assign(H.pier(-1.5), { id: 'c5', role: 'civ', face: 1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, routine: [['wait', 999, 'stand', 1]] }),
       Object.assign(H.fore(33), { id: 'c6', role: 'civ', face: 1, look: { hat: 'cap', hatCol: '#e9e6dd', coat: '#27365a' }, routine: pace(30, 36, 6, 6, 'work') }),

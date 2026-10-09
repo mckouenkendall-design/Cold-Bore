@@ -136,8 +136,10 @@ mission({
     K.box(H.S, H.PB, -2, H.b3.roofY + 0.9, 4, 0.55, '#2a2e36', { solid: false });
     H.hook = K.hang(H.S, H.PS, 0, 12.5, 'piano', { id: 'hook', top: H.b3.roofY + 1.2, floor: 0 });
     K.thing(H.S, H.PR, 'duck', -27, 3.25);
+    K.powerTool(H.S, H.PS, { H, who: 'c2', kind: 'jackhammer', cover: 'jackhammer' }); // the road crew's jackhammer, running while its cover does
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     return [
       Object.assign(H.street(6.5), { id: 't', role: 'target', face: -1, look: { coat: COL.cream, long: true, hat: 'sun', hatCol: '#efe6cf', hatBand: '#22252b', bag: 'cane' },
@@ -161,36 +163,84 @@ mission({
   reward: { cr: 800, xp: 200 },
 });
 
+// ---- The 9:15: the envelope ---------------------------------------------------
+// The car parks in the near lane (plane PR) and the runner waits on the pavement (plane PS),
+// seven metres further back. To reach the driver's window he steps off the kerb and walks round
+// the nose of the car. From the roof the pavement looks higher than the road by C1M5_LIFT, so he
+// changes plane at the kerb standing that much above the road, and drops to the road as he
+// crosses: on screen he walks smoothly down and round, with no jump.
+const C1M5_KZ = 153 / 160, C1M5_LIFT = 14.64 * (1 - C1M5_KZ); // eye height (15 m, tipped down at the car) times the depth step
+const C1M5_KERB = -1.1, C1M5_KERB_R = C1M5_KERB * C1M5_KZ, C1M5_NOSE = -2.35, C1M5_DOOR = -3.63;
+// The runner has reached the driver's window (called from his routine). Who does what, and
+// when, from here: the driver takes the envelope, looks at it and passes it back over his
+// shoulder; the lawyer takes it, reads it and puts it away. Every beat checks that nothing has
+// gone wrong first (somebody shot, the car spooked, the runner frightened off).
+function c1m5Exchange(sim, H) {
+  const v = sim.byId.car, drv = sim.byId.drv, t = sim.byId.t, run = sim.byId.c1, E = H.env;
+  const inCar = (a) => a && !a.dead && a.inVeh === v;
+  const parked = () => !v.scared && !v.flatTire && !v.crashed && !v.gone && v.goal === null;
+  const pose = (a, anim) => { if (inCar(a)) a.anim = anim; };
+  const beat = (dt, fn) => sim.after(dt, () => { if (parked()) fn(); else { pose(drv, 'drive'); pose(t, 'drive'); } });
+  const open = () => !!(v.st.pane && v.st.pane[1] && v.st.pane[1].b === 1);
+  const runnerHolds = () => E.who === 'c1' && run && !run.dead && !run.gone && run.state === 'calm' && run.anim === 'handover';
+  beat(0.3, () => { if (runnerHolds() && open() && inCar(drv)) pose(drv, 'sitreach'); });
+  beat(0.85, () => { if (runnerHolds() && inCar(drv) && drv.anim === 'sitreach') E.who = 'drv'; else pose(drv, 'drive'); });
+  beat(1.25, () => { if (E.who === 'drv') pose(drv, 'sitread'); });
+  beat(1.85, () => { if (E.who !== 'drv' || !inCar(drv)) return; if (inCar(t)) pose(drv, 'sitpass'); else { pose(drv, 'drive'); sim.after(0.3, () => { if (E.who === 'drv') E.who = null; }); } });
+  beat(2.05, () => { if (E.who === 'drv' && drv.anim === 'sitpass') pose(t, 'sitreach'); });
+  beat(2.55, () => { if (E.who === 'drv' && t.anim === 'sitreach' && inCar(t)) { E.who = 't'; pose(t, 'sitread'); } else pose(t, 'drive'); });
+  beat(2.75, () => pose(drv, 'drive'));
+  beat(4.2, () => pose(t, 'drive'));
+  beat(4.55, () => { if (E.who === 't' && inCar(t)) E.who = null; }); // tucked away inside his coat
+}
+
 mission({
   id: 'c1m5', ch: 1, title: 'The 9:15', range: 170, needs: { glass: true },
   objective: 'White hat, dark glasses, back seat. The car stops once and not for long.',
-  brief: 'The Calloway lawyer never walks anywhere. Every evening at a quarter past nine his car pulls up outside the deli for a few seconds while a runner passes an envelope through the window. That is the only time he is ever still. He sits in the back. White hat, dark glasses. The driver is hired help; leave him if you can. When the car pulls away the chance is gone.',
-  intel: ['Target is in the BACK seat. The driver is in front.', 'The car stops for about eight seconds.', 'Window glass nudges a bullet slightly off line. Aim for the middle of the head.', 'A flat tyre would also stop a car.'],
+  brief: 'The Calloway lawyer never walks anywhere. Every evening at a quarter past nine his car pulls up on Calder Street, just past the laundry, for a few seconds. The driver winds his window down, a runner hands him an envelope, and he passes it back to his employer. That is the only time the lawyer is ever still. He sits in the back, behind glass that stays shut. White hat, dark glasses. The driver is hired help; leave him if you can. When the car pulls away the chance is gone.',
+  intel: ['Target is in the BACK seat. The driver is in front.', 'The car stops for about eight seconds. Only the driver\'s window comes down.', 'The back window stays up. Glass nudges a bullet slightly off line. Aim for the middle of the head.', 'A flat tyre would also stop a car.'],
   guide: [
     'You need a rifle that can shoot through car glass. The Fenwick 77 can.',
-    'A dark car drives in from the left and stops outside the deli about 13 seconds in. It waits there about 8 seconds.',
+    'A dark car drives in from the left and stops just past the laundry about 13 seconds in. The driver winds his window down for the envelope; the car waits about 8 seconds.',
     'Your man sits in the BACK seat: white hat, dark glasses. The driver in front is not the target.',
-    'Shoot him in the head while the car is stopped. The car door hides his chest, and the glass nudges the bullet, so aim at the middle of his head.',
+    'Shoot him in the head while the car is stopped. The car door hides his chest, and his back window stays shut, so the glass nudges the bullet: aim at the middle of his head.',
     'The drop is tiny at this range (HOLD reads about 0.5 up), so aim a hair above the middle of his head.',
   ],
   wind: { v: -1.2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Tannery roof', desc: 'Looking down into the car windows.', eye: [0, 15, 0] }],
   look: [-6, 2],
-  setup() { const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] }); K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42); return H; },
+  setup() {
+    const H = SCN.street({ z: 160, time: 'dusk', seed: 14, cars: [['sedan', 32, 1, '#2f4a6b']] });
+    K.thing(H.S, H.PS, 'duck', H.lamps[3].x, H.lamps[3].y + 0.42);
+    H.env = { who: 'c1' };
+    [H.PS, H.PR].forEach((P) => K.heldEnvelope(H.S, P, { H, who: () => H.env.who })); // in the hand of whoever has it
+    return H;
+  },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
+    const road = (x) => ({ plane: H.PR, x, y: C1M5_LIFT, zone: 'street', room: null, behind: false });
     return [
       { id: 'drv', role: 'guard', look: { hat: 'peaked', hatCol: '#1d2026' } },
       { id: 't', role: 'target', look: { hat: 'fedora', hatCol: '#ece8dc', hatBand: '#22252b', glasses: 'shades' }, escapeText: 'The car pulled away with him in it. Same time tomorrow, then.' },
-      Object.assign(H.street(2), { id: 'c1', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#7a2438', bag: 'paper' }, routine: [['waitFor', 'parked'], ['walk', 0], ['wait', 6, 'talk', -1], ['walk', 47], ['gone']] }),
+      // the runner: to the kerb as the car comes, round its nose to the driver's door, and back
+      Object.assign(H.street(2), { id: 'c1', role: 'civ', face: -1, look: { hat: 'cap', hatCol: '#7a2438', coat: '#3a3f47' },
+        yFn(x) { return this.plane === H.PR ? C1M5_LIFT * smooth((x - C1M5_NOSE) / (C1M5_KERB_R - C1M5_NOSE)) : 0; },
+        // (an 'anim' before a 'walk' is the pose he arrives in, so the stride eases straight into it)
+        routine: [['wait', 10.4], ['walk', C1M5_KERB], ['waitFor', 'parked'], ['wait', 0.5, 'stand', -1], ['to', road(C1M5_KERB_R)], ['anim', 'handover'], ['walk', C1M5_DOOR],
+          ['call', (sim) => c1m5Exchange(sim, H)], ['wait', 1.1, 'handover', -1], ['wait', 1.0, 'talk', -1],
+          ['anim', 'walk'], ['walk', C1M5_KERB_R], ['to', H.street(C1M5_KERB)], ['walk', 47], ['gone']] }),
       Object.assign(H.street(-30), { id: 'c2', role: 'civ', look: { hair: 'bun', dress: COL.teal, bag: 'shopping' }, routine: stroll(47), speed: 0.9 }),
     ];
   },
   vehicles(H) {
+    // the driver's window (window 1) comes down as the car stops and goes back up before it leaves
     return [{ id: 'car', kind: 'sedan', plane: H.PR, x: -78, y: 0, dir: 1, col: '#101216', seats: ['drv', 't'],
-      routine: [['wait', 4], ['drive', -5, 9], ['emit', 'parked'], ['wait', 8.5], ['emit', 'leaving'], ['drive', 95, 10], ['gone']] }];
+      routine: [['wait', 4], ['drive', -5, 9], ['emit', 'parked'],
+        ['call', (sim, v) => { const ok = () => !v.scared && !v.flatTire && !v.crashed && !v.gone; sim.after(0.5, () => { if (ok()) carWindow(sim, v, 1, true, 1.2); }); sim.after(6.8, () => { if (ok()) carWindow(sim, v, 1, false, 1.2); }); }],
+        ['wait', 8.5], ['emit', 'leaving'], ['drive', 95, 10], ['gone']] }];
   },
   triggers(H) { return [
-    hint(1.5, 'A car is coming from the left. It will stop outside the deli. The man you want is in the back seat.'),
+    hint(1.5, 'A car is coming from the left. It will stop just past the laundry. The man you want is in the back seat.'),
     onEv('leaving', (sim) => sim.msg('Marlow', 'He is moving. Lead him or let him go.')),
     { on: 'stopped:car', delay: 1.4, do(sim) { const a = sim.byId.t; if (!a || a.dead) return; a.inVeh = null; a.hidden = false; sim.place(a, { plane: H.PS, x: sim.byId.car.x - 1.5, y: 0, zone: 'street', room: null, behind: false }); a.anim = a.idle = 'stand'; a.state = 'flee'; a.routine = [['run', -50], ['gone']]; a.pc = 0; sim.raiseAlarm('target', 0.3); } },
   ]; },
@@ -232,17 +282,24 @@ mission({
     K.thing(H.S, H.PF, 'duck', 5.6, 15.4);
     H.room = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: 'b3:count', zone: 'b3:count', behind: true });
     H.out = (x) => ({ plane: H.PB, x, y: H.b3.floorY(3), room: null, zone: H.bal.zone, behind: false });
+    // the balcony door opens as the guard comes out to smoke and as he goes back in
+    const bd = H.b3.win(3, 4), bx = bd.x + bd.w / 2, inner = H.b3.winX(3) + 0.4;
+    K.swingDoor(H.S, H.PB, { H, x: bd.x, y: bd.y, w: bd.w, h: bd.h, hinge: -1, col: '#3a3f47', open(sim) {
+      const g = sim.byId.g; if (!g || g.dead || g.gone || g.state !== 'calm') return false;
+      return g.zone === H.bal.zone ? g.goal !== null && Math.abs(g.x - bx) < 1.7 : g.room === 'b3:count' && g.x > inner && (g.goal === null || g.goal > inner);
+    } });
     return H;
   },
+  start(sim, H) { H.sim = sim; },
   cast(H) {
     const B = H.b3;
     return [
       Object.assign(H.room(B.winX(2)), { id: 't', role: 'target', face: -1, anim: 'type', look: { hat: 'cap', hatCol: '#2f9a55', glasses: true },
         routine: [['wait', 15, 'type', -1], ['walk', B.winX(1)], ['wait', 4, 'work', -1], ['walk', B.winX(2)], ['loop']], escapeText: 'The bookkeeper went under the desk and the books went into the furnace.' }),
-      Object.assign(H.room(B.winX(3) - 0.5), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { coat: '#3a2f2a', build: 'big', hat: 'beanie' },
+      Object.assign(H.room(B.winX(3) - 0.5), { id: 'g', role: 'guard', face: -1, anim: 'guard', look: { coat: '#3a2f2a', build: 'big', hat: 'beanie', gun: 'rifle' },
         routine: [['walk', B.winX(1) - 0.8], ['wait', 3, 'guard', 1], ['walk', B.winX(3)], ['wait', 2, 'guard', -1], ['walk', B.winX(3) + 1.4], ['to', H.out(B.winX(4) - 1.0)], ['walk', B.winX(4) + 0.3], ['wait', 10.5, 'smoke', 1], ['walk', B.winX(4) - 1.0], ['to', H.room(B.winX(3) + 1.4)], ['loop']] }),
       Object.assign(H.inWin(H.b2, 2, 1), { id: 'c1', role: 'civ', anim: 'phone', look: { hair: 'long', dress: COL.wine }, routine: [['wait', 999, 'phone']] }),
-      Object.assign(H.inWin(H.b5, 3, 2), { id: 'c2', role: 'civ', anim: 'drink', look: { hair: 'short', coat: COL.olive }, routine: pace(H.b5.winX(2) - 1.2, H.b5.winX(2) + 0.4, 6, 5, 'drink') }),
+      Object.assign(H.inWin(H.b5, 3, 2), { id: 'c2', role: 'civ', anim: 'drink', look: { hair: 'short', coat: COL.olive, bag: 'cup' }, routine: pace(H.b5.winX(2) - 1.2, H.b5.winX(2) + 0.4, 6, 5, 'drink') }),
       Object.assign(H.street(-45), { id: 'c3', role: 'civ', look: { hat: 'beanie', bag: 'backpack' }, routine: stroll(47) }),
     ];
   },
@@ -282,7 +339,7 @@ mission({
       { id: 'drv', role: 'guard', look: { hat: 'cap' } },
       { id: 'dutch', role: 'target', look: { build: 'big', beard: '#9a9fa6', coat: '#15171b', long: true, scarf: COL.red, h: 1.08 },
         routine: [['walk', 2.2], ['wait', 11, 'talk', 1], ['walk', 13], ['wait', 9.5, 'phone', 1], ['walk', -9.5], ['emit', 'dutch_in'], ['veh', 'suv', 1]], escapeText: 'Dutch got back in the car. He will not be this careless twice.' },
-      { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big' },
+      { id: 'g1', role: 'guard', look: { hat: 'beanie', coat: '#2a2f38', build: 'big', gun: 'rifle' },
         routine: [['walk', -0.8], ['wait', 12, 'guard', -1], ['walk', 6], ['wait', 16, 'guard', -1], ['walk', -11.5], ['veh', 'suv', 2]] },
       Object.assign(H.street(3.8), { id: 'sgt', role: 'civ', face: -1, look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a' }, failText: 'You shot a police sergeant. Every officer in Port Calder is now looking for you.',
         routine: [['waitFor', 'arrived'], ['wait', 21.5, 'talk', -1], ['walk', -47], ['gone']] }),

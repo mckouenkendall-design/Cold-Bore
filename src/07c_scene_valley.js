@@ -980,8 +980,12 @@ K.logLoad = function (S, P, x, yHook, o) {
     if (s > 9) { R4(ctx, x - 0.55, yHook - 0.34, 0.12, 0.68, yelD); R4(ctx, x + 0.43, yHook - 0.34, 0.12, 0.68, yelD); circ(ctx, x, yHook, 0.27, steel); }
     circ(ctx, x, yHook, s > 9 ? 0.11 : 0.2, chain);
   };
-  P.add({ x0: x - p.w, x1: x + p.w, layer: 2, draw(ctx, env) {
-    if (p.cleared) return;   // dragged off the road
+  let clearT = null;
+  const logItem = { x0: x - p.w, x1: x + p.w, layer: 2, draw(ctx, env) {
+    // dragged off the road: the bundle fades over a second instead of vanishing between two frames
+    if (p.cleared) { if (clearT === null || env.t < clearT) clearT = env.t; const a = 1 - (env.t - clearT) / 1.1; if (a <= 0) return; ctx.save(); ctx.globalAlpha = a; logItem.drawLogs(ctx, env); ctx.restore(); return; }
+    clearT = null; logItem.drawLogs(ctx, env);
+  }, drawLogs(ctx, env) {
     const s = env.s, w = p.w, x0 = p.x - w / 2, y0 = p.y, rows = [[0, 0.02, 1], [0.04, 0.5, 0.94], [0.02, 0.98, 0.9]];
     for (let i = 0; i < rows.length; i++) {
       const lx = x0 + rows[i][0] * w + (p.landed ? (i - 1) * 0.5 : 0), ly = y0 + rows[i][1] * (p.landed ? 0.8 : 1), lw = w * rows[i][2];
@@ -992,7 +996,8 @@ K.logLoad = function (S, P, x, yHook, o) {
       if (s > 12) { ctx.strokeStyle = cutD; ctx.lineWidth = Math.max(0.02, env.px * 0.5); ctx.beginPath(); ctx.ellipse(lx + 0.06, ly + 0.25, 0.05, 0.14, 0, 0, TAU); ctx.moveTo(lx + lw - 0.01, ly + 0.25); ctx.ellipse(lx + lw - 0.06, ly + 0.25, 0.05, 0.14, 0, 0, TAU); ctx.stroke(); }
     }
     if (!p.landed) { R4(ctx, x0 + w * 0.2, y0 - 0.04, 0.16, p.h + 0.08, chain); R4(ctx, x0 + w * 0.8 - 0.16, y0 - 0.04, 0.16, p.h + 0.08, chain); if (s > 9) { R4(ctx, x0 + w * 0.2 - 0.05, y0 + p.h * 0.45, 0.26, 0.2, steel); R4(ctx, x0 + w * 0.8 - 0.21, y0 + p.h * 0.45, 0.26, 0.2, steel); } }
-  } });
+  } };
+  P.add(logItem);
   ob.logs = p;
   return ob;
 };

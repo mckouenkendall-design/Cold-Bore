@@ -2351,6 +2351,21 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   const by = c.wheel * 0.75, flat = st && st.flat, wx = [-L * 0.31, L * 0.31], tyre = T('#0e1014'), rimC = T('#8d949a'), chrome = T('#b9c0c7');
   // where it meets the road
   if (s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.beginPath(); ctx.ellipse(0, 0.03, L * 0.53, Math.max(0.08, c.wheel * 0.24), 0, 0, TAU); ctx.fill(); }
+  // A car that pulls up from speed stops dead in the simulation. So that it reads as hard
+  // braking rather than a jolt, the body dips onto its nose and rocks back over most of a
+  // second; the wheels stay on the road. (st carries the speed the picture last saw.)
+  let pitch = 0;
+  if (st) {
+    if (st._kt !== undefined && env.t > st._kt + 0.3) st._ksp = 0; // not watched while it stopped: no dip when it comes back into view
+    else if (st._kt !== undefined && env.t > st._kt + 1e-4) {
+      const sp = Math.abs(x - st._kx) / (env.t - st._kt);
+      if (st.moving) { st._ksp = sp; st._kst = undefined; } else if (st._ksp > 1.5 && st._kst === undefined) { st._kst = env.t; st._ksv = st._ksp; st._ksp = 0; }
+    }
+    if (env.t !== st._kt) { st._kt = env.t; st._kx = x; }
+    const u = st._kst === undefined ? 9 : env.t - st._kst;
+    if (u >= 0 && u < 1) pitch = Math.min(0.07, st._ksv * 0.008) * Math.exp(-u * 4) * Math.sin((u / 0.42) * Math.PI);
+  }
+  if (pitch) { ctx.save(); ctx.rotate(-pitch); }
   if (c.box) {
     const bx0 = c.box[0] * L, bw = (c.box[1] - c.box[0]) * L, bc = (st && st.boxCol) || '#d9dde2', boxC = T(bc);
     R4(ctx, bx0, by + 0.25, bw, c.h - by - 0.25, boxC); R4(ctx, bx0, by, L * 0.98, 0.4, dk);
@@ -2380,7 +2395,20 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   // windows
   const wy = c.body + 0.06, wh = c.h - c.body - 0.2;
   for (let i = 0; i < c.win.length; i++) {
-    const w0 = c.win[i][0] * L, w1 = c.win[i][1] * L, broken = st && st.glass && st.glass[i];
+    const w0 = c.win[i][0] * L, w1 = c.win[i][1] * L, pn = st && st.pane && st.pane[i], broken = st && st.glass && st.glass[i] && !(pn && pn.gone);
+    const down = pn && !broken ? kxPaneAt(pn, env.t) : 0;
+    if (down > 0.002) {
+      // a window wound part or all of the way down: the open part shows the dark inside of the
+      // car with no sheen on it, and the pane sinks into the door with its top edge catching the light
+      const gh = wh * (1 - down);
+      R4(ctx, w0, wy, w1 - w0, wh, S.tone('#151a22', P));
+      if (gh > 0.004) {
+        R4(ctx, w0, wy, w1 - w0, gh, gl);
+        ctx.fillStyle = 'rgba(200,225,255,0.14)'; ctx.fillRect(w0, wy, (w1 - w0) * 0.35, gh);
+        if (s > 6) R4(ctx, w0, wy + gh - Math.max(0.012, env.px * 0.9), w1 - w0, Math.max(0.012, env.px * 0.9), 'rgba(225,238,255,0.55)');
+      }
+      continue;
+    }
     R4(ctx, w0, wy, w1 - w0, wh, broken ? S.tone('#0d1016', P) : gl);
     if (!broken) {
       ctx.fillStyle = 'rgba(200,225,255,0.14)'; ctx.fillRect(w0, wy, (w1 - w0) * 0.35, wh);
@@ -2436,6 +2464,7 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   R4(ctx, L / 2 - 0.2, c.body - 0.28, 0.2, 0.16, lampsOn ? '#fff3c4' : S.tone('#e8e4d0', P));
   R4(ctx, -L / 2, c.body - 0.26, 0.14, 0.14, lampsOn ? (braking ? '#ff5a4a' : '#d83a30') : S.tone('#a8322a', P));
   if (s > 13) { R4(ctx, L / 2 - 0.2, c.body - 0.28, 0.2, 0.03, 'rgba(0,0,0,0.25)'); R4(ctx, L / 2 - 0.16, c.body - 0.42, 0.14, 0.07, T('#e8a23a', lampsOn)); R4(ctx, -L / 2, c.body - 0.36, 0.1, 0.07, T('#e8a23a', lampsOn)); }
+  if (pitch) ctx.restore();
   // wheels
   for (let i = 0; i < 2; i++) {
     const fl = flat && flat[i], r = c.wheel, cy = r * (fl ? 0.8 : 1);
@@ -2462,6 +2491,23 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
     ctx.globalAlpha = 0.3; ctx.drawImage(kxBlob('#fff0be'), L / 2 + 0.5, -0.22, 7, 0.5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.restore();
+}
+// A side window that can be wound down. st.pane[i] = { a, b, t0, dur, gone }: the pane moves
+// from a to b (0 = shut, 1 = all the way down) over dur seconds from time t0.
+function kxPaneAt(pn, t) { return lerp(pn.a, pn.b, smooth((t - pn.t0) / pn.dur)); }
+// Wind window i of vehicle v down (down = true) or back up, starting now. The picture and the
+// simulation must agree, so for bullets the glass is gone from the moment the pane is halfway
+// down until it is halfway back up. st.glass[i] is the flag the simulation reads (true: no
+// glass to break); pane.gone remembers that the window took the glass away, not a bullet, so
+// the car is not drawn with broken glass and the glass comes back when the window goes up.
+function carWindow(sim, v, i, down, dur) {
+  const st = v.st; st.pane = st.pane || [];
+  const was = st.pane[i], pn = st.pane[i] = { a: was ? kxPaneAt(was, sim.t) : 0, b: down ? 1 : 0, t0: sim.t, dur: dur || 1.2, gone: !!(was && was.gone) };
+  sim.after(pn.dur / 2, () => {
+    if (st.pane[i] !== pn) return; // wound the other way since
+    if (down && !st.glass[i]) { st.glass[i] = true; pn.gone = true; }
+    else if (!down && pn.gone) { st.glass[i] = false; pn.gone = false; }
+  });
 }
 // The elevated train: three cars, each with doors, a row of lit windows, roof gear and trucks.
 function kxTrain(ctx, env, S, P, c, col, dk, gl, st, dir) {
@@ -2511,6 +2557,151 @@ K.parked = function (S, P, kind, x, dir, col, o) {
   P.add({ x0: x - c.len / 2 - 1, x1: x + c.len / 2 + 1, layer: o.layer === undefined ? 2 : o.layer, draw(ctx, env) { drawCar(ctx, env, S, P, kind, x, y, dir, col, null); } });
   P.solid(x - c.len / 2, y, c.len, c.body, 'thin');
   P.solid(x + (dir > 0 ? c.cab[0] : -c.cab[1]) * c.len, y + c.body, (c.cab[1] - c.cab[0]) * c.len, c.h - c.body, 'glasswall');
+};
+
+// ---- doors that open for people ------------------------------------------------
+// Scenes draw their doors shut, and the simulation simply hides a person who walks into a
+// door and shows one who comes out of it. Drawn on its own, that is somebody vanishing into a
+// closed door. K.swingDoor draws over a door: the inside (dark, or lit) and the leaf turned
+// back on its hinge, eased open and shut over a third of a second. Picture only: the
+// simulation never reads it.
+//   o = { H, x, y, w, h, open(sim), hinge, lit, col, layer }
+//   H       the mission's handles; the mission keeps its simulation in H.sim (see start())
+//   open    true while the door should stand open
+//   hinge   -1 hinged on the left, 1 on the right, 0 a pair of doors opening from the middle
+//   lit     false for a dark inside, true (or a colour) for a lit one
+//   col     the colour of the door (its edge shows as it turns)
+K.swingDoor = function (S, P, o) {
+  const st = { k: 0, t: null }, hinge = o.hinge === undefined ? -1 : o.hinge;
+  P.add({ x0: o.x - 0.6, x1: o.x + o.w + 0.6, layer: o.layer === undefined ? 1 : o.layer, draw(ctx, env) {
+    const sim = o.H && o.H.sim; if (!sim) return;
+    const want = o.open(sim) ? 1 : 0;
+    if (st.t === null || env.t < st.t || env.t - st.t > 1) st.k = want; else st.k = approach(st.k, want, (env.t - st.t) / 0.33);
+    st.t = env.t;
+    const k = smooth(st.k); if (k < 0.01 || o.x > env.x1 || o.x + o.w < env.x0) return;
+    // Only the gap is painted: the leaf keeps the scene's own drawing of the door (so it starts
+    // to open looking exactly as it did shut), with its free edge showing and a little shade as
+    // it turns away from us.
+    const x = o.x, y = o.y, w = o.w, h = o.h, s = env.s, cs = Math.cos(k * 1.35);
+    const base = o.col || '#4a3a2c', edge = S.tone(lighten(base, 0.18), P);
+    const leaves = hinge === 0 ? [[x, (w / 2) * cs, 1], [x + w - (w / 2) * cs, (w / 2) * cs, -1]] : hinge < 0 ? [[x, w * cs, 1]] : [[x + w - w * cs, w * cs, -1]];
+    const g0 = hinge > 0 ? x : hinge < 0 ? x + w * cs : x + (w / 2) * cs, g1 = hinge > 0 ? x + w - w * cs : hinge < 0 ? x + w : x + w - (w / 2) * cs;
+    R4(ctx, g0, y, g1 - g0, h, o.lit ? S.tone(o.lit === true ? '#efd29a' : o.lit, P, true) : S.tone('#0b0e13', P));
+    if (o.lit && s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(g0, y + h * 0.88, g1 - g0, h * 0.12); } // the shade under the lintel inside
+    leaves.forEach(([lx, lw, side]) => {
+      if (lw < env.px * 0.5) return;
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.3 * k).toFixed(3) + ')'; ctx.fillRect(lx, y, lw, h);
+      const fe = Math.max(0.035, env.px), ex = side > 0 ? lx + lw : lx - fe;
+      R4(ctx, ex, y, fe, h, edge);
+    });
+  } });
+};
+// Is anybody in `ids` going through a door at x right now? Somebody within `near` metres of
+// it who is walking, or who is about to be hidden there, or somebody hidden there who is about
+// to be shown (looking past steps that take no time, such as a change of clothes). Somebody
+// who only stands about near the door does not hold it open.
+const KX_NO_TIME = { look: 1, emit: 1, face: 1, anim: 1, speed: 1, role: 1, say: 1, call: 1 };
+K.doorBusy = function (sim, ids, x, near, lead) {
+  for (let i = 0; i < ids.length; i++) {
+    const a = sim.byId[ids[i]]; if (!a || a.dead || a.gone || a.inVeh || Math.abs(a.x - x) > near) continue;
+    let pc = a.pc, op = a.routine[pc];
+    while (op && KX_NO_TIME[op[0]]) op = a.routine[++pc];
+    if (!a.hidden) { if (a.goal !== null || (op && op[0] === 'hide' && a.wait < 0.3)) return true; continue; }
+    if (op && op[0] === 'show' && a.wait < (lead === undefined ? 0.45 : lead) && !a.waitFor) return true;
+  }
+  return false;
+};
+
+// ---- an envelope in somebody's hand ----------------------------------------------
+// The figures have no envelope to carry, so a mission that hands one about draws it here: in
+// the near hand of whoever o.who(sim) names (an actor id, or null for nobody), lying along the
+// forearm a little past the fingers. Inside a car only the part that shows through that
+// person's window is drawn, as with the person. One item per plane the holder may be on.
+//   o = { H, who(sim), col }
+K.heldEnvelope = function (S, P, o) {
+  const paper = S.tone(o.col || '#efe6cf', P), fold = S.tone(darken(o.col || '#efe6cf', 0.38), P), ink = S.tone('#13161b', P);
+  P.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) {
+    const sim = o.H && o.H.sim, who = sim && o.who(sim); if (!who || env.s < 2.2) return;
+    const a = sim.byId[who]; if (!a || a.gone || a.hidden || a.plane !== P) return;
+    const J = actorJoints(a), hx = a.x + J.haR[0], hy = a.y + J.haR[1];
+    if (hx < env.x0 - 1 || hx > env.x1 + 1) return;
+    ctx.save();
+    const v = a.inVeh;
+    if (v) {
+      const c = v.def, lx = c.seats[a.seat] * c.len; let wi = -1;
+      for (let w = 0; w < c.win.length; w++) if (lx >= c.win[w][0] * c.len - 0.05 && lx <= c.win[w][1] * c.len + 0.05) wi = w;
+      if (wi < 0) { ctx.restore(); return; }
+      ctx.beginPath(); ctx.rect(v.x + v.dir * c.win[wi][v.dir > 0 ? 0 : 1] * c.len, v.y + c.body + 0.06, (c.win[wi][1] - c.win[wi][0]) * c.len, c.h - c.body - 0.2); ctx.clip();
+    }
+    ctx.translate(hx, hy); ctx.rotate(Math.atan2(J.haR[1] - J.elR[1], J.haR[0] - J.elR[0]));
+    R4(ctx, -0.04, -0.06, 0.24, 0.12, paper);
+    if (env.s > 9) { ctx.strokeStyle = fold; ctx.lineWidth = Math.max(0.008, env.px * 0.7); ctx.beginPath(); ctx.moveTo(-0.04, -0.06); ctx.lineTo(0.06, 0); ctx.lineTo(-0.04, 0.06); ctx.stroke(); }
+    if (env.s > 5) { ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(0, 0, 0.032, 0, TAU); ctx.fill(); } // the fingers round it
+    ctx.restore();
+  } });
+};
+
+// ---- a worker's power tool -------------------------------------------------------
+// Some missions offer the noise of a jackhammer or a chainsaw as cover. This puts the tool in
+// the worker's hands and makes it run exactly while that cover runs: the jackhammer chatters
+// on the pavement and throws up grit, the chainsaw bites into a log on a sawbuck and sprays
+// sawdust. If the worker stops working (frightened, or shot) the tool stays where he left it.
+// Drawn on the worker's plane just before the people on it (his hands go over the grips),
+// and behind anything that stands in front of him there. Picture only.
+//   o = { H, who (actor id), kind: 'jackhammer' | 'chainsaw', cover (the cover's name) }
+K.powerTool = function (S, P, o) {
+  const at = { x: null, y: 0, f: 1, hx: 0, hy: 0 }, chain = o.kind === 'chainsaw';
+  const T = (hex, self) => S.tone(hex, P, self);
+  if (chain) { // the log he is cutting, on a sawbuck in front of where he stands (behind him in the picture, so it hides nothing)
+    P.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+      if (at.x === null) { const a = o.H && o.H.sim && o.H.sim.byId[o.who]; if (!a) return; at.x = a.x; at.y = a.y; at.f = a.face < 0 ? -1 : 1; }
+      if (env.s < 2 || at.x < env.x0 - 3 || at.x > env.x1 + 3) return;
+      const f = at.f, lx = at.x + f * 0.82, y = at.y, wood = T('#7a5a3c'), bark = T('#4f3a28'), end = T('#c9a878');
+      ctx.strokeStyle = T('#5a4634'); ctx.lineWidth = Math.max(0.045, env.px); ctx.beginPath();
+      for (const dx of [-0.42, 0.42]) { ctx.moveTo(lx + dx - 0.22, y); ctx.lineTo(lx + dx + 0.18, y + 0.66); ctx.moveTo(lx + dx + 0.22, y); ctx.lineTo(lx + dx - 0.18, y + 0.66); }
+      ctx.stroke();
+      R4(ctx, lx - 0.72, y + 0.52, 1.44, 0.24, wood); R4(ctx, lx - 0.72, y + 0.52, 1.44, 0.06, bark);
+      if (env.s > 8) { R4(ctx, f > 0 ? lx - 0.75 : lx + 0.69, y + 0.53, 0.06, 0.22, end); ctx.fillStyle = T('#d8c39a'); ctx.beginPath(); ctx.ellipse(at.x + f * 0.42, y + 0.02, 0.3, 0.05, 0, 0, TAU); ctx.fill(); } // the cut end, and the sawdust below it
+    } });
+  }
+  P.add({ x0: -1e4, x1: 1e4, layer: 1, draw(ctx, env) {
+    const sim = o.H && o.H.sim; if (!sim || env.s < 2) return;
+    const a = sim.byId[o.who]; if (!a || a.gone || a.plane !== P) return;
+    if (!a.dead && !a.hidden && a.anim === 'work') {
+      const J = actorJoints(a); at.f = J.f < 0 ? -1 : 1; at.x = a.x; at.y = a.y;
+      at.hx = a.x + (J.haR[0] + J.haL[0]) / 2; at.hy = a.y + (J.haR[1] + J.haL[1]) / 2; at.held = true;
+    } else at.held = false;
+    if (at.x === null || at.x < env.x0 - 3 || at.x > env.x1 + 3) return;
+    const on = at.held && sim.covered() && sim.coverName === o.cover, f = at.f, t = env.t, y = at.y, s = env.s;
+    const steel = T('#8d949a'), dark = T('#2a2e36'), paint = T(chain ? '#e8762a' : '#d8b52a');
+    if (!chain) {
+      // the jackhammer: T handle in his hands, the body, the chisel on the ground, its air hose trailing behind him
+      const cx = at.held ? at.hx + f * 0.04 : at.x + f * 0.55, top = at.held ? at.hy : y + 0.95, vib = on ? Math.sin(t * 150) * 0.014 : 0;
+      ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.035, env.px * 0.8); ctx.beginPath(); ctx.moveTo(cx - f * 0.07, top - 0.3); ctx.quadraticCurveTo(cx - f * 0.6, y + 0.5, cx - f * 1.0, y + 0.03); ctx.lineTo(cx - f * 3.2, y + 0.03); ctx.stroke();
+      R4(ctx, cx - 0.018, y, 0.036, 0.36 + vib, steel);
+      R4(ctx, cx - 0.07, y + 0.34 + vib, 0.14, top - y - 0.36, paint);
+      if (s > 6) { R4(ctx, cx - 0.07, y + 0.34 + vib, 0.14, 0.06, dark); R4(ctx, cx - 0.035, y + 0.42 + vib, 0.07, top - y - 0.48, T('#f0d36a')); }
+      R4(ctx, cx - 0.21, top - 0.03 + vib, 0.42, 0.055, dark);
+      if (on) { // grit and dust kicked up round the chisel
+        for (let i = 0; i < 6; i++) { const u = (t * 1.7 + i / 6) % 1, sd = i % 2 ? 1 : -1; ctx.globalAlpha = (1 - u) * 0.45; circ(ctx, cx + sd * (0.08 + 0.45 * u), y + 0.05 + 0.4 * u * (1 - 0.4 * u), 0.05 + 0.16 * u, T('#cfc7b8')); }
+        ctx.globalAlpha = 1;
+        if (s > 6) { ctx.fillStyle = T('#8a8378'); for (let i = 0; i < 5; i++) { const u = (t * 3.1 + i * 0.37) % 1, sd = i % 2 ? 1 : -1; ctx.fillRect(cx + sd * (0.05 + 0.5 * u), y + 0.02 + 0.5 * u - 0.9 * u * u, 0.025, 0.025); } }
+      }
+      return;
+    }
+    // the chainsaw: the engine in his hands, the bar down into the log
+    const hx = at.held ? at.hx : at.x + f * 0.82, hy = at.held ? at.hy : y + 0.84, ang = at.held ? -0.62 : -0.05, bx = hx + f * 0.12, by = hy - 0.05;
+    const tx = bx + f * Math.cos(ang) * 0.46, ty = by + Math.sin(ang) * 0.46, shake = on ? Math.sin(t * 120) * 0.008 : 0;
+    ctx.strokeStyle = steel; ctx.lineWidth = Math.max(0.05, env.px); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(bx, by + shake); ctx.lineTo(tx, ty + shake); ctx.stroke(); ctx.lineCap = 'butt';
+    if (on && s > 8) { ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.012, env.px * 0.6); ctx.setLineDash([0.03, 0.03]); ctx.lineDashOffset = -t * 2.4; ctx.beginPath(); ctx.moveTo(bx, by + 0.025 + shake); ctx.lineTo(tx, ty + 0.025 + shake); ctx.stroke(); ctx.setLineDash([]); }
+    R4(ctx, hx - 0.16, hy - 0.11 + shake, 0.32, 0.19, paint); R4(ctx, hx - 0.1, hy + 0.08 + shake, 0.2, 0.04, dark);
+    if (on) {
+      // sawdust thrown back off the bar, and a little exhaust from the engine
+      for (let i = 0; i < 7; i++) { const u = (t * 2.2 + i / 7) % 1; ctx.globalAlpha = (1 - u) * 0.7; circ(ctx, tx - f * (0.1 + 0.6 * u), ty - 0.05 - 0.55 * u * u + 0.12 * u, 0.02 + 0.03 * u, T('#e3cf9f')); }
+      for (let i = 0; i < 3; i++) { const u = (t * 0.9 + i / 3) % 1; ctx.globalAlpha = (1 - u) * 0.3; circ(ctx, hx - f * (0.2 + 0.2 * u), hy + 0.05 + 0.6 * u, 0.06 + 0.14 * u, T('#b9bec4')); }
+      ctx.globalAlpha = 1;
+    }
+  } });
 };
 
 // ---- assorted props -----------------------------------------------------------

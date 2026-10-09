@@ -202,7 +202,7 @@ CARS.pvan = { len: 6.4, h: 2.6, body: 1.15, cab: [-0.5, 0.5], win: [[0.25, 0.43]
     const wx = [-L * 0.31, L * 0.31];
     ctx.fillStyle = black; ctx.beginPath(); for (let i = 0; i < 2; i++) { ctx.moveTo(wx[i] + c.wheel + 0.1, by + 0.1); ctx.arc(wx[i], c.wheel, c.wheel + 0.1, 0, Math.PI); } ctx.fill();
     for (let i = 0; i < 2; i++) { const flat = st && st.flat && st.flat[i], ry = c.wheel * (flat ? 0.8 : 1); ctx.fillStyle = tyre; ctx.beginPath(); ctx.ellipse(wx[i], ry, c.wheel + (flat ? 0.06 : 0), ry, 0, 0, TAU); ctx.fill(); circ(ctx, wx[i], ry, c.wheel * 0.45, hub);
-      if (s > 6) { circ(ctx, wx[i], ry, c.wheel * 0.2, hubD); ctx.fillStyle = hubD; ctx.beginPath(); for (let j = 0; j < 5; j++) { const an = j * TAU / 5 + (x * dir) / c.wheel; ctx.moveTo(wx[i] + Math.cos(an) * c.wheel * 0.32 + 0.025, ry + Math.sin(an) * c.wheel * 0.32); ctx.arc(wx[i] + Math.cos(an) * c.wheel * 0.32, ry + Math.sin(an) * c.wheel * 0.32, 0.025, 0, TAU); } ctx.fill(); } }
+      if (s > 6) { circ(ctx, wx[i], ry, c.wheel * 0.2, hubD); ctx.fillStyle = hubD; ctx.beginPath(); for (let j = 0; j < 5; j++) { const an = j * TAU / 5 - (x * dir) / c.wheel; /* rolling forward turns a wheel clockwise */ ctx.moveTo(wx[i] + Math.cos(an) * c.wheel * 0.32 + 0.025, ry + Math.sin(an) * c.wheel * 0.32); ctx.arc(wx[i] + Math.cos(an) * c.wheel * 0.32, ry + Math.sin(an) * c.wheel * 0.32, 0.025, 0, TAU); } ctx.fill(); } }
     if (s > 4) { R4(ctx, wx[0] - c.wheel - 0.2, 0.06, 0.06, 0.38, black); R4(ctx, wx[1] + c.wheel + 0.12, 0.06, 0.06, 0.38, black); }
     ctx.restore();
   } };
