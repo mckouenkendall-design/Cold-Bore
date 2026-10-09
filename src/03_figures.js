@@ -190,7 +190,7 @@ const FIG_SHOES = ['#101114', '#2b2119', '#1c1e23'];
 
 // The figure being drawn right now. One at a time, so one shared record and no garbage.
 const FGS = { ctx: null, A: null, L: null, env: null, st: null, px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
-  ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
+  sc: 1, ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
   ux: 0, uy: 1, nx: 1, ny: 0, T: 0.56, ww: 0.08, wc: 0.09, wsh: 0.1, hdx: 0, hdy: 0, htilt: 0, wind: 0,
   cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false,
   hip: [0, 0], neck: [0, 0], head: [0, 0], sh: [0, 0], knL: [0, 0], ftL: [0, 0], knR: [0, 0], ftR: [0, 0], elL: [0, 0], haL: [0, 0], elR: [0, 0], haR: [0, 0] };
@@ -1334,25 +1334,118 @@ function figShadow(c, G) {
   c.globalAlpha = a * core; c.beginPath(); c.ellipse(mid, 0, half * 0.82, ry * 0.62, 0, 0, Math.PI); c.fill();
   c.globalAlpha = 1;
 }
-// Blood on the ground: a flat pool that creeps out from under the wound once the body is down.
-// It lies ON the ground line and never goes below it.
-function figPool(c, G) {
-  const A = G.A, T = G.dT - 0.85;
-  if (T <= 0 || A.deathKind === 'slump' || A.inVeh) return;
-  const x = A.deathPart === 'head' ? G.head[0] : figPX(G, 0.6, 0);
-  const r = 0.1 + 0.42 * (1 - Math.exp(-T / 4.5)), h = Math.min(0.04, 0.014 + r * 0.05);
-  c.fillStyle = figC('#5c0f13'); c.globalAlpha = 0.92 * smooth(T / 0.7); c.beginPath(); c.ellipse(x, 0, r, h, 0, 0, Math.PI); c.fill();
-  if (G.hi) {
-    c.fillStyle = figC('#3b080b'); c.beginPath(); c.ellipse(x + r * 0.08, 0, r * 0.58, h * 0.6, 0, 0, Math.PI); c.fill();
-    if (G.la > 0.05 && G.fine) { c.globalAlpha = G.la * 0.45; c.strokeStyle = G.lc; c.lineWidth = Math.max(0.008, G.px * 0.7); c.beginPath(); c.ellipse(x + (G.lx >= 0 ? 1 : -1) * r * 0.25, 0, r * 0.5, h * 0.82, 0, Math.PI * 0.3, Math.PI * 0.7); c.stroke(); }
+// ---- blood -------------------------------------------------------------------
+// Drawn only with gore on, and only for people who were shot. How much follows the round (see
+// src/13_ragdoll.js): a .22 leaves a small hole and little blood; a round that comes out of the
+// far side leaves far more, sprays a wall close behind, and spatters the ground.
+const FIG_BLOOD = '#5c0f13', FIG_BLOOD2 = '#3b080b', FIG_BLOODL = '#7a141b';
+function figBloody(A, env) { return env.gore !== false && (A.deathHow === 'shot' || A.deathHow === 'npc') && !!A.rd && !!A.rd.wound; }
+// Where the wound is now, in the drawing's space: it rides on the body as it falls.
+const FIG_WP = [0, 0];
+function figWoundPos(G, R) {
+  const w = R.wound, sc = G.sc;
+  if (R.part === 'head') {
+    let ux = G.head[0] - G.neck[0], uy = G.head[1] - G.neck[1]; const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+    FIG_WP[0] = G.head[0] + (ux * w.u + uy * w.n) / sc; FIG_WP[1] = G.head[1] + (uy * w.u - ux * w.n) / sc;
+  } else { FIG_WP[0] = figPX(G, w.t, w.o / sc); FIG_WP[1] = figPY(G, w.t, w.o / sc); }
+  return FIG_WP;
+}
+// The floor under a point of the body, in the drawing's space.
+function figFloorAt(G, R, x) { const E = R.env; return E && E.gfn ? E.gfn(x * G.sc) / G.sc : 0; }
+// Blood thrown out of the exit wound onto a wall close behind (drawn before the body, so behind it).
+// The wall may be a little further back than the person; the spot is put where the eye sees it.
+function figWallBlood(c, G, R) {
+  const W = R.env && R.env.wall, T = G.dT - 0.03; if (!W || !R.exit || T <= 0 || !G.hi) return;
+  const A = G.A, sc = G.sc, dz = W.dz, vz = R.v ? Math.max(1, R.v[2]) : 800;
+  let wx = R.hx + (R.v ? (R.v[0] / vz) * dz : 0), wy = R.hy + (R.v ? (R.v[1] / vz) * dz : 0) - 0.05 * dz, k = 1;
+  if (R.eye) { const ex = R.eye[0] - A.x, ey = R.eye[1] - A.y; k = R.D / (R.D + dz); wx = ex + (wx - ex) * k; wy = ey + (wy - ey) * k; }
+  const x = wx / sc, y = Math.max(0.15, wy / sc), r = ((0.09 + 0.26 * R.exitK) * Math.min(1.3, 0.75 + dz * 0.2) * k) / sc, g = smooth(T / 0.1);
+  const rng = makeRng(R.seed + 5);
+  c.fillStyle = figC(FIG_BLOOD); c.globalAlpha = 0.86;
+  c.beginPath(); c.ellipse(x, y, r * 0.5 * g, r * 0.4 * g, rng.f(), 0, TAU);
+  // drops flung out round it, smaller the further they flew
+  const n = 9 + Math.round(10 * R.exitK);
+  for (let i = 0; i < n; i++) {
+    const an = rng.f() * TAU, d = r * (0.45 + rng.f() * 1.25) * g, dr = Math.max(G.px * 0.7, r * (0.13 - 0.05 * (d / r)) * (0.5 + rng.f())), cx = x + Math.cos(an) * d, cy = y + Math.sin(an) * d * 0.85;
+    c.moveTo(cx + dr * 1.7, cy); c.ellipse(cx, cy, dr * 1.7, dr, an, 0, TAU);
+  }
+  c.fill();
+  // and it runs down the wall, slowly
+  if (T > 0.4) {
+    const run = 0.04 + 0.26 * smooth((T - 0.4) / 9);
+    c.strokeStyle = figC(FIG_BLOOD); c.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const ox = x + (rng.f() - 0.5) * r * 0.8, len = Math.min(y - 0.05, (run * (0.5 + rng.f() * 0.8)) / sc), lw = Math.max(G.px * 0.8, r * (0.07 + 0.05 * rng.f()));
+      c.lineWidth = lw; c.beginPath(); c.moveTo(ox, y - r * 0.15); c.lineTo(ox + (rng.f() - 0.5) * 0.01, y - r * 0.15 - len); c.stroke();
+      c.beginPath(); c.arc(ox, y - r * 0.15 - len, lw * 0.75, 0, TAU); c.fill();
+    }
   }
   c.globalAlpha = 1;
 }
-function figStain(c, G, x, y, r) {
-  const k = 0.55 + 0.45 * smooth(G.dT / 2.2);
+// The spray in the air at the moment of the hit: a red mist out of the far side, thinning as
+// it drifts and sinks. Behind the body.
+function figMist(c, G, R) {
+  const T = G.dT, life = R.exit ? 0.5 : 0.3; if (T > life || !G.hi) return;
+  const A = G.A, sc = G.sc, big = R.exit ? 0.55 + 0.9 * R.exitK : 0.22, u = T / life, x0 = R.hx / sc, y0 = R.hy / sc;
+  // a haze that blooms out of the wound and is gone in half a second
+  const rr = (0.06 + 0.32 * big * easeOut(u * 1.3)) / sc, a = 0.6 * Math.pow(1 - u, 1.4) * Math.min(1, T / 0.03), cy = y0 - 0.12 * u * u;
+  if (a > 0.02) {
+    const g = c.createRadialGradient(x0, cy, 0, x0, cy, rr), col = figC('#7c0c14');
+    g.addColorStop(0, rgba(col, a)); g.addColorStop(0.45, rgba(col, a * 0.45)); g.addColorStop(1, rgba(col, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(x0, cy, rr, 0, TAU); c.fill();
+  }
+  // and drops flung out of it, falling as they fly (each lands among the spots on the ground)
+  const rng = makeRng(R.seed + 9), n = R.exit ? 8 + Math.round(10 * R.exitK) : 4;
+  c.fillStyle = figC('#6a0f15'); c.beginPath();
+  for (let i = 0; i < n; i++) {
+    const an = rng.f() * TAU, sp = (0.8 + 2.2 * rng.f()) * (R.exit ? 0.6 + 0.6 * R.exitK : 0.5), r = Math.max(G.px * 0.8, (0.006 + 0.012 * rng.f()) / sc);
+    const x = x0 + (Math.cos(an) * sp * T) / sc, y = y0 + (Math.sin(an) * sp * T * 0.7 - 4.9 * T * T) / sc;
+    if (y < figFloorAt(G, R, x)) continue;
+    c.moveTo(x + r, y); c.arc(x, y, r, 0, TAU);
+  }
+  c.fill();
+}
+// Drops that came down on the ground round the body, and the pool that creeps out from under
+// the wound once the body is down. Both lie ON the ground line and never go below it.
+function figGroundBlood(c, G, R) {
+  const A = G.A, s = R.s, sc = G.sc; if (A.inVeh || (R.env && R.env.seat)) return;
+  const rng = makeRng(R.seed + 3), n = R.exit ? 4 + Math.round(7 * R.exitK) : 2, hx = R.hx / sc, fall = Math.sqrt(Math.max(0.1, R.hy) / 4.9);
+  c.fillStyle = figC(FIG_BLOOD);
+  if (G.hi) {
+    c.beginPath();
+    for (let i = 0; i < n; i++) {
+      const tl = fall * (0.8 + 0.5 * rng.f()), x = hx + (rng.f() - 0.5) * (R.exit ? 1.1 : 0.4), r = (0.012 + 0.03 * rng.f() * (R.exit ? 1 : 0.6)) * (1 + R.exitK * 0.6);
+      if (G.dT < tl) continue;
+      const y = figFloorAt(G, R, x); c.moveTo(x + r, y); c.ellipse(x, y, r, Math.min(0.012, r * 0.3), 0, 0, Math.PI);
+    }
+    c.fill();
+  }
+  if (!s || s.landT === null) return;
+  const T = G.dT - s.landT - 0.35; if (T <= 0) return;
+  const p = figWoundPos(G, R), x = p[0], y = figFloorAt(G, R, x);
+  const full = (R.part === 'head' ? 0.32 : 0.26) + 0.3 * R.exitK + 0.08 * R.power;
+  const r = 0.08 + full * (1 - Math.exp(-T / 4.5)), h = Math.min(0.04, 0.014 + r * 0.05);
+  c.globalAlpha = 0.92 * smooth(T / 0.7); c.beginPath(); c.ellipse(x, y, r, h, 0, 0, Math.PI); c.fill();
+  if (G.hi) {
+    c.fillStyle = figC(FIG_BLOOD2); c.beginPath(); c.ellipse(x + r * 0.08, y, r * 0.58, h * 0.6, 0, 0, Math.PI); c.fill();
+    if (G.la > 0.05 && G.fine) { c.globalAlpha = G.la * 0.45; c.strokeStyle = G.lc; c.lineWidth = Math.max(0.008, G.px * 0.7); c.beginPath(); c.ellipse(x + (G.lx >= 0 ? 1 : -1) * r * 0.25, y, r * 0.5, h * 0.82, 0, Math.PI * 0.3, Math.PI * 0.7); c.stroke(); }
+  }
+  c.globalAlpha = 1;
+}
+// The wound on the body: blood soaking out round it (more for a round that went through), and
+// close up the hole itself; on the head, blood running down from it.
+function figWound(c, G, R) {
+  const p = figWoundPos(G, R), x = p[0], y = p[1], head = R.part === 'head', k = 0.55 + 0.45 * smooth(G.dT / 2.2);
+  const r = (head ? 0.034 : 0.04) + 0.035 * R.exitK + 0.012 * R.power;
   c.fillStyle = figC('#6a1216'); c.beginPath(); c.arc(x, y, r * k, 0, TAU); c.moveTo(x + r * 0.5 + r * 0.6 * k, y - r * 0.5 * k); c.arc(x + r * 0.5, y - r * 0.5 * k, r * 0.6 * k, 0, TAU);
   if (G.hi) { c.moveTo(x - r * 0.2 + r * 0.32, y - r * 1.1 * k); c.arc(x - r * 0.2, y - r * 1.1 * k, r * 0.32, 0, TAU); }
   c.fill();
+  if (!G.hi) return;
+  c.fillStyle = figC('#170305'); c.beginPath(); c.arc(x, y, Math.max(G.px * 0.9, 0.007 + 0.008 * R.power), 0, TAU); c.fill();
+  if (head) { // runs down (the way down in the world, whichever way the head now lies)
+    const len = 0.025 + 0.085 * smooth((G.dT - 0.15) / 2.5);
+    c.strokeStyle = figC(FIG_BLOODL); c.lineCap = 'round'; c.lineWidth = Math.max(G.px * 0.8, 0.016); c.beginPath(); c.moveTo(x, y); c.lineTo(x + 0.006, y - len); c.stroke();
+  }
 }
 
 // ---- the figure ------------------------------------------------------------
@@ -1412,13 +1505,15 @@ function drawFigure(ctx, A, env) {
     const xa = m.e + m.a * (A.x - 2.3) + m.c * A.y, xb = m.e + m.a * (A.x + 2.3) + m.c * A.y;
     if ((ya > H && yb > H) || (ya < 0 && yb < 0) || (xa > W && xb > W) || (xa < 0 && xb < 0)) return;
   }
+  if (A.dead) rdLead = env.lead || 0; // a fall drawn in slow motion moves every frame, not only on the world's steps
   const J = actorJoints(A), L = A.look || {}, sc = J.scale || 1, hpx = (1.8 * sc) / env.px;
+  rdLead = 0;
   if (hpx < FIG_FAR) { figDrawFar(ctx, A, env, J, L); return; }
   const G = FGS, c = ctx, inv = 1 / sc;
   for (let i = 0; i < FIG_JN.length; i++) { const k = FIG_JN[i], s = J[k], d = G[k]; d[0] = s[0] * inv; d[1] = s[1] * inv; }
   const st = figState(A, env, J.f), px = env.px * inv, hi = hpx >= FIG_MID, f = J.f, dead = !!A.dead;
   G.ctx = c; G.A = A; G.L = L; G.env = env; G.st = st; G.px = px; G.hi = hi; G.fine = hpx >= FIG_FINE;
-  G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
+  G.sc = sc; G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
   const an = dead ? A.deathPose : A.anim;
@@ -1459,8 +1554,10 @@ function drawFigure(ctx, A, env) {
 
   c.save(); c.translate(A.x, A.y); if (sc !== 1) c.scale(sc, sc);
   c.lineCap = 'round'; c.lineJoin = 'round';
+  const gore = dead && figBloody(A, env);
+  if (gore) { figWallBlood(c, G, A.rd); figMist(c, G, A.rd); }
   if ((light > 0.02 || !env.night) && hpx > 26) figShadow(c, G);
-  if (dead && env.gore !== false && A.deathHow === 'shot') figPool(c, G);
+  if (gore) figGroundBlood(c, G, A.rd);
   if (G.rim) figRim(c, G, K);
 
   // far side first: the arm and leg that are further from us, a shade darker
@@ -1470,11 +1567,11 @@ function drawFigure(ctx, A, env) {
   figLimbsBack(c, G, K, farGrip);
   figClothes(c, G, K);
   if (bag === 'backpack' || bag === 'guitar') figStraps(c, G);
-  if (dead && env.gore !== false && A.deathHow === 'shot' && A.deathPart !== 'head') figStain(c, G, figPX(G, 0.62, f * 0.02), figPY(G, 0.62, f * 0.02), 0.05);
+  if (gore && A.rd.part !== 'head') figWound(c, G, A.rd);
   G.nearHand = !!K.sleeve;
   figHead(c, G, 1);
   if (L.scarf) figScarf(c, G);
-  if (dead && env.gore !== false && A.deathHow === 'shot' && A.deathPart === 'head') figStain(c, G, G.hdx + G.ux * 0.02, G.hdy + G.uy * 0.02, 0.048);
+  if (gore && A.rd.part === 'head') figWound(c, G, A.rd);
 
   // near side: whatever is held, then the arm that holds it
   if (hasRifle && gunHeld) figRifle(c, G);

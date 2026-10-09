@@ -211,6 +211,23 @@ function rdDefault(A) {
   return { how: A.deathHow || 'shot', part: A.deathPart || 'torso', cal: 'c308', kg: 0.0109, v: A.deathHow === 'shot' || !A.deathHow ? [dir * 60, -4, 760] : null, pen: 0.6, hx: 0.02 * (A.face || 1), hy: (A.deathPart === 'head' ? 1.62 : 1.22) * sc,
     seed: hashStr(String(A.id || 'x')), vx0: 0, run: false, eye: null, D: 100, env: null, src: null, car: null, s: null, through: false, exit: true, exitK: 0.55, power: 0.6 };
 }
+// Where the wound is, in the body's own measures, so it stays put on the body as it falls:
+// for the trunk, t up the spine from the hip (0) to the neck (1) and o across it (the
+// figure drawing's own figPX measures); for the head, u along the neck and n across it.
+function rdWoundAt(R, J, f, sc) {
+  const X = (q) => q[0] * f * sc, Y = (q) => q[1] * sc;
+  const w = R.wound = { t: 0.62, o: 0.02 * f, u: 0, n: 0.06 * f };
+  if (R.how !== 'shot' || !R.v) return;
+  if (R.part === 'head') {
+    let ux = X(J.head) - X(J.neck), uy = Y(J.head) - Y(J.neck); const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+    const dx = R.hx - X(J.head), dy = R.hy - Y(J.head); w.u = dx * ux + dy * uy; w.n = dx * uy - dy * ux;
+    const r = Math.hypot(w.u, w.n), m = 0.13 * sc; if (r > m) { w.u *= m / r; w.n *= m / r; }
+  } else {
+    let ux = X(J.neck) - X(J.hip), uy = Y(J.neck) - Y(J.hip); const T = Math.hypot(ux, uy) || 1; ux /= T; uy /= T;
+    const dx = R.hx - X(J.hip), dy = R.hy - Y(J.hip);
+    w.t = clamp((dx * ux + dy * uy) / T, 0.05, 1); w.o = clamp(dx * uy - dy * ux, -0.08 * sc, 0.08 * sc);
+  }
+}
 function rdDist(p, i, j) { return Math.hypot(p[j * 3] - p[i * 3], p[j * 3 + 1] - p[i * 3 + 1], p[j * 3 + 2] - p[i * 3 + 2]); }
 function rdInit(A, R) {
   const sc = (A.look && A.look.h) || 1, f = A.face < 0 ? -1 : 1, L = A.look || {}, W = rdWidths(L, sc);
@@ -222,8 +239,9 @@ function rdInit(A, R) {
   const s = { t: 0, p: new Float64Array(N3), o: new Float64Array(N3), z0: new Float64Array(RD_N), w: new Float64Array(RD_N), r: new Float64Array(RD_N), lo: new Float64Array(RD_NL), hi: new Float64Array(RD_NL),
     cn: new Float64Array(RD_N), Uc: [0, 1, 0], Sc: [0, 0, f], Fc: [f, 0, 0], Up: [0, 1, 0], Sp: [0, 0, f], Fp: [f, 0, 0], f, sc, W,
     sleep: false, quiet: 0, landT: null, landV: 0, out: null, crush: null, lean: 0, legSide: 0.45, toneK: 0, toneT: 0.1, toneL: null, carF: null };
-  const t0 = A.deathAt || 0, ph = A.deathPh || 0, dt = 1 / 60;
-  rdFromPose(rdLivingPose(A, t0, ph), f, sc, W, s.p);
+  const t0 = A.deathAt || 0, ph = A.deathPh || 0, dt = 1 / 60, J0 = rdLivingPose(A, t0, ph);
+  rdFromPose(J0, f, sc, W, s.p);
+  rdWoundAt(R, J0, f, sc);
   // the same pose a moment earlier: the difference is how each part was already moving
   const rate = Math.abs(R.vx0) * (R.run ? 2.6 : 4.3);
   rdFromPose(rdLivingPose(A, t0 - dt, ph - rate * dt), f, sc, W, s.o);
@@ -308,13 +326,14 @@ function rdKick(A, R, s, v) {
     // a heavy round also knocks them over sideways in the picture, the way they were going to fall
     const top = (head ? 0.2 : 0.3) + 1.25 * pw * pw * pw;
     for (const i of UPPER) add(i, dirK * top, 0, 0);
-  } else if (how === 'blast' && R.src) {
+  } else if (how === 'blast') {
+    if (!R.src) R.src = { x: -1.6 * dirK, y: 0.4, r: 4.5, w: 0, h: 0, floor: 0 }; // somewhere close, on the side they fall away from
     // A blast throws everyone away from it and up, and takes the legs out from under them first,
     // so the body turns over as it goes rather than flying off stiff.
     const sr = R.src, R0 = Math.max(1, sr.r), cx = (p[6] + p[9]) / 2, cy = (p[7] + p[10]) / 2 + 0.25 * sc;
     const ex = cx - sr.x, ey = cy - sr.y, d = Math.hypot(ex, ey) || 1, k = clamp(1 - d / (R0 * 1.3), 0.2, 1), away = ex < 0 ? -1 : 1;
     const vx = (ex / d) * (1.5 + 2.2 * k), vy = 0.8 + 1.5 * k, spin = away * (3 + 3.5 * k); // turning (radians a second): feet away from the blast first
-    for (let i = 0; i < RD_N; i++) { const rx = p[i * 3] - cx, ry = p[i * 3 + 1] - cy; add(i, vx - spin * ry, vy + spin * rx, (rng.f() - 0.5) * 0.5); }
+    for (let i = 0; i < RD_N; i++) { const rx = p[i * 3] - cx, ry = p[i * 3 + 1] - cy, limb = i >= RD_ELL && i <= RD_FTR ? 1.6 : 0.3; add(i, vx - spin * ry + (rng.f() - 0.5) * limb, vy + spin * rx + (rng.f() - 0.5) * limb, (rng.f() - 0.5) * 0.5); } // arms and legs flail on their own
     s.lean = away;
   } else if (how === 'accident' && R.src && !A.inVeh) {
     // crushed by a falling load: everything under it goes down at once

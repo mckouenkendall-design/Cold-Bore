@@ -201,7 +201,8 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     const LA = S.lightAt(zone, a.x);
     if (a._lt === undefined || a._ltS !== S) { a._lt = LA.l; a._ltS = S; } else a._lt += (LA.l - a._lt) * Math.min(1, dt * 6);
     const lt = a._lt, k = 1 - lt;
-    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08, wind: env.wind, light: lt, lampDx: LA.dx, lampH: LA.h, lampCol: LA.col || pal.lit, night, nv, t: env.t, pal, haze: a.plane ? a.plane.haze : 0, gore: V.gore !== false, weather: S.weather };
+    const e2 = { px: env.px, ink: pal.ink, rim: pal.rim, smoke: env.smoke, windDrift: env.wind * 0.08, wind: env.wind, light: lt, lampDx: LA.dx, lampH: LA.h, lampCol: LA.col || pal.lit, night, nv, t: env.t, pal, haze: a.plane ? a.plane.haze : 0, gore: V.gore !== false, weather: S.weather,
+      lead: a.dead && CB.Game && CB.Game.sim === sim && !CB.Game.cine ? CB.Game.acc || 0 : 0 }; // how far the world is between its steps, so a body falling in slow motion moves smoothly
     if (night) {
       e2.dark = true; e2.dim = (nv ? 0.25 : 0.72) * k; e2.ink = mix(pal.ink, '#04060a', k);
       e2.rim = nv ? 'rgba(190,255,200,' + lerp(0.75, 0.9, k).toFixed(2) + ')' : 'rgba(' + Math.round(lerp(170, 120, k)) + ',' + Math.round(lerp(190, 140, k)) + ',' + Math.round(lerp(225, 175, k)) + ',' + lerp(0.42, 0.24, k).toFixed(2) + ')';
