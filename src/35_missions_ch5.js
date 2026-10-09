@@ -205,6 +205,17 @@ mission({
     const drawHook = H.hook.draw;
     H.hook.draw = function (ctx, env) { drawHook(ctx, env); if (H.hook.alive) { R4(ctx, H.hook.x - 0.24, H.hook.y - 0.26, 0.48, 0.52, '#e8b53a'); R4(ctx, H.hook.x - 0.11, H.hook.y - 0.13, 0.22, 0.26, '#20242b'); } };
     H.tr = H.train({ id: 'tr', at: 5, every: 27, dir: 1, speed: 18, near: 130 });
+    // the night watchman's chair on the quay (he sat on thin air before): drawn behind him, so it hides nothing
+    { const q = H.quay(-112), wood = H.S.tone('#6b5440', q.plane), woodD = H.S.tone('#4a3a2c', q.plane), x = q.x, y = q.y;
+      q.plane.add({ x0: x - 1, x1: x + 1, layer: 0, draw(ctx, env) {
+        if (env.s < 2.5) return;
+        const lw = Math.max(0.035, env.px);
+        ctx.strokeStyle = woodD; ctx.lineWidth = lw; ctx.beginPath();
+        ctx.moveTo(x - 0.24, y); ctx.lineTo(x - 0.22, y + 0.46); ctx.moveTo(x + 0.2, y); ctx.lineTo(x + 0.18, y + 0.46); // legs
+        ctx.moveTo(x - 0.24, y + 0.44); ctx.lineTo(x - 0.4, y + 1.0); ctx.stroke();                             // the back, leaning
+        R4(ctx, x - 0.28, y + 0.42, 0.52, 0.06, wood); // seat
+        if (env.s > 8) { ctx.strokeStyle = wood; ctx.lineWidth = Math.max(0.05, env.px); ctx.beginPath(); ctx.moveTo(x - 0.3, y + 0.72); ctx.lineTo(x - 0.38, y + 0.95); ctx.stroke(); }
+      } }); }
     return H;
   },
   cast(H, f) {
@@ -230,7 +241,8 @@ mission({
     return [H.tr.trig,
       hint(1.5, 'Nobody may die here. Get the crew away from the boat first: shoot the yellow hook above the cargo net (when nobody is under it) and they will all come to look. Then the red drums.', 12),
       onEv('crash:hook_p', (sim) => { crew(sim).forEach((a, i) => { if (sendOver(sim, a, -85.6 + i * 1.5, 9, 'stand')) sim.bubble(a, '?', 2); }); sim.msg('Pip', 'There they go, every one of them. Give them a few steps more, then the drums.'); }, 0.3),
-      { at: 46, do(sim) { if (H.boat.fuel.alive && crew(sim).filter((a, i) => sendOver(sim, a, -84 + i * 1.6, 9, 'drink')).length) sim.msg('Pip', 'Tea. They always did stop for tea. Is anybody left aboard?'); } },
+      // tea: each of them takes up a mug for it (and puts down whatever he was carrying), then picks his things up again
+      { at: 46, do(sim) { if (H.boat.fuel.alive && crew(sim).filter((a, i) => { if (!sendOver(sim, a, -84 + i * 1.6, 9, 'drink')) return false; a.routine.splice(1, 0, ['look', { bag: 'cup' }]); a.routine.splice(3, 0, ['look', { bag: a.look.bag || null }]); return true; }).length) sim.msg('Pip', 'Tea. They always did stop for tea. Is anybody left aboard?'); } },
       onEv('obj:fuel', (sim) => { crew(sim).forEach((a) => sim.setRoutine(a, [['wait', 99, 'stand', 1]])); sim.msg('Pip', 'Down she goes. Look at them. Not a scratch.'); }),
       vargaHelps(f) ? say(4, 'Varga', 'Varga. I am holding the river at the lock for you. Nothing will pass that quay tonight.') : say(4, 'Pip', 'Varga has a police launch on the river tonight. If it is beside the boat when the fuel goes, we have killed a constable.'),
     ];
