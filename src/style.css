@@ -104,6 +104,28 @@ body:not(.touch) #stage.aiming { cursor: none; }
 .h-banner.bad { color: var(--red); background: rgba(40, 6, 4, .78); border: 1px solid var(--red); }
 .h-banner.good { color: var(--green); background: rgba(6, 30, 16, .78); border: 1px solid var(--green); }
 
+/* ---------- guided run: the coach's card, and the button it is asking for ---------- */
+.h-coach { position: absolute; display: none; pointer-events: none; padding: 6px 11px 7px; border-radius: 11px; background: rgba(10, 14, 20, .84); border: 1px solid rgba(255, 170, 60, .55); border-left: 4px solid var(--amber); }
+body.guided .h-coach { display: block; }
+body.guided.landscape .h-obj { visibility: hidden; }
+.h-coach .cc-eb { font: 700 9.5px var(--head); letter-spacing: .18em; text-transform: uppercase; color: var(--amber); opacity: .9; }
+.h-coach .cc-hd { font: 800 19px/1.1 var(--head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); margin-top: 1px; }
+.h-coach .cc-hd em { font: 700 17px var(--mono); font-style: normal; color: var(--amber2); margin-left: 6px; }
+.h-coach .cc-tx { font-size: 12.5px; line-height: 1.28; color: #d6dde6; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.h-coach.notext .cc-tx { display: none; }
+.h-coach.k-shoot { border-color: rgba(255, 170, 60, .8); }
+.h-coach.k-shoot .cc-hd { color: var(--amber2); }
+.h-coach.fire { border-color: var(--green); border-left-color: var(--green); background: rgba(6, 26, 14, .88); }
+.h-coach.fire .cc-hd { color: var(--green); font-size: 24px; letter-spacing: .12em; }
+.h-coach.fire .cc-eb { color: var(--green); }
+.h-coach.k-hold, .h-coach.k-reload, .h-coach.k-dial { border-left-color: var(--blue); } .h-coach.k-hold .cc-hd, .h-coach.k-reload .cc-hd, .h-coach.k-dial .cc-hd { color: var(--blue); }
+/* a ring that swells out from the button the coach wants pressed (a transform, cheap on a phone) */
+.h-ctl.go::before, .cell.go::before { content: ""; position: absolute; inset: -6px; border-radius: inherit; border: 3px solid var(--green); animation: coachring 1s ease-out infinite; pointer-events: none; }
+.h-breath.go::before, .h-reload.go::before, .cell.go::before { border-color: var(--blue); }
+.h-fire.go { background: radial-gradient(circle at 50% 35%, #a8f0c2, #4cc77c 60%, #23864a); color: #04210f; font-size: 17px; line-height: 1.05; }
+.cell.go { border-color: var(--blue) !important; }
+@keyframes coachring { from { transform: scale(.94); opacity: 1; } to { transform: scale(1.18); opacity: 0; } }
+
 /* ---------- menus ---------- */
 /* Every screen outside a mission. Laid out first for a phone held sideways (wide and short, with the
    camera island and the home bar eating into the edges): backgrounds run edge to edge, anything you
