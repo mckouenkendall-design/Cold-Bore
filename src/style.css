@@ -611,3 +611,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
   display: flex; align-items: flex-end; justify-content: flex-end; padding: 0 calc(var(--sar, 0px) + 10px) 2px 0; box-sizing: border-box;
   font: 700 8.5px var(--head); letter-spacing: .18em; color: rgba(255, 170, 60, .9); text-shadow: 0 1px 2px #000; }
 .tester-group { border: 1px dashed rgba(255, 170, 60, .55); border-radius: 12px; padding: 8px 10px; }
+
+/* build stamp: which copy of the game is running */
+.bld { margin-left: 0.8em; letter-spacing: 0.06em; text-transform: none; font-weight: 500; color: var(--dim, #8a94a6); opacity: 0.85; }
+.t-note .bld { margin-left: 0; }

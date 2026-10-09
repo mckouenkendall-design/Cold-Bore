@@ -182,8 +182,9 @@ UI.settings = function (fromTitle) {
       });
     },
   };
-  if (fromTitle) UI.render(`<div class="scr settings"><div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Make it yours</div><h2>Settings</h2></div></div>${body}</div>`, h, 'is-settings');
-  else UI.render(UI.shell('<div class="hd"><div class="eyebrow">Make it yours</div><h2>Settings</h2></div>', body), UI.shellHandlers(h), 'is-settings');
+  const eb = `<div class="eyebrow">Make it yours <span class="bld">Build ${BUILD}</span></div>`;
+  if (fromTitle) UI.render(`<div class="scr settings"><div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t">${eb}<h2>Settings</h2></div></div>${body}</div>`, h, 'is-settings');
+  else UI.render(UI.shell(`<div class="hd">${eb}<h2>Settings</h2></div>`, body), UI.shellHandlers(h), 'is-settings');
   UI.root.querySelectorAll('input[type=range]').forEach((inp) => {
     inp.addEventListener('input', () => { s[inp.dataset.k] = +inp.value; Sfx.setVolumes(); });
     inp.addEventListener('change', () => { Save.write(); if (inp.dataset.k === 'sfx') Sfx.ui('tap'); });

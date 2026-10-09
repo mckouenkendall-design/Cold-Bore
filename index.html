@@ -628,6 +628,10 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
   font: 700 8.5px var(--head); letter-spacing: .18em; color: rgba(255, 170, 60, .9); text-shadow: 0 1px 2px #000; }
 .tester-group { border: 1px dashed rgba(255, 170, 60, .55); border-radius: 12px; padding: 8px 10px; }
 
+/* build stamp: which copy of the game is running */
+.bld { margin-left: 0.8em; letter-spacing: 0.06em; text-transform: none; font-weight: 500; color: var(--dim, #8a94a6); opacity: 0.85; }
+.t-note .bld { margin-left: 0; }
+
 </style>
 </head>
 <body>
@@ -641,6 +645,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
+const BUILD = "Oct 9, 9:13 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -28921,7 +28926,7 @@ UI.title = function () {
           <button class="btn pri big" data-a="play" data-snd="go">${has ? 'Continue' : 'Begin'}</button>
           <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button></div>
         </div>
-        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.</div>
+        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.<br><span class="bld">Build ${BUILD}</span></div>
         <div class="t-turn">${ICON.turn}<span>Made to be played with the phone held sideways. Turn it for the full picture.</span></div>
       </div>
     </div>`, {
@@ -29737,8 +29742,9 @@ UI.settings = function (fromTitle) {
       });
     },
   };
-  if (fromTitle) UI.render(`<div class="scr settings"><div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Make it yours</div><h2>Settings</h2></div></div>${body}</div>`, h, 'is-settings');
-  else UI.render(UI.shell('<div class="hd"><div class="eyebrow">Make it yours</div><h2>Settings</h2></div>', body), UI.shellHandlers(h), 'is-settings');
+  const eb = `<div class="eyebrow">Make it yours <span class="bld">Build ${BUILD}</span></div>`;
+  if (fromTitle) UI.render(`<div class="scr settings"><div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t">${eb}<h2>Settings</h2></div></div>${body}</div>`, h, 'is-settings');
+  else UI.render(UI.shell(`<div class="hd">${eb}<h2>Settings</h2></div>`, body), UI.shellHandlers(h), 'is-settings');
   UI.root.querySelectorAll('input[type=range]').forEach((inp) => {
     inp.addEventListener('input', () => { s[inp.dataset.k] = +inp.value; Sfx.setVolumes(); });
     inp.addEventListener('change', () => { Save.write(); if (inp.dataset.k === 'sfx') Sfx.ui('tap'); });

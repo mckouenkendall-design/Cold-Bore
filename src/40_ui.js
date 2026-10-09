@@ -295,7 +295,7 @@ UI.title = function () {
           <button class="btn pri big" data-a="play" data-snd="go">${has ? 'Continue' : 'Begin'}</button>
           <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button></div>
         </div>
-        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.</div>
+        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.<br><span class="bld">Build ${BUILD}</span></div>
         <div class="t-turn">${ICON.turn}<span>Made to be played with the phone held sideways. Turn it for the full picture.</span></div>
       </div>
     </div>`, {

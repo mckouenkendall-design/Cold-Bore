@@ -7,7 +7,9 @@ const fs = require('fs');
 const path = require('path');
 const src = path.join(__dirname, 'src');
 const files = fs.readdirSync(src).filter((f) => f.endsWith('.js')).sort();
-let js = '(function(){\n"use strict";\n';
+// A build stamp shown on the title screen and in Settings, so it is easy to tell which copy is running.
+const BUILD = new Date().toLocaleString('en-US', { timeZone: 'America/Detroit', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+let js = '(function(){\n"use strict";\nconst BUILD = ' + JSON.stringify(BUILD) + ';\n';
 for (const f of files) js += '\n// ===== ' + f + ' =====\n' + fs.readFileSync(path.join(src, f), 'utf8') + '\n';
 js += '\n})();\n';
 const css = fs.readFileSync(path.join(src, 'style.css'), 'utf8');
