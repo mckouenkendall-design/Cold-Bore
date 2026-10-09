@@ -505,3 +505,67 @@ mission({
   },
   reward: { cr: 4000, xp: 800 },
 });
+
+// ---------------------------------------------------------------------------
+// Wrong Way Round. Between The Reception and Scaffold. The second contract that
+// needs armour-piercing rounds: the target sits in a car whose glass is armoured
+// and whose doors are not, so the shot goes through the rear door, under the
+// window he can be seen through.
+mission({
+  id: 'c4m8', ch: 4, title: 'Wrong Way Round', range: 330, follows: 'c4m3', needs: { pen: 1.4 },
+  objective: 'Councillor Rusk, in the back of the long black car. Not the glass. The door.',
+  brief: 'Councillor Edwin Rusk chairs the harbour board. The client says he signed every Calloway import licence for ten years. The board also votes on the Aurel bid for the port next week, which I am told is a coincidence. Rusk has had threats, so he had his car armoured, and the man who did it worked the wrong way round: glass that would stop a train, and doors you could open with a tin opener. Tonight he has come to the Aurel building to say no in person, and he will not get out. They have to come down to him. Not through the window, Kestrel. Through the door.',
+  intel: ['Fit ARMOUR-PIERCING rounds. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
+    'Rusk sits in the BACK, behind his driver: white hair, glasses, reading under a little lamp. His chest is just below the window, behind the door.', 'A man from Aurel comes down to talk at the car. He stands at the kerb, close enough to see it happen. Wait until he goes back in.', 'Range 330 m. Wind about 2 m/s from the left.'],
+  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
+    'Do not shoot the glass. Aim at the rear door, a hand below the window and straight under his head.', 'Fire one round while the car stands still. He leaves in under a minute.'],
+  wind: { v: 2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
+  sight: { kerb: ['veh:car'] },
+  vantages: [{ name: 'Customs House roof', desc: 'Across the avenue, looking down on the kerb outside the Aurel doors.', eye: [0, 22, 0] }],
+  look: [-12, 1.5],
+  setup() {
+    // the kerb on his side of the street has been cleared for him; the only parked cars are well up to the left
+    const H = SCN.towers({ focus: 'road', range: 330, seed: 64, eyeY: 22, cars: [['sedan', -41, 1, '#3a3f49'], ['van', -52, -1, '#c9ced3']],
+      A: { lit: { 1: true, 2: false, 6: true, 9: [[0, 2, true], [3, 6, false]] } } });
+    H.S.litZones['veh:car'] = true;   // he reads under a lamp in the back, so he can be seen
+    H.armour = K.armourGlass(H.S, H.PR, 'car', 'limo', { lamp: 0, onHit(sim) {
+      const t = sim.byId.t; if (!t || t.dead || sim.winAt) return;
+      sim.msg('Marlow', 'The glass held, and he heard it. That car is leaving.');
+      sim.startle(t, 'impact');
+    } });
+    K.thing(H.S, H.PS, 'duck', 10.2, 2.86);   // on the roof of the bus shelter
+    return H;
+  },
+  start(sim, H) { H.armour.follow(sim); },
+  tick(sim, H) { H.armour.follow(sim); },
+  cast(H) {
+    return [
+      { id: 'drv', role: 'civ', look: { hat: 'peaked', hatCol: '#1d2026', coat: '#1d2026' }, failText: 'That was his driver. He drove the car; he did not sign anything. The contract is void.' },
+      { id: 't', role: 'target', look: { hair: 'white', glasses: true, coat: '#3a3f49', tie: COL.wine, bag: 'paper' },
+        escapeText: 'The car pulled away from the kerb with Rusk still reading in the back. The board meets next week with its chairman.' },
+      Object.assign(H.street(-9.5, { zone: 'kerb' }), { id: 'aide', role: 'civ', hidden: true, face: -1, look: { coat: '#8d96a1', hair: 'short', hairCol: '#2a2019', bag: 'case', tie: COL.navy },
+        failText: 'You shot the man from Aurel. He was the client\'s own lawyer. The contract is void, and so is a good deal else.',
+        routine: [['wait', 13.5], ['show'], ['walk', -18.6], ['wait', 16, 'talk', -1], ['walk', -9.5], ['hide'], ['wait', 999]] }),
+      Object.assign(H.street(-6.6, { zone: 'doors' }), { id: 'door', role: 'guard', face: -1, anim: 'arms', look: { hat: 'peaked', hatCol: '#27365a', coat: '#27365a', build: 'big' }, routine: [['wait', 999, 'arms', -1]] }),
+    ];
+  },
+  vehicles(H) {
+    return [{ id: 'car', kind: 'limo', plane: H.PR, x: 95, y: 0, dir: -1, col: '#111317', seats: ['drv', null, 't'],
+      routine: [['wait', 1.5], ['drive', -20, 9], ['emit', 'parked'], ['wait', 46], ['emit', 'leaving'], ['drive', -150, 9], ['gone']] }];
+  },
+  triggers(H) {
+    return [
+      c4Walkers(H, { every: 12, first: 3 }),
+      hint(1.5, 'The long black car coming from the right is his. Its glass stops anything you own, and a round on the glass warns him. The doors are thin steel: put armour-piercing rounds through the rear door, just below the window, under his head.', 13),
+      onEv('parked', (sim) => sim.msg('Marlow', 'He is parked. The Aurel man will be down to talk to him in a moment. He stands close enough to see.')),
+      onEv('leaving', (sim) => { if (sim.alive('t')) sim.msg('Marlow', 'He has said his no. The car is pulling out.'); }),
+      { when: (sim) => { const a = sim.byId.aide; return a.hidden && sim.t > 20; }, do(sim) { if (sim.alive('t')) sim.msg('Marlow', 'The Aurel man has gone back inside. It is just Rusk and his driver now.'); } },
+    ];
+  },
+  challenge: { id: 'rolling', text: 'Take him before the car has stopped at the kerb', test: (sim) => sim.kills.some((k) => k.id === 't' && k.how === 'shot' && k.moving) },
+  after: 'A councillor dead in his own armoured car. The papers will call it a Calloway grudge, and the harbour board will vote on the Aurel bid without him. The flowers from Aurel reached his house before the police did. I am told that is efficiency.',
+  solve() {
+    return [['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+  },
+  reward: { cr: 2900, xp: 650 },
+});
