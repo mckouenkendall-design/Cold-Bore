@@ -27,7 +27,8 @@ Progress.missionOpen = function (M) {
   if (CB.debug) return true;
   const i = MISSIONS.indexOf(M);
   if (i <= 0) return true;
-  return !!Progress.rec(MISSIONS[i - 1].id).done;
+  // a contract already finished stays open, even if a newer one has since been slotted in before it
+  return !!Progress.rec(MISSIONS[i - 1].id).done || !!(Save.data.missions[M.id] && Save.data.missions[M.id].done);
 };
 Progress.chapterOpen = function (n) { const first = MISSIONS.find((m) => m.ch === n); return !!first && Progress.missionOpen(first); };
 Progress.chapterDone = function (n) { return MISSIONS.filter((m) => m.ch === n).every((m) => Progress.rec(m.id).done); };

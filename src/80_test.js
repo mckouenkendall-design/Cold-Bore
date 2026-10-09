@@ -6,12 +6,13 @@
 // ---------------------------------------------------------------------------
 const Test = CB.Test = {};
 
-// Fit whatever the mission demands (a suppressor, subsonic ammo) if the rifle
-// can take it, the same way a player would in the loadout screen.
+// Fit whatever the mission demands (a suppressor, subsonic ammo, armour-piercing
+// rounds) if the rifle can take it, the same way a player would in the loadout screen.
 Test.cfgFor = function (M, gunId, base) {
   const g = GUN_BY_ID[gunId], cfg = Object.assign(defaultConfig(gunId), base || {}), need = M.needs || {};
   if ((need.quiet || need.silent) && g.supp === true && cfg.muzzle === 'mz_none') cfg.muzzle = 'mz_supl';
   if (need.silent && g.supp === true && partFits(PART_BY_ID.am_sub, g)) cfg.ammo = 'am_sub';
+  if (need.pen && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
   return cfg;
 };
 
