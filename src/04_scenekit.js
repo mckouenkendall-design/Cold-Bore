@@ -2351,6 +2351,21 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   const by = c.wheel * 0.75, flat = st && st.flat, wx = [-L * 0.31, L * 0.31], tyre = T('#0e1014'), rimC = T('#8d949a'), chrome = T('#b9c0c7');
   // where it meets the road
   if (s > 4) { ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.beginPath(); ctx.ellipse(0, 0.03, L * 0.53, Math.max(0.08, c.wheel * 0.24), 0, 0, TAU); ctx.fill(); }
+  // A car that pulls up from speed stops dead in the simulation. So that it reads as hard
+  // braking rather than a jolt, the body dips onto its nose and rocks back over most of a
+  // second; the wheels stay on the road. (st carries the speed the picture last saw.)
+  let pitch = 0;
+  if (st) {
+    if (st._kt !== undefined && env.t > st._kt + 0.3) st._ksp = 0; // not watched while it stopped: no dip when it comes back into view
+    else if (st._kt !== undefined && env.t > st._kt + 1e-4) {
+      const sp = Math.abs(x - st._kx) / (env.t - st._kt);
+      if (st.moving) { st._ksp = sp; st._kst = undefined; } else if (st._ksp > 1.5 && st._kst === undefined) { st._kst = env.t; st._ksv = st._ksp; st._ksp = 0; }
+    }
+    if (env.t !== st._kt) { st._kt = env.t; st._kx = x; }
+    const u = st._kst === undefined ? 9 : env.t - st._kst;
+    if (u >= 0 && u < 1) pitch = Math.min(0.07, st._ksv * 0.008) * Math.exp(-u * 4) * Math.sin((u / 0.42) * Math.PI);
+  }
+  if (pitch) { ctx.save(); ctx.rotate(-pitch); }
   if (c.box) {
     const bx0 = c.box[0] * L, bw = (c.box[1] - c.box[0]) * L, bc = (st && st.boxCol) || '#d9dde2', boxC = T(bc);
     R4(ctx, bx0, by + 0.25, bw, c.h - by - 0.25, boxC); R4(ctx, bx0, by, L * 0.98, 0.4, dk);
@@ -2449,6 +2464,7 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
   R4(ctx, L / 2 - 0.2, c.body - 0.28, 0.2, 0.16, lampsOn ? '#fff3c4' : S.tone('#e8e4d0', P));
   R4(ctx, -L / 2, c.body - 0.26, 0.14, 0.14, lampsOn ? (braking ? '#ff5a4a' : '#d83a30') : S.tone('#a8322a', P));
   if (s > 13) { R4(ctx, L / 2 - 0.2, c.body - 0.28, 0.2, 0.03, 'rgba(0,0,0,0.25)'); R4(ctx, L / 2 - 0.16, c.body - 0.42, 0.14, 0.07, T('#e8a23a', lampsOn)); R4(ctx, -L / 2, c.body - 0.36, 0.1, 0.07, T('#e8a23a', lampsOn)); }
+  if (pitch) ctx.restore();
   // wheels
   for (let i = 0; i < 2; i++) {
     const fl = flat && flat[i], r = c.wheel, cy = r * (fl ? 0.8 : 1);
