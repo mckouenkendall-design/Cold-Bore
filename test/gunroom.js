@@ -2,7 +2,8 @@
 // Three saves: a fresh one (one rifle), five rifles with a few kills, and all sixteen with parts,
 // moving skins and kills. Every stretch of wall is photographed into shots/gunroom_*.png and checked:
 //   - no page errors, nothing makes the page scroll sideways
-//   - every rifle on a rack is drawn at least 285 px long sideways (300 is the aim on this phone)
+//   - every rifle on a rack is drawn at least 285 px long sideways on the 844 phone (300 is the
+//     aim; the older 667 phone gets the same share of its narrower screen), 300 px upright
 //   - every rifle has something to tap that is at least 44 px tall and inside the safe area
 //   - the rifle in the glass case is the one with the most kills (the carried one on a fresh save)
 //   - a swipe walks along the wall, a tap opens the bench, and back comes back to the same wall
@@ -42,7 +43,7 @@ const SAVES = {
   const browser = await chromium.launch();
   const errs = [], log = [];
   const ok = (c, what) => { log.push((c ? 'PASS ' : 'FAIL ') + what); if (!c) errs.push('FAIL ' + what); };
-  for (const shape of [{ name: 'w844', w: 844, h: 390, ins: [50, 50, 21] }, { name: 'tall', w: 390, h: 844, ins: [0, 0, 20] }]) {
+  for (const shape of [{ name: 'w844', w: 844, h: 390, ins: [50, 50, 21] }, { name: 'w667', w: 667, h: 375, ins: [50, 50, 21] }, { name: 'tall', w: 390, h: 844, ins: [0, 0, 20] }]) {
     for (const key of Object.keys(SAVES)) {
       const ctx = await browser.newContext({ viewport: { width: shape.w, height: shape.h }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
       const page = await ctx.newPage();
@@ -73,7 +74,7 @@ const SAVES = {
         G.secs.forEach((S, i) => {
           if (S.kind !== 'rack') return;
           const lay = CB.UI.grSlotsFor(G, S);
-          lay.forEach((s) => { const cfg = d.guns[s.id] ? d.guns[s.id].cfg : CB.defaultConfig(s.id), g = CB.gunShapes(s.id, cfg), span = g.x1 - g.x0, sc = Math.min(s.bw / span, s.bh / (cfg.support === 'sp_tripod' ? 43 : 32)) * 0.96; if (span * sc < (W > H ? 285 : 300)) out.short.push(s.id + ' ' + Math.round(span * sc) + 'px'); });
+          lay.forEach((s) => { const cfg = d.guns[s.id] ? d.guns[s.id].cfg : CB.defaultConfig(s.id), g = CB.gunShapes(s.id, cfg), span = g.x1 - g.x0, sc = Math.min(s.bw / span, s.bh / (cfg.support === 'sp_tripod' ? 43 : 32)) * 0.96; if (span * sc < (W > H ? Math.round(285 * W / 844) : 300)) out.short.push(s.id + ' ' + Math.round(span * sc) + 'px'); });
         });
         document.querySelectorAll('.gr-hit').forEach((b) => { const r = b.getBoundingClientRect(), sec = b.parentElement, off = sec.getBoundingClientRect().left; const x0 = r.left - off, x1 = r.right - off; if (r.height < 44 || r.width < 44 || x0 < sf.l - 1 || x1 > W - sf.r + 1 || r.bottom > H - sf.b + 1) out.badHit.push(b.dataset.id + ' ' + [x0, r.top, x1, r.bottom].map(Math.round).join(',')); });
         return out;

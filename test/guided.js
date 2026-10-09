@@ -62,7 +62,62 @@ const path = require('path');
     console.log('  runs', out.length, ' won', won, ' three stars', three, ' under three stars', out.length - three, ' runs the coach changed', diff);
     bad += out.length - three + diff;
   }
+  if (!process.env.NOGAME) bad += await inTheGame(browser, errs);
   if (errs.length) { console.log(errs.join('\n')); bad++; }
   await browser.close();
   process.exit(bad ? 1 : 0);
 })();
+
+// One guided run through the real game on a sideways phone, from the briefing to the results:
+// "Show me how", "Start a guided run", the coach's card on screen, a player who only does what
+// the coach says (aiming with the same moves a finger makes, firing on FIRE NOW), then the
+// results: three stars, the note, no caches, and the three-star cache still unpaid.
+async function inTheGame(browser, errs) {
+  const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  const page = await ctx.newPage(), fails = [];
+  const ok = (c, what) => { console.log((c ? '  PASS ' : '  FAIL ') + what); if (!c) fails.push(what); };
+  page.on('pageerror', (e) => errs.push('PAGEERROR (in the game) ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 5).join('\n')));
+  const cdp = await ctx.newCDPSession(page);
+  let tid = 1;
+  const tap = async (sel) => { const b = await page.locator(sel).first().boundingBox(); if (!b) return false; const id = tid++; await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2, id }] }); await page.waitForTimeout(40); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(300); return true; };
+  await page.goto('file://' + path.join(__dirname, '..', 'index.html'));
+  await page.evaluate(() => { try { localStorage.clear(); } catch (e) { /* ok */ } });
+  await page.reload(); await page.waitForTimeout(500);
+  await page.addStyleTag({ content: ':root{--sal:50px;--sar:50px;--sab:21px}' });
+  await page.evaluate(() => { CB.Game.resize(); CB.Game.noAutoPause = true; const d = CB.Save.data; d.seen.prologue = 1; d.seen.ch1 = 1; CB.Save.write(); CB.UI.attractStop(); CB.UI.brief(CB.MISSION_BY_ID.c1m1); });
+  await page.waitForTimeout(300);
+  console.log('in the game: c1m1, sideways, guided from the briefing');
+  ok(await tap('.brief [data-a="showhow"]'), 'the briefing has "Show me how"');
+  ok(await page.locator('.showhow .deal').count() === 1 && (await page.locator('.showhow .deal b').innerText()).includes('no caches from this run'), 'it explains the deal');
+  ok(await tap('.showhow [data-a="guided"]'), 'it offers a guided run');
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => !!CB.Game.coach && document.body.classList.contains('guided') && getComputedStyle(document.querySelector('.h-coach')).display !== 'none'), 'the guided run starts with the coach on screen');
+  // play it: aim where the coach marks, fire on FIRE NOW, nothing else
+  let seen = {}, t0 = Date.now();
+  while (Date.now() - t0 < 60000) {
+    const s = await page.evaluate(() => {
+      const G = CB.Game; if (!G.sim || !G.coach) return { done: !!document.querySelector('.results') };
+      const sim = G.sim, o = G.coach.out || G.coach.update();
+      if (o.kind === 'hold' && !sim.sh.holding) sim.holdBreath(true);
+      if (o.aim) { const sh = sim.sh; for (let i = 0; i < 3; i++) { const e = sim.eye(), d = o.aim.z - e.z; sh.ax = ((o.aim.x - e.x) / d) * 1000 - (sh.swx + sh.recx + sh.offx); sh.ay = ((o.aim.y - e.y) / d) * 1000 - (sh.swy + sh.recy + sh.offy); } const o2 = G.coach.update(); if (o2.fire) { if (window._sawFire && document.querySelector('.h-coach .cc-hd').textContent.indexOf('FIRE NOW') >= 0) G.fire(); window._sawFire = true; } } // like a person: see FIRE NOW, then press
+      return { kind: o.kind, head: o.head, card: document.querySelector('.h-coach .cc-hd').textContent, fireBtn: document.querySelector('.h-fire').classList.contains('go') };
+    });
+    if (s.done) break;
+    if (s.kind) { seen[s.kind] = true; if (s.head === 'FIRE NOW') seen.fireNow = seen.fireNow || (s.card.indexOf('FIRE NOW') >= 0 && s.fireBtn); }
+    await page.waitForTimeout(30);
+  }
+  ok(seen.wait, 'the coach said to wait');
+  ok(!!seen.fireNow, 'FIRE NOW showed on the card and the fire button');
+  await page.waitForTimeout(1500);
+  ok(await page.locator('.results').count() === 1, 'the run ends on the results screen');
+  const r = await page.evaluate(() => ({ stars: document.querySelectorAll('.bigstars .stars i.on').length, note: (document.querySelector('.gnote') || {}).innerText || '', caches: CB.Save.data.caches.length, rec: CB.Save.data.missions.c1m1, g: CB.Save.data.stats.guns.fenwick }));
+  ok(r.stars === 3, 'three stars (' + r.stars + ')');
+  ok(/guided run: no caches this time/i.test(r.note), 'the results say "Guided run: no caches this time."');
+  ok(r.caches === 0 && r.rec && r.rec.stars === 3 && r.rec.c3paid === false, 'no cache was given, and the three-star cache is still to be earned');
+  ok(r.g && r.g.kills === 1 && r.g.shots >= 1, 'the kill is recorded against the rifle');
+  ok(await tap('.results [data-a="again"]'), '"Try it yourself" is offered');
+  await page.waitForTimeout(700);
+  ok(await page.evaluate(() => CB.Game.state === 'mission' && !CB.Game.coach && !document.body.classList.contains('guided')), 'and it starts the same contract without the guide');
+  await ctx.close();
+  return fails.length;
+}

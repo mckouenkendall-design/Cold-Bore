@@ -297,7 +297,7 @@ UI.grPaintRack = function (G, S, ctx, si) {
       grChalk(ctx, r, rx, ry);
       pegs.forEach((p) => grPeg(ctx, p.x, p.y - 1));
       const special = !!g.special, can = !special && rank >= g.rank && d.credits >= g.price;
-      grTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : rank >= g.rank ? 'FOR SALE' : 'RANK ' + g.rank, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can);
+      grTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : 'RANK ' + g.rank, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can);
       grText(ctx, g.name.toUpperCase(), sl.cx - S.ux * 0.35, plateY + 12, '800 11.5px ' + GR_HEAD, 'rgba(230,222,200,0.4)');
     }
   });

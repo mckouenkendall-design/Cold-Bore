@@ -18,7 +18,7 @@ UI.armory = function () {
       <span class="ac-pic plate"><canvas data-gun="${g.id}" data-lazy ${uiCfgAttr(cfg)}></canvas>${tag}</span>
       <span class="ac-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${ACTION_NAME[g.action].split(',')[0]}  ·  ${st.eff} m</i></span></button>`;
   }).join('');
-  UI.render(UI.shell('<div class="hd"><div class="eyebrow">Pip\'s bench</div><h2>Armory</h2></div>',
+  UI.render(UI.shell('<div class="hd"><div class="eyebrow">Pip\'s bench</div><h2>Armory</h2></div><button class="btn ghost sm gr-in" data-a="gunroom">' + ICON.room + '<span>Gun room</span></button>',
     `<div class="scroll"><p class="dim lead">Sixteen rifles. Each one shoots differently: how steady it sits, how fast the bullet flies, how far it falls, how loud it is. Tap one to look closer and change its parts.</p><div class="alist">${cards}</div></div>`),
     UI.shellHandlers({ gun(ds) { UI.backTo = null; UI.bench(ds.id); } }), 'is-armory');
 };

@@ -162,7 +162,7 @@ Coach.prototype.update = function () {
       o.target = C.mark(C.nextTarget(), true); break;
     }
     if (k === 'reload') {
-      if (sh.reloadT > 0 || sh.ammo >= st.mag || sh.reserve <= 0 || sh.chargeT > 0) { C.next(); continue; }
+      if (sh.reloadT > 0 || sh.ammo >= st.mag || sh.reserve <= 0 || sh.chargeT > 0 || el > 6) { C.next(); continue; }
       o.kind = 'reload'; o.head = 'RELOAD NOW'; o.text = 'Top the rifle up while nothing is happening.';
       o.target = C.mark(C.nextTarget(), true); break;
     }
@@ -244,8 +244,11 @@ Coach.prototype.shotStep = function (o, S, el) {
   o.kind = 'shoot'; o.target = C.mark(T, false);
   if (o.charging) { o.head = 'KEEP IT ON THE MARK'; o.text = 'The rifle is charging. Hold the cross on the mark until it fires.'; }
   else if (o.fire) { o.head = 'FIRE NOW'; o.text = 'The cross is on the mark.'; }
-  else if (!o.ready) { o.head = 'GET READY'; o.text = sh.reloadT > 0 ? 'Reloading. Put the cross on the mark.' : sh.ammo <= 0 ? 'Out of rounds in the rifle. Press RELOAD.' : 'Put the cross on the mark.'; }
-  else { o.head = 'LINE UP'; o.text = 'Put the cross on the mark. It already allows for drop, wind and movement.'; }
+  else {
+    const what = T.kind === 'object' ? 'Shoot ' + T.name + ': put' : 'Put';
+    if (!o.ready) { o.head = 'GET READY'; o.text = sh.reloadT > 0 ? 'Reloading. ' + what + ' the cross on the mark.' : sh.ammo <= 0 ? 'Out of rounds in the rifle. Press RELOAD.' : what + ' the cross on the mark.'; }
+    else { o.head = 'LINE UP'; o.text = what + ' the cross on the mark. It already allows for drop, wind and movement.'; }
+  }
   if (S.again && !o.fire) o.text = 'Missed. Take it again. ' + o.text;
   if (!o.charging && sh.zoomT < st.zoomMax * 0.8) o.text += ' Zoom in all the way.';
   return false;

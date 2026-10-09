@@ -523,6 +523,7 @@ body.portrait .gr-pager { top: auto; right: auto; left: 50%; transform: translat
 .gr-dot i { width: 8px; height: 8px; border-radius: 50%; background: rgba(243, 230, 204, .3); transition: all .2s; }
 .gr-dot.on i { background: #e8c27a; transform: scale(1.3); }
 .tabb.room { color: #c9a35e; }
+.gr-in { flex: none; margin-left: 12px; gap: 6px; border-color: rgba(201, 163, 94, .6); color: #f3e6cc; } .gr-in svg { width: 16px; height: 16px; color: #e8c27a; }
 
 /* narrow sideways screens: drop what is only nice to have */
 @media (max-width: 780px) {
