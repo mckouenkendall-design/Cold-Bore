@@ -656,7 +656,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 9, 4:08 PM";
+const BUILD = "Oct 9, 4:13 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -9901,6 +9901,7 @@ SCN.docks = function (o) {
   H.PB = PB;
   const wx = -62, ww = 26, wh = 8.2;                        // the warehouse
   const condC = S.tone('#8d949a', PB);                     // electrical conduit on the office wall
+  let shedItem = null, boxEnd = null;                      // (the detail pass draws over these)
   { // the top of the quay as you look down on it: paving, the crane rails, a painted line, puddles, and the lamp light lying on it
     const joint = S.tone(darken(gHex, 0.17), PB), patch = S.tone(darken(gHex, 0.1), PB), patchL = S.tone(lighten(gHex, 0.06), PB), railC = S.tone('#8f969c', PB), yel = S.tone('#c79a2e', PB);
     const pudC = mix(S.tone(darken(gHex, 0.3), PB), S.tone(S.pal.skyBot, PB), 0.16), pudHi = mix(pudC, S.tone(S.pal.skyBot, PB, true), 0.22), ringC = rgba(S.tone('#dfe6ee', PB), 0.5);
@@ -9946,7 +9947,7 @@ SCN.docks = function (o) {
     const plinth = S.tone('#4c555d', PB), rustA = rgba(S.tone('#7a4a2e', PB), 0.42), grime = rgba(S.tone('#1c2026', PB), 0.3), pipe = S.tone('#2a3138', PB), board = S.tone('#27323c', PB), palletC = S.tone('#8a6f4a', PB), pallet2 = S.tone('#5f4b30', PB), drumC = S.tone('#3f5870', PB), drum2 = S.tone('#2c4054', PB), yelC = S.tone('#c79a2e', PB), shade = 'rgba(0,0,0,0.12)';
     const streaks = []; for (let i = 0; i < 14; i++) streaks.push(wx + 0.6 + A.f() * (ww - 1.2), A.r(0.5, 2.6), A.r(0.06, 0.16));
     if (lit && !o.gate) dkLight(S, { P: PB, x: wx + 19.15, y: 2.8, rgb: lampRgb, a: 0.22, w: 2.0 });
-    PB.add({ x0: wx - 1, x1: wx + ww + 1, layer: 0, draw(ctx, env) {
+    shedItem = PB.add({ x0: wx - 1, x1: wx + ww + 1, layer: 0, draw(ctx, env) {
       const s = env.s, px = env.px, th = Math.max(0.03, px * 0.8);
       R4(ctx, wx, 0, ww, wh, wall);
       if (s > 2.2) { ctx.fillStyle = rib; const x0 = Math.max(wx + 0.3, Math.floor(env.x0 / 0.45) * 0.45 + 0.3), x1 = Math.min(wx + ww, env.x1); for (let x = x0; x < x1; x += 0.45) ctx.fillRect(x, 0.1, 0.1, wh - 0.2);
@@ -10014,6 +10015,7 @@ SCN.docks = function (o) {
     for (let i = 0; i < n; i++) { const ci = R.i(0, DOCK_BOX_COLS.length - 1); K.cbox(S, PB, sx, i * 2.6, (st[2] && st[2][i]) || DOCK_BOX_COLS[ci], { text: R.chance(0.6) ? DOCK_BOX_NAMES[R.i(0, DOCK_BOX_NAMES.length - 1)] : null, door: R.chance(0.25) }); }
     H.stacks.push({ x0: sx, x1: sx + 6.1, top: n * 2.6 });
   });
+  boxEnd = PB.items[PB.items.length - 1];
   H.stackTop = (x) => { let t = 0; H.stacks.forEach((s) => { if (x >= s.x0 && x <= s.x1) t = Math.max(t, s.top); }); return t; };
   H.onContainers = (x, extra) => Object.assign({ plane: PB, x, y: H.stackTop(x), zone: 'stack', behind: false, room: null }, extra || {});
   if (o.fuse !== false) {
@@ -10299,8 +10301,89 @@ SCN.docks = function (o) {
     } });
     K.pennant(S, PN, mx, my, 1.7, o.flagCol || '#c0392b', { sway: (t) => lean(t) * (my - piv) });
   }
+  dkDetail(S, H, { PB, PL, shedItem, boxEnd, wx, ww, wy, gulls, night, o });
   return H;
 };
+
+// ---- a working harbour ---------------------------------------------------------------
+// Detail for looks only, from the scene kit's static layers (K.deco) and a few cheap moving
+// things: rust blooming at the corners of the boxes, dents and hazard placards on them; a
+// lifebuoy, a fire point, posters and a painted tag on the shed; gulls wheeling over the
+// freighter; rubbish and weed drifting on the water of the boat lane. Everything sits on a
+// surface that already hides what is behind it, floats low on the water away from the boats,
+// or flies high over the ship; nothing is solid or shootable.
+function dkDetail(S, H, q) {
+  const PB = q.PB, wx = q.wx, wy = q.wy;
+  // ---- the boxes on the quay ----
+  K.deco(S, PB, { after: q.boxEnd, seed: 4201 }, (D, R) => {
+    const rust = '#6e3520', rust2 = '#8a4a2a';
+    for (const st of H.stacks) for (let yb = 0; yb < st.top - 0.1; yb += 2.6) {
+      const x = st.x0, w = 6.1, h = 2.6, y = yb;
+      for (const cx of [x + 0.48, x + w - 0.48]) KW.blob(D, R, cx, y + 0.42, R.r(0.18, 0.28), R.r(0.16, 0.24), rust, 0.5, 0.3);   // rust blooming round the corner castings
+      for (let k = 0; k < 4; k++) D.rect(x + R.r(0.3, w - 1.3), y + 0.13, R.r(0.3, 1.1), R.r(0.06, 0.12), R.chance(0.5) ? rust : rust2, 0.55);
+      D.rect(x + 0.16, y + h - 0.62, w - 0.32, 0.45, '#ffffff', 0.08);                   // the top of the side bleached by the sun
+      for (let k = 0; k < R.i(1, 2); k++) { const dx = x + R.r(0.8, w - 1.2), dy = y + R.r(0.5, 1.4), dh = R.r(0.5, 1.0); D.rect(dx, dy, 0.18, dh, '#000000', 0.16); D.rect(dx + 0.18, dy, 0.12, dh, '#ffffff', 0.12); }   // dents: a shadowed side and a lit side
+      if (R.chance(0.3)) { const px = x + w * 0.82, py = y + h * 0.42, r = 0.2; D.pass = 1; D.poly([px, py - r, px + r, py, px, py + r, px - r, py], '#20242b'); D.poly([px, py - r * 0.8, px + r * 0.8, py, px, py + r * 0.8, px - r * 0.8, py], R.chance(0.5) ? '#e8872c' : '#f1ede2'); D.pass = 0; }
+    }
+  });
+  // ---- on the shed wall: a lifebuoy, a fire point, posters, a painted tag ----
+  K.deco(S, PB, { after: q.shedItem, seed: 4211 }, (D, R) => {
+    const lx = wx + 3.4, ly = 2.4;
+    D.ell(lx, ly, 0.4, 0.4, '#e2572b'); D.pass = 1; D.ell(lx, ly, 0.24, 0.24, '#556470');
+    for (let k = 0; k < 4; k++) { const an = k * Math.PI / 2 + 0.4; D.poly([lx + Math.cos(an) * 0.25, ly + Math.sin(an) * 0.25, lx + Math.cos(an + 0.35) * 0.25, ly + Math.sin(an + 0.35) * 0.25, lx + Math.cos(an + 0.35) * 0.4, ly + Math.sin(an + 0.35) * 0.4, lx + Math.cos(an) * 0.4, ly + Math.sin(an) * 0.4], '#f1ede2'); }
+    D.rect(lx - 0.05, ly + 0.38, 0.1, 0.18, '#2a3138'); D.pass = 0;
+    // fire point: a red box with a white band, a hose reel showing through its glass
+    D.rect(wx + 5.4, 1.1, 0.75, 0.95, '#b8352b'); D.pass = 1; D.rect(wx + 5.45, 1.75, 0.65, 0.12, '#f1ede2'); D.ell(wx + 5.78, 1.38, 0.2, 0.2, '#6e1f1a'); D.pass = 0;
+    // posters, one half torn away, and the paste marks of old ones
+    D.rect(wx + 1.0, 1.0, 0.75, 1.0, '#e4dfd0'); D.rect(wx + 1.9, 1.15, 0.62, 0.85, '#d9c79a');
+    D.pass = 1; for (let k = 0; k < 4; k++) D.rect(wx + 1.08, 1.75 - k * 0.15, 0.55 - (k % 2) * 0.2, 0.05, '#3a3f47', 0.7); D.rect(wx + 1.98, 1.6, 0.46, 0.28, '#b8352b', 0.8);
+    D.poly([wx + 1.9, 1.15, wx + 2.52, 1.15, wx + 2.52, 1.5, wx + 2.2, 1.3], '#556470'); D.rect(wx + 2.7, 1.2, 0.5, 0.6, '#ffffff', 0.18); D.pass = 0;
+    // a painted tag across the lower wall, in two colours
+    const tx = wx + 8.4, ty = 1.2, tag = [tx, ty, tx + 0.4, ty + 0.55, tx + 0.7, ty + 0.1, tx + 1.0, ty + 0.6, tx + 1.3, ty + 0.05, tx + 1.75, ty + 0.5, tx + 2.0, ty + 0.15, tx + 2.5, ty + 0.45];
+    D.line(tag, 0.12, '#2f7f86', 0.9); D.pass = 1; D.line(tag.map((v, i) => v + (i % 2 ? 0.05 : 0.04)), 0.04, '#f1d24a', 0.9);
+    D.line([tx + 2.6, ty + 0.1, tx + 2.9, ty + 0.55, tx + 3.0, ty + 0.15], 0.1, '#2f7f86', 0.9); D.pass = 0;
+  });
+  // ---- gulls wheeling over the freighter, by day and in half light ----
+  if (q.gulls && S.pal.dark < 0.5 && H.ship) {
+    const P = H.PSH, gc = S.tone('#f2f2ee', P), gk = S.tone('#8f979e', P), cx = H.ship.sx + H.ship.L * 0.5, D0 = H.ship.deckY;
+    const birds = []; const R = makeRng(4221); for (let i = 0; i < 6; i++) birds.push([cx + R.r(-30, 30), D0 + R.r(12, 22), R.r(6, 16), R.r(0.18, 0.32), R.r(0, TAU), R.chance(0.5) ? 1 : -1]);
+    P.add({ x0: cx - 60, x1: cx + 60, layer: 0, draw(ctx, env) {
+      if (env.s < 2) return;
+      const t = env.t; ctx.lineWidth = Math.max(env.px * 1.1, 0.1); ctx.lineJoin = 'round';
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.strokeStyle = pass ? gc : gk; ctx.beginPath();
+        for (let i = 0; i < birds.length; i++) {
+          const b = birds[i], a = t * b[3] * b[5] + b[4], x = b[0] + Math.cos(a) * b[2], y = b[1] + Math.sin(a * 1.3) * b[2] * 0.25, sp = 0.55;
+          if (x < env.x0 - 2 || x > env.x1 + 2) continue;
+          const up = 0.12 + 0.28 * Math.max(-0.3, Math.sin(t * (3.4 + i * 0.3) + i)) * (Math.sin(t * 0.4 + i * 1.9) > 0.1 ? 1 : 0.15), o2 = pass ? 0 : 0.04;
+          ctx.moveTo(x - sp, y + up - o2); ctx.quadraticCurveTo(x - sp * 0.45, y + up * 1.5 + 0.06 - o2, x, y - o2); ctx.quadraticCurveTo(x + sp * 0.45, y + up * 1.5 + 0.06 - o2, x + sp, y + up - o2);
+        }
+        ctx.stroke();
+      }
+      ctx.lineJoin = 'miter';
+    } });
+  }
+  // ---- rubbish and weed drifting on the boat lane, kept clear of the boats ----
+  { const P = q.PL, o = q.o, keep = [];
+    if (o.barge) keep.push(o.barge.x); if (o.yacht) keep.push(o.yacht.x); if (o.skiff) keep.push(o.skiff.x); if (o.bell !== undefined && o.bell !== false) keep.push(typeof o.bell === 'number' ? o.bell : o.bell.x);
+    const R = makeRng(4231), bits = [], cols = ['#8a6e4e', '#e8e4d6', '#4f7a5a', '#3a4a34', '#c9c2ae', '#c9a24a'];
+    for (let x = -60; x < 70; x += R.r(3, 7)) { if (keep.some((k) => Math.abs(x - k) < 24)) continue; bits.push([x, wy - R.r(0.5, 2.6), R.i(0, 5), R.r(0.5, 1.4), R.r(0, TAU)]); }
+    const tone = cols.map((c) => S.tone(c, P)), foam = rgba(S.tone('#e6edf2', P), 0.5);
+    P.add({ x0: -70, x1: 80, layer: 0, draw(ctx, env) {
+      if (env.s < 3 || wy < env.y0 - 1 || wy - 3 > env.y1) return;
+      const t = env.t;
+      for (let i = 0; i < bits.length; i++) {
+        const b = bits[i], x = b[0] + Math.sin(t * 0.13 + b[4]) * 0.6; if (x < env.x0 - 2 || x > env.x1 + 2) continue;
+        const y = b[1] + Math.sin(t * 0.9 + b[4]) * 0.03, k = b[2], l = b[3];
+        if (k === 0) { ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(t * 0.7 + b[4]) * 0.04); R4(ctx, -l, -0.03, l * 2, 0.12, tone[0]); ctx.restore(); }               // a plank
+        else if (k === 1) R4(ctx, x - l * 0.3, y - 0.03, l * 0.6, 0.12, tone[1]);                                                                                         // a lump of white foam block
+        else if (k === 2 || k === 3) { ctx.fillStyle = tone[k]; ctx.beginPath(); ctx.ellipse(x, y, l * 1.2, 0.06, 0, 0, TAU); ctx.fill(); }                                // weed
+        else { R4(ctx, x - 0.07, y - 0.03, 0.14, 0.24, tone[k]); }                                                                                                         // a bottle or a can
+        ctx.fillStyle = foam; ctx.fillRect(x - l * 1.6, y - 0.06, l * 3.2, Math.max(0.025, env.px * 0.9));                                                                // the scum it gathers round it
+      }
+    } });
+  }
+}
 
 
 // ===== 07c_scene_valley.js =====
