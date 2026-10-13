@@ -83,7 +83,7 @@ mission({
     'Two spotters: the YELLOW raincoat on the roof and the RED umbrella by the laundry door. People with other umbrellas are not targets.',
     'Your rifle is loud, so only fire inside thunder: lightning flashes, then NOISE COVER lights for about 2.5 seconds. It comes every 11 seconds, first about 5 seconds in.',
     'Have the crosshair on the roof spotter before the flash and shoot him the moment NOISE COVER lights.',
-    'Then shoot the street spotter, in the same thunder if you are quick, or in the next one about 16 seconds in. Only fire when no umbrella walker is near him.',
+    'Then the street spotter, in a thunder with no umbrella walker heading his way (one passes about every 22 seconds, and a walker coming toward him sees him fall): the thunders about 38 and 49 seconds in are clear, and so is the first if you are very quick.',
     'Aim at the middle of the chest on both. The drop is tiny (HOLD reads about 0.5 up) and the light wind hardly moves the shot.',
   ],
   wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },
@@ -101,7 +101,8 @@ mission({
     let n = 0;
     return [
       { at: 5, every: 11, do(sim) { sim.cover(2.7, 'thunder'); } },
-      { at: 2, every: 13, do(sim) { if (sim.alarmT !== null) return; const R = sim.rng, dir = n % 2 ? 1 : -1; sim.addActor(Object.assign(H.street(dir > 0 ? -47 : 47), { id: 'u' + (n++), role: 'civ', look: Object.assign(rndLook(R), { bag: 'umbrella', bagCol: R.pick([COL.blue, COL.black, COL.green, COL.purple, COL.cream]) }), routine: stroll(dir > 0 ? 47 : -47), speed: R.r(0.95, 1.2) })); } },
+      // people hurrying through the rain, one about every 22 seconds, so every other pair of thunders is clear
+      { at: 10, every: 22, do(sim) { if (sim.alarmT !== null) return; const R = sim.rng, dir = n % 2 ? -1 : 1; sim.addActor(Object.assign(H.street(dir > 0 ? -47 : 47), { id: 'u' + (n++), role: 'civ', look: Object.assign(rndLook(R), { bag: 'umbrella', bagCol: R.pick([COL.blue, COL.black, COL.green, COL.purple, COL.cream]) }), routine: stroll(dir > 0 ? 47 : -47), speed: R.r(1.3, 1.5) })); } },
       hint(1.5, 'An unsuppressed shot is heard by everyone. When lightning flashes, the thunder that follows covers your shot. Fire while NOISE COVER is lit.'),
     ];
   },

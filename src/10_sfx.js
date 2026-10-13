@@ -171,7 +171,7 @@ Sfx.later = function (key, make) {
 Sfx.work = function () {
   const X = Sfx; X.jobT = 0;
   const j = X.jobs.shift(); if (!j || !X.ok) return;
-  X.get(j[0], j[1]);
+  X.get(j[0], j[1]); X.jobAt = performance.now();
   if (X.jobs.length) X.jobT = setTimeout(X.work, 12);
 };
 // Play a buffer. o: at (s from now), gain, rate (below 1 is slower, lower and longer), dest,
@@ -1023,7 +1023,11 @@ Sfx.pump = function () { // keep the music scheduled a little ahead
 Sfx.onEvent = function (e, sim) {
   const X = Sfx; if (!X.ok) return;
   const sc = Math.max(0.25, Game.scale || 1);
-  const back = (d) => (d / SOUND) / sc; // time for the sound to travel back to you
+  // time for the sound to travel back to you; on the Range there is none: a hit is heard the
+  // moment it lands (the owner: it read as a glitch there, not as distance)
+  const range = !!(sim.M && sim.M.practice);
+  const back = (d) => (range ? 0 : (d / SOUND) / sc);
+  const dd = (d) => (range ? Math.min(d, 160) : d); // (and loud and clear, not dulled by distance)
   const Z = sim.S.refZ, here = (b, gain, verb) => X.playFar(b, Z, back(Z), gain, verb);
   switch (e.k) {
     case 'fire': X.shot(e, sim); break;
@@ -1032,7 +1036,7 @@ Sfx.onEvent = function (e, sim) {
     case 'charge': X.play(X.get('charge:' + (+e.dur).toFixed(2), () => SG.charge(+e.dur || 0.85))); break;
     case 'breath': X.breath(e.on, e.gasp); break;
     case 'click': X.ui('tick'); break;
-    case 'impact': X.impact(e.mat === 'interior' ? 'wood' : e.mat, e.dist, back(e.dist)); break;
+    case 'impact': X.impact(e.mat === 'interior' ? 'wood' : e.mat, dd(e.dist), back(e.dist)); break;
     case 'hit': if (!(X.kcS && X.kcS.on)) X.hit(e, back(e.dist), Save.data.settings.gore !== false); break; // the kill camera makes its own
     case 'vest': X.vest(Z, back(Z)); break;
     case 'glass': X.glass(Z, back(Z)); break;
@@ -1048,7 +1052,7 @@ Sfx.onEvent = function (e, sim) {
     case 'alarm': X.alarmSting(); break; // (the owner had the wailing siren taken out: a short low hit in the music instead)
     case 'lampout': case 'zap': case 'spark': here(X.get('zap:' + ((Math.random() * 2) | 0), () => SG.zap(1 + ((Math.random() * 2) | 0))), 1.3, 0.3); if (e.k === 'lampout') X.glass(Z * 1.4, back(Z)); break;
     case 'ring': // a steel target on the range pings; a real bell or horn rings
-      if (sim.M && sim.M.range !== undefined && e.kind === 'bell') { const v = (Math.random() * 2) | 0; X.playFar(X.get('plate:' + v, () => SG.plate(v + 1)), Z, back(Z), 1.3, 0.3); } else X.bell(Z, back(Z), e.kind === 'horn' ? 300 : 560);
+      if (range && e.kind === 'bell') { const v = (Math.random() * 2) | 0; X.playFar(X.get('plate:' + v, () => SG.plate(v + 1)), dd(Z), 0, 1.3, 0.3); } else X.bell(Z, back(Z), e.kind === 'horn' ? 300 : 560);
       break;
     case 'smash': X.glass(Z, back(Z)); break;
     case 'clank': X.impact('metal', Z, back(Z)); break;

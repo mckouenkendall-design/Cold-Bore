@@ -106,15 +106,23 @@ function recTail(x, from, lp, g) {
 // The rifles that share the base shot each get their own pitch, spread so no two sit close:
 // the Kessler's long old barrel lowest, the Marrow's thin light barrel highest.
 const REC_GUN = { kessler: 0.86, corvid: 0.93, fenwick: 0.97, halden: 1.0, orlov: 1.075, ibex: 1.16, marrow: 1.23 };
-// Suppressors, by the generator's device name: rate (higher = a smaller, brighter can), lp = how
-// much top it lets out, tail = how long it rings on, crackK = how much of the bullet's crack is left over it
+// Suppressors, by the generator's device name. The owner: the start of the suppressed shot is where its snap and intensity are, so it is never
+// filtered or squashed; a can only changes the pitch and how long the tail goes on. take = which
+// of the two recorded takes (the second, his favourite, has a little more low body; the first is
+// sharper), r = pitch, stretch = how far the tail (after the first 40 ms) is drawn out.
+// Each rifle's own pitch through a can, spread so no two sit close.
+const REC_SUPP_GUN = { aria: 0.8, northwind: 0.845, kessler: 0.89, vantage: 0.93, corvid: 0.97, fenwick: 1.01, halden: 1.06, orlov: 1.11, lark: 1.16, ibex: 1.21, marrow: 1.27 };
+// the pitch a suppressed shot is played at (for the tests too: two cans on two rifles can share
+// a recording and differ mainly in pitch, which a coarse comparison of their sound cannot see)
+function recSuppPitch(S) { const K = REC_CAN[S.dev] || REC_CAN.supl, gr = REC_SUPP_GUN[S.gid] || (1 + 0.2 * (0.55 - S.h)); return clamp(K.r * gr * (S.sup ? 1 : 0.9), 0.6, 1.45); }
+SG.recSuppPitch = (S) => (S.D && S.D.supp ? recSuppPitch(S) : 0);
 const REC_CAN = {
-  supl: { r: 1.07, lp: 9000, tail: 1.0 },
-  suph: { r: 0.88, lp: 4200, tail: 0.85 },
-  olcan: { r: 0.96, lp: 6500, tail: 1.1 },
-  int: { r: 0.93, lp: 5600, tail: 0.95 },
-  intLong: { r: 0.84, lp: 3600, tail: 0.85 },
-  intShort: { r: 1.1, lp: 8500, tail: 1.05 },
+  supl: { take: 'shot_suppressed_alt', r: 1.05, stretch: 0.9 },     // Featherweight: small, sharp, short
+  suph: { take: 'shot_suppressed', r: 0.9, stretch: 1.3 },          // Monolith: big, deep, long
+  olcan: { take: 'shot_suppressed', r: 0.98, stretch: 1.1 },        // the Orlov's cheap can (rattles)
+  int: { take: 'shot_suppressed', r: 0.95, stretch: 1.0 },          // built in
+  intLong: { take: 'shot_suppressed', r: 0.87, stretch: 1.35 },     // built in, long
+  intShort: { take: 'shot_suppressed', r: 1.1, stretch: 0.95 },     // built in, short
 };
 function recReport(S, seed) {
   if (S.coil) return null;
@@ -127,20 +135,22 @@ function recReport(S, seed) {
   const voice = (1 + clamp((V.tone - 2000) / 1500, -1, 1) * 0.09 + (22 - V.bl) * 0.005) * jit(0.006);
   const tB = { single: 0.0045, bolt: 0.0035 }[S.action] || 0.003;
   const tone = [['pk', V.tone, 1.6, 5], ['pk', V.tone2, 2, 3.5], ['hs', 3000, 0.7, (V.tilt || 0) * 1.1]];
-  let core, crack = null;
+  let core;
   if (supp) {
-    const K = REC_CAN[S.dev] || REC_CAN.supl, r = K.r * (1 + 0.3 * (0.55 - h)) * voice * (V.canF ? Math.pow(V.canF, 0.15) : 1) * (S.sup ? 1 : 0.93);
-    core = recRate(coreA, r);
-    recFilt(core, tone.concat([['lp', K.lp * (S.sup ? 1 : 0.42), 0.7], ['pk', 220 + 140 * (1 - h), 1, 3 * h + (S.sup ? 0 : 4)]]));
-    recShape(core, 0.012, 0.06, 0.25, S.sup ? 1.15 : 0.9, 1, K.tail * (S.sup ? 1 : 1.35));
-    // the bullet's own crack, which no suppressor touches: the very front of a real rifle shot
-    if (S.sup) {
-      const m24 = recA('shot_m24');
-      if (m24) {
-        const ck = S.crackK * dv('crack') * clamp(Math.sqrt(Math.max(0, S.mach - 1)), 0.35, 1.25);
-        crack = { x: recFilt(recCut(m24, 0, 0.012, 0.0003, 0.004), [['hp', 2600, 0.7]]), g: 0.85 * ck };
-      }
+    // the recording as it is, pitched for the can, the calibre and the rifle; only its tail drawn out or tightened
+    const K = REC_CAN[S.dev] || REC_CAN.supl, take = recA(K.take) || coreA;
+    const r = recSuppPitch(S) * jit(0.004);
+    core = recRate(take, r);
+    const st = K.stretch * (S.sup ? 1 : 1.25) * (1 + 0.2 * (h - 0.55)) * Math.pow(V.bl / 22, 0.6);
+    if (Math.abs(st - 1) > 0.01) {
+      const a = Math.round(0.04 * SG.sr), xf = Math.round(0.015 * SG.sr), tl = recRate(core.subarray(a), 1 / st), y = new Float32Array(a + tl.length);
+      y.set(core.subarray(0, Math.min(core.length, a + xf)));
+      for (let i = 0; i < tl.length; i++) { const u = i < xf ? i / xf : 1; y[a + i] = y[a + i] * (1 - u) + tl[i] * u; }
+      core = y;
     }
+    // the rifle's own colour, in the tail only (from 40 ms on): the snap in front is left alone
+    const col = recFilt(new Float32Array(core), tone), a = Math.round(0.04 * SG.sr), xf = Math.round(0.02 * SG.sr);
+    for (let i = a; i < core.length; i++) { const u = i < a + xf ? (i - a) / xf : 1; core[i] = core[i] * (1 - u) + col[i] * u; }
   } else {
     const gr = REC_GUN[S.gid];
     core = recRate(coreA, (gr ? gr * (1 + (22 / V.bl - 22 / (SG_GUN[S.gid] || V).bl) * 0.12) * jit(0.006) : C.ra * voice));
@@ -173,30 +183,26 @@ function recReport(S, seed) {
   const B = sgBuf(Math.max(sgLen(S, rt), core.length / SG.sr + 0.15));
   // the striker or hammer falling, just ahead of the shot
   const r0 = V.ring;
-  sgModes(B, { at: 0, modes: [[r0[0] * 0.61, 0.006, 1], [r0[1] * 0.58, 0.004, 0.7], [r0[2] * 0.66, 0.0025, 0.5]], gain: supp ? 0.09 : 0.04, seed: nx() });
+  if (!supp) sgModes(B, { at: 0, modes: [[r0[0] * 0.61, 0.006, 1], [r0[1] * 0.58, 0.004, 0.7], [r0[2] * 0.66, 0.0025, 0.5]], gain: 0.04, seed: nx() });
   // the recording, the heart of it
   sgMix(B, tB, core, null, 1, 0);
   // a brake's or compensator's ports: the front of the blast again, a fraction of a millisecond later
   if (!supp && D.ports) { const fr = recCut(core, 0, 0.015, 0.0002, 0.004); D.ports.forEach((d) => sgMix(B, tB + d, fr, null, (D.g2 || 0.55) * 0.55, 0)); }
-  if (crack) sgMix(B, tB + 0.0002, crack.x, null, crack.g, 0);
   // the Anvil's hammerhead brake: a chesty second blast a few milliseconds behind the first
   if (S.dev === 'hammer') sgMix(B, tB + 0.012, recFilt(recCut(core, 0, 0.06, 0.0005, 0.025), [['lp', 2200, 0.7]]), null, 0.7, 0);
   // weight you feel, so a phone speaker still thumps (lighter than when it was all code)
   const lowK = S.low || 1, f0 = (118 - 72 * h) * jit(0.03) / Math.sqrt(lowK);
-  sgTone(B, { at: tB, f: f0, f1: f0 * 0.45, glide: 0.05 + 0.07 * h, att: 0.0025, tau: (0.06 + 0.2 * h) * lowK, dur: (0.06 + 0.2 * h) * 6 * lowK, gain: (0.12 + 0.12 * h + 0.15 * h * h * h) * dv('sub') * lowK, drive: 1.6 });
+  if (!supp) sgTone(B, { at: tB, f: f0, f1: f0 * 0.45, glide: 0.05 + 0.07 * h, att: 0.0025, tau: (0.06 + 0.2 * h) * lowK, dur: (0.06 + 0.2 * h) * 6 * lowK, gain: (0.12 + 0.12 * h + 0.15 * h * h * h) * dv('sub') * lowK, drive: 1.6 });
   // the barrel's ring and the stock's knock: each rifle's own
   const rK = V.ringT * (1.3 - V.bw);
-  sgModes(B, { at: tB, modes: V.ring.map((f, i) => [f * jit(0.01), [0.075, 0.048, 0.03][i] * rK, [1, 0.65, 0.4][i]]), gain: 0.05 * (1.2 - 0.7 * V.bw) * dv('ring'), seed: nx() });
-  sgKnock(B, tB + 0.0008, V, 0.13 * dv('knock') * (supp ? 1.5 : 1), nx());
+  if (!supp) sgModes(B, { at: tB, modes: V.ring.map((f, i) => [f * jit(0.01), [0.075, 0.048, 0.03][i] * rK, [1, 0.65, 0.4][i]]), gain: 0.05 * (1.2 - 0.7 * V.bw) * dv('ring'), seed: nx() });
+  if (!supp) sgKnock(B, tB + 0.0008, V, 0.13 * dv('knock'), nx());
   // the device's own sound
   if (D.prongs) { const pf = Math.pow(V.tone2 / 4500, 0.35); sgModes(B, { at: tB + 0.0002, modes: [[5320 * pf * jit(0.02), 0.11, 1], [6680 * pf * jit(0.02), 0.08, 0.8], [8140 * pf * jit(0.02), 0.06, 0.6], [10300 * pf, 0.035, 0.4]], gain: 0.3, seed: nx() }); }
   if (D.chuff) sgNoise(B, { at: tB + 0.0003, filt: [['bp', 3200 * jit(0.04), 1.3]], att: 0.0004, tau: 0.016, dur: 0.09, gain: 0.9, width: 0.2, seed: nx() });
   if (D.side) [-0.75, 0.75].forEach((pan, i) => sgNoise(B, { at: tB + 0.0003 + i * 0.0004, filt: [['bp', V.tone * 0.9 * jit(0.05), 1.6]], att: 0.0006, tau: 0.022 + 0.02 * h, dur: 0.15, gain: 0.35, pan, width: 0.1, seed: nx() }));
   if (D.zing) { sgNoise(B, { at: tB + 0.0002, filt: [['bp', 6800 * jit(0.04), 2.2]], att: 0.0008, tau: 0.011, dur: 0.07, gain: 0.55, width: 0.6, seed: nx() }); sgModes(B, { at: tB + 0.0003, modes: [[4650 * jit(0.02), 0.04, 1], [7230, 0.03, 0.7], [9810, 0.02, 0.5]], gain: 0.06, seed: nx() }); }
   if (supp) {
-    const cf = V.canF * (1 + 0.12 * (0.55 - h)) * jit(0.015);
-    sgModes(B, { at: tB + 0.0006, modes: D.can.map((f, i) => [f * cf, D.canT * [1, 0.75, 0.5][i], [1, 0.7, 0.45][i]]), gain: 0.045 * D.canG, seed: nx() });
-    sgNoise(B, { at: tB + 0.0008, filt: [['bp', D.tock * cf, 4.5]], att: 0.0008, tau: D.tockT || 0.03, dur: (D.tockT || 0.03) * 6, gain: (D.tockG || 0.5) * 0.5, width: 0.15, seed: nx() });
     if (D.rattle) [0.009, 0.019, 0.031, 0.046].forEach((d, i) => sgModes(B, { at: tB + d * jit(0.1), modes: [[2930 * jit(0.03), 0.012, 1], [4870, 0.008, 0.6]], gain: 0.1 * (1 - i * 0.2), seed: nx() }));
   }
   // a semi-automatic's action, inside the shot: the real carrier slam (the charging handle's
@@ -214,7 +220,8 @@ function recReport(S, seed) {
   // the place: its echoes (the recording brings its own tail, so the made one is kept light)
   const S2 = Object.assign({}, S, { D: Object.assign({}, D, { tail: dv('tail') * (0.2 + 1.3 * h * h * h), slap: dv('slap') * 0.85, far: dv('far') * (0.25 + 1.0 * h * h) }) });
   sgPlace(B, S2, tB, rt, rnd);
-  return sgFinish(B, { loud: S.loud + (supp ? 0.8 * (1 - h) : 0) + (S.dev === 'hammer' ? 1 : 0), peakMax: 2.2, span: 0.6 });
+  // a suppressed shot is never pushed into the soft clip: its sharp front is the point of it
+  return sgFinish(B, supp ? { loud: S.loud + (S.dev.indexOf('int') === 0 ? 1.5 : 0.5), peakMax: 1.0, knee: 0.97, span: 0.6 } : { loud: S.loud + (S.dev === 'hammer' ? 1 : 0), peakMax: 2.2, span: 0.6 });
 }
 SG.report = function (S, seed) { return recReport(S, seed) || SGsyn.report(S, seed); };
 
@@ -383,3 +390,14 @@ function recThunder(kind, seed) {
   return sgFinish(B, { loud: kind === 'far' ? (name === 'thunder_mid' ? -11 : -13) : -5.5, peakMax: 2.4, span: 3 });
 }
 SG.thunder = function (kind, seed) { return recThunder(kind, seed) || SGsyn.thunder(kind, seed); };
+
+// ---- the Range's steel plates ---------------------------------------------------------------
+// The ricochet's strike, a little higher, with the plate ringing on under it.
+const SGsynPlate = SG.plate;
+SG.plate = function (seed) {
+  const r = recA('ricochet_metal'); if (!r) return SGsynPlate(seed);
+  const rnd = sgRng((seed || 1) * 53), f = 780 * (0.94 + rnd() * 0.12), B = sgBuf(2.6), on = recM('ricochet_metal').on || 0.012;
+  sgMix(B, 0, recRate(recCut(r, Math.max(0, on - 0.002), undefined, 0.0005, 0.1), 1.15 * (0.97 + rnd() * 0.06)), null, 1, 0);
+  sgModes(B, { at: 0.0003, modes: [[f, 0.55, 1], [f * 1.59, 0.42, 0.8], [f * 2.14, 0.33, 0.6], [f * 2.65, 0.24, 0.5], [f * 3.16, 0.18, 0.35]], gain: 0.13, seed: (rnd() * 1e9) | 0, spread: 0.004 });
+  return sgFinish(B, { loud: -10, peakMax: 1.8 });
+};

@@ -113,7 +113,7 @@ function pageLib() {
     async measure(i, wantWav) {
       const c = combos[i], r = await render(c, 'report', 0), m = analyze(r.L, r.R);
       let rawPk = 0; if (r.raw) for (let ch = 0; ch < 2; ch++) { const d = r.raw.getChannelData(ch); for (let k = 0; k < d.length; k++) rawPk = Math.max(rawPk, Math.abs(d[k])); }
-      const out = Object.assign({ name: c.name, gun: c.gun, cal: r.spec.cal, dev: r.spec.dev, extra: !!c.extra, sup: r.spec.sup, h: r.spec.h, rawPk: +rawPk.toFixed(3) }, m);
+      const out = Object.assign({ name: c.name, gun: c.gun, cal: r.spec.cal, dev: r.spec.dev, extra: !!c.extra, sup: r.spec.sup, h: r.spec.h, rawPk: +rawPk.toFixed(3), pitch: +(X.gen.recSuppPitch ? X.gen.recSuppPitch(r.spec) : 0).toFixed(4) }, m);
       if (wantWav) { const s = await render(c, 'shot', 0); out.wav = wav(s.L, s.R); }
       return out;
     },
@@ -177,7 +177,12 @@ function pageLib() {
   // it is always nearly the same.
   const MIN = 2.0, HARD = 1.5;
   const byName = {}; R.forEach((r) => { byName[r.name] = r; });
-  const apart = (a, b) => { const x = byName[a], y = byName[b]; return Math.abs(x.loud - y.loud) >= 1.5 || Math.abs(x.bright / y.bright - 1) >= 0.15 || Math.abs(x.low - y.low) >= 1.5; };
+  // Suppressed shots are the owner's recording with its front left exactly as recorded (his call):
+  // two of them differ by the pitch they are played at and their tails. Between 1 and 2 dB, two
+  // suppressed set-ups count as different when their pitch differs by 4% or more (about two thirds
+  // of a semitone, clearly heard), which the coarse map cannot see.
+  const pitchApart = (x, y) => x.pitch > 0 && y.pitch > 0 && Math.abs(Math.log(x.pitch / y.pitch)) >= Math.log(1.04);
+  const apart = (a, b, d) => { const x = byName[a], y = byName[b]; return Math.abs(x.loud - y.loud) >= 1.5 || Math.abs(x.bright / y.bright - 1) >= 0.15 || Math.abs(x.low - y.low) >= 1.5 || (d >= 1.0 && pitchApart(x, y)); };
   const why = (a, b) => { const x = byName[a], y = byName[b]; return 'loud ' + Math.abs(x.loud - y.loud).toFixed(1) + ' dB, bright ' + Math.round(100 * Math.abs(x.bright / y.bright - 1)) + '%, low ' + Math.abs(x.low - y.low).toFixed(1) + ' dB'; };
   const pairs = [];
   for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) pairs.push([R[i].name, R[j].name, diff(R[i].map, R[j].map)]);
@@ -198,8 +203,9 @@ function pageLib() {
 
   // ---- the promises ----
   const fails = [], check = (ok, what) => { console.log((ok ? 'ok    ' : 'FAIL  ') + what); if (!ok) fails.push(what); };
-  const grey = pairs.filter((p) => p[2] < MIN && p[2] >= HARD && apart(p[0], p[1]));
-  const close = pairs.filter((p) => p[2] < HARD || (p[2] < MIN && !apart(p[0], p[1])));
+  const pa = (p) => p[2] >= 1.0 && pitchApart(byName[p[0]], byName[p[1]]);
+  const grey = pairs.filter((p) => p[2] < MIN && (p[2] >= HARD || pa(p)) && apart(p[0], p[1], p[2]));
+  const close = pairs.filter((p) => (p[2] < HARD && !pa(p)) || (p[2] < MIN && !apart(p[0], p[1], p[2])));
   if (grey.length) console.log('under ' + MIN + ' dB on the map but clearly different on their own: ' + grey.map((p) => p[0] + ' / ' + p[1] + ' ' + p[2].toFixed(2) + ' (' + why(p[0], p[1]) + ')').join('; '));
   check(!close.length, 'no two set-ups sound nearly the same: closest ' + pairs[0][0] + ' / ' + pairs[0][1] + ' ' + pairs[0][2].toFixed(2) + ' dB apart (two takes of one shot: up to ' + yard.toFixed(2) + ' dB)' + (close.length ? '; too close: ' + close.slice(0, 6).map((p) => p[0] + '/' + p[1] + ' ' + p[2].toFixed(2) + ' (' + why(p[0], p[1]) + ')').join(', ') : ''));
   const quiet = R.filter((r) => r.loud < loudest - FLOOR);

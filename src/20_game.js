@@ -235,7 +235,8 @@ Game.start = function (missionId, opts) {
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
-  G.slowN = 0; G.frames = 0;
+  G.slowN = 0; G.frames = 0; G.fastN = 0; G.missionT = 0;
+  if (G.resK < 1) { G.resK = Math.min(1, Math.max(0.8, G.resK * 1.25)); G.resize(); } // every contract starts sharp again
   // keep the screen awake while a mission is running, where the browser allows it
   if (navigator.wakeLock && !G.wake) { try { navigator.wakeLock.request('screen').then((w) => { G.wake = w; w.addEventListener('release', () => { G.wake = null; }); }, () => {}); } catch (e) { /* fine */ } }
   G.resize();
@@ -266,9 +267,18 @@ Game.loop = function (ts) {
   if (G.state !== 'mission' || !G.sim) { UI.tick && UI.tick(dt); return; }
   const sim = G.sim;
   if (G.paused) { return; }
-  // if the phone is struggling, quietly draw at a lower resolution rather than stutter
-  G.slowN = (G.slowN || 0) * 0.98 + (dt > 0.03 ? 1 : 0); G.frames = (G.frames || 0) + 1;
-  if (G.slowN > 30 && G.frames > 120 && G.resK > 0.55 && !Game.noAutoPause) { G.resK *= 0.8; G.slowN = 0; G.frames = 0; G.resize(); }
+  // if the phone is struggling, quietly draw at a lower resolution rather than stutter; when it
+  // keeps up again, go back up. The first seconds of a contract, the kill camera and moments
+  // when sounds are being made ahead (each takes a few hundredths of a second) never count:
+  // those slow frames are not the picture's fault, and used to blur the game for good.
+  G.missionT = (G.missionT || 0) + dt;
+  const busy = G.missionT < 4 || G.cine || (Sfx.jobs && Sfx.jobs.length) || (Sfx.jobAt && performance.now() - Sfx.jobAt < 400);
+  if (!busy && !Game.noAutoPause) {
+    G.slowN = (G.slowN || 0) * 0.98 + (dt > 0.03 ? 1 : 0); G.frames = (G.frames || 0) + 1;
+    G.fastN = dt < 0.022 ? (G.fastN || 0) + 1 : 0;
+    if (G.slowN > 30 && G.frames > 120 && G.resK > 0.7) { G.resK = Math.max(0.64, G.resK * 0.8); G.slowN = 0; G.frames = 0; G.fastN = 0; G.resize(); }
+    else if (G.resK < 1 && G.fastN > 360) { G.resK = Math.min(1, G.resK * 1.25); G.fastN = 0; G.slowN = 0; G.frames = 0; G.resize(); }
+  }
   const KC = CB.KillCam;
   // ---- the kill camera has the picture: it sets the pace, the world follows ----
   if (G.cine && KC && KC.active) {
