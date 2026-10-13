@@ -1,3 +1,5 @@
 node_modules/
 shots/
 .claude/
+sfx_src/raw/
+sfx_src/cut/
