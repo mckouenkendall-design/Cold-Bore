@@ -68,7 +68,7 @@ const FILMS = [
       const seeded = (seed) => { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
       const keep = Math.random; Math.random = seeded(77);
       try {
-        X.build(ac);
+        X.build(ac); await X.recP; await X.loadRec();
         const st = CB.buildStats(F.gun, Object.assign(CB.defaultConfig(F.gun), F.cfg || {})), sim = { st, S: Object.assign({ objects: [] }, log.scene) };
         X.simRef = sim; CB.KillCam.active = true;
         const at = new Map(), add = (t, fn) => { const q = Math.round((t + LEAD) * SR / 128) * 128 / SR; if (!at.has(q)) at.set(q, []); at.get(q).push(fn); };

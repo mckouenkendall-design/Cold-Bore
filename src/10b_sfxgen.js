@@ -9,7 +9,9 @@
 //   - it sounds exactly the same in every browser, and a test can render and measure it
 //   - every sound is seeded, so a rifle always has its own voice and a test always gets the same numbers
 //
-// No recordings are used. A search for recordings with an explicit CC0 or public-domain licence
+// (Real recordings are now the core of most sounds: see src/10c_sfxrec.js. What follows is the
+// code-made kit those sounds still use, and the stand-ins for when a recording is not ready.)
+// Originally no recordings were used. A search for recordings with an explicit CC0 or public-domain licence
 // (npm, GitHub, October 2026) found nothing usable that the build machine could reach: every
 // gunshot pack found lives on sites outside it (OpenGameArt, Freesound, itch.io), and the one
 // CC0 set found (University of Illinois Data Bank, IDB-5664241) is 6.4 GB of hour-long field

@@ -99,7 +99,7 @@ function pageLib() {
     const secs = 6.5, ac = new OfflineAudioContext(2, Math.ceil((secs + LEAD) * SR), SR), keep = Math.random;
     Math.random = seeded(4321);
     try {
-      X.build(ac);
+      X.build(ac); await X.recP;
       const st = CB.buildStats(c.gun, Object.assign(CB.defaultConfig(c.gun), c.cfg)), sim = { st, S: scene(amb) };
       const G = X.gunFor({}, sim);
       ac.suspend(LEAD).then(() => { if (what === 'shot') X.shot({ k: 'fire' }, sim); else X.play(X.rep(G, take || 0)); ac.resume(); });

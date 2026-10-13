@@ -28,8 +28,8 @@ right moment, take one shot.
   every muzzle brake, compensator, flash hider and suppressor changes it. The
   place shapes the echo: city, harbour, valley, mountain ridge
 - Everything is earned by playing. No ads, no purchases, no accounts
-- One self-contained page. All art is drawn in code and all sound is made in
-  code. There are no image or audio files
+- One self-contained page. All art is drawn in code. Sound is built on real
+  recordings (packed into the page) and shaped in code for every rifle and part
 
 ## Play
 
@@ -74,7 +74,9 @@ That joins every `src/*.js` (in filename order) and `src/style.css` into
 | `src/06_view.js` | the scope picture and the reticles |
 | `src/09_save.js`, `src/39_progress.js` | saving, rewards, caches |
 | `src/10_sfx.js` | the sound engine: wiring, playing, the kill camera's sound, ambience and music |
-| `src/10b_sfxgen.js` | the sound generator: every rifle and muzzle option, hits, explosions, thunder, reloads, worked out sample by sample |
+| `src/10a_samples.js` | the recordings, packed by `tools/pack_sfx.py` (generated: do not edit) |
+| `src/10b_sfxgen.js` | the sound generator in code: the building blocks, the coil gun, and stand-ins for when a recording is not ready |
+| `src/10c_sfxrec.js` | sounds made from the recordings: every rifle and muzzle option, bolts, reloads, hits, explosions, thunder |
 | `src/11_gunart.js` | rifle artwork and skins |
 | `src/12_partart.js` | pictures of every part and the view through every scope |
 | `src/13_ragdoll.js` | ragdoll physics for falling bodies (picture only, never gameplay) |
@@ -122,29 +124,35 @@ BEATS=1 node test/cine2.js c1m1 fenwick t torso   # also prints when each sound 
 
 ## Sound
 
-Every sound is made in code; there are no audio files. Anything that does not change
-while it plays (a rifle's report and action, reloads, hits, impacts, explosions, thunder,
-the alarm, the interface) is worked out sample by sample by `src/10b_sfxgen.js` into a
-buffer and then played. The rifle a mission is played with is worked out as the mission
-starts (two takes of its shot, played in turn), the rest a piece at a time between frames.
-The kill camera, ambience and music are built live because they follow the game.
+Sound is built on real recordings the owner picked from Pixabay (Pixabay Content License:
+free to use inside a game, sold or not, no credit needed; the raw files may not be handed
+out on their own). The cut recordings live in `sfx_src/` (kept out of git for that reason);
+`python3 tools/pack_sfx.py` squeezes them into MP3s held as text in `src/10a_samples.js`,
+so the page stays one file (about 1.5 MB of it is sound). The list, with where each came
+from, is at the top of `tools/pack_sfx.py`.
 
-A shot is made of layers: the striker falling; the bullet's crack and the whip of it going
-away (only faster than sound); the muzzle blast with the rifle's own two resonances; the
-gas hissing out; the boom; a deep thump driven so a phone still plays it; the barrel's
-ring and the stock's knock; the action (a semi-automatic's carrier slams inside the
-shot, a bolt is worked after it); the echoes of the place and the echo back from the
-target area. A suppressor keeps the bullet's crack but leaks its own thump, tock and
-ring; a subsonic load loses the crack.
+| Recording | Used for |
+|---|---|
+| M24 shot | the base sniper shot: every .308-class rifle, and (higher, tighter) the lighter ones |
+| AR-15 single shot | the Lark (5.56) and other people's carbines |
+| Barrett .50 | the Anvil, blended under the magnums; its slow-motion version in the kill camera |
+| suppressed rifle (two takes) | every suppressor and built-in can |
+| M24 bolt | every bolt-action: five clicks laid out over the rifle's own cycle time |
+| AR-15 magazine out, in, charging handle | reloads, laid out so the last sound lands as the reload finishes |
+| bullet impact | hits on people; duller and dry for misses into dirt and snow |
+| metal ricochet | metal; cut and pitched for stone, wood and body armour |
+| glass, explosion, close thunder, a mid and three far rolls, rain (looped) | as named |
 
-No recordings are used. A search in October 2026 for gunshot, explosion and thunder
-recordings with an explicit CC0 or public-domain licence that the build machine can
-reach (npm, GitHub) found nothing usable; anything added later must be CC0 or public
-domain, with its source and licence written next to it.
+Every rifle and part still sounds different: the recording is the core, and each rifle has
+its own pitch, two resonances and tilt, its stock's knock, barrel ring and thump; each muzzle
+device its own change (ports, side blast, prongs, a hammerhead's second blast); each can its
+own pitch, top and ring; subsonic loads lose the crack. The place colours the tail and adds its
+echoes. Until a recording is decoded, or in a browser that cannot decode MP3, the sound made in
+code (`src/10b_sfxgen.js`) stands in. The alarm no longer sounds a siren: a short low hit in the
+music marks it.
 
 Sound cannot be judged by a script, so the tests measure it instead: loudness the way the
 ear weighs it, peak, low end, brightness, decay, and a pitch-and-time comparison of every
 pair of rifle set-ups (none may be nearly the same, none may be more than 10 dB quieter
 than the loudest rifle, nothing may clip, heavier calibres must measure heavier). They save
-WAV files in `shots/sfx/` (`shots/sfx/guns/` for every rifle set-up) to listen to. Nobody
-has listened to them yet.
+WAV files in `shots/sfx/` (`shots/sfx/guns/` for every rifle set-up) to listen to.

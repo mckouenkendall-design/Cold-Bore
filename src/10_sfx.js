@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// Sound. Everything is made in code: there are no audio files.
+// Sound. Built on real recordings (src/10a_samples.js, shaped per rifle in src/10c_sfxrec.js),
+// with sounds made in code (src/10b_sfxgen.js) for the rest and as stand-ins until a recording is ready.
 //
 // A sound is made one of two ways:
 //   - worked out ahead of time, sample by sample, by the generator (src/10b_sfxgen.js) into a
@@ -98,6 +99,10 @@ Sfx.build = function (ac, opt) {
   X.kcVerb = ac.createConvolver(); X.kcVerb.buffer = ir(2.6, 0, true);
   X.kcVerbG = ac.createGain(); X.kcVerbG.gain.value = 0.5; X.kcVerb.connect(X.kcVerbG); X.kcVerbG.connect(X.near);
   X.ok = true; X.setVolumes(true);
+  // decoded recordings are kept across a rebuild at the same rate (the sound tests build often)
+  if (X.recSr !== ac.sampleRate) { X.recBuf = {}; X.recJobs = {}; X.recSr = ac.sampleRate; }
+  X.recOk = X.recCore();
+  X.recP = opt.noRec ? Promise.resolve() : X.recStart();
 };
 Sfx.setVolumes = function (now) {
   const X = Sfx; if (!X.ok) return;
@@ -184,8 +189,64 @@ Sfx.play = function (buf, o) {
   if (o.pan && ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = clamp(o.pan, -1, 1); g.connect(p); end = p; }
   end.connect(o.dest || X.sfx);
   if (o.verb) { const v = ac.createGain(); v.gain.value = o.verb; end.connect(v); v.connect(o.vbus || X.verb); }
-  s.start(t); s._end = t + buf.duration / (o.rate || 1) + 0.05;
+  const off = Math.max(0, Math.min(o.offset || 0, buf.duration - 0.01));
+  s.start(t, off); s._end = t + (buf.duration - off) / (o.rate || 1) + 0.05;
   return s;
+};
+
+// ---- recordings ------------------------------------------------------------------------------
+// Real recordings (src/10a_samples.js holds them as MP3s written out as text). They are decoded
+// when sound is first switched on: the short ones (shots, the bolt, reloads, hits, glass, the
+// ricochet, the kill camera's shot) straight away, the long ones (thunder, rain, the explosion)
+// the first time a mission wants them. Until a recording is ready, the sound made in code stands in.
+// Decoders may put a few milliseconds of silence in front of an MP3; that is trimmed off, and the
+// sound cut to its true length, so a loop (the rain) closes without a gap.
+Sfx.recBuf = {};
+Sfx.recJobs = {};
+Sfx.REC_CORE = ['shot_m24', 'shot_barrett50', 'shot_ar15', 'shot_suppressed', 'shot_suppressed_alt', 'bolt_m24', 'reload_magout', 'reload_magin', 'reload_charge', 'hit_body', 'hit_body_whiz', 'ricochet_metal', 'glass', 'killcam_barrett50_slowmo'];
+Sfx.rec = function (name) { return Sfx.recBuf[name] || null; };
+Sfx.recArr = function (name) { const b = Sfx.recBuf[name]; return b ? b.getChannelData(0) : null; };
+Sfx.recCore = function () { return Sfx.REC_CORE.every((n) => !!Sfx.recBuf[n]); };
+// Decode the named recordings (all of them when none are named). Returns a promise.
+Sfx.loadRec = function (names) {
+  const X = Sfx, ac = X.ac, R = X.REC;
+  if (!ac || !R) return Promise.resolve();
+  names = names || Object.keys(R);
+  return Promise.all(names.map((name) => {
+    if (X.recBuf[name] || !R[name]) return Promise.resolve();
+    if (X.recJobs[name]) return X.recJobs[name];
+    const job = new Promise((done) => {
+      let bytes;
+      try { const s = atob(R[name].d); bytes = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i); } catch (e) { done(); return; }
+      const ok = (buf) => { try { X.recBuf[name] = X.recTrim(buf, R[name]); } catch (e) { /* leave it to the code-made sound */ } done(); };
+      try { const p = ac.decodeAudioData(bytes.buffer, ok, () => done()); if (p && p.catch) p.catch(() => done()); } catch (e) { done(); }
+    });
+    X.recJobs[name] = job;
+    return job;
+  }));
+};
+// Cut the decoder's silence off the front and the sound to its true length.
+Sfx.recTrim = function (buf, info) {
+  const ac = Sfx.ac, sr = buf.sampleRate, ch = buf.numberOfChannels, d0 = buf.getChannelData(0);
+  let start = 0; const lim = Math.min(d0.length, Math.round(sr * 0.08));
+  while (start < lim) { let loud = false; for (let c = 0; c < ch; c++) if (Math.abs(buf.getChannelData(c)[start]) > 0.0015) loud = true; if (loud) break; start++; }
+  if (start >= lim) start = 0;
+  start = Math.max(0, start - Math.round(sr * 0.0005));
+  const n = Math.max(16, Math.min(buf.length - start, Math.round((info.n || buf.duration) * sr)));
+  const out = ac.createBuffer(ch, n, sr);
+  for (let c = 0; c < ch; c++) out.getChannelData(c).set(buf.getChannelData(c).subarray(start, start + n));
+  return out;
+};
+// Once the short recordings are in, everything made in code before them is thrown away and the
+// mission under way (if any) gets its sounds again, now from the recordings.
+Sfx.recStart = function () {
+  const X = Sfx;
+  if (X.recCore()) { X.recOk = true; return Promise.resolve(); }
+  return X.loadRec(X.REC_CORE).then(() => {
+    if (!X.ok || !X.recCore()) return;
+    X.recOk = true; X.cache = new Map(); X.guns = []; X.gunNow = null;
+    if (X.simRef) X.prepare(X.simRef);
+  });
 };
 // How far off things sound: quieter (far) and duller (farLp) with distance.
 Sfx.far = function (dist) { return clamp(170 / Math.max(60, dist), 0.14, 1); };
@@ -240,11 +301,18 @@ Sfx.prepare = function (sim) {
   X.later(G.key + ':rel:' + sim.st.reload.toFixed(2), () => SG.reload(G.spec, sim.st.reload, 1));
   ['body', 'head', 'wound'].forEach((k) => X.later('confirm:' + k + ':0', () => SG.confirm(k, 1)));
   X.later('imp:flesh:0', () => SG.impact('flesh', 1)); X.later('imp:' + X.impMat(S.groundMat) + ':0', () => SG.impact(X.impMat(S.groundMat), 1));
-  if ((S.objects || []).some((o) => o.kind === 'barrel' || o.kind === 'tank')) X.later('boom:' + X.loc + ':0', () => SG.boom(X.loc, 1));
+  // the long recordings this mission will want: decoded now, and whatever was made in code for
+  // them in the meantime is replaced as soon as they are in
+  const redo = (names, keys, make) => {
+    X.loadRec(names).then(() => { if (!X.ok) return; keys.forEach((k) => X.cache.delete(k)); keys.forEach((k, i) => X.later(k, () => make(i))); });
+  };
+  const loc = X.loc;
+  if ((S.objects || []).some((o) => o.kind === 'barrel' || o.kind === 'tank')) redo(['explosion'], ['boom:' + loc + ':0', 'boom:' + loc + ':1'], (i) => SG.boom(loc, i + 1));
   // thunder: in a storm, or when the mission brings it in as cover (its triggers call sim.cover(.., 'thunder'))
   const thunder = (sim.triggers || []).some((t) => typeof t.do === 'function' && String(t.do).indexOf("'thunder'") >= 0);
-  if (thunder || S.weather === 'storm') X.later('thunder:close:0', () => SG.thunder('close', 1));
-  if (S.weather === 'storm') X.later('thunder:far:0', () => SG.thunder('far', 1));
+  if (thunder || S.weather === 'storm') redo(['thunder_close'], ['thunder:close:0', 'thunder:close:1'], (i) => SG.thunder('close', i + 1));
+  if (S.weather === 'storm') redo(['thunder_far_a', 'thunder_far_b', 'thunder_far_c', 'thunder_mid'], [0, 1, 2, 3].map((i) => 'thunder:far:' + i), (i) => SG.thunder('far', i + 1));
+  if (S.weather === 'rain' || S.weather === 'storm') X.loadRec(['rain_loop']).then(() => X.rainBed());
 };
 // A shot. The report (two takes of it, played in turn, each a hair different in pitch and level
 // so no two shots are exactly alike), a semi-automatic's action already inside it, a bolt worked
@@ -321,7 +389,7 @@ Sfx.glass = function (dist, at) { Sfx.playFar(Sfx.imp('glass'), dist, at, 1.1); 
 Sfx.boom = function (dist, at) {
   const X = Sfx; if (!X.ok) return;
   const loc = X.loc || 'valley', v = X.cache.has('boom:' + loc + ':0') && Math.random() < 0.5 ? 1 : 0;
-  X.play(X.get('boom:' + loc + ':' + v, () => SG.boom(loc, v + 1)), { at, gain: clamp(260 / Math.max(80, dist), 0.45, 1), lp: clamp(17000 * Math.pow(200 / Math.max(200, dist), 0.8), 2500, 17000) });
+  X.play(X.get('boom:' + loc + ':' + v, () => SG.boom(loc, v + 1)), { at, gain: clamp(260 / Math.max(80, dist), 0.45, 1), lp: clamp(17000 * Math.pow(120 / Math.max(120, dist), 2.2), 900, 17000) });
   X.later('boom:' + loc + ':' + (1 - v), () => SG.boom(loc, 2 - v));
   setTimeout(() => X.dip(0.75, 0.6), Math.max(0, at * 1000));
 };
@@ -336,16 +404,25 @@ Sfx.voice = function (dist, at) { // a short alarmed shout, far off
   Sfx.tone({ at: at + 0.12, type: 'sawtooth', f: f * 1.5, f1: f * 0.8, dur: 0.3, att: 0.03, gain: 0.06 * g, lp: 1300, verb: 0.6 });
   Sfx.noise({ at, type: 'bandpass', f: 2600, q: 2, dur: 0.3, att: 0.03, gain: 0.02 * g });
 };
-// the alarm: a wailing siren across the scene
+// the alarm: a wailing siren across the scene (no longer used for the alarm itself; kept for older callers)
 Sfx.siren = function (at) { const X = Sfx; X.play(X.get('siren', () => SG.siren(6.5)), { at, gain: 0.9, lp: 6000, verb: 0.6 }); };
+// the alarm going up, heard as a short, low, tense hit in the music: no siren
+Sfx.alarmSting = function () {
+  const X = Sfx; if (!X.ok) return;
+  Sfx.tone({ f: 58, f1: 36, dur: 0.7, gain: 0.32, dest: X.mus });
+  Sfx.tone({ type: 'sawtooth', f: 146.8, dur: 0.9, att: 0.01, gain: 0.05, lp: 900, dest: X.mus, verb: 0.7 });
+  Sfx.tone({ type: 'sawtooth', f: 155.6, dur: 0.9, att: 0.01, gain: 0.05, lp: 900, dest: X.mus, verb: 0.7 });
+  Sfx.noise({ type: 'lowpass', f: 900, f1: 200, dur: 0.6, att: 0.005, gain: 0.08, dest: X.mus });
+};
 // Thunder over the mission. Close (it covers a shot) unless told it is far. Two takes of each,
 // taken in turn and each played a little faster or slower, so no two storms roll the same.
 Sfx.thunder = function (at, far) {
   const X = Sfx; if (!X.ok) return;
-  const kind = far ? 'far' : 'close', v = (X.thunN = (X.thunN || 0) + 1) % 2, key = (i) => 'thunder:' + kind + ':' + i;
-  const b = X.cache.get(key(v)) || X.cache.get(key(1 - v)) || X.get(key(0), () => SG.thunder(kind, 1));
-  X.later(key(1), () => SG.thunder(kind, 2));
-  X.play(b, { at, rate: 0.92 + Math.random() * 0.16, gain: far ? 0.75 : 1 });
+  // far off there are four recorded rolls to choose from (and close, two takes of the clap)
+  const kind = far ? 'far' : 'close', nT = far ? 4 : 2, v = (X.thunN = (X.thunN || 0) + 1) % nT, key = (i) => 'thunder:' + kind + ':' + i;
+  const b = X.cache.get(key(v)) || X.cache.get(key(0)) || X.get(key(0), () => SG.thunder(kind, 1));
+  for (let i = 1; i < nT; i++) X.later(key(i), () => SG.thunder(kind, i + 1));
+  X.play(b, { at, rate: 0.95 + Math.random() * 0.1, gain: far ? 0.75 : 1 });
   if (!far) setTimeout(() => X.dip(0.5, 0.3), Math.max(0, at * 1000));
 };
 Sfx.train = function (dur) {
@@ -622,7 +699,11 @@ Sfx.kcBeat = function (stage, o) {
       kcBed(S, P); kcHeartStart(S, now + 0.45);
       // the rifle's own report, slowed right down: the same shot, an octave and more lower and three times as long
       const mk = (S.quiet ? (S.sub ? 0.55 : 0.75) : 1) * (0.7 + 0.3 * pw), G = X.gunNow, rep = G && G.last;
-      if (rep) X.kcKeep(S, X.play(rep, { dest: S.out, rate: 0.36, gain: 0.62 * mk, lp: 5000, fadeAt: 1.4, fade: 1.6, verb: 0.25, vbus: X.kcVerb }));
+      // a rifle with no suppressor: a real slow-motion recording of a big rifle, from its bang,
+      // pitched to the calibre (a .50 as recorded, lighter rounds a little higher)
+      const slo = !S.quiet && X.recBuf.killcam_barrett50_slowmo, hc = (SG.CAL[o.cal] || SG.CAL.c308).h;
+      if (slo) X.kcKeep(S, X.play(slo, { dest: S.out, offset: Math.max(0, ((X.REC.killcam_barrett50_slowmo.m || {}).bang || 0.59) - 0.03), rate: 1 + (1 - hc) * 0.28, gain: 0.8 * mk, fadeAt: 1.9, fade: 1.2, verb: 0.2, vbus: X.kcVerb }));
+      else if (rep) X.kcKeep(S, X.play(rep, { dest: S.out, rate: 0.36, gain: 0.62 * mk, lp: 5000, fadeAt: 1.4, fade: 1.6, verb: 0.25, vbus: X.kcVerb }));
       else {
         const c = CAL_SND[o.cal] || CAL_SND.c308;
         t({ f: Math.max(34, c.bf * p * 0.6), f1: 26, dur: 0.9 * T, att: 0.012, gain: 0.42 * mk });
@@ -841,8 +922,26 @@ Sfx.setMode = function (mode, amb) {
   else { X.bed({ brown: true, cut: 300, gain: 0.14, lfo: 0.08, lfoAmt: 0.06 }); X.bed({ type: 'bandpass', cut: 3200, q: 0.6, gain: 0.006, lfo: 0.05, lfoAmt: 0.003 }); }
   X.windBed = X.bed({ type: 'bandpass', cut: 520, q: 1.6, gain: 0.0, lfo: 0.21, lfoCut: 180, tag: 'wind' });
   // rain: a soft wash that swells and fades, a low patter on the roofs, and (in tick) the single drops you can pick out
-  if (a.rain) { X.bed({ type: 'bandpass', cut: 5200, q: 0.5, gain: 0.024, lfo: 0.17, lfoAmt: 0.009 }); X.bed({ type: 'bandpass', cut: 2300, q: 0.8, gain: 0.014, lfo: 0.31, lfoAmt: 0.006 }); X.bed({ brown: true, cut: 520, gain: 0.07, lfo: 0.11, lfoAmt: 0.03 }); X.dripT = 0.2; }
+  // (made in code only until the rain recording is in; then the recording takes over)
+  X.rainRec = null;
+  if (a.rain) {
+    if (X.recBuf.rain_loop) X.rainBed();
+    else { X.bed({ type: 'bandpass', cut: 5200, q: 0.5, gain: 0.024, lfo: 0.17, lfoAmt: 0.009, tag: 'rain' }); X.bed({ type: 'bandpass', cut: 2300, q: 0.8, gain: 0.014, lfo: 0.31, lfoAmt: 0.006, tag: 'rain' }); X.bed({ brown: true, cut: 520, gain: 0.07, lfo: 0.11, lfoAmt: 0.03, tag: 'rain' }); X.dripT = 0.2; }
+  }
   X.stormT = a.storm ? 6 + Math.random() * 8 : 0;
+};
+// The rain: the recording, looped (it closes on itself without a gap), in stereo. Replaces the
+// rain made in code, and the single drops, the moment it is ready.
+Sfx.rainBed = function () {
+  const X = Sfx; if (!X.ok || X.rainRec || !X.recBuf.rain_loop || X.mode !== 'mission' || !X.amb || !X.amb.rain) return;
+  const ac = X.ac, t = ac.currentTime, src = ac.createBufferSource(), g = ac.createGain();
+  src.buffer = X.recBuf.rain_loop; src.loop = true;
+  g.gain.value = 0; g.gain.setTargetAtTime(X.amb.storm ? 0.5 : 0.4, t, 0.8);
+  src.connect(g); g.connect(X.ambG);
+  src.start(t, Math.random() * 18);
+  const b = { src, g, tag: 'rainrec' }; X.beds.push(b); X.rainRec = b;
+  (X.beds || []).forEach((o) => { if (o.tag === 'rain') { try { o.g.gain.setTargetAtTime(0, t, 0.6); o.src.stop(t + 3); } catch (e) { /* gone */ } } });
+  X.beds = X.beds.filter((o) => o.tag !== 'rain');
 };
 Sfx.missionStart = function (sim) {
   const S = sim.S;
@@ -891,7 +990,7 @@ Sfx.tick = function (sim, dt, scale) {
   // heartbeat while holding breath
   if (sh.holding) { X.heartT -= dt; if (X.heartT <= 0) { const low = 1 - sh.breath / sim.st.breath; X.heart(0.5 + low * 0.7); X.heartT = 0.95 - low * 0.4; } } else X.heartT = 0.2;
   // rain you can hear as drops: each one a tiny rising "plip", a few of them heavier plops
-  if (X.amb && X.amb.rain) {
+  if (X.amb && X.amb.rain && !X.rainRec) {
     X.dripT -= dt; let n = 0;
     while (X.dripT <= 0 && n++ < 4) {
       X.dripT += -Math.log(1 - Math.random() * 0.98) * 0.075; // about thirteen a second, unevenly
@@ -946,7 +1045,7 @@ Sfx.onEvent = function (e, sim) {
       Sfx.tone({ type: 'sawtooth', f: 311, dur: 0.5, att: 0.02, gain: 0.045, lp: 1600, dest: X.mus, verb: 0.6 }); Sfx.tone({ type: 'sawtooth', f: 330, dur: 0.5, att: 0.02, gain: 0.045, lp: 1600, dest: X.mus, verb: 0.6 });
       Sfx.tone({ f: 65, f1: 42, dur: 0.4, gain: 0.25, dest: X.mus }); Sfx.noise({ type: 'bandpass', f: 400, f1: 3000, sweep: 0.3, q: 1.5, att: 0.25, dur: 0.06, gain: 0.05, dest: X.mus });
       break;
-    case 'alarm': X.siren(back(Z)); break;
+    case 'alarm': X.alarmSting(); break; // (the owner had the wailing siren taken out: a short low hit in the music instead)
     case 'lampout': case 'zap': case 'spark': here(X.get('zap:' + ((Math.random() * 2) | 0), () => SG.zap(1 + ((Math.random() * 2) | 0))), 1.3, 0.3); if (e.k === 'lampout') X.glass(Z * 1.4, back(Z)); break;
     case 'ring': // a steel target on the range pings; a real bell or horn rings
       if (sim.M && sim.M.range !== undefined && e.kind === 'bell') { const v = (Math.random() * 2) | 0; X.playFar(X.get('plate:' + v, () => SG.plate(v + 1)), Z, back(Z), 1.3, 0.3); } else X.bell(Z, back(Z), e.kind === 'horn' ? 300 : 560);

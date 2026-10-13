@@ -150,7 +150,7 @@ function pageLib() {
       const ac = new OfflineAudioContext(2, Math.ceil((secs + LEAD) * sr), sr);
       const keep = Math.random, keepLater = X.later; Math.random = seeded(1234 + name.length * 77);
       try {
-        X.build(ac, { raw }); X.thunN = 0;
+        X.build(ac, { raw }); await X.recP; await X.loadRec(); X.thunN = 0;
         const byT = new Map();
         calls.forEach(([t, fn]) => { const q = Math.round((t + LEAD) * sr / 128) * 128 / sr; if (!byT.has(q)) byT.set(q, []); byT.get(q).push(fn); });
         for (const [t, fns] of byT) ac.suspend(t).then(() => { fns.forEach((f) => f()); ac.resume(); });
@@ -211,7 +211,7 @@ function pageLib() {
   check(ex.winRmsDb > ex.rmsDb - 6, `it rolls on with debris and echoes: ${ex.winRmsDb} dB RMS from 0.3 to 2.5 s (whole: ${ex.rmsDb})`);
   check(ex4.loudDb < ex.loudDb && ex4.bright < ex.bright, `further off it is quieter and duller: ${ex4.loudDb} dB, ${ex4.bright} Hz vs ${ex.loudDb} dB, ${ex.bright} Hz`);
   const tc = R.thunder_close, tf = R.thunder_far, tc2 = R.thunder_close_2;
-  check(tc.start.winBright > 1500 && tc.winBright < 500 && tc.len > 4000, `close lightning is a tearing crack then a deep roll: start ${tc.start.winBright} Hz, roll ${tc.winBright} Hz, ${tc.len} ms`);
+  check(tc.start.winBright > tc.winBright * 2 && tc.winBright < 500 && tc.len > 4000, `close lightning is a crack (much brighter than what follows) then a deep roll: start ${tc.start.winBright} Hz, roll ${tc.winBright} Hz, ${tc.len} ms`);
   check(tf.start.winBright < 600 && tf.len > 5000 && tf.loudDb < tc.loudDb - 4, `far thunder is only a deep rumble: start ${tf.start.winBright} Hz, ${tf.len} ms, ${tf.loudDb} vs close ${tc.loudDb} dB`);
   check(Math.abs(tc2.len - tc.len) > 200 || Math.abs(tc2.bright - tc.bright) > 30, `no two storms roll the same: ${tc.len} ms ${tc.bright} Hz vs ${tc2.len} ms ${tc2.bright} Hz`);
   check(['reload_bolt', 'reload_semi', 'reload_single', 'reload_charge'].every((n) => R[n].loudDb > -30 && R[n].active > 150), 'reloads are clearly heard: ' + ['reload_bolt', 'reload_semi', 'reload_single', 'reload_charge'].map((n) => n.slice(7) + ' ' + R[n].loudDb + ' dB').join(', '));
