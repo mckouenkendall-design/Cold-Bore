@@ -266,7 +266,11 @@ function recReload(S, dur, seed) {
   const end = Math.max(0.6, dur - 0.08);
   const put = (x, mark, at, r, g) => { const y = recRate(x, r); sgMix(B, at - mark / r, y, null, g, 0); };
   const pr = { ar: 1.0, ar10: 0.95, svd: 0.9, vss: 0.98, rimfire: 1.2 }[mech];
-  if (pr) { // a magazine rifle with a charging handle
+  if (S.mag === 1) { // one round at a time: no magazine, just the action worked, the last click as the reload ends
+    const P = recBoltPieces(REC_BOLT[mech] || 1); if (!P) return null;
+    const span = P[4].t - P[0].t, k = clamp((end - 0.08) / span, 0.7, 1.9);
+    recLay(B, P, 0, 4, end - span * k, k, 1);
+  } else if (pr) { // a magazine rifle with a charging handle
     const tOut = Math.min(0.2, end * 0.12), tIn = clamp(end * 0.55, tOut + 0.4, end - 0.35);
     put(out, mo, tOut + mo / pr, pr, 0.9);
     put(inn, mi, tIn, pr, 1);
@@ -382,11 +386,9 @@ function recThunder(kind, seed) {
   const s = seed || 1, name = kind === 'far' ? ['thunder_far_a', 'thunder_far_b', 'thunder_far_c', 'thunder_mid'][(s - 1) % 4] : 'thunder_close';
   const x = recA(name); if (!x) return null;
   const y = recRate(x, kind === 'far' ? 1 : (s % 2 ? 1 : 0.93)), B = sgBuf(y.length / SG.sr + 0.05);
-  // a stereo spread, a little different in each ear, so it rolls across the sky
-  const l = new Float32Array(y), r = new Float32Array(y.length), d = Math.round(SG.sr * 0.011);
-  for (let i = 0; i < y.length; i++) r[i] = y[Math.max(0, i - d)];
-  sgFilt(r, ['pk', 300, 0.8, -2], SG.sr);
-  sgMix(B, 0, l, r, 1, 0);
+  // as recorded, the same in both ears (an offset between them, tried before, was heard on a
+  // phone as the thunder doubled up)
+  sgMix(B, 0, y, null, 1, 0);
   return sgFinish(B, { loud: kind === 'far' ? (name === 'thunder_mid' ? -11 : -13) : -5.5, peakMax: 2.4, span: 3 });
 }
 SG.thunder = function (kind, seed) { return recThunder(kind, seed) || SGsyn.thunder(kind, seed); };

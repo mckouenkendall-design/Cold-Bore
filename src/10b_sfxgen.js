@@ -378,8 +378,8 @@ SG.spec = function (st, loc, refZ, ground) {
   if (st.cal === 'crail') loud = -6.8 + (D.loud || 0);
   const L = SG_LOC[loc] ? loc : 'valley';
   const far = refZ ? Math.round(clamp((2 * refZ) / SOUND, 0.4, 3.2) * 10) / 10 : 0;
-  const S = { gid: gid || 'cal', cal: st.cal, h, low: C.low || 1, gas, d: C.d, mach: v0 / SOUND, sup, V, dev, D, loc: L, far, ground: ground || 'dirt', crackK, loud, soft, coil: st.cal === 'crail', dense: br === 'cl_dense', action: st.action || 'bolt', cycle: st.cycle || 1.4 };
-  S.key = [S.gid, st.cal, dev, br || '-', am || '-', sup ? 'S' : 'u', L, far, S.ground, S.action, (+S.cycle).toFixed(2)].join('|');
+  const S = { gid: gid || 'cal', cal: st.cal, h, low: C.low || 1, gas, d: C.d, mach: v0 / SOUND, sup, V, dev, D, loc: L, far, ground: ground || 'dirt', crackK, loud, soft, coil: st.cal === 'crail', dense: br === 'cl_dense', action: st.action || 'bolt', cycle: st.cycle || 1.4, mag: st.mag || 0 };
+  S.key = [S.gid, st.cal, dev, br || '-', am || '-', sup ? 'S' : 'u', L, far, S.ground, S.action, (+S.cycle).toFixed(2), S.mag].join('|');
   return S;
 };
 
