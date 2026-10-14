@@ -651,7 +651,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 14, 1:01 PM";
+const BUILD = "Oct 14, 2:14 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -27028,10 +27028,17 @@ function kcWallHit(K, at) {
 }
 // Cover and the wall behind, in X-ray space: panes square to the round's line, with the hole the
 // round made (and on the wall, whatever blood reached it, drawn with the other bits).
-function kcDrawPanes(ctx, K, c, al) {
+function kcDrawPanes(ctx, K, c, al0) {
   const h = K.o.hit, ox = isFinite(h.ax) ? h.ax : h.x, oy = isFinite(h.ay) ? h.ay : h.y - 1, d = K.dir, pl = K.plan;
   const pane = (cx, cy, z, w, ht, mat, broken, hx, hy) => {
     const y0 = Math.max(0, cy - ht / 2), y1 = y0 + ht, x0 = cx - w / 2, x1 = cx + w / 2;
+    // As the camera swings in, a corner of a wall can pass the lens. Fade the pane out as its nearest
+    // corner comes up to the lens, rather than have it vanish from one frame to the next.
+    const dep = (x, y) => (x - c.x) * c.fx + (y - c.y) * c.fy + (z - c.z) * c.fz;
+    const near = Math.min(dep(x0, y0), dep(x1, y0), dep(x1, y1), dep(x0, y1));
+    if (near < 0.03) return;
+    const al = al0 * smooth((near - 0.03) / 0.6);
+    if (al < 0.003) return;
     ctx.beginPath();
     if (!kcProj(c, x0, y0, z, kcQ)) return; ctx.moveTo(kcQ[0], kcQ[1]);
     if (!kcProj(c, x1, y0, z, kcQ)) return; ctx.lineTo(kcQ[0], kcQ[1]);
