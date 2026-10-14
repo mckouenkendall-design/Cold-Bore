@@ -656,7 +656,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 13, 5:31 PM";
+const BUILD = "Oct 14, 1:01 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -25834,8 +25834,12 @@ function rdJoints(A, T) {
   let R = A.rd; if (!R) R = A.rd = rdDefault(A);
   let s = R.s;
   if (!s || T < s.t - RDH * 2.5) s = rdInit(A, R); // first look, or the clock went back (test pictures only)
+  // Work the solver on until it is at or just past T, then show the body part way between its
+  // last two steps. (It used to stop at the step nearest T, which left the body still for half of
+  // every step and then jumping half a step: in the kill camera's slow motion, where one step
+  // lasts almost half a second on screen, the body visibly jerked about twice a second.)
   let n = 0; const lim = 5.2;
-  while (!s.sleep && s.t + RDH * 0.5 <= Math.min(T, lim) && n++ < 2400) rdStep(R);
+  while (!s.sleep && s.t < Math.min(T, lim) - 1e-9 && n++ < 2400) rdStep(R);
   if (!s.sleep && T > lim && s.t >= lim - RDH) { s.sleep = true; s.o.set(s.p); }
   // asleep: the same joints every time, worked out once (a body in a car still rides along with it)
   if (s.sleep && s.outDone && !A.inVeh) return s.out;
