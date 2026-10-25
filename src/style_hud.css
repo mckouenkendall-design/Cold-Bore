@@ -1,0 +1,19 @@
+/* ---------------------------------------------------------------------------
+   The in-mission display: fast-forward, the read-outs, the zoom slider, the
+   radio subtitles, hit and miss callouts, the spotting scope. Joined after
+   style.css by build.js, so these rules win where both speak.
+   --------------------------------------------------------------------------- */
+
+/* ---- fast-forward ---- */
+.h-ff { position: relative; color: var(--dim); }
+.h-ff em { position: absolute; right: 3px; bottom: 1px; font: 800 9px var(--mono); font-style: normal; letter-spacing: -.02em; color: var(--mute); }
+.h-ff.on { color: #1b0f02; background: var(--amber); border-color: var(--amber); box-shadow: 0 0 16px rgba(255, 170, 60, .5); }
+.h-ff.on em { color: #1b0f02; }
+.h-ff.off { opacity: .35; }
+.h-ff.off.down { background: rgba(20, 26, 35, .8); }
+/* while the world runs fast, a thin amber band frames the picture so it is never mistaken for real time */
+body.ffwd #hud::before { content: ""; position: absolute; inset: 0; border: 3px solid rgba(255, 170, 60, .55); pointer-events: none; }
+
+/* ---- retry from just before the first shot (added to the results screen if the menus do not offer it) ---- */
+.results .retryshot { width: 100%; flex: none; min-height: 40px; margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; justify-content: space-between; gap: 10px; border-color: rgba(255, 170, 60, .55); color: var(--amber2); }
+.results .retryshot i { font: 600 11.5px var(--body, inherit); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--dim); white-space: nowrap; }

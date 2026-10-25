@@ -7,6 +7,7 @@ const Game = CB.Game = {
   acc: 0, cine: false, slowT: 0, oracle: null, safe: { l: 0, r: 0, t: 0, b: 0 },
 };
 const SIM_STEP = 1 / 120; // the world always moves in steps of this size, which is what makes a shot predictable
+const FF_RATE = 3;        // holding fast-forward runs the world this many times faster
 
 Game.init = function () {
   const G = Game;
@@ -20,7 +21,29 @@ Game.init = function () {
   window.addEventListener('orientationchange', () => setTimeout(G.resize, 250));
   G.resize();
   G.bindInput();
+  G.hookResults();
   requestAnimationFrame(G.loop);
+};
+
+// The results and fail screens belong to the menus. They are told where a retry would pick up
+// (res.retryAt) and can offer it themselves with a button carrying data-a="retryShot" that calls
+// Game.retryShot(last, res). If they do not, a button is added here, above their two.
+Game.hookResults = function () {
+  if (typeof UI === 'undefined' || !UI.results || UI.results._hooked) return;
+  const r0 = UI.results;
+  UI.results = function (M, res, last) { r0.apply(this, arguments); try { Game.offerRetry(M, res, last); } catch (e) { if (window.console) console.error(e); } };
+  UI.results._hooked = true;
+};
+Game.offerRetry = function (M, res, last) {
+  if (M.practice || !last || !last.log || res.retryAt === null || res.retryAt === undefined) return;
+  const root = UI.root, go = () => Game.retryShot(last, res);
+  if (!root) return;
+  if (root.querySelector('[data-a="retryShot"]')) { if (!UI.handlers.retryShot) UI.handlers.retryShot = go; return; }
+  const cta = root.querySelector('.results .cta'); if (!cta) return;
+  const b = el('button', 'btn ghost retryshot', '<span>Retry from ' + fmtTime(res.retryAt) + '</span><i>just before your first shot</i>');
+  b.dataset.a = 'retryShot'; b.dataset.snd = 'go';
+  cta.parentNode.insertBefore(b, cta);
+  UI.handlers.retryShot = go;
 };
 
 Game.resize = function () {
@@ -47,6 +70,8 @@ Game.buildHud = function () {
   h.pause = mk('h-btn h-pause', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 4h14v2H5zM5 9h14v2H5zM5 14h9v2H5zM5 19h12v2H5z" fill="currentColor"/></svg>', h.top);
   h.obj = mk('h-obj', '', h.top);
   h.timer = mk('h-timer', '', h.top);
+  // hold to fast-forward (two arrowheads; "3x" lights while it runs)
+  h.ff = mk('h-btn h-ff', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5.5l8.5 6.5L3 18.5zM12 5.5l8.5 6.5-8.5 6.5z" fill="currentColor"/></svg><em>3x</em>', h.top);
   h.pills = mk('h-pills');
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
@@ -64,7 +89,7 @@ Game.buildHud = function () {
   // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
   h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -169,6 +194,8 @@ Game.updateHud = function (dt) {
   // pills, timer
   h.cover.classList.toggle('show', sim.covered()); if (sim.covered()) set(h.cover, 'NOISE COVER: ' + String(sim.coverName).toUpperCase());
   h.alarm.classList.toggle('show', sim.alarmT !== null);
+  h.ff.classList.toggle('on', !!G.ffOn); h.ff.classList.toggle('off', !G.canFF());
+  document.body.classList.toggle('ffwd', !!G.ffOn);
   const R = sim.rules;
   if (R.time) { const left = R.time - sim.t; set(h.timer, fmtTime(left)); h.timer.classList.toggle('low', left < 15); h.timer.style.display = ''; } else if (sim.clock) { set(h.timer, sim.clock(sim)); h.timer.style.display = ''; } else h.timer.style.display = 'none';
   // radio messages fade out
@@ -208,9 +235,17 @@ Game.start = function (missionId, opts) {
   const gunId = opts.gun || Save.data.equipped;
   const cfg = opts.cfg || (Save.data.guns[gunId] && Save.data.guns[gunId].cfg) || defaultConfig(gunId);
   const st = buildStats(gunId, cfg);
+  const resume = opts.resume || null; delete opts.resume;
   G.mission = M; G.lastStart = { missionId, opts: Object.assign({}, opts, { gun: gunId, cfg }) };
-  const simOpts = { flags: Save.data.flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed };
+  // (a retry runs with the story choices the first attempt had, so the world it replays is the same one)
+  const flags = resume && resume.flags ? resume.flags : Save.data.flags;
+  const simOpts = { flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed, assist: Save.data.settings.assist, guided: !!opts.guided };
   G.sim = new Sim(M, st, opts.vantage || 0, simOpts);
+  G.lastStart.flags = Object.assign({}, flags);
+  // Everything the player did to the scope, one entry per world step: where it pointed, the zoom and
+  // the zero dial. With it a retry can run the same contract again, off screen, to any moment before
+  // the first shot and come out in exactly the same world (see Game.replay).
+  G.ilog = [];
   // a shadow copy of the mission that can be run ahead to see where a shot will land
   G.oracle = null;
   if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
@@ -239,7 +274,48 @@ Game.start = function (missionId, opts) {
   if (G.resK < 1) { G.resK = Math.min(1, Math.max(0.8, G.resK * 1.25)); G.resize(); } // every contract starts sharp again
   // keep the screen awake while a mission is running, where the browser allows it
   if (navigator.wakeLock && !G.wake) { try { navigator.wakeLock.request('screen').then((w) => { G.wake = w; w.addEventListener('release', () => { G.wake = null; }); }, () => {}); } catch (e) { /* fine */ } }
+  G.ffHeld = false; G.ffOn = false;
+  if (resume) G.replay(resume);
   G.resize();
+};
+// One step of the world, noted in the input log first.
+Game.simStep = function () {
+  const G = Game, sim = G.sim, sh = sim.sh;
+  if (G.ilog) G.ilog.push(sh.ax, sh.ay, sh.zoom, sh.zeroR);
+  sim.step(SIM_STEP);
+};
+// Run the contract on, off screen, to `resume.t` seconds, pointing the scope (and setting the zoom
+// and the zero dial) exactly as the earlier attempt did on every step. The world steps in fixed
+// slices and draws no random number from the player, so it arrives in the same state, to the
+// last raindrop. Only the time before the first shot can be replayed this way. Radio lines still
+// on the air and noise cover still running are put back on screen afterwards.
+Game.replay = function (resume) {
+  const G = Game, sim = G.sim, sh = sim.sh, log = resume.log || [], coach = G.coach;
+  const n = Math.min(Math.floor(log.length / 4), Math.max(0, Math.round(resume.t / SIM_STEP)));
+  for (let i = 0; i < n && sim.state === 'play'; i++) {
+    const j = i * 4;
+    sh.ax = log[j]; sh.ay = log[j + 1]; sh.zoom = sh.zoomT = log[j + 2];
+    if (log[j + 3] !== sh.zeroR) { sh.zeroR = log[j + 3]; sh.zeroAng = Bal.zeroAngle(sim.st, sh.zeroR); }
+    G.simStep(); sim.ev.length = 0;
+    if (coach && (i & 1)) coach.update();
+  }
+  if (G.oracle) G.oracle.catchUp(1e6);
+  sh.zoomT = sh.zoom; sh.breath = sim.st.breath; sh.holding = false; sh.holdK = 0; sh.move = 0; sh.exhausted = 0;
+  sim.msgs.forEach((m) => { if (m.t + m.dur > sim.t + 0.5) G.pushMsg(m.who, m.text, m.t + m.dur - sim.t); });
+  if (sim.covered()) sim.ev.push({ k: 'cover', name: sim.coverName, dur: sim.coverUntil - sim.t });
+  G.view.pax = undefined;
+  G.banner('BACK TO ' + fmtTime(sim.t), 'good');
+};
+// Where "Retry from just before your first shot" picks up: five seconds before it. Null when the
+// first shot came so early that starting over is the same thing.
+Game.retryPoint = function (res) { const t = res && res.firstShotT; return t !== null && t !== undefined && t > 6 ? Math.floor((t - 5) * 10) / 10 : null; };
+// Start the same contract again from just before the first shot of the attempt that just ended.
+// `last` is what UI.results was given; `res` the result. Returns false if there is no such point.
+Game.retryShot = function (last, res) {
+  const t = Game.retryPoint(res);
+  if (t === null || !last || !last.log) return false;
+  UI.launch(last.missionId, Object.assign({}, last.opts, { resume: { log: last.log, t, flags: last.flags } }));
+  return true;
 };
 Game.stop = function () {
   const G = Game;
@@ -283,7 +359,7 @@ Game.loop = function (ts) {
   // ---- the kill camera has the picture: it sets the pace, the world follows ----
   if (G.cine && KC && KC.active) {
     const until = KC.advance(dt); let guard = 0;
-    while (sim.state === 'play' && sim.t + SIM_STEP <= until + 1e-9 && guard++ < 60) sim.step(SIM_STEP);
+    while (sim.state === 'play' && sim.t + SIM_STEP <= until + 1e-9 && guard++ < 60) G.simStep();
     G.pumpEvents();
     if (G.state !== 'mission' || !G.sim) return;
     KC.draw(dt);
@@ -300,22 +376,27 @@ Game.loop = function (ts) {
     // keyboard nudging for fine aim on a computer
     const k = G.keys, nud = (k.ArrowRight ? 1 : 0) - (k.ArrowLeft ? 1 : 0), nudY = (k.ArrowUp ? 1 : 0) - (k.ArrowDown ? 1 : 0);
     if (nud || nudY) sim.moveAim(nud * dt * 60 / sim.sh.zoom, nudY * dt * 60 / sim.sh.zoom);
-    G.acc = Math.min(G.acc + dt * G.scale, 0.1);
+    // fast-forward while it is held and nothing is happening that matters
+    const ff = G.ffOn = !!(G.ffHeld && G.canFF());
+    const rate = ff ? FF_RATE : 1;
+    G.acc = Math.min(G.acc + dt * G.scale * rate, 0.1 * rate);
     while (G.acc >= SIM_STEP && sim.state === 'play') {
-      sim.step(SIM_STEP); G.acc -= SIM_STEP;
+      G.simStep(); G.acc -= SIM_STEP;
       if (G.oracle && G.oracle.last) { // a round has just left the barrel and we know how it ends
         const pr = G.oracle.last; G.oracle.last = null;
         if (G.startCine(pr)) break;
       }
+      if (ff && !G.canFF()) { G.acc = Math.min(G.acc, SIM_STEP * 0.99); G.ffOn = false; } // the alarm went up, or a round is out: back to real time at once
     }
     if (G.oracle) G.oracle.catchUp(2.5);
+    G.simRate = G.ffOn ? FF_RATE : 1;
   }
   G.pumpEvents();
   if (G.state !== 'mission' || !G.sim) return;
   if (G.cine) { KC.draw(0); return; }
   G.view.updateReadout(sim, dt);
   if (G.coach) G.coach.update(); // after the world has moved on, before the picture is drawn
-  G.view.draw(sim, dt, dt * G.scale);
+  G.view.draw(sim, dt, dt * G.scale * (G.simRate || 1));
   if (G.coach) G.coach.draw(G.view, G.view.rt);
   G.updateHud(dt);
   Sfx.tick(sim, dt, G.scale);
@@ -355,7 +436,9 @@ Game.finish = function () {
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   G.hud.fade.className = 'h-fade out';
   Sfx.result(sim.result.win);
-  setTimeout(() => { const res = sim.result, M = G.mission, last = G.lastStart; G.stop(); UI.results(M, res, last); }, 1100);
+  const last = G.lastStart; last.log = G.ilog; G.ilog = null;
+  sim.result.retryAt = G.retryPoint(sim.result);
+  setTimeout(() => { const res = sim.result, M = G.mission; G.stop(); UI.results(M, res, last); }, 1100);
 };
 
 // ---- controls ---------------------------------------------------------------------------
@@ -366,6 +449,15 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   const acc = clamp(0.5 + speed / 700, 0.5, 1.7);
   const inv = Save.data.settings.invert ? -1 : 1;
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
+};
+// Fast-forward is allowed while nothing is happening that the player must see in real time: no
+// round in the air, no alarm, nothing charging, the job not yet done or lost.
+Game.canFF = function () {
+  const G = Game, sim = G.sim;
+  if (!sim || G.state !== 'mission' || sim.state !== 'play' || G.paused || G.cine || G.slowT > 0) return false;
+  if (sim.alarmT !== null || sim.alarmPending || sim.failInfo || sim.winAt || sim.sh.chargeT > 0) return false;
+  for (let i = 0; i < sim.bullets.length; i++) if (sim.bullets[i].alive) return false;
+  return true;
 };
 Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 // MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
@@ -440,6 +532,7 @@ Game.bindInput = function () {
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
   press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
+  press(h.ff, () => { G.ffHeld = true; }, () => { G.ffHeld = false; });
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
@@ -458,13 +551,14 @@ Game.bindInput = function () {
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
     else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
+    else if (e.key === 'f' || e.key === 'F') G.ffHeld = true;
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
     else if (e.key === '=' || e.key === '+') G.zoomBy(1.15);
     else if (e.key === '-' || e.key === '_') G.zoomBy(1 / 1.15);
   });
-  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); });
-  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
+  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); if (e.key === 'f' || e.key === 'F') G.ffHeld = false; });
+  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); G.ffHeld = false; if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
 };
