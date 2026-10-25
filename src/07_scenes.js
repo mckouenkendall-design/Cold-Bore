@@ -37,7 +37,7 @@ K.chimney = function (S, P, x, y, o) {
     R4(ctx, x - 0.55, y + 1.6, 1.1, 0.25, capC);
     if (s > 9) { R4(ctx, x - 0.62, y + 1.72, 1.24, 0.08, capC); R4(ctx, x - 0.3, y + 1.85, 0.24, 0.34, potC); R4(ctx, x + 0.08, y + 1.85, 0.24, 0.28, potC); R4(ctx, x - 0.33, y + 2.15, 0.3, 0.05, S.tone('#7d3f22', P)); R4(ctx, x + 0.05, y + 2.09, 0.3, 0.05, S.tone('#7d3f22', P)); }
     // smoke: soft puffs that swell, thin and lean with the wind
-    for (let i = 0; i < 9; i++) { const u = ((env.t * 0.16 + i / 9) % 1), r = 0.4 + u * 1.9; kxPuff(ctx, smoke, x + env.wind * u * u * 3.2 + Math.sin(u * 6 + i) * 0.3, y + 2.2 + u * 6.5, r * 1.15, r, (1 - u) * (night ? 0.3 : 0.5) * Math.min(1, u * 8)); }
+    kxPlume(ctx, env, x, y + 2.2, { n: 12, rise: 6.5, r0: 0.35, r1: 2.0, speed: 0.16, a: night ? 0.45 : 0.7, col: smoke, lean: 0.12, ph: x * 0.07 });
   } });
 };
 // A cable.  o.birds: how many small birds sit on it; o.layer; o.sway: false keeps it still.
@@ -301,7 +301,7 @@ K.skyExtras = function (S, P, o) {
       poly(ctx, [sx - w, base, sx + w, base, sx + w * 0.62, base + h, sx - w * 0.62, base + h], c);
       if (s > 0.8) { poly(ctx, [sx + w * 0.3, base, sx + w, base, sx + w * 0.62, base + h, sx + w * 0.2, base + h], c2); R4(ctx, sx - w * 0.72, base + h - h * 0.03, w * 1.44, h * 0.03, c2); if (s > 2) { ctx.fillStyle = c2; for (let k = 1; k < 5; k++) ctx.fillRect(sx - w * (1 - k * 0.07), base + h * k * 0.2, w * 2 * (1 - k * 0.07), h * 0.008); } }
       // smoke drifting off the top
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.03 + k / 7 + i * 0.37) % 1, r = h * (0.07 + u * 0.3); kxPuff(ctx, smoke, sx + (env.wind || 1) * u * h * 0.5 + Math.sin(u * 7 + k) * h * 0.03, base + h + u * h * 0.5 + r * 0.4, r * 1.3, r, (1 - u) * 0.42 * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, sx, base + h, { n: 11, rise: h * 0.55, r0: h * 0.05, r1: h * 0.3, speed: 0.03, a: 0.62, col: smoke, drift: (env.wind || 1) * h * 0.5, ph: i * 0.37, flat: 0 });
       if (night && Math.sin(env.t * 1.3 + i * 2.1) > 0) { circ(ctx, sx, base + h + 1, Math.max(0.8, env.px * 1.2), '#ff4a3d'); if (s > 0.6) kxGlow(ctx, '#ff4a3d', sx, base + h + 1, Math.max(4, env.px * 5), 0.5); }
     }
     if (o.holder) { // the gas holder: a drum inside a ring of lattice columns
@@ -916,7 +916,7 @@ function stDetail(S, H, q) {
       if (env.s < 4) return;
       R4(ctx, vx - 0.17, vy - 0.1, 0.34, 0.22, gr);
       if (env.s > 14) { ctx.fillStyle = gr2; ctx.beginPath(); for (let k = 0; k < 4; k++) ctx.rect(vx - 0.14, vy - 0.07 + k * 0.05, 0.28, 0.02); ctx.fill(); }
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.3 + k / 7) % 1, r = 0.12 + u * 0.26; kxPuff(ctx, sc, vx - u * 0.3 + Math.sin(u * 7 + k) * 0.05, vy + 0.1 + u * 1.4, r * 1.25, r, 0.5 * (1 - u) * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, vx, vy + 0.1, { n: 9, rise: 1.5, r0: 0.1, r1: 0.42, speed: 0.3, a: 0.75, col: sc, drift: -0.3 + (env.wind || 0) * 0.08, steam: true });
     } });
   });
 

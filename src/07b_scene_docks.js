@@ -526,16 +526,12 @@ K.buoy = function (S, P, x, wy, o) {
   return K.thing(S, P, 'bell', x, wy + 1.95, Object.assign({ id: 'bell', lure: 24, lureY: 0, r: 0.46 }, o.bell || {}));
 };
 
-// A ribbon of smoke: rises from (x, y), leans with the wind, and thins out in four steps.
-function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed) {
-  // puffs that rise along a path leaning with the wind, swelling and thinning as they go
-  ctx.fillStyle = css;
-  for (let i = 0; i < 12; i++) {
-    const u = (((t * 0.07 + i / 12 + seed * 0.013) % 1) + 1) % 1, r = (w0 + (w1 - w0) * u) * 0.5;
-    ctx.globalAlpha = a0 * (1 - u) * (1 - u) * 1.4;
-    ctx.beginPath(); ctx.ellipse(x + wind * u * u * len * 0.42 + Math.sin(u * 7 + i * 1.3 + seed) * 0.05 * len * u, y + u * len, r, r * 0.8, 0, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+// A ribbon of smoke: rises from (x, y) and leans with the wind (see kxPlume). It may be drawn
+// inside a boat's own moving frame, so it is not culled here by the plane's edges.
+const dkSmokeEnv = { s: 1, px: 1, t: 0, wind: 0, x0: -1e9, x1: 1e9 };
+function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed, env) {
+  const E = dkSmokeEnv; E.s = env ? env.s : 4; E.px = 1 / E.s; E.t = t; E.wind = 0;
+  kxPlume(ctx, E, x, y, { n: 12, rise: len, r0: w0 * 0.5, r1: w1 * 0.5, speed: 0.07, a: Math.min(0.9, a0 * 2.1), col: css, drift: wind * len * 0.42, ph: seed * 0.013 });
 }
 // A container seen from a long way off: its colour, and close enough, its ribs and frame.
 function dkBoxLite(ctx, s, x, y, w, h, c, d) {
@@ -653,7 +649,7 @@ K.freighter = function (S, P, sx, wy, o) {
       }
     }
     // a thread of smoke from the funnel
-    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx);
+    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx, env);
     if (S.hornUntil && t < S.hornUntil) { // whistle steam while the horn sounds
       const k = clamp((t - S.hornFrom) / 0.4, 0, 1) * clamp((S.hornUntil - t) / 0.6, 0, 1); ctx.fillStyle = 'rgba(238,242,246,0.75)';
       for (let i = 0; i < 7; i++) { const u = ((t * 0.9 + i / 7) % 1); ctx.globalAlpha = (1 - u) * 0.8 * k; ctx.beginPath(); ctx.arc(fx + 2.4 + env.wind * u * 1.6 + u * 1.2, top + 11.4 + u * 4.4, 0.35 + u * 1.5, 0, TAU); ctx.fill(); }
@@ -778,7 +774,7 @@ K.supplyBarge = function (S, P, x, wy, o) {
       ctx.strokeStyle = ringR; ctx.beginPath(); ctx.arc(x + 3.2, D + 1.62, 0.2, 0.3, 1.2); ctx.moveTo(x + 3.2 + 0.2 * Math.cos(3.44), D + 1.62 + 0.2 * Math.sin(3.44)); ctx.arc(x + 3.2, D + 1.62, 0.2, 3.44, 4.34); ctx.stroke();
       R4(ctx, x + 4.3, D + 2.72, 0.16, 0.85, dk); R4(ctx, x + 4.22, D + 3.5, 0.32, 0.09, dk); line(ctx, x + 1.45, D + 2.72, x + 1.45, D + 4.5, dk, 0.03, env);
     }
-    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
+    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x, env); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
     // cargo under a tarpaulin amidships: a lit ridge, a shaded end, folds, and a hem
     poly(ctx, [x + 9.5, D, x + 15.5, D, x + 15.0, D + 1.5, x + 13.2, D + 1.9, x + 10.2, D + 1.4], tarp);
     if (s > 3) {
@@ -1081,7 +1077,7 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
       ctx.moveTo(-L / 2 + 6, 10.05); ctx.lineTo(-L / 2 + 12.6, 10.05); ctx.moveTo(L / 2 - 13.5, 11.2); ctx.lineTo(L / 2 - 13.5, 15); ctx.moveTo(L / 2 - 14.6, 13.6); ctx.lineTo(L / 2 - 12.4, 13.6);
       ctx.stroke();
     }
-    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01);
+    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01, env);
     if (lit) { // masthead and stern lights, and her coloured side light: red to port, green to starboard
       dkGlow(ctx, L / 2 - 13.5, 15.1, 2.4, '255,244,214', 0.8); circ(ctx, L / 2 - 13.5, 15.1, 0.2, '#fff3c4');
       dkGlow(ctx, L / 2 - 9.6, 10.3, 1.5, dir > 0 ? '90,255,140' : '255,80,60', 0.8); circ(ctx, L / 2 - 9.6, 10.3, 0.15, dir > 0 ? '#6dff9a' : '#ff5a48');
@@ -1153,7 +1149,7 @@ SCN.docks = function (o) {
       for (let i = 0; i < 2; i++) { const cx = i ? 548 : 262, ch = i ? 44 : 58; if (cx < v0 - 60 || cx > v1 + 60) continue;
         poly(ctx, [cx - 2.6, wy + 1.4, cx + 2.6, wy + 1.4, cx + 1.7, wy + ch, cx - 1.7, wy + ch], stackC);
         if (s > 1.2) { R4(ctx, cx - 1.85, wy + ch - 6, 3.7, 2.2, stackR); R4(ctx, cx - 1.95, wy + ch - 12, 3.9, 2.2, stackR); }
-        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx);
+        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx, env);
         if (lit) { const b = dkPulse(t, 1.3, cx, 0); R4(ctx, cx - 1, wy + ch, 2, 2, mix('#5a1f1a', '#ff5a48', b)); dkGlow(ctx, cx, wy + ch + 1, 5, '255,70,50', 0.7 * b); } }
       // a ship lying at the terminal, its boxes stacked on the quay, and the big cranes over them
       if (-420 < v1 && -335 > v0) { poly(ctx, [-424, wy + 9, -338, wy + 9, -334, wy + 12, -344, wy - 0.2, -420, wy - 0.2], shipH); R4(ctx, -420, wy + 9, 20, 11, shipW); R4(ctx, -414, wy + 20, 6, 6, stackR);

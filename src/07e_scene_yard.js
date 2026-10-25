@@ -79,15 +79,9 @@ function ydTuft(ctx, x, y, h, lean) {
   ctx.lineTo(x + lean, y + h); ctx.lineTo(x + h * 0.12, y);
   ctx.lineTo(x + h * 0.5 + lean * 0.7, y + h * 0.62); ctx.lineTo(x + h * 0.3, y); ctx.closePath();
 }
-// Smoke or steam: a few soft discs that rise, swell, lean with the wind and fade in and out.
+// Smoke or steam rising from a point (see kxPlume): lean is how far it has drifted at the top.
 function ydSmoke(ctx, env, x, y, col, n, rise, r0, r1, speed, a, lean, ph) {
-  ctx.fillStyle = col;
-  for (let i = 0; i < n; i++) {
-    const u = (env.t * speed + i / n + (ph || 0)) % 1;
-    ctx.globalAlpha = a * (1 - u) * Math.min(1, u * 5);
-    ctx.beginPath(); ctx.arc(x + lean * u * u + Math.sin(u * 6 + i * 2.1) * r1 * 0.22, y + u * rise, r0 + (r1 - r0) * u, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  kxPlume(ctx, env, x, y, { n: Math.round(n * 1.8), rise, r0, r1: r1 * 0.85, speed, a: Math.min(0.85, a * 2), col, drift: lean, ph, flat: 0 });
 }
 // Thin lines, many at once: pass a flat list [x1, y1, x2, y2, ...].
 function ydLines(ctx, env, pts, col, w) {

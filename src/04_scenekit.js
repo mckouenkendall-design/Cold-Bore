@@ -308,6 +308,73 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// ---- smoke and steam ------------------------------------------------------------------
+// The light in the air this frame, set by the view as it draws the sky: which side the sun
+// (or moon) is on, and the colours a puff of smoke takes on its lit and its shaded side.
+const kxAir = { side: 1, lit: '#ffffff', shade: '#7d8aa0', key: 'd' };
+// One ball of smoke, lit from above and from the sun's side: a shaded underside, a body and a
+// lit cap in three soft steps, with a soft rim so neighbouring balls run together.
+const kxBallPics = new Map();
+function kxBall(col) {
+  const key = col + kxAir.key; let c = kxBallPics.get(key); if (c) return c;
+  if (kxBallPics.size > 80) kxBallPics.clear();
+  const N = 64; c = kxCanvas(N, N);
+  const g = c.getContext('2d'), im = g.createImageData(N, N), d = im.data, B = rgbOf(col.charAt(0) === '#' ? col : kxHexOf(col));
+  const Lt = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.lit, 0.5)), Sh = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.shade, 0.45));
+  const lx = kxAir.side * 0.42, ly = 0.78, lz = 0.46;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    // (row 0 is the bottom: planes are drawn with y up, which turns a picture over)
+    const u = (i + 0.5) / N * 2 - 1, v = (j + 0.5) / N * 2 - 1, dd = Math.sqrt(u * u + v * v), k = (j * N + i) * 4;
+    if (dd >= 1) { d[k + 3] = 0; continue; }
+    const nz = Math.sqrt(1 - dd * dd), dot = u * lx + v * ly + nz * lz, t1 = smooth((dot + 0.05) / 0.3), t2 = smooth((dot - 0.58) / 0.2);
+    for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.round(lerp(lerp(Sh[ch], B[ch], t1), Lt[ch], t2));
+    d[k + 3] = Math.round(255 * smooth((1 - dd) / 0.2));
+  }
+  g.putImageData(im, 0, 0); kxBallPics.set(key, c); return c;
+}
+function kxHexOf(css) { // 'rgb(r,g,b)' or 'r,g,b' to '#rrggbb'
+  const m = String(css).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/); if (!m) return '#cccccc';
+  const h = (v) => { const s = (+v).toString(16); return s.length < 2 ? '0' + s : s; };
+  return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+}
+// A plume billowing up from (x, y). Each puff swells and slows as it climbs and is carried off
+// downwind (the harder it blows the flatter the plume lies); close up, every puff is a knot of
+// smaller ones that turn over as they rise, so the column reads as one rolling mass.
+//   o.rise how high it climbs before it has thinned away (m); o.r0, o.r1 the size of a puff at
+//   the mouth and at the top; o.n puffs in the column; o.speed how fast they come (cycles a
+//   second); o.a how thick it is at the mouth; o.col its colour ('#hex' or 'rgb(r,g,b)');
+//   o.lean how far the wind carries it (a fraction of the rise for each m/s of wind) or o.drift
+//   a fixed distance at the top in metres; o.ph a phase; o.steam: steam thins out faster.
+const kxPlumeU = [];
+function kxPlume(ctx, env, x, y, o) {
+  const n = o.n || 8, rise = o.rise || 4, r0 = o.r0 || 0.2, r1 = o.r1 || 1.2, a0 = o.a === undefined ? 0.5 : o.a, w = env.wind || 0;
+  const flat = 1 / (1 + Math.abs(w) * (o.flat === undefined ? 0.1 : o.flat)), reach = o.drift !== undefined ? o.drift : w * (o.lean === undefined ? 0.5 : o.lean) * rise;
+  const xa = Math.min(x, x + reach) - r1 * 1.6, xb = Math.max(x, x + reach) + r1 * 1.6;
+  if (xb < env.x0 || xa > env.x1 || (env.y1 !== undefined && y - r1 > env.y1) || (env.y0 !== undefined && y + rise + r1 * 2 < env.y0)) return;
+  const pic = kxBall(o.col || '#e6e9ee'), s = env.s, t = env.t, sp = o.speed || 0.2, ph = o.ph || 0, fade = o.steam ? 1.9 : 1.3;
+  kxPlumeU.length = 0;
+  for (let i = 0; i < n; i++) kxPlumeU.push((((t * sp + i / n + ph) % 1) + 1) % 1, i);
+  // oldest (highest) first, so the thick young puffs near the mouth lie over them
+  const order = []; for (let i = 0; i < n; i++) order.push(i); order.sort((p, q) => kxPlumeU[q * 2] - kxPlumeU[p * 2]);
+  const al = ctx.globalAlpha;
+  for (let oi = 0; oi < n; oi++) {
+    const u = kxPlumeU[order[oi] * 2], i = kxPlumeU[order[oi] * 2 + 1];
+    const a = a0 * Math.pow(1 - u, fade) * Math.min(1, u * 9); if (a < 0.01) continue;
+    const r = Math.max(r0 + (r1 - r0) * Math.pow(u, 0.7), env.px * 1.2), lift = rise * (1 - Math.pow(1 - u, 1.6)) * flat;
+    const curl = Math.sin(u * 5.5 + i * 1.7 + t * 0.35) * r * 0.32;
+    const px = x + reach * Math.pow(u, 1.35) + curl, py = y + lift + Math.cos(u * 4 + i * 2.3) * r * 0.15;
+    const rs = r * s;
+    ctx.globalAlpha = al * a;
+    if (rs < 9) { ctx.drawImage(pic, px - r, py - r, r * 2, r * 2); continue; }
+    // a knot of three, turning slowly as it rises, and a ring of small ones round the top close up
+    const spin = i * 1.3 + u * 2.4;
+    for (let k = 0; k < 3; k++) { const an = spin + k * 2.09, rr = r * 0.62, ox = Math.cos(an) * r * 0.42, oy = Math.sin(an) * r * 0.3; ctx.drawImage(pic, px + ox - rr, py + oy - rr, rr * 2, rr * 2); }
+    ctx.drawImage(pic, px - r * 0.7, py + r * 0.05 - r * 0.7, r * 1.4, r * 1.4);
+    if (rs > 45) for (let k = 0; k < 4; k++) { const an = 0.5 + k * 0.7 + Math.sin(spin + k) * 0.2, rr = r * 0.34; ctx.drawImage(pic, px + Math.cos(an) * r * 0.72 - rr, py + Math.sin(an) * r * 0.62 - rr, rr * 2, rr * 2); }
+  }
+  ctx.globalAlpha = al;
+}
+
 // Brick tiles. One tile holds a patch of running-bond brickwork as see-through dark
 // mortar lines and the odd darker or paler brick, so the same tile works over a wall of
 // any colour. There are a few sizes; the wall picks the one nearest the zoom.
@@ -830,7 +897,9 @@ K.mountains = function (S, z, o) {
   const pts = []; let x = x0;
   while (x <= x1) { pts.push([x, base + H * (0.35 + 0.65 * Math.abs(vnoise(x / (o.rough || 420), o.seed || 5))) * (0.75 + 0.25 * R.f())]); x += R.r(60, 170) * (o.step || 1); }
   const rock = S.tone(o.col || '#5f6b78', P), shade = S.tone(darken(o.col || '#5f6b78', 0.22), P), snow = S.tone(o.snowCol || '#f2f6fa', P);
-  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = mix(shade, '#000000', 0.12);
+  // every tone goes through the haze, so in thick air the folds fade with the rock instead of
+  // hanging in the sky on their own
+  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = S.tone(darken(o.col || '#5f6b78', 0.31), P);
   // ridges, gullies and the tree line come from a stream of their own
   const D = makeRng((o.seed || 5) * 71 + 3), peaks = [], sl = o.snowLine || 0.62;
   for (let i = 1; i < pts.length - 1; i++) {

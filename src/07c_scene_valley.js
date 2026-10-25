@@ -584,15 +584,9 @@ K.alpWindsock = function (S, P, x, y, h, o) {
 // flatter and carries it further the harder it blows.
 K.plume = function (S, P, x, y, o) {
   o = o || {}; const n = o.n || 15, rise = o.rise || 15, dawn = S.time === 'dawn';
-  const col = S.pal.dark > 0.5 ? '120,130,150' : dawn ? '250,226,214' : '244,246,248', und = S.pal.dark > 0.5 ? '84,94,116' : dawn ? '212,184,180' : '203,211,220';
+  const col = S.pal.dark > 0.5 ? '#76829a' : dawn ? '#f6e4da' : '#eef1f4';
   P.add({ x0: x - 60, x1: x + 60, layer: o.layer || 0, draw(ctx, env) {
-    const w = env.wind, aw = Math.abs(w), lift = rise / (1 + aw * 0.22), reach = w * 4.2, two = env.s > 4;
-    for (let i = 0; i < n; i++) {
-      const u = (env.t * 0.11 + i / n) % 1, r = Math.max(0.42 + u * (2.6 + aw * 0.12), env.px), al = (1 - u) * (1 - u) * 0.62;
-      const px = x + reach * Math.pow(u, 1.4) + Math.sin(u * 7 + i * 1.7) * 0.45 * u, py = y + 0.4 + lift * Math.pow(u, 0.72);
-      if (two) { ctx.fillStyle = 'rgba(' + und + ',' + (al * 0.8).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px - r * 0.12, py - r * 0.22, r, 0, TAU); ctx.fill(); }
-      ctx.fillStyle = 'rgba(' + col + ',' + al.toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill();
-    }
+    kxPlume(ctx, env, x, y + 0.4, { n: Math.round(n * 0.9), rise, r0: 0.45, r1: 2.8 + Math.abs(env.wind) * 0.12, speed: 0.11, a: 0.72, col, lean: 4.2 / rise, flat: 0.22 });
   } });
 };
 

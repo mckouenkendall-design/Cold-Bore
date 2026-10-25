@@ -142,42 +142,8 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
   const aim = { x: cam.ax, y: cam.ay }, eye = { x: cam.ex, y: cam.ey, z: cam.ez };
   const farStop = sim.farStop || 1e9;
-  // ---- sky ----
-  const hor = cy + aim.y * ppm - ((0 - eye.y) / 4000) * 1000 * ppm * 0; // horizon line (angle 0)
-  const g = ctx.createLinearGradient(0, hor - 230 * ppm, 0, hor);
-  g.addColorStop(0, pal.skyTop); g.addColorStop(1, pal.skyBot);
-  ctx.fillStyle = g; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
-  if (pal.star > 0) {
-    ctx.fillStyle = '#ffffff';
-    const stars = S.sky.stars;
-    for (let i = 0; i < stars.length; i++) {
-      const sx = cx + (stars[i][0] - aim.x * 0.98) * ppm * 0.6, sy = cy - (stars[i][1] - aim.y * 0.98) * ppm * 0.6;
-      if (Math.abs(sx - cx) > hw || Math.abs(sy - cy) > hh) continue;
-      ctx.globalAlpha = pal.star * (0.35 + 0.65 * stars[i][3]) * (0.8 + 0.2 * Math.sin(V.rt * 2 + i));
-      ctx.fillRect(sx, sy, stars[i][2] * 1.3, stars[i][2] * 1.3);
-    }
-    ctx.globalAlpha = 1;
-  }
-  { // sun or moon
-    const sx = cx + (S.sky.sun[0] - aim.x) * ppm, sy = cy - (S.sky.sun[1] - aim.y) * ppm, sr = (pal.dark > 0.5 ? 4.5 : 7) * ppm;
-    if (S.weather !== 'rain' && S.time !== 'overcast' && sx > cx - hw - sr * 4 && sx < cx + hw + sr * 4) {
-      const gg = ctx.createRadialGradient(sx, sy, sr * 0.2, sx, sy, sr * 4);
-      gg.addColorStop(0, rgba(pal.sun, 0.55)); gg.addColorStop(1, rgba(pal.sun, 0));
-      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(sx, sy, sr * 4, 0, TAU); ctx.fill();
-      ctx.fillStyle = pal.sun; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
-      if (pal.dark > 0.5) { ctx.fillStyle = pal.skyTop; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(sx + sr * 0.45, sy - sr * 0.2, sr * 0.9, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    }
-  }
-  ctx.fillStyle = pal.cloud;
-  for (let i = 0; i < S.sky.clouds.length; i++) {
-    const c = S.sky.clouds[i];
-    const drift = ((sim.t * 0.25 * (1 + c.s) * sign(sim.windBase || 1) + c.x + 300) % 600) - 300;
-    const px = cx + (drift - aim.x) * ppm, py = cy - (c.y - aim.y) * ppm;
-    if (px < cx - hw - c.w * ppm || px > cx + hw + c.w * ppm || py < cy - hh - 40 * ppm || py > cy + hh + 40 * ppm) continue;
-    ctx.globalAlpha = S.weather === 'clear' ? 0.75 : 0.9;
-    for (let j = 0; j < c.n; j++) { ctx.beginPath(); ctx.ellipse(px + ((j / (c.n - 1)) - 0.5) * c.w * ppm * 0.8, py - Math.sin(j * 2.3 + c.s * 9) * c.h * ppm * 0.25, c.w * ppm * 0.26, c.h * ppm * (0.45 + 0.25 * Math.sin(j * 1.7 + c.s * 5)), 0, 0, TAU); ctx.fill(); }
-  }
-  ctx.globalAlpha = 1;
+  // ---- sky (06b_sky.js) ----
+  V.drawSky(sim, cam);
 
   // ---- the world, far to near ----
   const nv = !!st.scope.nv;
@@ -270,9 +236,10 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     for (let i = 0; i < sim.steam.length; i++) {
       const sm = sim.steam[i]; if (sm.plane !== P || sm.until < sim.t) continue;
       const u = clamp((sim.t - sm.from) / 1.5, 0, 1) * clamp((sm.until - sim.t) / 2, 0, 1);
-      ctx.fillStyle = 'rgba(232,236,240,0.5)';
-      for (let j = 0; j < 9; j++) { const ph = sim.t * 0.5 + j * 1.7; ctx.globalAlpha = 0.5 * u; ctx.beginPath(); ctx.arc(sm.x + Math.sin(ph) * 2.2 + (j - 4) * 0.5, sm.y + 0.6 + ((ph * 0.9) % 4.5), 1.1 + (j % 3) * 0.5, 0, TAU); ctx.fill(); }
-      ctx.globalAlpha = 1;
+      // a jet of steam roaring out of the valve and rolling up into a thick cloud
+      const col = S.pal.dark > 0.5 ? '#aab4c4' : '#eef1f4';
+      kxPlume(ctx, env, sm.x - 0.8, sm.y + 0.3, { n: 13, rise: 4.8, r0: 0.5, r1: 2.2, speed: 0.42, a: 0.85 * u, col, drift: env.wind * 0.25 - 0.6, steam: true });
+      kxPlume(ctx, env, sm.x + 0.8, sm.y + 0.3, { n: 13, rise: 4.4, r0: 0.6, r1: 2.3, speed: 0.38, a: 0.85 * u, col, drift: env.wind * 0.25 + 0.6, ph: 0.5, steam: true });
     }
     // speech and alert marks
     for (let i = 0; i < sim.actors.length; i++) {
