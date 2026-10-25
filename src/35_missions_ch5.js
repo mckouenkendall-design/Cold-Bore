@@ -26,7 +26,7 @@ mission({
   guide: [
     'The fixer wears a PALE long raincoat and a grey flat cap and arrives by car from the right. The clerk (brown coat, glasses) must not see him fall.',
     'Let them talk and swap the case. The clerk then walks left round the lamp hut, and Pip tells you when he is past it (about 37 seconds in).',
-    'The fixer stands on the phone meanwhile. Your rifle is loud, so wait for the train on the FAR line: its rumble starts about 43 seconds in.',
+    'The fixer stands on the phone meanwhile. Wait for the train on the FAR line, about 43 seconds in: its rumble hides a loud shot, and the crack of a suppressed one that his minder would hear.',
     'Shoot the fixer in the chest then, before he walks back to his car at about 50 seconds. If a constable walks the far siding, keep clear of him.',
     'HOLD reads about 3.7 up (about 1.7 m) and 0.6 left (about 25 cm). The wind blows left to right; on the plain scope at full zoom, his chest sits at the tip of the thick post below the centre.',
   ],
@@ -101,7 +101,8 @@ mission({
   solve(H, st) {
     const need = st.action === 'charge' ? 2.3 : 1.3, L = CARS.freight.len / 2 + 4;
     const hidden = (s, x) => ['n1', 'n2'].some((id) => Math.abs(s.byId[id].x - x) < L);
-    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.quiet || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
+    // (a suppressed round still cracks past the minder by the car: only a subsonic one needs no train)
+    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.silent || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
   },
   reward: { cr: 3600, xp: 800 },
 });
