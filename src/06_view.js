@@ -42,7 +42,7 @@ View.prototype.onEvent = function (e, sim) {
   const V = this, R = Math.random;
   const burst = (n, o) => { for (let i = 0; i < n; i++) V.add(Object.assign({ t: 0 }, o(i))); };
   switch (e.k) {
-    case 'fire': V.flash = e.quiet ? 0.25 : 1; V.shake = Math.min(1.6, 0.35 + e.recoil * 0.07); V.blackout = e.quiet ? 0.5 : 1; break;
+    case 'fire': V.fxShot(e, sim); break; // the kick, the flash and the smoke: src/06b_hitfx.js
     case 'impact': {
       const z = e.z, m = e.mat;
       if (m === 'water') burst(9, () => ({ k: 'drop', x: e.x + (R() - 0.5) * 0.3, y: e.y, z, vx: (R() - 0.5) * 2.4, vy: 3 + R() * 4, life: 0.9, col: '#d7e9f5', r: 0.07 + R() * 0.06 }));
@@ -53,14 +53,9 @@ View.prototype.onEvent = function (e, sim) {
         burst(4, () => ({ k: 'drop', x: e.x, y: e.y, z, vx: (R() - 0.5) * 4, vy: 1 + R() * 4, life: 0.6, col: darken(col, 0.3), r: 0.035 })); }
       break;
     }
-    case 'hit': {
-      const z = e.plane.z;
-      V.add({ k: 'star', t: 0, x: e.x, y: e.y, z, life: 0.16, r: e.part === 'head' ? 0.5 : 0.42 });
-      burst(5, () => ({ k: 'puff', x: e.x, y: e.y, z, vx: (R() - 0.5) * 1.5, vy: R() * 1.2, r: 0.07 + R() * 0.07, grow: 0.9, life: 0.5 + R() * 0.3, col: '#f1ede2' }));
-      V.hitMark = e.lethal ? 1 : 0.5;
-      break;
-    }
+    case 'hit': V.fxHit(e, sim); break; // the burst, the spray, the flash and the hit-stop: src/06b_hitfx.js
     case 'kill': {
+      V.fxHurt(e, sim);
       const a = sim.byId[e.id];
       if (a && a.look && a.look.hat && e.how === 'shot' && a.look.hat !== 'hood') { V.add({ k: 'hat', t: 0, x: a.x, y: a.y + 1.8, z: e.plane.z, vx: (R() - 0.5) * 3, vy: 3.2, rot: 0, vr: (R() - 0.5) * 14, life: 1.3, col: a.look.hatCol || '#2a2d33', floor: a.y }); a.look.hat = null; }
       break;
@@ -79,7 +74,7 @@ View.prototype.onEvent = function (e, sim) {
     case 'duck': burst(10, () => ({ k: 'drop', x: e.x, y: e.y, z: e.plane.z, vx: (R() - 0.5) * 5, vy: 1 + R() * 5, life: 0.9, col: R() > 0.5 ? '#f7d038' : '#ffffff', r: 0.05 })); break;
     case 'smash': case 'clank': burst(7, () => ({ k: 'drop', x: e.x, y: e.y, z: e.plane.z, vx: (R() - 0.5) * 4, vy: R() * 4, life: 0.7, col: e.k === 'smash' ? '#9fd6b0' : '#c9ced3', r: 0.04 })); break;
     case 'tyre': V.add({ k: 'puff', t: 0, x: e.x, y: e.y, z: e.plane.z, vx: 0, vy: 0.4, r: 0.2, grow: 1.5, life: 0.7, col: '#d9dde2' }); break;
-    case 'wound': burst(3, () => ({ k: 'puff', x: e.x, y: e.y + 1, z: e.plane.z, vx: (R() - 0.5), vy: R(), r: 0.08, grow: 0.8, life: 0.4, col: '#f1ede2' })); break;
+    case 'wound': V.fxHurt(e, sim); break;
     case 'npcshot': V.add({ k: 'star', t: 0, x: e.x, y: e.y + 1.4, z: sim.S.refZ, life: 0.12, r: 0.7 }); break;
     case 'flare': V.add({ k: 'flarelight', t: 0, x: e.x, y: e.y, z: e.plane.z, life: 8 }); break;
     default: break;
@@ -100,9 +95,11 @@ View.prototype.project = function (sim, x, y, z) {
 View.prototype.draw = function (sim, dt, simDt) {
   const V = this, ctx = V.ctx, dpr = V.dpr, sh = sim.sh;
   V.rt += dt;
+  if (V.fxHold(dt)) return; // the hit-stop: the picture holds on the frame of the hit (src/06b_hitfx.js)
   // tiny mechanical shake after a shot
   V.shake *= Math.exp(-dt * 9); V.flash *= Math.exp(-dt * 16); V.blackout *= Math.exp(-dt * 7); V.hitMark *= Math.exp(-dt * 3.2);
   V.jx = (Math.random() - 0.5) * V.shake * 9; V.jy = (Math.random() - 0.5) * V.shake * 9;
+  V.fxCam(dt); V.jx += V.kx; V.jy += V.ky; // the recoil kick of the picture
   const cam = V.cam = V.camFromSim(sim), R = V.RR;
   // eye-box shadow follows how fast the rifle is moving
   const vx = sh.recvx * 0.02 + (sh.ax - (V.pax === undefined ? sh.ax : V.pax)) / Math.max(dt, 0.001) * 0.004 + sh.offx * 0.05;
@@ -116,6 +113,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.save();
   ctx.beginPath(); if (V.round) ctx.arc(cam.cx, cam.cy, V.R, 0, TAU); else ctx.rect(0, 0, V.W, V.H); ctx.clip();
   V.drawWorld(sim, cam, dt, simDt);
+  V.drawGlassFx(sim, cam, dt);
   V.drawLens(sim, cam);
   ctx.restore();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -290,6 +288,7 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   for (let i = V.fx.length - 1; i >= 0; i--) {
     const f = V.fx[i]; f.t += simDt;
     if (f.t >= f.life) { V.fx.splice(i, 1); continue; }
+    if (f.draw) { f.draw(V, sim, ctx, f, simDt); continue; } // effects that draw themselves (src/06b_hitfx.js)
     const u = f.t / f.life;
     if (f.vx !== undefined) { f.x += f.vx * simDt; f.y += f.vy * simDt; if (f.k !== 'puff') f.vy -= 9.8 * simDt; else { f.vx *= 0.97; f.vy *= 0.97; f.x += sim.wind() * 0.15 * simDt; } }
     if (f.floor !== undefined && f.y < f.floor) { f.y = f.floor; f.vy = 0; f.vx = 0; f.vr = 0; }

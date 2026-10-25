@@ -238,7 +238,8 @@ function rdInit(A, R) {
   const N3 = RD_N * 3;
   const s = { t: 0, p: new Float64Array(N3), o: new Float64Array(N3), z0: new Float64Array(RD_N), w: new Float64Array(RD_N), r: new Float64Array(RD_N), lo: new Float64Array(RD_NL), hi: new Float64Array(RD_NL),
     cn: new Float64Array(RD_N), gnd: new Uint8Array(RD_N), Uc: [0, 1, 0], Sc: [0, 0, f], Fc: [f, 0, 0], Up: [0, 1, 0], Sp: [0, 0, f], Fp: [f, 0, 0], f, sc, W,
-    sleep: false, quiet: 0, landT: null, landV: 0, out: null, crush: null, lean: 0, legSide: 0.45, toneK: 0, toneT: 0.1, toneL: null, carF: null };
+    sleep: false, quiet: 0, landT: null, landV: 0, out: null, crush: null, lean: 0, legSide: 0.45, toneK: 0, toneT: 0.1, toneL: null, carF: null,
+    slide: Math.abs(R.vx0) > 2.5 ? 2.1 : RD_SLIDE, legsAt: -1, legs: null, step: null, twitch: null, land: null, wake: 0 };
   const t0 = A.deathAt || 0, ph = A.deathPh || 0, dt = 1 / 60, J0 = rdLivingPose(A, t0, ph);
   rdFromPose(J0, f, sc, W, s.p);
   rdWoundAt(R, J0, f, sc);
@@ -280,25 +281,39 @@ function rdInit(A, R) {
   rdLinks(s);
   for (let i = 0; i < N3; i++) s.o[i] += s.p[i] - p0[i];
   s.cn.fill(0);
-  // muscle tone: a little resistance to folding, gone a moment after death (none after a head shot)
-  s.toneK = R.part === 'head' || R.how !== 'shot' ? 0 : 0.03; s.toneT = 0.12;
+  // muscle tone: a little resistance to folding, gone a moment after death (none after a head shot).
+  // Somebody who staggers first (see rdKick) keeps their legs under them until the stagger ends.
+  if (!(s.legsAt > 0)) { s.toneK = R.part === 'head' || R.how !== 'shot' ? 0 : 0.03; s.toneT = 0.12; }
   s.toneL = new Float64Array([rdDist(s.p, RD_HPL, RD_FTL), rdDist(s.p, RD_HPR, RD_FTR), rdDist(s.p, RD_HEAD, RD_HPL), rdDist(s.p, RD_HEAD, RD_HPR), rdDist(s.p, RD_FR, RD_FP)]);
   R.s = s;
   return s;
 }
 
 // The push. The round shoves the body from the point it hit, in the way it was flying, in
-// proportion to its momentum: a .22 barely moves anyone, a .50 knocks them over hard. Legs
-// give way (at once for a head shot), and the body starts to topple the way it was going.
+// proportion to its momentum: a .22 barely moves anyone, a .50 knocks them over hard. How the
+// legs go depends on the shot:
+//   a head shot   nothing holds them up any more: the legs fold at once and the body turns over
+//                 as it drops (it never kneels there upright)
+//   a body shot   they stagger a step the way they are pushed, longer for a light round, and then
+//                 crumple (rdLegsGo, later, from rdStep)
+//   a heavy round (a magnum, the .408, the .50) throws them off their feet and sideways. Its push
+//                 really goes away from the shooter, into the picture, which a side-on scope cannot
+//                 show, so the picture takes it sideways, the way the body is going to fall
+//   running       the feet catch and the rest keeps going: they pitch onto their face and slide
 function rdKick(A, R, s, v) {
   const p = s.p, f = s.f, sc = s.sc, rng = makeRng(R.seed + 11), add = (i, x, y, z) => { v[i * 3] += x; v[i * 3 + 1] += y; v[i * 3 + 2] += z; };
   const push = (i, J, dx, dy, dz) => { const k = J * s.w[i]; v[i * 3] += dx * k; v[i * 3 + 1] += dy * k; v[i * 3 + 2] += dz * k; };
   const how = R.how, head = R.part === 'head', pw = R.power || 0, E = R.env || {};
   const seated = !!E.seat, kneel = /^(kneel|cower)/.test(A.deathPose || '');
+  const run = Math.abs(R.vx0) > 2.5, moving = Math.abs(R.vx0) > 0.5;
   // which way the body tips in the picture: the game chose front or back for this death
   let dirK = A.deathKind === 'front' ? f : A.deathKind === 'back' ? -f : (rng.f() < 0.5 ? f : -f);
   if (seated) dirK = rng.f() < 0.8 ? f : -f;
-  if (Math.abs(R.vx0) > 0.5) dirK = sign(R.vx0); // walking or running: they go down the way they were going
+  if (moving) dirK = sign(R.vx0); // walking or running: they go down the way they were going
+  // how much of a heavy round's throw to show (0 up to a .308, 1 for the coil gun)
+  const heavy = how === 'shot' && !seated && !A.inVeh ? clamp((pw - 0.64) / 0.32, 0, 1) : 0;
+  // a heavy round fired from well off to one side throws them that way
+  if (heavy > 0 && R.v && !moving) { const sx = R.v[0] / Math.max(1, Math.abs(R.v[2])); if (Math.abs(sx) > 0.12) dirK = sign(sx); }
   // a drop close by on one side: they go the other way
   const room0 = -E.x0, room1 = E.x1; if (room0 < 1.6 && room1 > room0) dirK = 1; else if (room1 < 1.6 && room0 > room1) dirK = -1;
   s.lean = dirK;
@@ -323,9 +338,17 @@ function rdKick(A, R, s, v) {
       push(RD_HPL, J * wp / sum * (1 - fr) / 2, dx, dy, dz); push(RD_HPR, J * wp / sum * (1 - fr) / 2, dx, dy, dz); push(RD_FP, J * wp / sum * fr, dx, dy, dz);
       push(RD_SP, J * wm / sum, dx, dy, dz);
     }
-    // a heavy round also knocks them over sideways in the picture, the way they were going to fall
-    const top = (head ? 0.2 : 0.3) + 1.25 * pw * pw * pw;
+    // a heavy round throws the whole body sideways in the picture and lifts it off its feet
+    if (heavy > 0) {
+      const th = 2.7 * heavy * (head ? 0.8 : 1);
+      for (let i = 0; i < RD_N; i++) { const up = i <= RD_HEAD || i === RD_SP || i === RD_FP || i === RD_ELL || i === RD_ELR; add(i, dirK * th * (up ? 1 : i === RD_FTL || i === RD_FTR ? 0.4 : 0.72), th * 0.2 * (up ? 1 : 0.4), 0); }
+    }
+    // and tips them over: hard after a head shot (nothing holds the body up), gently otherwise
+    const top = head ? 1.1 + 0.8 * pw * pw : 0.22 + 0.9 * pw * pw * pw;
     for (const i of UPPER) add(i, dirK * top, 0, 0);
+    // falling back, the hips go forward a little so the body turns over as it drops; falling forward they
+    // follow the chest, so the body goes down over its knees instead of folding up on top of them
+    if (head && !seated && !kneel) { const hk = dirK === f ? 0.35 : -0.3; add(RD_HPL, dirK * hk, 0, 0); add(RD_HPR, dirK * hk, 0, 0); add(RD_FP, dirK * hk, 0, 0); }
   } else if (how === 'blast') {
     if (!R.src) R.src = { x: -1.6 * dirK, y: 0.4, r: 4.5, w: 0, h: 0, floor: 0 }; // somewhere close, on the side they fall away from
     // A blast throws everyone away from it and up, and takes the legs out from under them first,
@@ -341,27 +364,88 @@ function rdKick(A, R, s, v) {
   } else {
     for (const i of UPPER) add(i, dirK * 0.25, 0, 0);
   }
+  // Running: the feet and shins stop where they are, the rest of the body keeps its speed and a
+  // little more, so they pitch forward onto their face and slide.
+  if (run && !seated && how !== 'blast') {
+    for (const i of [RD_FTL, RD_FTR, RD_KNL, RD_KNR]) v[i * 3] -= R.vx0 * (i === RD_FTL || i === RD_FTR ? 0.85 : 0.55);
+    for (const i of UPPER) add(i, R.vx0 * 0.22, 0.2, 0);
+  }
+  // Going down forward after a head shot (walking, or simply falling on their face): the feet stay
+  // and the body goes over like a felled tree, rather than dropping onto the knees and folding up
+  const fell = head && !run && !seated && !kneel && dirK === f && how === 'shot';
+  if (fell) {
+    for (const i of [RD_FTL, RD_FTR]) v[i * 3] -= R.vx0 * 0.7;
+    for (const i of UPPER) add(i, dirK * 0.55, 0, 0);
+    add(RD_SP, dirK * 0.3, 0, 0);
+  }
   // The legs go: everything above the knees starts down, and the knees, which can only bend
-  // one way, go forward to let it. At once and hard for a head shot.
+  // one way, go forward to let it. At once and hard for a head shot; after a stagger for a body shot.
   if (!seated && !kneel && how !== 'blast' && !(how === 'accident' && R.src)) {
-    const vb = head ? 1.1 : 0.45 + 0.15 * rng.f(), side = 0.8 + 0.4 * rng.f();
-    for (let i = 0; i < RD_N; i++) if (i !== RD_KNL && i !== RD_KNR && i !== RD_FTL && i !== RD_FTR) add(i, 0, -vb, 0);
-    add(RD_KNL, f * vb * 0.5 * side, -vb * 0.5, 0); add(RD_KNR, f * vb * 0.5 * (2 - side), -vb * 0.5, 0);
+    // (going down forward, the knees mostly drop: pushed forward too they end up under the chest)
+    const legs = { vb: fell ? 0.75 : head ? 1.45 : run ? 0.3 : 0.45 + 0.15 * rng.f(), side: 0.8 + 0.4 * rng.f(), knee: run || fell ? 0.12 : dirK === f ? 0.22 : 0.5, top: 0 };
+    const stag = (how === 'shot' || how === 'npc') && !head && !run && heavy < 0.45 && !A.inVeh ? lerp(0.34, 0.2, clamp(pw / 0.7, 0, 1)) * (0.85 + 0.3 * rng.f()) : 0;
+    // after a stagger the body has used up the push of the round: it is given a new one the way it is going,
+    // and going forward it goes down over its feet (knees nearly straight) rather than folding onto its knees
+    // going down backward, the hips go back as they drop, so the body sits down behind its feet and rolls
+    // on to its back instead of kneeling upright on its heels
+    if (stag > 0.05) { if (dirK === f) { legs.top = dirK * 0.85; legs.vb *= 0.45; legs.knee = 0.04; legs.plank = true; } else { legs.top = dirK * 0.8; legs.hips = dirK * 0.55; legs.knee = 0.3; } }
+    if (stag > 0.05) {
+      // a stagger: the legs stay under them (muscle tone holds them straight), one foot steps out the way they
+      // are going to catch them, and then they give
+      s.legsAt = stag; s.legs = legs; s.toneK = 0.42; s.toneT = 1e9; s.toneAt = 0;
+      // the foot that steps: one already in the air (mid stride), or else the one behind, stepping through
+      const air = p[RD_FTL * 3 + 1] > 0.05 ? RD_FTL : p[RD_FTR * 3 + 1] > 0.05 ? RD_FTR : -1;
+      const fa = air >= 0 ? air : p[RD_FTL * 3] * dirK < p[RD_FTR * 3] * dirK ? RD_FTL : RD_FTR, fb = fa === RD_FTL ? RD_FTR : RD_FTL;
+      const x0 = p[fa * 3], x1 = p[fb * 3] + dirK * (0.12 + 0.16 * (1 - pw)) * sc, g1 = E.gfn ? E.gfn(x1) : 0;
+      if ((x1 - x0) * dirK > 0.06) s.step = { i: fa, t0: 0.03, t1: 0.03 + Math.min(stag * 0.75, 0.26), x0, x1, y0: p[fa * 3 + 1], y1: g1 + p[fb * 3 + 1] - (E.gfn ? E.gfn(p[fb * 3]) : 0), lift: 0.06 * sc };
+    } else rdLegsGo(s, legs, v);
   }
   // which way the knees will flop over once the body is down
   const kz = (rng.f() < 0.5 ? -1 : 1) * (0.1 + 0.1 * rng.f());
   add(RD_KNL, 0, 0, kz); add(RD_KNR, 0, 0, kz * (rng.f() < 0.7 ? 1 : -1));
+  s.kz = kz;
   // a car that stops throws the people in it forward
   if (R.car) {
     const lurch = clamp(R.car.v0 * 0.12, 0, 1.3) + 0.3;
     for (let i = 0; i < RD_N; i++) if (i <= RD_HAR || i >= RD_FP) add(i, R.car.dir * lurch * (i === RD_HEAD ? 1.2 : i >= RD_ELL ? 1 : 0.8), 0, 0);
     s.carF = R.car.v0 > 0.5 ? { a: 5 * R.car.dir, until: R.car.v0 / 9 } : null; // the car brakes; the body, held by the seat, feels some of it
   }
+  // once down: a twitch or two of a hand or a foot (not after a blast or a crushing)
+  if ((how === 'shot' || how === 'npc') && !A.inVeh) {
+    const tw = makeRng(R.seed + 21), n = tw.f() < 0.35 ? 1 : 2, lim = [RD_HAL, RD_HAR, RD_FTL, RD_FTR];
+    s.twitch = [];
+    for (let k = 0; k < n; k++) s.twitch.push({ at: 0.3 + 0.25 * tw.f() + k * (0.32 + 0.2 * tw.f()), i: lim[Math.floor(tw.f() * 4)], v: [(tw.f() - 0.5) * 0.7, 0.45 + 0.4 * tw.f() * (k ? 0.6 : 1), (tw.f() - 0.5) * 0.4], done: false });
+  }
+}
+// The legs giving way (see rdKick). v is the velocity list while the fall is being set up; null
+// once the solver is running, when the change goes straight into the last positions.
+function rdLegsGo(s, L, v) {
+  const f = s.f, o = s.o, vb = L.vb, add = (i, x, y, z) => { if (v) { v[i * 3] += x; v[i * 3 + 1] += y; v[i * 3 + 2] += z; } else { o[i * 3] -= x * RDH; o[i * 3 + 1] -= y * RDH; o[i * 3 + 2] -= z * RDH; } };
+  for (let i = 0; i < RD_N; i++) if (i !== RD_KNL && i !== RD_KNR && i !== RD_FTL && i !== RD_FTR) add(i, 0, -vb, 0);
+  add(RD_KNL, f * vb * L.knee * L.side, -vb * 0.5, 0); add(RD_KNR, f * vb * L.knee * (2 - L.side), -vb * 0.5, 0);
+  if (L.top) { for (const i of [RD_SHL, RD_SHR, RD_FR, RD_HEAD]) add(i, L.top, 0, 0); add(RD_SP, L.top * 0.5, 0, 0); }
+  if (L.hips) for (const i of [RD_HPL, RD_HPR, RD_FP, RD_SP]) add(i, L.hips, 0, 0);
 }
 
 // ---- one step ------------------------------------------------------------------------------
 function rdStep(R) {
   const s = R.s, p = s.p, o = s.o, w = s.w, h2 = RDH * RDH;
+  // pushes that come later than the round (before the energy is counted, so the step keeps them):
+  // the end of a stagger, when the legs give, and a twitch once the body is down
+  if (s.legsAt > 0 && s.t >= s.legsAt) {
+    // (the tone goes at once: kept on, it would push the feet out from under a body that is going down)
+    rdLegsGo(s, s.legs, null); s.legsAt = -1; s.toneK = 0;
+    // going down forward: the feet stay planted, so the body goes over them on to its front
+    // and the knees stay nearly straight for a moment, so the body pivots over the feet like a felled tree
+    if (s.legs.plank) {
+      for (const i of [RD_FTL, RD_FTR]) { o[i * 3] = p[i * 3]; o[i * 3 + 2] = p[i * 3 + 2]; }
+      s.kneeLock = s.t + 0.4;
+    }
+  }
+  if (s.twitch && s.landT !== null) for (let n = 0; n < s.twitch.length; n++) {
+    const T = s.twitch[n]; if (T.done || s.t < s.landT + T.at) continue;
+    T.done = true; const q = T.i * 3; o[q] -= T.v[0] * RDH; o[q + 1] -= T.v[1] * RDH; o[q + 2] -= T.v[2] * RDH;
+  }
   let ax = 0;
   if (s.carF && s.t < s.carF.until) ax = s.carF.a;
   // energy at the start of the step (movement plus height), in the solver's own units
@@ -382,6 +466,7 @@ function rdStep(R) {
     rdCollide(s, R.env);
   }
   rdFriction(s, R.env);
+  if (!window.__noScript) rdScript(s, R.env);
   for (let i = 0; i < RD_N; i++) s.gnd[i] = s.cn[i] > 0 ? 1 : 0; // what lies on the floor (for the joint limits next step)
   // A step may lose energy (the floor, friction, the joints) but never gain it: when the many
   // little corrections disagree they can push a body about, and a dead body does not bounce.
@@ -496,12 +581,15 @@ function rdHinge(s, a, j, c, S, lo, hi, side, share) {
   rdPut(s, j, c, -1, nx * k, ny * k, nz * k, share);
 }
 function rdLimits(s) {
-  const ls = s.legSide, hi = 2.55 + (ls - 0.45) * 1.25;
-  // hips: thighs swing forward a long way and back a little, and (once down) flop out to the side
-  // or end up tucked under the body (a limit held hard against the floor would prop the hips up)
-  rdBall(s, RD_HPL, RD_KNL, RD_FTL, s.Up, s.Sp, s.Fp, -0.9, hi, ls, 0.8); rdBall(s, RD_HPR, RD_KNR, RD_FTR, s.Up, s.Sp, s.Fp, -0.9, hi, ls, 0.8);
-  // knees bend backward only, as far as sitting back on the heels
-  rdHinge(s, RD_HPL, RD_KNL, RD_FTL, s.Sp, -2.8, 0, 0.25, 0.64); rdHinge(s, RD_HPR, RD_KNR, RD_FTR, s.Sp, -2.8, 0, 0.25, 0.64);
+  // hips: thighs swing forward a long way and back a little, and (once down) flop out to the side.
+  // A knee in the air bends about as far as a real hip does (120 degrees: no folding in half); a knee
+  // on the floor may end up tucked under the body, because a limit held hard against the floor would
+  // prop the hips up
+  const ls = s.legSide, wide = 2.55 + (ls - 0.45) * 1.25, gnd = s.gnd;
+  rdBall(s, RD_HPL, RD_KNL, RD_FTL, s.Up, s.Sp, s.Fp, -0.9, gnd[RD_KNL] ? wide : 2.1, ls, 0.8); rdBall(s, RD_HPR, RD_KNR, RD_FTR, s.Up, s.Sp, s.Fp, -0.9, gnd[RD_KNR] ? wide : 2.1, ls, 0.8);
+  // knees bend backward only, as far as sitting back on the heels (and hardly at all while locked: see rdStep)
+  const kl = s.kneeLock && s.t < s.kneeLock ? -0.3 : -2.8;
+  rdHinge(s, RD_HPL, RD_KNL, RD_FTL, s.Sp, kl, 0, 0.25, 0.64); rdHinge(s, RD_HPR, RD_KNR, RD_FTR, s.Sp, kl, 0, 0.25, 0.64);
   // shoulders reach most ways but not far behind the back
   rdBall(s, RD_SHL, RD_ELL, RD_HAL, s.Uc, s.Sc, s.Fc, -1.1, 3.35, 0.85, 0.9); rdBall(s, RD_SHR, RD_ELR, RD_HAR, s.Uc, s.Sc, s.Fc, -1.1, 3.35, 0.85, 0.9);
   // elbows bend forward only
@@ -544,13 +632,15 @@ function rdNeck(s) {
 function rdFlat(s) {
   const p = s.p, w = s.w, z0 = s.z0;
   let m = 0, zc = 0; for (let i = 0; i < RD_N; i++) { const mi = 1 / w[i]; m += mi; zc += mi * p[i * 3 + 2]; } zc /= m;
-  const k = 0.0025 + 0.03 * smooth(s.t / 1.1);
+  // (held firmly while somebody staggers on their feet: a leg planted ahead would otherwise act as a
+  // strut and swing the pelvis round)
+  const k = s.legsAt > 0 ? 0.06 : 0.0025 + 0.03 * smooth(s.t / 1.1);
   for (let i = 0; i < RD_N; i++) { const q = i * 3 + 2; p[q] += (zc + z0[i] - p[q]) * k * RD_FLATK[i]; }
 }
 // What is left of the muscles for a moment after death: the legs, the neck and the spine resist folding.
 const RD_TONE = [RD_HPL, RD_FTL, RD_HPR, RD_FTR, RD_HEAD, RD_HPL, RD_HEAD, RD_HPR, RD_FR, RD_FP];
 function rdTone(s) {
-  const k = s.toneK * Math.exp(-s.t / s.toneT); if (k < 0.002) return;
+  const k = s.toneK * Math.exp(-(s.t - (s.toneAt || 0)) / s.toneT); if (k < 0.002) return;
   const p = s.p, w = s.w, L = s.toneL;
   for (let n = 0; n < 5; n++) {
     const a = RD_TONE[n * 2], b = RD_TONE[n * 2 + 1], i = a * 3, j = b * 3, wi = w[a], wj = w[b];
@@ -588,25 +678,69 @@ function rdCollide(s, E) {
     if (s.crush && x > s.crush.x0 && x < s.crush.x1 && y > s.crush.top) y = s.crush.top;
     p[q] = x; p[q + 1] = y;
   }
-  // never further than RD_SLIDE from where they stood
-  const hx = (p[6] + p[9]) / 2, hz = (p[8] + p[11]) / 2;
-  const ox = hx > RD_SLIDE ? RD_SLIDE - hx : hx < -RD_SLIDE ? -RD_SLIDE - hx : 0, oz = hz > 0.7 ? 0.7 - hz : hz < -0.7 ? -0.7 - hz : 0;
+  // never further than s.slide from where they stood
+  const hx = (p[6] + p[9]) / 2, hz = (p[8] + p[11]) / 2, SL = s.slide;
+  const ox = hx > SL ? SL - hx : hx < -SL ? -SL - hx : 0, oz = hz > 0.7 ? 0.7 - hz : hz < -0.7 ? -0.7 - hz : 0;
   if (ox || oz) for (let i = 0; i < RD_N; i++) { p[i * 3] += ox; p[i * 3 + 2] += oz; }
 }
 // Friction where a point is pressed on something: it can only slide so far for how hard it is pressed.
 function rdFriction(s, E) {
   const p = s.p, o = s.o, cn = s.cn, mu = E.mat === 'snow' || E.mat === 'water' ? 0.35 : E.mat === 'metal' ? 0.45 : 0.62;
   for (let i = 0; i < RD_N; i++) {
-    if (cn[i] <= 0) continue;
+    if (cn[i] <= 0 || (s.slip && s.slip[i])) continue;
     const q = i * 3, dx = p[q] - o[q], dz = p[q + 2] - o[q + 2], d = Math.sqrt(dx * dx + dz * dz); if (d < 1e-9) continue;
     const k = Math.min(1, ((i === RD_HAL || i === RD_HAR || i === RD_ELL || i === RD_ELR ? 0.4 : 1) * mu * cn[i] + 0.00004) / d); // a limp arm slides easily
     p[q] -= dx * k; p[q + 2] -= dz * k;
   }
-  // a body sliding toward the furthest it may go (RD_SLIDE) is slowed on the way, not stopped dead there
-  const hx = (p[6] + p[9]) / 2, ex = Math.abs(hx) - 0.55;
+  // a body sliding toward the furthest it may go (s.slide) is slowed on the way, not stopped dead there
+  const hx = (p[6] + p[9]) / 2, ex = Math.abs(hx) - (s.slide - 0.65);
   if (ex > 0 && !E.car) {
     const k = Math.min(1, ex / 0.65), kk = 0.12 * k * k, sg = hx > 0 ? 1 : -1;
     for (let i = 0; i < RD_N * 3; i += 3) { const dx = p[i] - o[i]; if (dx * sg > 0) p[i] -= dx * kk; }
+  }
+}
+// What the solver alone would not do, run after each step:
+//   the stagger step   one foot is carried out and put down again the way the body is going
+//   settling           once down, a knee that props the hips up slides out from under them, and a
+//                      knee left standing up in the air falls over to the side, so the legs lie flat
+function rdScript(s, E) {
+  const p = s.p, o = s.o, sc = s.sc;
+  if (s.slip) s.slip.fill(0);
+  const St = s.step;
+  if (St && s.t >= St.t0 && s.t <= St.t1 + RDH) {
+    const u = smooth((s.t - St.t0) / (St.t1 - St.t0)), u0 = smooth((s.t - RDH - St.t0) / (St.t1 - St.t0)), q = St.i * 3;
+    const x = lerp(St.x0, St.x1, u), y = lerp(St.y0, St.y1, u) + Math.sin(Math.PI * u) * St.lift, x0 = lerp(St.x0, St.x1, u0), y0 = lerp(St.y0, St.y1, u0) + Math.sin(Math.PI * u0) * St.lift;
+    p[q] = x; p[q + 1] = y; o[q] = x0; o[q + 1] = y0;
+    if (s.t >= St.t1) s.step = null;
+  }
+  if (s.landT !== null) {
+    // a body that is down never climbs back up: the hips may lift a hand's breadth over their lowest
+    // point since landing (knees sliding about under them), no more
+    if (!E.seat && !E.car) {
+      const hy = (p[7] + p[10]) / 2;
+      if (s.hipLow === undefined || hy < s.hipLow) s.hipLow = hy;
+      const ex = hy - (s.hipLow + 0.12 * sc);
+      if (ex > 0) for (const i of [RD_HPL, RD_HPR, RD_FP]) { p[i * 3 + 1] -= ex; o[i * 3 + 1] = Math.min(o[i * 3 + 1], p[i * 3 + 1]); }
+    }
+    const k = smooth((s.t - s.landT - 0.12) / 0.5);
+    if (k > 0 && !E.seat && !E.car) {
+      if (!s.slip) s.slip = new Uint8Array(RD_N);
+      const hx = (p[6] + p[9]) / 2, hy = (p[7] + p[10]) / 2 - (E.gfn ? E.gfn(hx) : 0);
+      const sx = (p[0] + p[3]) / 2, sy = (p[1] + p[4]) / 2 - (E.gfn ? E.gfn(sx) : 0), down = sy < 0.32 * sc; // the chest is on the floor
+      // along the floor, from the chest toward the hips: the way the legs should lie
+      let dx = hx - sx, dz = (p[8] + p[11] - p[2] - p[5]) / 2; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+      const propped = down && hy > 0.25 * sc;
+      for (let n = 0; n < 2; n++) {
+        const kn = n ? RD_KNR : RD_KNL, ft = n ? RD_FTR : RD_FTL, hp = n ? RD_HPR : RD_HPL, q = kn * 3, g = E.gfn ? E.gfn(p[q]) : 0, ky = p[q + 1] - g;
+        // (a knee still forward of the hip is left where it is: back under the hip would lift it)
+        const ahead = (p[q] - hx) * dx + (p[q + 2] - (p[8] + p[11]) / 2) * dz < -0.04 * sc;
+        if (propped && ky < 0.16 * sc) {
+          // (the foot goes with it, so the shin slides rather than folding up into the air)
+          if (!ahead) { p[q] += dx * 0.006 * k; p[q + 2] += dz * 0.006 * k; p[ft * 3] += dx * 0.006 * k; p[ft * 3 + 2] += dz * 0.006 * k; p[hp * 3 + 1] -= 0.002 * k; s.slip[kn] = 1; s.slip[ft] = 1; }
+        }
+        else if (down && ky > 0.2 * sc) { p[q + 1] -= 0.0025 * k; p[q + 2] += (s.kz < 0 ? -1 : 1) * 0.0025 * k; s.slip[ft] = 1; }
+      }
+    }
   }
 }
 // Note when the body hits the ground and when it has stopped moving.
@@ -619,11 +753,16 @@ function rdWatch(R, s) {
     const sat = !!(R.env.seat || R.env.car);
     let hit = 0; for (let k = 0; k < RD_LAND.length; k++) { const i = RD_LAND[k]; if (sat && (i === RD_HPL || i === RD_HPR || i === RD_FP)) continue; if (cn[i] > hit) hit = cn[i]; }
     const hy = (p[7] + p[10]) / 2;
-    if (hit > 0.0012 && (sat || hy < 0.45 * s.sc)) { s.landT = s.t; s.landV = hit / RDH; }
+    if (hit > 0.0012 && (sat || hy < 0.45 * s.sc)) {
+      s.landT = s.t; s.landV = hit / RDH;
+      // where and how hard (for the dust it throws up, src/03_figures.js), and when it may be still
+      s.land = [(p[6] + p[9]) / 2, hy, (p[3 * RD_HEAD] + p[6] + p[9]) / 3, (p[1] - o[1] + p[4] - o[4]) / (2 * RDH)];
+      if (s.twitch) s.wake = s.t + s.twitch[s.twitch.length - 1].at + 0.3;
+    }
   }
   let vmax = 0; for (let i = 0; i < RD_N * 3; i += 3) { const v = Math.abs(p[i] - o[i]) + Math.abs(p[i + 1] - o[i + 1]) + Math.abs(p[i + 2] - o[i + 2]); if (v > vmax) vmax = v; }
   if (vmax / RDH < 0.035) s.quiet += RDH; else s.quiet = 0;
-  if ((s.quiet > 0.3 && s.t > 0.7) || s.t > 5) { s.sleep = true; if (s.landT === null) { s.landT = s.t; s.landV = 0.5; } o.set(p); }
+  if ((s.quiet > 0.3 && s.t > 0.7 && s.t > s.wake) || s.t > 5) { s.sleep = true; if (s.landT === null) { s.landT = s.t; s.landV = 0.5; } o.set(p); }
 }
 
 // ---- reading it ---------------------------------------------------------------------------

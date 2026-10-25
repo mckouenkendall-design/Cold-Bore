@@ -323,9 +323,9 @@ const FGS = { ctx: null, A: null, L: null, env: null, st: null, anim: 'stand', p
 function figSeg(ctx, a, b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
 
 // Colours as they look in this light. `figDimK` is how far into the dark the person is.
-let figDimK = 0;
+let figDimK = 0, figFlashK = 0; // figFlashK: the one frame a person is hit, everything goes pale
 const figHex = (c) => typeof c === 'string' && c.charAt(0) === '#';
-function figC(c) { return figDimK > 0 && figHex(c) ? mix(c, '#05070b', figDimK) : c; }
+function figC(c) { if (figFlashK > 0) return figHex(c) ? mix(c, '#fff3e6', figFlashK) : c; return figDimK > 0 && figHex(c) ? mix(c, '#05070b', figDimK) : c; }
 function figSh(c, k) { return figHex(c) ? figC(mix(c, '#07090d', k)) : c; } // a darker shade of it
 function figHi(c, k) { return figHex(c) ? figC(mix(c, '#ffffff', k)) : c; } // a paler tint of it
 
@@ -1694,6 +1694,7 @@ function drawFigure(ctx, A, env) {
   figDimK = env.dim || 0;
   const light = env.light === undefined ? 1 : env.light;
   G.light = light; G.ink = env.ink || '#13161b'; G.rim = env.rim || null; G.rw = Math.max(px * 0.8, Math.min(0.0225, px * 2.3)) * (env.nv ? 1.3 : 1);
+  if (A._flash > 0) { figDimK = 0; figFlashK = 0.55; G.ink = '#cfc6b8'; G.rim = 'rgba(255,250,240,0.95)'; G.rw *= 1.6; } // hit: one pale frame (src/06b_hitfx.js)
   if (env.night) {
     const dx = env.lampDx || 0, dy = Math.max(0.8, (env.lampH || 5) - 1.3), l = Math.hypot(dx, dy);
     G.lx = dx / l; G.ly = dy / l; G.la = 0.5 * light * (env.nv ? 0.5 : 1); G.lc = env.lampCol || '#ffd27a';
@@ -1753,6 +1754,7 @@ function drawFigure(ctx, A, env) {
   } else if (bag === 'clip') figClip(c, G, 1);
   if (!dead) figProps(c, G);
   c.restore();
+  figFlashK = 0;
 }
 
 // ---- far away --------------------------------------------------------------
@@ -1761,8 +1763,8 @@ function drawFigure(ctx, A, env) {
 function figDrawFar(ctx, A, env, J, L) {
   const sc = J.scale, f = J.f, dead = !!A.dead;
   const lw = FIG.lw * sc * (L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.85 : 1), minw = env.px * 1.1;
-  const ink = env.ink || '#13161b', rim = env.rim;
-  figDimK = env.dim || 0;
+  const flash = A._flash > 0, ink = flash ? '#cfc6b8' : env.ink || '#13161b', rim = flash ? 'rgba(255,250,240,0.95)' : env.rim;
+  figDimK = flash ? 0 : env.dim || 0; figFlashK = flash ? 0.55 : 0;
   const D = figC;
   ctx.save(); ctx.translate(A.x, A.y);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1860,6 +1862,7 @@ function figDrawFar(ctx, A, env, J, L) {
     else if (an === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
   }
   ctx.restore();
+  figFlashK = 0;
 }
 
 CB.fig = { drawFigure, actorJoints, figHit, figPose, figJoints };
