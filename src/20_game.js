@@ -438,7 +438,21 @@ Game.finish = function () {
   Sfx.result(sim.result.win);
   const last = G.lastStart; last.log = G.ilog; G.ilog = null;
   sim.result.retryAt = G.retryPoint(sim.result);
+  G.noteBest(G.mission, sim.result, !!last.opts.guided);
   setTimeout(() => { const res = sim.result, M = G.mission; G.stop(); UI.results(M, res, last); }, 1100);
+};
+
+// The best score for each contract is kept with its record (bestScore). The result carries the
+// previous best (res.best, null the first time) and res.newBest when this run beat it. A guided run
+// shows its score but never sets a best.
+Game.noteBest = function (M, res, guided) {
+  if (!M || M.practice || !res || !res.score) return;
+  try {
+    const rec = Progress.rec(M.id), prev = rec.bestScore || null;
+    res.best = prev;
+    res.newBest = !!(res.win && !guided && res.score.total > (prev || 0));
+    if (res.newBest) rec.bestScore = res.score.total;
+  } catch (e) { /* no save to read */ }
 };
 
 // ---- controls ---------------------------------------------------------------------------

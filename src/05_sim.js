@@ -671,7 +671,8 @@ Sim.prototype.killActor = function (a, part, how, bullet, src) {
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
   const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
-  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
+  // round: which of the player's rounds did it (for a falling load or a blast, the last one fired)
+  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident, round: bullet ? bullet.id : sim.stats.shots,
     moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
   // for the picture only: how the body falls, the wounds, the blood (see src/13_ragdoll.js)
   rdNote(sim, a, part, how, bullet, src);
@@ -1073,7 +1074,35 @@ Sim.prototype.summarise = function (win) {
   res.challenge = !!(win && M.challenge && M.challenge.test(sim, res));
   res.outcome = null;
   if (win && M.outcomes) for (let i = 0; i < M.outcomes.length; i++) if (M.outcomes[i].when(sim, res)) { res.outcome = M.outcomes[i]; break; }
+  res.score = sim.score(res);
   return res;
+};
+// Points for how the job was done, for the results screen and a best per contract. Only a win scores.
+// { total, parts: [{ label, pts }] } in the order they should be listed.
+Sim.prototype.score = function (res) {
+  const sim = this, st = sim.stats, parts = [], add = (label, pts) => { pts = Math.round(pts); if (pts) parts.push({ label, pts }); };
+  if (!res.win) return { total: 0, parts };
+  add('Contract', 1000);
+  if (res.clean) add('Clean', 500);
+  if (res.precise) add('Precise', 500);
+  if (res.ghost) add('Nobody heard a shot', 300);
+  // the kills that were the point: not bystanders, not other people's doing
+  const ks = sim.kills.filter((k) => k.how !== 'npc' && k.role !== 'civ' && k.role !== 'vip' && k.role !== 'hostage');
+  const heads = ks.filter((k) => k.how === 'shot' && k.part === 'head').length;
+  if (heads) add(heads === 1 ? 'Headshot' : heads + ' headshots', 150 * heads);
+  const far = ks.reduce((s, k) => s + (k.how === 'shot' ? k.range : 0), 0);
+  if (far) add('Distance ' + Math.round(sim.stats.longest) + ' m', far * 0.4);
+  const acc = ks.filter((k) => k.accident).length;
+  if (acc) add(acc === 1 ? 'An accident' : acc + ' accidents', 300 * acc);
+  const byRound = {}; ks.forEach((k) => { byRound[k.round] = (byRound[k.round] || 0) + 1; });
+  let extra = 0; for (const r in byRound) extra += byRound[r] - 1;
+  if (extra) add(extra === 1 ? 'Two with one round' : (extra + 1) + ' with one round', 400 * extra);
+  if (!st.breathUsed && st.shots > 0) add('No breath held', 200);
+  if (res.challenge) add('Challenge', 500);
+  add('Time ' + fmtTime(res.time), 300 * clamp(1 - (res.time - 15) / 90, 0, 1));
+  const sub = parts.reduce((s, p) => s + p.pts, 0);
+  if (sim.opts.assist === 'veteran') add('Veteran (no help)', sub * 0.25);
+  return { total: parts.reduce((s, p) => s + p.pts, 0), parts };
 };
 
 // ---- helpers for the scope read-outs and for the test bot -----------------------
