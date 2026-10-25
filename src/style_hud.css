@@ -76,6 +76,24 @@ body.sub-top .h-sub .sub-tx span { font-size: 13.5px; line-height: 1.25; }
 .h-call.bad b { color: var(--red); border-color: rgba(255, 74, 61, .75); }
 .h-call.obj b { color: var(--blue); border-color: rgba(111, 182, 255, .75); }
 
+/* ---- the binoculars and tags ---- */
+.h-spot { color: var(--dim); }
+.h-spot.on { color: #071018; background: #5fe0ff; border-color: #5fe0ff; box-shadow: 0 0 16px rgba(95, 224, 255, .45); }
+body.spotting .h-zoom, body.spotting .h-mark, body.spotting .h-breath, body.spotting .h-reload, body.spotting .h-ammo, body.spotting .h-call { visibility: hidden; }
+body.spotting .h-fire { background: radial-gradient(circle at 50% 35%, #8fe9ff, #3cb8db 60%, #1d7b96); color: #041219; font-size: 16px; }
+body.spotting.portrait .h-strip, body.spotting .h-msg { visibility: hidden; }
+.h-tags { position: absolute; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 2; }
+.h-tags .tg, .h-tags .tg-help { background: rgba(8, 11, 16, .95); border: 1px solid rgba(64, 82, 104, .75); border-radius: 10px; padding: 6px 9px 7px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.h-tags .tg-help b { display: block; font: 700 10.5px var(--head); letter-spacing: .16em; color: #5fe0ff; }
+.h-tags .tg-help span { display: block; font-size: 12.5px; line-height: 1.3; color: #d6dde6; margin-top: 2px; }
+.h-tags .tg-hd { display: flex; align-items: center; gap: 7px; }
+.h-tags .tg-hd i { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; font: 800 11px var(--mono); font-style: normal; color: #071018; }
+.h-tags .tg-hd b { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-tags .tg-hd em { flex: none; font: 700 11px var(--mono); font-style: normal; color: var(--dim); }
+.h-tags .tg-ck { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 4px; }
+.h-tags .tg-ck span { font: 600 11.5px var(--mono); letter-spacing: -.02em; }
+.h-tags .tg-ck .y { color: var(--green); } .h-tags .tg-ck .n { color: var(--red); } .h-tags .tg-ck .q { color: var(--dim); font-family: var(--body); }
+
 /* ---- retry from just before the first shot (added to the results screen if the menus do not offer it) ---- */
 .results .retryshot { width: 100%; flex: none; min-height: 40px; margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; justify-content: space-between; gap: 10px; border-color: rgba(255, 170, 60, .55); color: var(--amber2); }
 .results .retryshot i { font: 600 11.5px var(--body, inherit); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--dim); white-space: nowrap; }

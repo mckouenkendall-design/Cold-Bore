@@ -70,6 +70,8 @@ Game.buildHud = function () {
   h.pause = mk('h-btn h-pause', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 4h14v2H5zM5 9h14v2H5zM5 14h9v2H5zM5 19h12v2H5z" fill="currentColor"/></svg>', h.top);
   h.obj = mk('h-obj', '', h.top);
   h.timer = mk('h-timer', '', h.top);
+  // the binoculars: a wide view for finding and tagging people (see src/24_spotter.js)
+  h.spot = mk('h-btn h-spot', '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M7.2 6.5h2.6l1 5.2M16.8 6.5h-2.6l-1 5.2M10.4 12.6h3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.6" cy="15.2" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="17.4" cy="15.2" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/></svg>', h.top);
   // hold to fast-forward (two arrowheads; "3x" lights while it runs)
   h.ff = mk('h-btn h-ff', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5.5l8.5 6.5L3 18.5zM12 5.5l8.5 6.5-8.5 6.5z" fill="currentColor"/></svg><em>3x</em>', h.top);
   h.pills = mk('h-pills');
@@ -87,6 +89,8 @@ Game.buildHud = function () {
   h.sub = mk('h-sub');
   // what the last round did, when the kill camera does not show it: "HEADSHOT 412 m", "MISS 0.6 mil high"
   h.call = mk('h-call', '<b></b><span></span>');
+  // the tagged people's checklist, in the binoculars
+  h.tags = mk('h-tags');
   // zoom slider: ticks at whole steps of the scope's power, and a handle that shows the zoom
   h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zticks"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
@@ -95,7 +99,7 @@ Game.buildHud = function () {
   // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
   h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -116,6 +120,7 @@ Game.placeHud = function () {
     P(h.pills, { left: 0, right: 0, top: top ? G.safe.t + 96 : V.cy - V.R + 10, width: 'auto' });
     P(h.coach, top ? { left: 58, right: 8, top: G.safe.t + 6, width: 'auto', bottom: 'auto' } : { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
     P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 24 + (h.strip.offsetHeight || 40)), width: 'auto', bottom: 'auto' });
+    P(h.tags, { left: 12, right: 12, top: sb + 10, width: 'auto', bottom: 'auto' });
     document.body.classList.toggle('coach-top', !!top);
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
@@ -168,6 +173,7 @@ Game.placeHud = function () {
     if (G.subTop) P(h.sub, { left: L + 62, right: Rt + 66, top: sf.t + (G.coach ? 130 : 4), bottom: 'auto', width: 'auto' });
     else P(h.sub, { left: subL, right: subR, bottom: Hh - stripTop + 10, width: 'auto', top: 'auto' });
     document.body.classList.toggle('sub-top', G.subTop);
+    P(h.tags, { left: L + 12, top: 58, width: Math.min(270, W * 0.34), right: 'auto', bottom: 'auto' });
   }
   // the callout for a round sits just right of the crosshair and a little above, off the target and off the drop marks below
   P(h.call, { left: V.cx + 58, top: V.cy - 56, width: 'auto', right: 'auto', bottom: 'auto' });
@@ -205,7 +211,8 @@ Game.updateHud = function (dt) {
   h.fire.classList.toggle('wait', !ready); h.fire.classList.toggle('charge', sh.chargeT > 0);
   const cyc = sh.reloadT > 0 ? 1 - sh.reloadT / sh.reloadLen : sh.cycleT > 0 ? 1 - sh.cycleT / sh.cycleLen : 1;
   h.fire.style.setProperty('--p', String(clamp(cyc, 0, 1)));
-  set(h.fire.firstChild, sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
+  h.spot.classList.toggle('on', !!G.spotting);
+  set(h.fire.firstChild, G.spotting ? 'RIFLE' : sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
   h.reload.classList.toggle('need', sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0);
   h.reload.classList.toggle('off', sh.ammo >= st.mag || sh.reserve <= 0);
   // ammo pips
@@ -318,6 +325,7 @@ Game.start = function (missionId, opts) {
   h.zoom.style.display = st.zoomMax > st.zoomMin ? '' : 'none';
   G.zoomTicks(st);
   h.sub.innerHTML = ''; h.call.className = 'h-call'; G.callT = 0; G.seenFx = null;
+  Spotter.reset(); G.tagN = 0;
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
@@ -449,6 +457,7 @@ Game.loop = function (ts) {
   if (G.coach) G.coach.update(); // after the world has moved on, before the picture is drawn
   G.watchRounds();
   G.view.draw(sim, dt, dt * G.scale * (G.simRate || 1));
+  Spotter.draw(G.view);
   if (G.coach) G.coach.draw(G.view, G.view.rt);
   G.drawSeen(G.view);
   G.updateHud(dt);
@@ -545,7 +554,7 @@ Game.canFF = function () {
   for (let i = 0; i < sim.bullets.length; i++) if (sim.bullets[i].alive) return false;
   return true;
 };
-Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
+Game.fire = function () { const G = Game; if (G.spotting) { Spotter.toggle(false); return; } if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 // MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
 // sky it clears the mark instead. Holding the button (or the M key) down clears it too.
 Game.markTarget = function () {
@@ -573,8 +582,8 @@ Game.zoomTicks = function (st) {
   const box = Game.hud.zoom.querySelector('.zticks'), a = st.zoomMin, b = st.zoomMax;
   box.innerHTML = Game.zoomStops(st).map((z) => '<span style="bottom:' + ((Math.log(z / a) / Math.log(b / a)) * 100).toFixed(2) + '%"><i></i>' + (Math.abs(z - Math.round(z)) < 0.05 ? Math.round(z) : fmt(z, 1)) + 'x</span>').join('');
 };
-Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
-Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
+Game.zoomBy = function (f) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.sh.zoomT * f); };
+Game.zoomTo = function (u) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
 Game.bindInput = function () {
   const G = Game, h = G.hud, stage = G.stage;
@@ -587,11 +596,12 @@ Game.bindInput = function () {
     if (G.cine) { if (CB.KillCam && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (onCtl(e.target)) return;
     if (e.pointerType === 'mouse') {
+      if (e.button === 0 && G.spotting) { if (!Spotter.tapAt(G.locked ? G.view.cx : e.clientX, G.locked ? G.view.cy : e.clientY) && !G.locked && stage.requestPointerLock && !G.touch) { try { stage.requestPointerLock(); } catch (er) { /* fine */ } G.mouseAim = true; } return; }
       if (e.button === 0) { if (!G.locked && stage.requestPointerLock && !G.touch) { try { stage.requestPointerLock(); } catch (er) { /* fine */ } G.mouseAim = true; if (G.clickArms) { G.clickArms = false; return; } } G.fire(); }
       else if (e.button === 2) G.sim.holdBreath(!G.sim.sh.holding);
       return;
     }
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp, x0: e.clientX, y0: e.clientY, t0: e.timeStamp });
     if (ptrs.size === 2) { const a = [...ptrs.values()]; G.pinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), z: G.sim.sh.zoomT }; }
     e.preventDefault();
   });
@@ -604,11 +614,16 @@ Game.bindInput = function () {
     const p = ptrs.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y, dtm = Math.max(1, e.timeStamp - p.t);
     p.x = e.clientX; p.y = e.clientY; p.t = e.timeStamp;
-    if (ptrs.size >= 2 && G.pinch) { const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); G.sim.setZoom(G.pinch.z * Math.pow(d / Math.max(20, G.pinch.d), 1.3)); return; }
+    if (ptrs.size >= 2 && G.pinch) { if (G.spotting) return; const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); G.sim.setZoom(G.pinch.z * Math.pow(d / Math.max(20, G.pinch.d), 1.3)); return; }
     G.aimDelta(dx, dy, (Math.hypot(dx, dy) / dtm) * 1000);
     e.preventDefault();
   });
-  const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null; };
+  // a quick tap in the binoculars (no drag) tags whoever is under the finger
+  const up = (e) => {
+    const p = ptrs.get(e.pointerId);
+    if (p && G.spotting && e.type === 'pointerup' && ptrs.size === 1 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10 && e.timeStamp - p.t0 < 450) Spotter.tapAt(e.clientX, e.clientY);
+    ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null;
+  };
   // a quick tap on a radio message or a hint closes it early (a drag that starts there still aims)
   let tap = null;
   [h.msg, h.sub].forEach((area) => {
@@ -630,11 +645,12 @@ Game.bindInput = function () {
     elm.addEventListener('pointerup', r); elm.addEventListener('pointercancel', r); elm.addEventListener('pointerleave', r);
   };
   press(h.fire, () => G.fire());
-  press(h.breath, () => { if (G.sim) G.sim.holdBreath(!G.sim.sh.holding); });
+  press(h.breath, () => { if (G.sim && !G.spotting) G.sim.holdBreath(!G.sim.sh.holding); });
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
   press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
   press(h.ff, () => { G.ffHeld = true; }, () => { G.ffHeld = false; });
+  press(h.spot, () => Spotter.toggle());
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
@@ -659,6 +675,7 @@ Game.bindInput = function () {
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
     else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
     else if (e.key === 'f' || e.key === 'F') G.ffHeld = true;
+    else if ((e.key === 'b' || e.key === 'B') && !e.repeat) Spotter.toggle();
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
