@@ -12,7 +12,8 @@ Test.cfgFor = function (M, gunId, base) {
   const g = GUN_BY_ID[gunId], cfg = Object.assign(defaultConfig(gunId), base || {}), need = M.needs || {};
   if ((need.quiet || need.silent) && g.supp === true && cfg.muzzle === 'mz_none') cfg.muzzle = 'mz_supl';
   if (need.silent && g.supp === true && partFits(PART_BY_ID.am_sub, g)) cfg.ammo = 'am_sub';
-  if (need.pen && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
+  // (armour-piercing rounds normally come along as the second load and are chambered by the script)
+  if (need.pen && ammo2For(M) !== 'am_ap' && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
   return cfg;
 };
 
@@ -24,7 +25,7 @@ Test.run = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed };
+  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) };
   const sim = new Sim(M, st, o.vantage || 0, simOpts);
   const log = [];
   // optional: run the shot oracle alongside and check that what it foretold is what happened
@@ -55,6 +56,15 @@ Test.run = function (missionId, gunId, o) {
       if (k === 'cover') { if (st.quiet || sim.covered()) { cur = null; continue; } if (sim.t - c._t0 > (c[1] || 90)) { log.push('no cover came'); cur = null; continue; } break; }
       if (k === 'fn') { c[1](sim, sim.A); cur = null; continue; }
       if (k === 'hold') { sim.holdBreath(true); cur = null; continue; }
+      // ['ammo', partId, pen?]: chamber the second load (unless the rounds in the rifle already are
+      // that kind, or already have punch enough for `pen`)
+      if (k === 'ammo') {
+        if (sim.st.cfg.ammo === c[1] || (c[2] && sim.st.pen >= c[2])) { cur = null; continue; }
+        if (!sim.stB || sim.stB.cfg.ammo !== c[1]) { log.push('no ' + c[1] + ' rounds to load'); cur = null; continue; }
+        if (sim.switchAmmo()) { cur = null; continue; }
+        if (sim.t - c._t0 > 20) { log.push('could not load ' + c[1]); cur = null; continue; }
+        break;
+      }
       if (k === 'dial') { const steps = Math.round((c[1] - sim.sh.zeroR) / 25); for (let i = 0; i < Math.abs(steps); i++) sim.dial(sign(steps)); cur = null; continue; }
       if (k === 'shoot' || k === 'shootObj' || k === 'shootAt' || k === 'shootPt') {
         if (c._fired) { // wait for the round to land (unless told not to)

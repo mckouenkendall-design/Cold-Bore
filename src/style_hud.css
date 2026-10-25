@@ -67,14 +67,27 @@ body.sub-top .h-sub .sub-who span { width: 32px; height: 32px; font-size: 16px; 
 body.sub-top .h-sub .sub-tx span { font-size: 13.5px; line-height: 1.25; }
 
 /* ---- what the last round did ---- */
-.h-call { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; pointer-events: none; opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .2s; z-index: 2; }
+.h-call { position: absolute; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; pointer-events: none; opacity: 0; transform: translateX(6px); transition: opacity .2s, transform .2s; z-index: 2; }
 .h-call.show { opacity: 1; transform: none; }
 .h-call b { font: 800 17px var(--head); letter-spacing: .16em; padding: 3px 11px 2px; border-radius: 7px; background: rgba(8, 11, 16, .94); border: 1px solid; white-space: nowrap; }
 .h-call span { font: 600 12px var(--mono); letter-spacing: -.01em; color: #e2e8ef; background: rgba(8, 11, 16, .9); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
-.h-call.hit b { color: var(--green); border-color: rgba(95, 211, 138, .75); }
-.h-call.miss b { color: var(--amber); border-color: rgba(255, 170, 60, .75); }
-.h-call.bad b { color: var(--red); border-color: rgba(255, 74, 61, .75); }
-.h-call.obj b { color: var(--blue); border-color: rgba(111, 182, 255, .75); }
+.h-call.c-hit b { color: var(--green); border-color: rgba(95, 211, 138, .75); }
+.h-call.c-miss b { color: var(--amber); border-color: rgba(255, 170, 60, .75); }
+.h-call.c-bad b { color: var(--red); border-color: rgba(255, 74, 61, .75); }
+.h-call.c-obj b { color: var(--blue); border-color: rgba(111, 182, 255, .75); }
+
+/* ---- the second load: tap the round count to chamber it ---- */
+.h-ammo.switch { pointer-events: auto; cursor: pointer; }
+.h-ammo.switch.down { background: var(--line2); }
+.h-ammo u { text-decoration: none; font: 700 10px var(--head); letter-spacing: .12em; color: var(--dim); margin-right: 2px; }
+.h-ammo .alt { margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(64, 82, 104, .7); font: 700 11px var(--mono); color: var(--blue); text-align: right; white-space: nowrap; }
+.h-ammo .alt i { font-style: normal; }
+.h-ammo .alt.none { color: var(--mute); }
+.h-ammo.special { border-color: rgba(111, 182, 255, .8); }
+.h-ammo.special .pips i.r { background: var(--blue); }
+.h-ammo.special u { color: var(--blue); }
+.h-ammo.go { box-shadow: 0 0 0 3px var(--blue), 0 0 16px rgba(111, 182, 255, .5); animation: pulse .6s infinite alternate; }
+.h-ammo.shake { animation: shake .25s; }
 
 /* ---- focus, and the pulse inside HOLD BREATH ---- */
 .h-focus { background: rgba(14, 20, 30, .92); border: 1px solid rgba(111, 182, 255, .55); color: #cfe6ff; font-size: 9.5px; letter-spacing: .12em; }

@@ -606,9 +606,9 @@ mission({
   id: 'c3m8', ch: 3, title: 'Boarded Up', range: 470, follows: 'c3m2', needs: { pen: 1.4 },
   objective: 'The new lookout behind the boards on the hunting tower. Shoot through the planks.',
   brief: 'They learned from the tower. There is a new lookout up there, and they have nailed old fence boards across the front of it, so now he watches the valley through the cracks like a hen in a coop. Nobody comes up this side of the mountain without him seeing. An ordinary round stops in the first plank. Pip has sent up a box of armour-piercing: a hardened core that goes through boards, and through him. You will not see much of him. It is a cold morning, and a man has to breathe. The cook still brings the soup up. Leave him be.',
-  intel: ['Fit ARMOUR-PIERCING rounds in the Ammunition slot. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
+  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
     'Breath and binoculars mark his face. His chest is half a metre lower. When he sits down at the radio, all of him drops half a metre.', 'The cook in white brings soup up the stair. His tall hat shows in the slot under the eaves. Wait until he has gone back down.', 'Range 470 m. Wind about 3 m/s from the right.'],
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
     'Watch for puffs of breath and the glint of binoculars between the boards. That is his head.', 'Wait until he stands still, hold for drop and wind, and put the aim half a metre below his head. One round.'],
   wind: { v: -3, gust: 1 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Larch stump', desc: '470 m across the valley, a little above the top of the tower.', eye: [0, 38, 0] }],
@@ -651,7 +651,7 @@ mission({
   solve(H) {
     const T = H.tower;
     const clear = (s) => { const c = s.byId.cook, t = s.byId.t; return c.zone !== 'boards' && (c.hidden || Math.abs(c.x - T.stairFoot) > 8) && t.goal === null && t.wait > 1.6 && t.state === 'calm'; };
-    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2100, xp: 460 },
 });

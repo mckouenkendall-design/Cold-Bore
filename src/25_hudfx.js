@@ -27,20 +27,20 @@ Game.roundOutcome = function (sim, b) {
   const fmtD = (d) => Math.round(d) + ' m';
   if (hits.length) {
     const lethal = hits.filter((h) => h.lethal), first = lethal[0] || hits[0];
-    if (lethal.length >= 2) return { head: lethal.length === 2 ? 'TWO WITH ONE ROUND' : lethal.length + ' WITH ONE ROUND', sub: fmtD(first.d), kind: 'hit' };
-    if (!first.lethal) return { head: 'HIT, NOT DOWN', sub: 'a ' + (first.part === 'leg' ? 'leg' : 'arm') + ': they felt that', kind: 'bad' };
+    if (lethal.length >= 2) return { head: lethal.length === 2 ? 'TWO WITH ONE ROUND' : lethal.length + ' WITH ONE ROUND', sub: fmtD(first.d), kind: 'c-hit' };
+    if (!first.lethal) return { head: 'HIT, NOT DOWN', sub: 'a ' + (first.part === 'leg' ? 'leg' : 'arm') + ': they felt that', kind: 'c-bad' };
     const bad = first.role === 'civ' || first.role === 'vip' || first.role === 'hostage';
     return { head: bad ? 'WRONG PERSON' : first.part === 'head' ? 'HEADSHOT' : 'HIT', sub: fmtD(first.d), kind: bad ? 'bad' : 'hit' };
   }
-  if (b.vest) return { head: 'STOPPED BY BODY ARMOUR', sub: 'the vest took it', kind: 'bad' };
-  if (b.obj && b.obj.kind !== 'duck') return { head: CALL_OBJ[b.obj.kind] || 'HIT', sub: fmtD(b.obj.plane.z - b.oz), kind: 'obj' };
+  if (b.vest) return { head: 'STOPPED BY BODY ARMOUR', sub: 'the vest took it', kind: 'c-bad' };
+  if (b.obj && b.obj.kind !== 'duck') return { head: CALL_OBJ[b.obj.kind] || 'HIT', sub: fmtD(b.obj.plane.z - b.oz), kind: 'c-obj' };
   if (b.obj) return null; // the duck has its own banner
   return Game.missBy(sim, b);
 };
 // Where a round that hit nobody went, against the person (or thing) it passed closest to, in the
 // player's own terms: mils high or low, left or right, at that person's distance.
 Game.missBy = function (sim, b) {
-  const tr = b.trail; if (!tr || tr.length < 2) return { head: 'MISS', sub: '', kind: 'miss' };
+  const tr = b.trail; if (!tr || tr.length < 2) return { head: 'MISS', sub: '', kind: 'c-miss' };
   const at = (z) => { // where the round was at depth z (straight on past its end, if it stopped short)
     for (let i = 1; i < tr.length; i++) if (tr[i][2] >= z) { const p = tr[i - 1], q = tr[i], f = clamp((z - p[2]) / Math.max(1e-6, q[2] - p[2]), 0, 1); return { x: lerp(p[0], q[0], f), y: lerp(p[1], q[1], f), short: false }; }
     const p = tr[Math.max(0, tr.length - 2)], q = tr[tr.length - 1], f = (z - q[2]) / Math.max(1e-6, q[2] - p[2]);
@@ -58,21 +58,21 @@ Game.missBy = function (sim, b) {
     consider(near.x, near.y, near.z, true);
   });
   sim.S.objects.forEach((o) => { if (o.alive !== false && o.plane && o.r > 0 && o.kind !== 'duck' && CALL_OBJ[o.kind]) consider(o.x, o.y, o.plane.z, false); });
-  if (!best) return { head: 'MISS', sub: 'nowhere near anyone', kind: 'miss' };
+  if (!best) return { head: 'MISS', sub: 'nowhere near anyone', kind: 'c-miss' };
   const e = { x: b.ox, y: b.oy, z: b.oz }, d = best.z - e.z;
-  if (best.p.short && tr[tr.length - 1][2] < best.z - 1) return { head: 'BLOCKED', sub: 'something stopped it short of ' + (best.label || 'them') + ' at ' + Math.round(tr[tr.length - 1][2] - b.oz) + ' m', kind: 'miss' };
+  if (best.p.short && tr[tr.length - 1][2] < best.z - 1) return { head: 'BLOCKED', sub: 'something stopped it short of ' + (best.label || 'them') + ' at ' + Math.round(tr[tr.length - 1][2] - b.oz) + ' m', kind: 'c-miss' };
   const up = ((best.p.y - best.y) / d) * 1000, rt = ((best.p.x - best.x) / d) * 1000;
   const parts = [];
   if (Math.abs(up) >= 0.1) parts.push(fmt(Math.abs(up), 1) + ' mil ' + (up > 0 ? 'high' : 'low'));
   if (Math.abs(rt) >= 0.1) parts.push(fmt(Math.abs(rt), 1) + ' ' + (parts.length ? '' : 'mil ') + (rt > 0 ? 'right' : 'left'));
-  return { head: 'MISS', sub: parts.length ? parts.join(', ') : 'a hair off', kind: 'miss' };
+  return { head: 'MISS', sub: parts.length ? parts.join(', ') : 'a hair off', kind: 'c-miss' };
 };
 Game.callout = function (head, sub, kind) {
   const c = Game.hud.call;
   c.className = 'h-call ' + (kind || '') ; void c.offsetWidth; c.className = 'h-call show ' + (kind || '');
   c.firstChild.textContent = head; c.lastChild.textContent = sub || '';
   c.lastChild.style.display = sub ? '' : 'none';
-  clearTimeout(c._t); c._t = setTimeout(() => { c.classList.remove('show'); }, kind === 'miss' ? 2600 : 2000);
+  clearTimeout(c._t); c._t = setTimeout(() => { c.classList.remove('show'); }, kind === 'c-miss' ? 2600 : 2000);
 };
 
 // ---- being seen ------------------------------------------------------------------------------

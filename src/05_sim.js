@@ -10,6 +10,11 @@ function Sim(M, st, vantageIdx, opts) {
   opts = opts || {};
   const sim = this;
   sim.M = M; sim.st = st; sim.opts = opts;
+  // Two loads: the rifle's own rounds, and a few of a second kind (armour-piercing, say) that can
+  // be chambered during the mission for the price of one pull of the bolt (see switchAmmo).
+  // sim.st is always the load in the chamber; every round in the air keeps the numbers it left with.
+  sim.stA = st; sim.stB = null;
+  if (opts.ammo2 && st.cfg && opts.ammo2 !== st.cfg.ammo && PART_BY_ID[opts.ammo2] && partFits(PART_BY_ID[opts.ammo2], st.gun)) sim.stB = buildStats(st.id, Object.assign({}, st.cfg, { ammo: opts.ammo2 }));
   sim.flags = opts.flags || {};
   const built = M.setup(K, sim.flags);
   const S = sim.S = built.S; sim.A = built;
@@ -43,6 +48,8 @@ function Sim(M, st, vantageIdx, opts) {
     breath: st.breath, holding: false, holdK: 0, exhausted: 0,
     ammo: st.mag, reserve: (M.rules && M.rules.reserve !== undefined) ? M.rules.reserve : st.mag * 3 + (st.mag === 1 ? 9 : 0), cycleT: 0, cycleLen: 0, reloadT: 0, reloadLen: 0, chargeT: 0,
     zeroR: st.zero, zeroAng: st.zeroAng, heart: 0, lastFire: -99, sx: 0, sy: 0, pvx: 0, pvy: 0,
+    // the load in the chamber (0 the rifle's own rounds, 1 the second kind) and the other one's count
+    load: 0, altAmmo: sim.stB ? Math.min(3, Math.max(2, Math.floor(st.mag / 3))) : 0, altReserve: 0,
   };
   if (st.scope.turret && M.range && !opts.noAutoZero) { /* player dials it themselves */ }
 
@@ -149,8 +156,29 @@ Sim.prototype.reload = function () {
   sh.reloadT = sh.reloadLen = st.reload; this.ev.push({ k: 'reload', dur: st.reload, action: st.action });
   return true;
 };
+// Chamber the other kind of round. It costs one pull of the bolt (a moment for any rifle). The
+// last round of the second kind put through, the rifle goes back to its own by itself.
+Sim.prototype.switchAmmo = function () {
+  const sim = this, sh = sim.sh;
+  if (!sim.stB || sim.state !== 'play' || sh.reloadT > 0 || sh.chargeT > 0) return false;
+  if (sh.altAmmo + sh.altReserve <= 0) { sim.ev.push({ k: 'dry' }); return false; }
+  sim.swapLoad();
+  sh.cycleT = sh.cycleLen = Math.max(0.4, sim.st.cycle);
+  sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, cycle: sh.cycleLen, action: sim.st.action });
+  return true;
+};
+Sim.prototype.swapLoad = function () {
+  const sim = this, sh = sim.sh, a = sh.ammo, r = sh.reserve;
+  sh.ammo = sh.altAmmo; sh.reserve = sh.altReserve; sh.altAmmo = a; sh.altReserve = r;
+  sh.load = sh.load ? 0 : 1; sim.useLoad();
+  sh.zeroAng = Bal.zeroAngle(sim.st, sh.zeroR); // the same zero distance, for this load
+};
+// sim.st follows the load in the chamber (a copy of the mission that is handed the shooter's state,
+// as the shot oracle is, picks the change up here)
+Sim.prototype.useLoad = function () { const want = this.sh.load && this.stB ? this.stB : this.stA; if (this.st !== want) this.st = want; };
 Sim.prototype.canFire = function () { const sh = this.sh; return this.state === 'play' && sh.cycleT <= 0 && sh.reloadT <= 0 && sh.ammo > 0 && sh.chargeT <= 0; };
 Sim.prototype.fire = function () {
+  this.useLoad();
   const sim = this, sh = sim.sh, st = sim.st;
   if (sim.state !== 'play') return false;
   if (sh.reloadT > 0 || sh.cycleT > 0 || sh.chargeT > 0) return false;
@@ -166,7 +194,7 @@ Sim.prototype._shoot = function () {
   const ax = aim.x + R.gauss() * st.disp * 0.5 + Math.cos(ja) * jm, ay = aim.y + sh.zeroAng + R.gauss() * st.disp * 0.5 + Math.sin(ja) * jm;
   const b = Bal.launch(st.v0, ax, ay);
   b.x += eye.x; b.y += eye.y; b.z += eye.z;
-  b.alive = true; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
+  b.alive = true; b.st = st; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
   sim.bullets.push(b);
   if (sim.stats.firstShotT === null) sim.stats.firstShotT = sim.t;
   sh.ammo--; sh.lastFire = sim.t;
@@ -223,6 +251,7 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.cycleT > 0) {
     sh.cycleT -= dt;
     if (st.action === 'bolt') { const u = 1 - clamp(sh.cycleT / sh.cycleLen, 0, 1); const e = Math.sin(clamp((u - 0.18) / 0.72, 0, 1) * Math.PI); ox = e * 1.6 * Math.sin(u * 9); oy = e * (2.2 + st.recoil * 0.08); }
+    if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve <= 0 && sh.load === 1 && sh.altAmmo + sh.altReserve > 0) { sim.swapLoad(); sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, auto: true }); }
     if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0) sim.reload();
   }
   if (sh.reloadT > 0) {
@@ -797,7 +826,7 @@ Sim.prototype.impact = function (b, x, y, P, mat, o) {
 // - the crack of the round that finishes the job no longer matters, the same as a bang that
 //   arrives after the job is done: heads come up, but nobody goes looking.
 Sim.prototype.crack = function (b, x, y, P, skip) {
-  const sim = this, st = sim.st;
+  const sim = this, st = b.st || sim.st;
   const v = Math.hypot(b.vx, b.vy, b.vz);
   if (!(st.quiet && st.crack > 0 && v > SOUND)) return;
   if (sim.covered()) return;
@@ -813,7 +842,7 @@ Sim.prototype.stopBullet = function (b) {
 };
 
 Sim.prototype.hitPlane = function (P, b, bx, by) {
-  const sim = this, S = sim.S, st = sim.st;
+  const sim = this, S = sim.S, st = b.st || sim.st;
   // 1. shootable objects
   for (let i = 0; i < S.objects.length; i++) {
     const ob = S.objects[i];
@@ -930,7 +959,7 @@ Sim.prototype.scareVehicle = function (v) {
   });
 };
 Sim.prototype.hitActor = function (a, part, b, bx, by) {
-  const sim = this, st = sim.st;
+  const sim = this, st = b.st || sim.st;
   // (what each round did is noted on it, for the hit and miss callout: see Game.watchRounds)
   if (a.vest && part === 'torso' && st.pen < 0.5) { b.vest = true; sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
   (b.hits = b.hits || []).push({ id: a.id, part, lethal: part === 'head' || part === 'torso', role: a.role, d: a.plane.z - b.oz });
@@ -994,7 +1023,7 @@ Sim.prototype.explode = function (ob) {
 };
 
 Sim.prototype.stepBullet = function (b, dt) {
-  const sim = this, S = sim.S, st = sim.st, planes = S.planes;
+  const sim = this, S = sim.S, st = b.st || sim.st, planes = S.planes;
   let left = dt;
   const farZ = planes.length ? planes[0].z + 60 : 3000;
   while (left > 0 && b.alive) {
@@ -1052,6 +1081,7 @@ Sim.prototype.stepProps = function (dt) {
 Sim.prototype.step = function (dt) {
   const sim = this;
   if (sim.state !== 'play') return;
+  sim.useLoad();
   sim.t += dt;
   for (let i = sim.timers.length - 1; i >= 0; i--) if (sim.timers[i].t <= sim.t) { const fn = sim.timers[i].fn; sim.timers.splice(i, 1); fn(); }
   sim.stepShooter(dt);
@@ -1091,7 +1121,7 @@ Sim.prototype.judge = function () {
   const sim = this, R = sim.rules, sh = sim.sh;
   if (R.time && sim.t >= R.time && !sim.winAt && !sim.failInfo) sim.fail('time', R.timeText || 'Out of time. The window closed.', 0.6);
   if (!sim.winAt && !sim.failInfo && sim.objectivesDone()) { sim.winAt = sim.t + (R.aftermath === undefined ? 2.8 : R.aftermath); sim.ev.push({ k: 'winning' }); }
-  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
+  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && sh.altAmmo + sh.altReserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
     sim.fail('ammo', 'Out of ammunition.', 0.5);
   }
   if (sim.failInfo && sim.t >= sim.endAt) { sim.state = 'lost'; sim.result = sim.summarise(false); sim.ev.push({ k: 'end', win: false }); return; }

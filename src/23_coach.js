@@ -189,6 +189,12 @@ Coach.prototype.update = function () {
       o.kind = 'reload'; o.head = 'RELOAD NOW'; o.text = 'Top the rifle up while nothing is happening.';
       C.ahead(o); break;
     }
+    if (k === 'ammo') { // chamber the second load
+      if (sim.st.cfg.ammo === c[1] || (c[2] && sim.st.pen >= c[2]) || !sim.stB || sim.stB.cfg.ammo !== c[1] || el > 20) { C.next(); continue; }
+      const nm = PART_BY_ID[c[1]] ? PART_BY_ID[c[1]].name.toUpperCase() : 'THE OTHER ROUNDS';
+      o.kind = 'ammo'; o.head = 'LOAD ' + nm; o.text = Game.touch ? 'Tap the round count beside RELOAD to chamber them. It costs one pull of the bolt.' : 'Press X to chamber them. It costs one pull of the bolt.';
+      C.ahead(o); break;
+    }
     if (k === 'dial') {
       if (!st.scope.turret) { C.next(); continue; }
       if (S.dialTo === undefined) S.dialTo = clamp(sh.zeroR + Math.round((c[1] - sh.zeroR) / 25) * 25, 50, 2200);
@@ -394,7 +400,7 @@ Coach.play = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed });
+  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) });
   const coach = new Coach(sim), dt = o.dt || 1 / 60, maxT = o.maxT || 400;
   sim.setZoom(st.zoomMax);
   const aimAt = (p) => { // put the crosshair on a world point, as a player would with a finger
@@ -415,6 +421,7 @@ Coach.play = function (missionId, gunId, o) {
       if (c.kind === 'hold' && !sim.sh.holding) { sim.holdBreath(true); acted = true; }
       else if (c.kind === 'dial' && sim.sh.zeroR !== c.dial) { if (sim.dial(sign(c.dial - sim.sh.zeroR))) acted = true; }
       else if (c.kind === 'reload') { if (sim.reload()) acted = true; }
+      else if (c.kind === 'ammo') { if (sim.switchAmmo()) acted = true; }
       if (c.aim) { aimAt(c.aim); c = coach.update(); if (c.aim) { aimAt(c.aim); c = coach.update(); } }
       if (c.fire) { if (sim.fire()) { fires++; acted = true; } }
       if (!acted) break;

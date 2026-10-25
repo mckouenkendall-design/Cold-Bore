@@ -77,6 +77,12 @@ function apReaches(st, pen) {
   return st.pen - nowAdd + ap.mod.penAdd >= pen;
 }
 
+// The second kind of round a contract hands out with the rifle's own (a few rounds, chambered during
+// the mission at the cost of one pull of the bolt). A mission can name its own with `ammo2`; the
+// default is armour-piercing, which is what the cover, glass and car-door contracts want. The
+// loadout screen may let the player choose another and pass it to UI.launch as opts.ammo2.
+function ammo2For(M) { return M && M.ammo2 !== undefined ? M.ammo2 : 'am_ap'; }
+
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
   if (M.range && st.eff < M.range) return 'Not enough reach: this job is at ' + M.range + ' m.';
@@ -86,8 +92,9 @@ function gunAllowed(M, st) {
   if (need.glass && st.pen < 0.3) return 'Too weak to shoot through window glass.';
   if (need.rof && st.cycle > need.rof) return 'Too slow between shots for this job.';
   if (need.mag && st.mag < need.mag) return 'Not enough rounds in the magazine for this job.';
-  if (need.pen && st.pen < need.pen) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
+  // (armour-piercing rounds come along as the second load, so any rifle that can fire them will do)
+  if (need.pen && st.pen < need.pen && !(ammo2For(M) === 'am_ap' && apReaches(st, need.pen))) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
   if (M.allow) { const r = M.allow(st); if (r) return r; }
   return null;
 }
-CB.MISSIONS = MISSIONS;
+CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For;
