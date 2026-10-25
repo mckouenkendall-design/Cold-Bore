@@ -28,6 +28,8 @@ const ICON = {
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 10-3-3M3 14h15a3 3 0 11-3 3M3 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   room: '<svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 9.5h12M6 15.5h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="8.5" cy="17.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="17.6" r="1.1" fill="currentColor"/></svg>',
   guide: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 17c5-1.2 1.5-7.8 7-9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.4 2.6" stroke-linecap="round"/></svg>',
+  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  guard: '<svg viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="3.2" fill="currentColor"/><path d="M5 21v-4.5a7 7 0 0114 0V21z" fill="currentColor"/></svg>',
   file: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6l2 2h8v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
@@ -482,51 +484,7 @@ UI.contracts = function () {
   }), 'is-contracts');
 };
 
-// ---- briefing --------------------------------------------------------------------------------
-UI.brief = function (M, keep) {
-  const d = Save.data, flags = d.flags, rec = d.missions[M.id] || { stars: 0 };
-  if (!keep) UI.pick = { v: 0 };
-  const P = UI.pick, V = M.vantages || [{ name: 'Position', desc: '' }];
-  const gunId = d.equipped, cfg = gunCfg(gunId), st = buildStats(gunId, cfg), why = gunAllowed(M, st), g = GUN_BY_ID[gunId];
-  const intel = missionText(M, 'intel') || [], who = speakerOf(M);
-  const wind = M.wind || { v: 0 }, aw = Math.abs(wind.v || 0) * (V[P.v].windMul === undefined ? 1 : V[P.v].windMul);
-  const par = (typeof M.par === 'function' ? M.par(flags) : M.par) || 1;
-  const choice = M.outcomes && M.outcomes.some((o) => o.set);
-  UI.render(`<div class="scr brief">
-    <div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Chapter ${ROMAN[M.ch]}  ·  Contract ${MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1}</div><h2>${esc(M.title)}</h2></div><button class="btn ghost sm howbtn" data-a="showhow">${ICON.guide}<span>Show me how</span></button>${starsHtml(rec.stars || 0)}</div>
-    <div class="split">
-      <div class="side">
-        <div class="thumb"><canvas id="thumb" data-mthumb="${M.id}" data-v="${P.v}"></canvas><div class="th-cap"><span id="thtime"></span><span>${ICON.wind} ${aw < 0.3 ? 'Calm' : fmt(aw, 1) + ' m/s from ' + ((wind.v || 0) > 0 ? 'left' : 'right')}</span></div></div>
-        <div class="load">
-          <button class="gcard ${why ? 'bad' : ''}" data-a="gun"><span class="gc-pic plate"><canvas data-gun="${gunId}"></canvas></span><span class="gc-row"><span class="gc-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${esc(st.scope.name)}  ·  ${st.silent ? 'silent' : st.quiet ? 'suppressed' : 'loud'}</i></span><span class="chg">Change</span></span></button>
-          ${why ? '<div class="warn">' + ICON.cross + '<span>' + esc(why) + ' Pick another rifle or fit different parts.</span></div>' : ''}
-        </div>
-        <div class="cta"><button class="btn pri big ${why ? 'off' : ''}" data-a="go" data-snd="go">${why ? 'Rifle not suitable' : 'Take the shot'}</button></div>
-      </div>
-      <div class="main scroll">
-        <div class="say"><b>${esc(who)}</b><p>${esc(missionText(M, 'brief'))}</p></div>
-        <div class="obj"><div class="eyebrow">Objective</div><p>${esc(missionText(M, 'objective'))}</p>${choice ? '<div class="choice">There is a decision to make on this one. It changes what comes later.</div>' : ''}</div>
-        ${!why && !st.quiet ? '<div class="note loud"><b>Your rifle is loud.</b> Everyone in earshot hears the shot unless something louder covers it.</div>' : ''}
-        ${V.length > 1 ? `<div class="vant"><div class="eyebrow">Where to set up</div><div class="vgrid">${V.map((v, i) => `<button class="vcard ${i === P.v ? 'on' : ''}" data-a="vant" data-i="${i}"><b>${esc(v.name)}</b>${v.tag ? '<em>' + esc(v.tag) + '</em>' : ''}<span>${esc(v.desc || '')}</span></button>`).join('')}</div></div>` : `<div class="vant one"><div class="eyebrow">Position</div><p><b>${esc(V[0].name)}.</b> ${esc(V[0].desc || '')}</p></div>`}
-        <div class="intel"><div class="eyebrow">What we know</div><ul>${intel.map((t) => '<li>' + esc(t) + '</li>').join('')}</ul></div>
-        <div class="goals"><div class="eyebrow">Rating</div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Complete the contract</span></div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Clean: no alarm, nobody sees it happen</span></div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Precise: ${par === 1 ? 'one shot' : 'no more than ' + par + ' shots'}</span></div>
-          <div class="goal ch ${rec.ch ? 'got' : ''}"><i>${ICON.medal}</i><span>Challenge: ${esc(M.challenge.text)}</span></div>
-          <div class="goal ch ${d.ducks[M.id] ? 'got' : ''}"><i>${ICON.duck}</i><span>A rubber duck is hidden somewhere in the scene</span></div>
-          <div class="pay">Pays <b>${fmtCr(M.reward.cr)}</b> credits and <b>${M.reward.xp}</b> xp the first time, more for stars and the challenge.</div>
-        </div>
-      </div>
-    </div>
-  </div>`, {
-    back() { UI.hub(); },
-    vant(ds) { P.v = +ds.i; UI.keepScroll(); UI.brief(M, true); },
-    gun() { UI.gunPicker(M); },
-    go() { UI.launch(M.id, { vantage: P.v }); },
-    showhow() { UI.showHow(M); },
-  }, 'is-brief');
-};
+// ---- briefing: see 46_ui_brief.js (the dossier) ----
 
 // ---- guided runs ------------------------------------------------------------------------------
 // The written walkthrough for a mission, as a numbered list (or a note that there is none yet).
