@@ -71,7 +71,7 @@ function skyStyle(S) {
     stars: (L.stars === undefined ? 1 : L.stars) * pal.star * (wet || w === 'fog' ? 0 : t === 'overcast' ? 0.2 : 1),
     milky: L.milky || 0, moon: L.moon === undefined ? 0.72 : L.moon, rays: L.rays === undefined ? (t === 'dawn' || t === 'dusk') && !wet : L.rays,
     cityGlow: L.cityGlow === undefined ? (S.ambience === 'city' || S.ambience === 'harbour' ? 1 : 0) : L.cityGlow,
-    drift: L.drift === undefined ? 1 : L.drift, clouds: [], streaks: [], deckRows: [],
+    drift: L.drift === undefined ? 1 : L.drift, clouds: [], streaks: [], deckRows: [], jets: [],
     sunX: S.sky.sun[0], lowSun: pal.dark < 0.5 && (t === 'dawn' || t === 'dusk' || S.sky.sun[1] < 30),
   };
   // The sun (or moon) sits where the scene says; keep the big clouds out of its band so it is never hidden for long.
@@ -93,6 +93,8 @@ function skyStyle(S) {
       sky.deckRows.push({ y, k: u, s: D.r(0, 100), th: lerp(30, 9, u) * D.r(0.8, 1.2), sp: lerp(0.05, 0.16, u), rain: sky.wet && u > 0.45 ? D.r(0.4, 1) : 0 });
     }
   }
+  // airliners passing high over, a few minutes apart
+  if (!grey) for (let i = 0; i < 2; i++) sky.jets.push({ y: D.r(70, 150), dy: D.r(-12, 12), dir: D.chance(0.5) ? 1 : -1, per: D.r(170, 260), ph: D.f(), sp: D.r(7, 10) });
   S._sky = sky;
   return sky;
 }
@@ -158,6 +160,7 @@ View.prototype.drawSky = function (sim, cam) {
   // ---- clouds: high streaks, then the heaps, then the low deck ----
   const drift = (sim.t * sign(sim.windBase || 1)) * sky.drift;
   if (sky.streaks.length) V.skyCirrus(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, sx, sy);
+  if (sky.jets.length) V.skyJets(ctx, cam, sim, sky, X, Y, mx0, mx1, my0, my1);
   if (sky.clouds.length) V.skyHeaps(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1);
   V.skyBolt(ctx, cam, sim, X, Y);   // lightning, behind the lowest cloud
   if (sky.deckRows.length) V.skyDeck(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, S);
@@ -450,6 +453,49 @@ View.prototype.skyDeck = function (ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+    }
+  }
+};
+
+// Airliners crossing high over: by day a small grey shape drawing a white trail that spreads
+// and drifts with the wind behind it (pink when the sun is low), after dark only its lights,
+// red on one wing, green on the other and a white strobe. Close up it has wings and a tail.
+View.prototype.skyJets = function (ctx, cam, sim, sky, X, Y, mx0, mx1, my0, my1) {
+  const t = sim.t, ppm = cam.ppm, night = sky.night, low = sky.lowSun;
+  for (let i = 0; i < sky.jets.length; i++) {
+    const J = sky.jets[i], cyc = (t / J.per + J.ph) % 1, run = 1400 / J.sp; // seconds to cross
+    const tt = cyc * J.per; if (tt > run + 60) continue;
+    const x = J.dir * (-700 + tt * J.sp), y = J.y + J.dy * (tt / run);
+    if (my1 < y - 10 || my0 > y + 10) continue;
+    const trail = night ? 0 : Math.min(tt * J.sp, 170), tx0 = x - J.dir * trail;
+    if (Math.max(x, tx0) < mx0 - 5 || Math.min(x, tx0) > mx1 + 5) continue;
+    const px = X(x), py = Y(y);
+    if (!night && trail > 0) { // the trail: thin and bright at the jet, wider, fainter and wind-blown behind
+      ctx.save(); ctx.lineCap = 'round'; const col = low ? '#ffd8c8' : '#ffffff', n = 10;
+      for (let k = 0; k < n; k++) {
+        const u0 = k / n, u1 = (k + 1) / n, age0 = u0 * trail / J.sp, age1 = u1 * trail / J.sp;
+        const ax = X(x - J.dir * trail * u0 + sky.windNow * age0 * 0.05), ay = Y(y - J.dy * u0 * 0.1 - age0 * 0.01), bx = X(x - J.dir * trail * u1 + sky.windNow * age1 * 0.05), by = Y(y - J.dy * u1 * 0.1 - age1 * 0.01);
+        ctx.globalAlpha = 0.55 * (1 - u0) * Math.min(1, tt / 3); ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.8, (0.25 + u0 * 1.6) * ppm); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (px < cam.cx - cam.hw - 20 || px > cam.cx + cam.hw + 20) continue;
+    const L = 2.6 * ppm, d = J.dir;
+    if (!night) {
+      ctx.fillStyle = low ? '#6a5a66' : '#7d8794';
+      if (L < 6) { ctx.fillRect(px - Math.max(1, L / 2), py - 0.6, Math.max(2, L), 1.3); }
+      else { // a fuselage, swept wings, a tail fin and the tailplane
+        ctx.beginPath();
+        ctx.moveTo(px + d * L * 0.5, py); ctx.quadraticCurveTo(px + d * L * 0.42, py - L * 0.05, px + d * L * 0.3, py - L * 0.05); ctx.lineTo(px - d * L * 0.45, py - L * 0.04); ctx.lineTo(px - d * L * 0.5, py - L * 0.2); ctx.lineTo(px - d * L * 0.44, py - L * 0.2); ctx.lineTo(px - d * L * 0.36, py - L * 0.04); ctx.lineTo(px - d * L * 0.36, py + L * 0.04); ctx.lineTo(px + d * L * 0.3, py + L * 0.04); ctx.closePath();
+        ctx.moveTo(px + d * L * 0.08, py); ctx.lineTo(px - d * L * 0.14, py + L * 0.16); ctx.lineTo(px - d * L * 0.2, py + L * 0.16); ctx.lineTo(px - d * L * 0.06, py); ctx.closePath();
+        ctx.fill();
+      }
+    } else { // lights only
+      const blink = Math.sin(t * 6 + i * 3) > 0.6, strobe = (t * 1.1 + i) % 1 < 0.06;
+      ctx.fillStyle = '#ff4a3d'; ctx.fillRect(px - d * Math.max(1.5, L * 0.12) - 1, py - 1, 2, 2);
+      ctx.fillStyle = '#5aff8a'; ctx.fillRect(px + d * Math.max(1.5, L * 0.12) - 1, py - 1, 2, 2);
+      if (blink) { ctx.fillStyle = '#ff6a50'; ctx.fillRect(px - 1.5, py + 1, 3, 2); }
+      if (strobe) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8; ctx.drawImage(kxBlob('#ffffff'), px - 7, py - 7, 14, 14); ctx.restore(); }
     }
   }
 };

@@ -53,9 +53,11 @@ View.prototype.drawFlare = function (sim, cam) {
   // a thin streak across the glass through the sun
   ctx.globalAlpha = 0.16 * k; ctx.drawImage(kxBlob(low ? '#ffc890' : '#e8f0ff'), sx - R * 1.4, sy - 3, R * 2.8, 6);
   const ghosts = [[0.35, 0.05, '#7dffb0', 0.1], [0.62, 0.09, '#ffd27a', 0.08], [0.9, 0.035, '#b48aff', 0.14], [1.25, 0.14, '#7ac8ff', 0.06], [1.6, 0.06, '#ff9a6a', 0.1], [1.85, 0.2, '#9affd0', 0.05]];
-  for (let i = 0; i < ghosts.length; i++) {
-    const g = ghosts[i], gx = sx - dx * 2 * g[0] * (d > 1 ? 1 : 0), gy = sy - dy * 2 * g[0], r = R * g[1];
-    ctx.globalAlpha = g[3] * k; ctx.fillStyle = g[2]; ctx.beginPath();
+  // (the ghosts line up through the middle of the glass, so with the sun dead centre they would all sit on it)
+  const gk = smooth(d / (R * 0.3));
+  for (let i = 0; i < ghosts.length && gk > 0.02; i++) {
+    const g = ghosts[i], gx = sx - dx * 2 * g[0], gy = sy - dy * 2 * g[0], r = R * g[1];
+    ctx.globalAlpha = g[3] * k * gk; ctx.fillStyle = g[2]; ctx.beginPath();
     for (let j = 0; j < 6; j++) { const a = j * TAU / 6 + 0.3; if (j) ctx.lineTo(gx + Math.cos(a) * r, gy + Math.sin(a) * r); else ctx.moveTo(gx + Math.cos(a) * r, gy + Math.sin(a) * r); }
     ctx.closePath(); ctx.fill();
   }
