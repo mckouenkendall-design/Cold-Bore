@@ -244,8 +244,12 @@ function richSaveInPage() {
     ok(await ev(() => { const b = [...document.querySelectorAll('[data-a="buycache"]')]; return b.length === 3 && !b[0].classList.contains('off') && b[1].classList.contains('off') && b[2].classList.contains('off') && /not enough credits/i.test(document.querySelector('.ccard.t-vault .cc-why').innerText); }), 'a cache you cannot afford has its Buy button off and says why');
     ok(await ev(() => /no real money/i.test(document.querySelector('.caches').innerText) && /credits/i.test(document.querySelector('.caches').innerText) && ['50%', '30%', '14%', '5%', '1%', '22%', '38%'].every((p) => document.querySelector('.cgrid').innerText.indexOf(p) >= 0)), 'the caches page says there is no real money and shows the odds as percentages');
     await ev(() => { CB.Save.data.credits = 46200; CB.UI.colTab = 'progress'; CB.UI.collection(); }); await look('44_progress', null);
+    // opening a cache: the case drops in, then the two latches are tapped by finger before it opens
     await ev(() => { CB.UI.colTab = 'caches'; CB.UI.collection(); CB.UI.openCache('vault'); }); await look('45_cache_shaking', null, 250);
-    await look('46_cache_open', '[data-a="done"]', 1300);
+    await look('45b_cache_latches', '#overlay [data-a="skip"]', 500);
+    await tapSel('#overlay .latch[data-i="0"]'); await tapSel('#overlay .latch[data-i="1"]');
+    await look('46_cache_open', '[data-a="done"]', 2700);
+    ok(await ev(() => !!document.querySelector('.cacheopen.shown')), 'tapping both latches opens the case and shows what was inside');
     await ev(() => { CB.UI.closeOverlay(); CB.UI.tab = 'range'; CB.UI.hub(); }); await look('50_range', '[data-a="go"]', 600);
     await ev(() => { CB.UI.rangeCfg.dist = 1800; CB.UI.rangeCfg.wind = -8; CB.UI.range(); }); await look('51_range_far', '[data-a="go"]', 600);
     await ev(() => { CB.UI.rangeCfg.dist = 300; CB.UI.rangeCfg.wind = 0; CB.UI.tab = 'settings'; CB.UI.hub(); }); await look('52_settings', null);
@@ -266,6 +270,11 @@ function richSaveInPage() {
     if (res.ok) {
       await look('60_results_win', '[data-a="next"]', 2200);
       ok(await page.locator('.results.win').count() === 1, 'the results screen says the contract was won');
+      // the payout is a sequence: a tap on the words jumps to the end, and a new rank then takes the screen
+      await tapSel('.results .say.after'); await wait(500);
+      if (await page.locator('#overlay .takeover').count()) { await look('60b_rank_up', '.takeover', 400); await tapSel('#overlay .takeover'); await wait(300); }
+      ok(await ev(() => !document.getElementById('overlay').classList.contains('show') && CB.UI.pay && CB.UI.pay.done), 'a tap jumps to the end of the payout, and the rank-up closes on a tap');
+      await look('60c_results_final', '[data-a="next"]', 300);
       await ev(() => { document.querySelector('.results .main.scroll').scrollTop = 99999; }); await look('61_results_win_end', '[data-a="next"]', 300);
       await ev(() => { const M = CB.MISSIONS[18], r = Object.assign({}, window.__res, { win: false, stars: 0, fail: { code: 'civ', text: 'You shot a bystander. The Ledger does not pay for mistakes, and the police do not forget them.' } }); CB.UI.results(M, r, { missionId: M.id, opts: { gun: 'halden' } }); });
       await look('62_results_lose', '[data-a="again"]', 500);
@@ -317,7 +326,8 @@ function richSaveInPage() {
       const b0 = await ev(() => { const d = CB.Save.data; d.caches = []; CB.UI.collection(); return { cr: d.credits, skins: Object.keys(d.skins).length }; });
       await tapSel('.ccard.t-sealed [data-a="buycache"]'); await wait(400);
       ok(await ev((b) => CB.Save.data.caches.length === 1 && CB.Save.data.caches[0] === 'sealed' && CB.Save.data.credits === b.cr - 4500, b0), 'buying a sealed cache spends 4,500 credits and adds the cache');
-      await tapSel('.cachebox [data-a="open"]'); await wait(1500);
+      await tapSel('.cachebox [data-a="open"]'); await wait(700);
+      await tapSel('#overlay [data-a="skip"]'); await wait(500); // Skip jumps straight to what was inside
       await look('70_cache_opened_by_touch', '[data-a="done"]', 100);
       ok(await ev((b) => { const d = CB.Save.data; return d.caches.length === 0 && (Object.keys(d.skins).length === b.skins + 1 || d.credits > b.cr - 4500); }, b0), 'opening it gives a skin (or credits for one already owned)');
       await tapSel('#overlay [data-a="done"]'); await wait(300);

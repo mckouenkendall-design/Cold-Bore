@@ -329,24 +329,107 @@ UI.collection = function () {
 
 // Open one cache: the one that has waited longest, or a given kind, or ('best') the best kind you
 // have, so that a vault cache you have just bought is not stuck behind a pile of field caches.
+//
+// The case drops onto a lit table. Tap its two latches: light leaks out of the seam in the colour
+// of what is inside, and it can step up a rarity (or two, for a legendary) before the lid lifts.
+// Then the rifle rises out wearing the skin, with a sweep of light, and a stamp says NEW, or
+// DUPLICATE with the credits it trades in for counting up. Legendary gets an extra beat. What is
+// inside is decided (and saved) the moment the case is opened, so leaving early loses nothing.
 UI.openCache = function (tier) {
   const d = Save.data, how = tier;
   if (tier === 'best') tier = ['vault', 'sealed', 'field'].find((k) => d.caches.indexOf(k) >= 0);
   if (tier) { const i = d.caches.indexOf(tier); if (i > 0) { d.caches.splice(i, 1); d.caches.unshift(tier); } }
   const res = Progress.openCache();
   if (!res) { UI.closeOverlay(); UI.collection(); return; }
-  const s = res.skin, gunId = d.equipped, cfg = Object.assign({}, gunCfg(gunId), { skin: s.id }), kind = CACHE_NAME[res.tier] || 'Cache';
+  const s = res.skin, gunId = d.equipped, cfg = Object.assign({}, gunCfg(gunId), { skin: s.id }), kind = CACHE_NAME[res.tier] || 'Cache', left = d.caches.length;
+  // the light that leaks out first: one rarity lower for anything rare or better (two for legendary), half the time for uncommon
+  const steps = []; { let r0 = s.r >= 4 ? 2 : s.r >= 2 ? s.r - 1 : s.r === 1 && Math.random() < 0.5 ? 0 : s.r; while (r0 <= s.r) steps.push(r0++); }
   UI.overlay(`<div class="cacheopen r${s.r} t-${res.tier}">
-    <div class="co-box"><span>${ICON.box}</span><b>${esc(kind)}</b></div>
-    <div class="co-card"><div class="co-pic plate"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(cfg)}></canvas></div>
-      <div class="co-b"><div class="co-rar">${RAR[s.r]}  ·  from a ${esc(kind.toLowerCase())}</div><h3>${esc(s.name)}</h3>
-      <p>${res.dupe ? 'You already own this one. Traded in for <b>' + fmtCr(res.cr) + '</b> credits.' : 'New skin. It fits every rifle you own.'}</p>
-      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${d.caches.length ? '<button class="btn pri" data-a="next" data-snd="riser">Open next (' + d.caches.length + ')</button>' : ''}<button class="btn ${d.caches.length ? 'ghost' : 'pri'}" data-a="done">Done</button></div></div></div></div>`, {
+    <div class="co-stage">
+      <canvas class="co-case"></canvas>
+      <button class="latch" data-a="latch" data-i="0" aria-label="Open the left latch"></button><button class="latch" data-a="latch" data-i="1" aria-label="Open the right latch"></button>
+      <div class="co-rise"><span class="co-gun"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(cfg)}></canvas><span class="ub-sweep"></span></span></div>
+      <div class="co-stamp ${res.dupe ? 'dupe' : 'new'}">${res.dupe ? 'Duplicate' : 'New'}</div>
+      <div class="co-leg">Legendary</div><div class="co-flash"></div>
+    </div>
+    <div class="co-bar">
+      <div class="co-info"><div class="co-rar">${RAR[s.r]}  ·  ${s.ex ? 'trophy' : 'from a ' + esc(kind.toLowerCase())}</div><h3>${esc(s.name)}</h3>
+        <p>${res.dupe ? 'You already own this one. Traded in for <b class="co-cr" data-to="' + res.cr + '">0</b> credits.' : 'New skin. It fits every rifle you own' + (uiSkinMoves(s) ? ', and it moves.' : '.')}</p></div>
+      <div class="co-pre"><span class="co-hint">${esc(kind)}  ·  tap both latches</span><button class="btn ghost" data-a="skip">Skip</button></div>
+      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">Open next (' + left + ')</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
+    </div></div>`, {
+    latch(ds) { latch(+ds.i); },
+    skip() { reveal(true); },
     fit(ds, b) { const c = gunCfg(gunId); c.skin = s.id; d.guns[gunId].cfg = c; Save.write(); UI.toast(s.name + ' fitted to ' + GUN_BY_ID[gunId].name + '.', 'good'); if (b) b.classList.add('off'); },
     next() { UI.openCache(how === 'best' ? 'best' : undefined); },
+    all() { UI.openAll([res]); },
     done() { UI.closeOverlay(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
-  }, 'center');
-  setTimeout(() => { const c = UI.over.querySelector('.cacheopen'); if (c) { c.classList.add('go'); UI.paintIn(c, 'over'); } Sfx.rarity(s.r); }, res.tier === 'vault' ? 900 : 650);
+  }, 'center tk');
+  const root = UI.over.querySelector('.cacheopen'), cv = root.querySelector('.co-case');
+  root.style.setProperty('--sc', CB.RAR_GLOW[steps[0]]);
+  // the state the case is drawn from, moved along by the loop below
+  const C = { t: 0, lift: 0, latch: [0, 0], want: [0, 0], glow: 0, glowTo: 0, rar: steps[0], open: 0, opening: false, stage: 'drop', done: false };
+  cv._state = C;
+  const place = () => { // the latch buttons sit over the latches as drawn
+    const w = cv.clientWidth, h = cv.clientHeight, L = CB.caseLatches(w, h), btns = root.querySelectorAll('.latch');
+    L.forEach((p, i) => { btns[i].style.left = (cv.offsetLeft + p.x - 30) + 'px'; btns[i].style.top = (cv.offsetTop + p.y - 30) + 'px'; });
+  };
+  place();
+  const draw = () => {
+    const c = UI.fitCanvas(cv); if (!c) return;
+    CB.drawCase(c.x, res.tier, c.w, c.h, { t: C.t, lift: C.lift, latch: C.latch, glow: C.glow, rar: C.rar, open: C.open, hint: C.stage === 'latch' });
+  };
+  function latch(i) {
+    if (C.stage !== 'latch' || C.want[i]) return;
+    C.want[i] = 1; Sfx.ui('equip');
+    const n = C.want[0] + C.want[1];
+    C.glowTo = n === 1 ? 0.4 : 0.85;
+    root.querySelectorAll('.latch')[i].classList.add('off');
+    if (n === 2) { C.stage = 'leak'; C.stepAt = C.t + 0.45; C.si = 0; root.querySelector('.co-hint').textContent = 'Something is in there'; }
+  }
+  // the lid lifts, the rifle rises, the stamp lands; quick=true for Skip
+  function reveal(quick) {
+    if (C.done) return; C.done = true;
+    C.rar = s.r; C.glow = 1; C.latch = [1, 1]; C.want = [1, 1]; C.lift = 1; C.opening = true; if (quick) C.open = 1;
+    root.style.removeProperty('--sc'); root.classList.add('open'); if (s.r >= 4) root.classList.add('legend');
+    Sfx.rarity(s.r);
+    const after = () => {
+      if (!root.isConnected) return;
+      root.classList.add('shown'); UI.paintIn(root.querySelector('.co-rise'), 'over');
+      const cr = root.querySelector('.co-cr');
+      if (cr) { const to = +cr.dataset.to; let k = 0; UI.anim((dt) => { if (!cr.isConnected) return false; k = Math.min(1, k + dt / 0.8); cr.textContent = fmtCr(to * easeOut(k)); return k < 1; }); }
+    };
+    if (quick) after(); else setTimeout(after, s.r >= 4 ? 900 : 380);
+  }
+  UI.anim((dt) => {
+    if (!cv.isConnected) return false;
+    C.t += dt;
+    if (C.stage === 'drop') { C.lift = Math.min(1, C.lift + dt / 0.45); if (C.lift >= 1) { C.stage = 'latch'; Sfx.ui('go'); root.classList.add('ready'); } }
+    for (let i = 0; i < 2; i++) C.latch[i] = approach(C.latch[i], C.want[i], dt / 0.14);
+    C.glow = approach(C.glow, C.glowTo, dt * 1.6);
+    if (C.stage === 'leak' && C.t >= C.stepAt) {
+      // step the colour up towards what is really inside, one rarity at a time, then open
+      if (C.si < steps.length - 1) { C.si++; C.rar = steps[C.si]; C.glow = 1.35; C.glowTo = 1; C.stepAt = C.t + 0.5; Sfx.ui('star'); root.style.setProperty('--sc', CB.RAR_GLOW[C.rar]); root.classList.remove('stepped'); void root.offsetWidth; root.classList.add('stepped'); }
+      else { C.stage = 'open'; reveal(false); }
+    }
+    if (C.opening) C.open = Math.min(1, C.open + dt / 0.45);
+    draw();
+    return true;
+  });
+  draw();
+};
+// Open every cache that is left, and lay out what came out of them all.
+UI.openAll = function (first) {
+  const d = Save.data, got = (first || []).slice();
+  let r; while ((r = Progress.openCache())) got.push(r);
+  const gunId = d.equipped, nNew = got.filter((x) => !x.dupe).length, cr = got.reduce((a, x) => a + (x.cr || 0), 0);
+  got.sort((a, b) => b.skin.r - a.skin.r);
+  Sfx.rarity(got.length ? got[0].skin.r : 0);
+  UI.overlay(`<div class="sheet tall openall"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${got.length} caches opened</div><h3>${nNew} new ${nNew === 1 ? 'skin' : 'skins'}${cr ? '  ·  +' + fmtCr(cr) + ' credits' : ''}</h3></div><button class="x" data-a="done">${ICON.cross}</button></div>
+    <div class="sh-body"><div class="oagrid">${got.map((x, i) => `<div class="oa r${x.skin.r} ${x.dupe ? 'dupe' : 'new'}" style="animation-delay:${Math.min(i, 20) * 0.06}s"><span class="oa-pic bed"><canvas data-gun="${gunId}" data-lazy ${uiCfgAttr(Object.assign({}, gunCfg(gunId), { skin: x.skin.id }))}></canvas></span><b>${esc(x.skin.name)}</b><i>${RAR[x.skin.r]}</i><em>${x.dupe ? '+' + fmtCr(x.cr) + ' cr' : 'New'}</em></div>`).join('')}</div>
+    <div class="cta"><button class="btn pri" data-a="done">Done</button></div></div></div>`, {
+    done() { UI.closeOverlay(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
+  });
 };
 
 // ---- the range ------------------------------------------------------------------------------

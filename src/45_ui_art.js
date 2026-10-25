@@ -151,13 +151,15 @@ const CASE_LOOK = {
   sealed: { body: ['#2d3138', '#1a1d22', '#0e1013'], trim: '#ffaa3c', metal: ['#e9edf2', '#9aa3ae', '#4d5560'], label: 'SEALED', labCol: '#ffb84e' },
   vault: { body: ['#8b95a2', '#5d6774', '#363d47'], trim: '#c58bff', metal: ['#f4f6f9', '#b4bcc6', '#5d6672'], label: 'VAULT', labCol: '#e0c4ff' },
 };
-const RAR_GLOW = ['#dfe6ee', '#5fd38a', '#6fb6ff', '#c58bff', '#ffb84a'];
+const RAR_GLOW = CB.RAR_GLOW = ['#dfe6ee', '#5fd38a', '#6fb6ff', '#c58bff', '#ffb84a'];
+// How wide a case can be drawn in a w x h box and still have its lid, handle and shadow inside it.
+function caseWidth(w, h) { return Math.max(10, Math.min(w * 0.86, (h * 0.86 - 4) / 0.74)); }
 function caseGrad(c, cols, y0, y1) { const g = c.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, cols[0]); g.addColorStop(0.5, cols[1]); g.addColorStop(1, cols[2]); return g; }
 CB.drawCase = function (c, tier, w, h, o) {
   o = o || {};
   const L = CASE_LOOK[tier] || CASE_LOOK.field, t = o.t || 0, open = clamp(o.open || 0, 0, 1), glow = clamp(o.glow || 0, 0, 1.5);
   const gc = RAR_GLOW[o.rar === undefined ? 0 : o.rar] || RAR_GLOW[0];
-  const cw = Math.min(w * 0.86, h * 1.75), bh = cw * 0.36, lh = cw * 0.15, dep = cw * 0.12;
+  const cw = caseWidth(w, h), bh = cw * 0.36, lh = cw * 0.15, dep = cw * 0.12;
   const drop = o.lift === undefined ? 0 : (1 - easeOut(o.lift)) * -h * 0.9;
   const cx = w / 2, yb = h * 0.86 + drop, x0 = cx - cw / 2, x1 = cx + cw / 2, ys = yb - bh; // ys: the seam between lid and body
   c.save();
@@ -247,8 +249,8 @@ CB.drawCase = function (c, tier, w, h, o) {
   c.restore();
 };
 // Where the two latches are on a case drawn by CB.drawCase in a w x h box (for the buttons over them).
-CB.caseLatches = function (w, h) { const cw = Math.min(w * 0.86, h * 1.75), bh = cw * 0.36, lh = cw * 0.15, cx = w / 2, ys = h * 0.86 - bh; return [{ x: cx - cw / 2 + cw * 0.22, y: ys - lh * 0.3 }, { x: cx + cw / 2 - cw * 0.22, y: ys - lh * 0.3 }]; };
-CB.caseTop = function (w, h) { const cw = Math.min(w * 0.86, h * 1.75), bh = cw * 0.36; return { y: h * 0.86 - bh, cw }; };
+CB.caseLatches = function (w, h) { const cw = caseWidth(w, h), bh = cw * 0.36, lh = cw * 0.15, cx = w / 2, ys = h * 0.86 - bh; return [{ x: cx - cw / 2 + cw * 0.22, y: ys - lh * 0.3 }, { x: cx + cw / 2 - cw * 0.22, y: ys - lh * 0.3 }]; };
+CB.caseTop = function (w, h) { const cw = caseWidth(w, h), bh = cw * 0.36; return { y: h * 0.86 - bh, cw }; };
 // A reticle tint: a crosshair in that colour over a small round view of a hillside.
 CB.drawTint = function (c, id, w, h) {
   const T = COS_TINT_BY_ID[id] || COS_TINTS[0], r = Math.min(w, h) / 2 - 1, cx = w / 2, cy = h / 2;

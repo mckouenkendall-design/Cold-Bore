@@ -239,7 +239,7 @@ UI.paintStill = function (cv, still, M, res, win) {
 // ---- full-screen moments ----
 // A takeover covers the screen; a tap anywhere (or its button) closes it and lets the next one in.
 UI.takeover = function (html, h, cls) {
-  UI.overlay(`<div class="takeover ${cls || ''}" data-a="close" data-quiet="1"><div class="tk-rays"></div>${html}</div>`, Object.assign({
+  UI.overlay(`<div class="takeover ${cls || ''}" data-a="close" data-quiet="1"><div class="tk-raybox"><div class="tk-rays"></div></div>${html}</div>`, Object.assign({
     close() { UI.closeOverlay(); const f = UI.afterTakeover; UI.afterTakeover = null; if (f) f(); },
   }, h || {}), 'tk');
 };
