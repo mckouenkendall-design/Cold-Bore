@@ -41,6 +41,7 @@ K.chimney = function (S, P, x, y, o) {
   } });
 };
 // A cable.  o.birds: how many small birds sit on it; o.layer; o.sway: false keeps it still.
+const kxWireFly = [], kxWireAt = [0, 0];
 K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
   o = o || {};
   const c = S.tone('#14161a', P), sg = sag || 1.5, birds = [], D = makeRng(Math.floor(x0 * 7 + y0 * 13 + x1 * 3) + 411);
@@ -50,9 +51,11 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
     ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.03, env.px * 0.8);
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
     if (birds.length && env.s > 5) { // birds: a body, a head and a tail, bobbing now and then
-      ctx.fillStyle = c; ctx.beginPath();
+      ctx.fillStyle = c; ctx.beginPath(); kxWireFly.length = 0;
       for (let i = 0; i < birds.length; i++) {
         const u = birds[i][0], bx = (1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * mx + u * u * x1, byy = (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * my + u * u * y1, f = birds[i][2];
+        // a loud shot: they burst off the wire and come back when it has been quiet a while
+        const fl = kxFlight(S, P.z, env.t, i * 7.3 + x0); if (fl) { if (kxFleeAt(fl, bx, byy, f, i * 3.1 + x0, kxWireAt)) kxWireFly.push(kxWireAt[0], kxWireAt[1], i); continue; }
         if (bx < env.x0 - 1 || bx > env.x1 + 1) continue;
         const bob = Math.sin(env.t * 0.9 + birds[i][1] * 30) > 0.93 ? 0.03 : 0;
         ctx.moveTo(bx + 0.11, byy + 0.09); ctx.ellipse(bx, byy + 0.09, 0.11, 0.075, 0, 0, TAU); ctx.moveTo(bx + f * 0.1 + 0.05, byy + 0.17 + bob); ctx.arc(bx + f * 0.1, byy + 0.17 + bob, 0.05, 0, TAU);
@@ -60,6 +63,7 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
         ctx.moveTo(bx + f * 0.14, byy + 0.18 + bob); ctx.lineTo(bx + f * 0.2, byy + 0.16 + bob); ctx.lineTo(bx + f * 0.14, byy + 0.15 + bob); ctx.closePath();
       }
       ctx.fill();
+      if (kxWireFly.length) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.05, env.px * 1.1); ctx.lineCap = 'round'; ctx.beginPath(); for (let i = 0; i < kxWireFly.length; i += 3) kxBirdPath(ctx, kxWireFly[i], kxWireFly[i + 1], 0.46, env.t, kxWireFly[i + 2], true); ctx.stroke(); ctx.lineCap = 'butt'; }
     }
   } });
 };
@@ -864,12 +868,23 @@ function stDetail(S, H, q) {
 
   // ---- pigeons on the cornices, by day ----
   if (S.pal.dark < 0.45 && !wet && birds.length) {
-    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB);
+    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB), fly = [];
+    // the ones in flight are drawn over the roofs (worked out below, with the ones sitting)
+    PB.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) {
+      if (!fly.length || env.s < 7) return;
+      ctx.strokeStyle = head; ctx.lineWidth = Math.max(0.06, env.px * 1.2); ctx.lineCap = 'round'; ctx.beginPath();
+      for (let i = 0; i < fly.length; i += 3) kxBirdPath(ctx, fly[i], fly[i + 1], 0.6, env.t, fly[i + 2], true);
+      ctx.stroke(); ctx.lineCap = 'butt';
+    } });
     PB.add({ x0: rowX0 - 1, x1: rowX1 + 1, layer: 0, draw(ctx, env) {
       if (env.s < 7) return;
       const t = env.t, st = [];
+      fly.length = 0;
       for (let i = 0; i < birds.length; i++) {
-        const b = birds[i]; if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
+        const b = birds[i];
+        // a loud shot sends them all off the cornices; they drift back once it has been quiet a while
+        const fl = kxFlight(S, PB.z, t, b[0] * 1.7 + i); if (fl) { if (kxFleeAt(fl, b[0], b[1], b[3], i + b[0], kxWireAt)) fly.push(kxWireAt[0], kxWireAt[1], i); continue; }
+        if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
         // every few seconds each one pecks, turns about, or gives a little hop
         const cyc = (t + b[2]) / 3.7, c = Math.floor(cyc), u = cyc - c, hk = kxH(c, b[2]), dir = hk > 0.5 ? b[3] : -b[3];
         const hop = hk > 0.82 && u < 0.2 ? Math.sin((u / 0.2) * Math.PI) * 0.12 : 0, peck = hk > 0.3 && hk < 0.7 && u > 0.4 && u < 0.6 ? Math.sin(((u - 0.4) / 0.2) * Math.PI) : 0;

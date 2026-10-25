@@ -292,9 +292,13 @@ function dkSeaDraw(ctx, env, S, dk, me) {
 function dkMirCol(S, P, hex) { return mix(S.tone(hex, P), S.tone(darken(S.pal.water, 0.25), P), 0.5); }
 // A gull, standing. About 0.4 m long: obviously a bird, and drawn behind the people.
 // w, g, b are its white, grey and beak colours. dir 1 faces right.
-function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep) {
+const dkGullAt = [0, 0];
+function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep, S, z) {
   const s = env.s;
   if (s < 3.5) return;
+  // a loud shot: the gull lifts off and wheels away, and comes back to the same spot later
+  const fl = S ? kxFlight(S, z, env.t, x * 3.7 + y) : null;
+  if (fl) { if (kxFleeAt(fl, x, y, -dir, x + y, dkGullAt)) { ctx.strokeStyle = w; ctx.lineWidth = Math.max(0.06, env.px * 1.3); ctx.lineCap = 'round'; ctx.beginPath(); kxBirdPath(ctx, dkGullAt[0], dkGullAt[1] + 0.2, 0.9, env.t * 0.7, x, true); ctx.stroke(); ctx.lineCap = 'butt'; } return; }
   if (s < 9) { R4(ctx, x - 0.17, y + 0.1, 0.34, 0.16, w); R4(ctx, x + dir * 0.08 - 0.06, y + 0.24, 0.12, 0.12, w); return; }
   const t = env.t, look = asleep ? 0 : (Math.sin(t * 0.43 + x * 3.1) > 0.55 ? -1 : 1) * dir, nod = asleep ? -0.04 : Math.sin(t * 2.1 + x) > 0.93 ? -0.03 : 0;
   ctx.strokeStyle = b; ctx.lineWidth = Math.max(0.018, env.px * 0.7); ctx.beginPath(); ctx.moveTo(x - 0.03, y); ctx.lineTo(x - 0.03, y + 0.1); ctx.moveTo(x + 0.04, y); ctx.lineTo(x + 0.04, y + 0.1); ctx.stroke();
@@ -1490,7 +1494,7 @@ SCN.docks = function (o) {
           if (h < 0.34) { R4(ctx, bx - 0.2, 0.12, 0.4, 0.06, rope); R4(ctx, bx - 0.2, 0.2, 0.4, 0.05, rope2); ctx.strokeStyle = rope; ctx.lineWidth = Math.max(0.05, px * 0.7); ctx.beginPath(); ctx.moveTo(bx + 0.2, 0.15); ctx.quadraticCurveTo(bx + 0.6, 0.2, bx + 0.85, 0); ctx.lineTo(bx + 0.9, -0.34); ctx.stroke(); }
           else if (h < 0.64) { for (let i = 0; i < 3; i++) { ctx.fillStyle = i % 2 ? rope2 : rope; ctx.beginPath(); ctx.ellipse(bx + 0.85, 0.06 + i * 0.055, 0.33 - i * 0.04, 0.05, 0, 0, TAU); ctx.fill(); } }
         }
-        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night);
+        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night, S, PQ.z);
       }
       dkFoam(ctx, env, xa, xb, wy, 5, foamQ);
     } });
@@ -1625,7 +1629,7 @@ SCN.docks = function (o) {
       R4(ctx, dx - 0.62, wy - 0.3, 0.42, 1.8, pc2); R4(ctx, dx + 0.24, wy - 0.3, 0.4, 1.55, pc2);
       R4(ctx, dx - 0.3, wy - 0.3, 0.6, 2.3, pc); R4(ctx, dx - 0.36, wy + 2.0, 0.72, 0.2, cap);
       if (s > 4) { R4(ctx, dx - 0.3, wy + 0.4, 0.14, 1.6, pcHi); R4(ctx, dx - 0.66, wy - 0.3, 1.32, 0.7, weedW); R4(ctx, dx - 0.66, wy + 0.92, 1.34, 0.17, ropeW); R4(ctx, dx - 0.66, wy + 0.98, 1.34, 0.035, ropeW2); }
-      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night, S, PW.z);
       dkFoam(ctx, env, dx - 0.8, dx + 0.8, wy, 13, foam);
     } });
   }
@@ -1665,7 +1669,7 @@ SCN.docks = function (o) {
       if (s > 6) { ctx.fillStyle = mc; ctx.fillRect(mx - 0.13, my - 2.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, my - 0.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, wy + 2.4, 0.26, 0.09); ctx.fillRect(mx + 1.36, my - 2.5, 0.12, 0.24);
         poly(ctx, [mx + 0.55, my - 1.25, mx + 0.75, my - 1.0, mx + 0.55, my - 0.75, mx + 0.35, my - 1.0], steel); }
       if (lit) dkGlow(ctx, mx, my - 2.0, 0.75, '255,240,200', 0.7); circ(ctx, mx, my - 2.0, 0.08, lit ? '#fff3c4' : mc);
-      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night, S, PN.z);
       ctx.restore();
     } });
     K.pennant(S, PN, mx, my, 1.7, o.flagCol || '#c0392b', { sway: (t) => lean(t) * (my - piv) });

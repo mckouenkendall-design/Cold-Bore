@@ -315,6 +315,42 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// ---- birds that take fright -------------------------------------------------------------
+// A loud shot reaches the birds sitting about the scene a moment after it is fired (sound
+// covers about 343 metres a second). They burst off their perches, climb away from the noise
+// and stay away for half a minute or so, then drift back in and settle. The view tells the
+// scene when a loud shot goes off (kxScareNow); whatever draws perched birds asks kxFlight
+// where each one is. Picture only: nothing in the game knows about them.
+function kxScareNow(S, t) {
+  const sc = S._scare;
+  if (sc && t < sc.until + 8) sc.until = Math.max(sc.until, t + 30);   // still away or coming back: they stay away longer
+  else S._scare = { t, until: t + 30 };
+}
+// For a bird sitting on a plane at distance z: null while it sits, else { u, k }: u from 0 on
+// the perch to 1 out of sight, k = 1 while it flees and -1 while it comes back in.
+function kxFlight(S, z, t, seed) {
+  const sc = S._scare; if (!sc) return null;
+  const lag = z / 343 + kxH(seed, 3) * 0.35, t0 = sc.t + lag; if (t < t0) return null;
+  const up = (t - t0) / 2.8; if (up < 1) return { u: up, k: 1 };
+  const back = sc.until + lag + kxH(seed, 7) * 14; if (t < back) return { u: 1, k: 1 };
+  const dn = (t - back) / 3.4; if (dn < 1) return { u: 1 - dn, k: -1 };
+  return null;
+}
+// A bird in flight, its wings beating (faster as it takes off), drawn as a stroke. Adds to the
+// current path: x, y where it is, w its wingspan in metres. The caller strokes once for all.
+function kxBirdPath(ctx, x, y, w, t, seed, fast) {
+  const fl = Math.sin(t * (fast ? 16 : 10) + seed * 9.1), h = w * 0.5;
+  ctx.moveTo(x - h, y + fl * h * 0.55); ctx.quadraticCurveTo(x - h * 0.45, y + h * 0.18 + fl * h * 0.2, x, y); ctx.quadraticCurveTo(x + h * 0.45, y + h * 0.18 + fl * h * 0.2, x + h, y + fl * h * 0.55);
+}
+// Where a frightened bird is now, from its perch (x, y), flying off the way it faces: up and
+// away, quick at first. Returns null once it is out of sight.
+function kxFleeAt(f, x, y, dir, seed, out) {
+  if (!f || f.u >= 0.999) return null;
+  const u = f.u, far = 9 + kxH(seed, 11) * 8, e = u * u * (3 - 2 * u) * 0.35 + u * 0.65;
+  out[0] = x + dir * far * e * (0.6 + 0.4 * u); out[1] = y + 0.15 + far * 0.75 * e * e + 0.5 * e;
+  return out;
+}
+
 // ---- reflections in water --------------------------------------------------------------
 // Whatever has already been drawn above a waterline (the far bank, a ship, the quay and its
 // lamps, the bridge, the sky) is copied once, turned over and laid under the line in thin
@@ -322,7 +358,7 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
 // mirrors the scene that actually stands over it. yW is the waterline and yN the nearest
 // height of this stretch of water (both on the plane being drawn), xa..xb how far it runs,
 // a how strong the reflection is, rough how much the ripples break it up. Picture only.
-const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null };
+const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null, y0: 1e9, y1: -1e9 };
 // The last finished picture of the world (kept by the view when a scene has water), so the
 // water can mirror things drawn after it: the quay, its lamps, the people and boats on it.
 // It is one frame old, which nobody can see.
@@ -335,11 +371,12 @@ function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed) {
   const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460)); if (depth < 6) return;
   if (!kxRefl.c || kxRefl.w < w || kxRefl.h < depth) { kxRefl.w = Math.max(kxRefl.w, w); kxRefl.h = Math.max(kxRefl.h, depth); if (!kxRefl.c) kxRefl.c = kxCanvas(kxRefl.w, kxRefl.h); else { kxRefl.c.width = kxRefl.w; kxRefl.c.height = kxRefl.h; } kxRefl.g = kxRefl.c.getContext('2d'); }
   const g = kxRefl.g; g.clearRect(0, 0, w, depth); g.drawImage(kxReflSource(ctx), X0, Yw - depth, w, depth, 0, 0, w, depth);
+  kxRefl.y0 = Math.min(kxRefl.y0, Yw - depth); kxRefl.y1 = Math.max(kxRefl.y1, Yw);   // the rows to keep for next frame
   const t = env.t, k = Math.abs(m.d) / Math.max(1e-6, env.s), sd = seed || 0;   // k: device pixels per CSS pixel
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   let d = Math.max(0, Math.floor(-Yw));
   while (d < depth) {
-    const hb = Math.max(2, Math.round((1.5 + d * 0.03) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
+    const hb = Math.max(2, Math.round((2 + d * 0.045) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
     const u = d / depth, wob = Math.sin(t * (1.3 + (d % 7) * 0.09) + d * 0.23 + sd) * (0.3 + d * 0.035) * rough * k;
     ctx.globalAlpha = a * Math.pow(1 - u, 0.8);
     ctx.drawImage(kxRefl.c, 0, sy, w, hb, X0 + wob, Yw + d, w, hb);

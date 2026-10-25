@@ -143,6 +143,10 @@ View.prototype.keepFrame = function (sim) {
   const S = sim.S; if (!S._water) return;
   const cv = this.ctx.canvas;
   if (!this._frame || this._frame.width !== cv.width || this._frame.height !== cv.height) { this._frame = kxCanvas(cv.width, cv.height); this._frameG = this._frame.getContext('2d'); }
-  this._frameG.globalCompositeOperation = 'copy'; this._frameG.drawImage(cv, 0, 0);
+  // only the rows the water asked for this frame (it will want much the same next frame)
+  const y0 = Math.max(0, Math.floor(kxRefl.y0) - 24), y1 = Math.min(cv.height, Math.ceil(kxRefl.y1) + 24);
+  kxRefl.y0 = 1e9; kxRefl.y1 = -1e9;
+  if (y1 <= y0) { kxRefl.src = null; return; }
+  this._frameG.clearRect(0, 0, cv.width, cv.height); this._frameG.drawImage(cv, 0, y0, cv.width, y1 - y0, 0, y0, cv.width, y1 - y0);
   kxRefl.src = this._frame; kxRefl.srcCv = cv;
 };

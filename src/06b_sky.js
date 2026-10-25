@@ -133,6 +133,9 @@ function skyKids(q, seed) {
 View.prototype.drawSky = function (sim, cam) {
   const V = this, ctx = V.ctx, S = sim.S, pal = S.pal, sky = skyStyle(S), t = V.rt;
   sky.windNow = sim.wind();
+  // a loud shot: the birds about the scene take fright when the sound reaches them
+  if (V._shotSim !== sim) { V._shotSim = sim; V._shotN = sim.stats.shots; }
+  else if (sim.stats.shots > V._shotN) { V._shotN = sim.stats.shots; if (!sim.st.quiet) kxScareNow(S, sim.sh.lastFire); }
   // tell the smoke and steam how they are lit this frame
   const air = SKY_AIR[S.time] || SKY_AIR.day, side = S.sky.sun[0] < 0 ? -1 : 1;
   kxAir.side = side; kxAir.lit = sky.wet ? mix(air[0], '#9aa4ae', 0.5) : air[0]; kxAir.shade = air[1]; kxAir.soft = pal.dark > 0.5; kxAir.key = S.time + S.weather + side;
