@@ -5,21 +5,28 @@
 const STAT_LABELS = [['reach', 'Reach'], ['flat', 'Flat shooting'], ['wind', 'Holds in wind'], ['steady', 'Steadiness'], ['exact', 'Accuracy'], ['calm', 'Low recoil'], ['rate', 'Rate of fire'], ['quiet', 'Quietness']];
 const ACTION_NAME = { bolt: 'Bolt action', semi: 'Semi-automatic', single: 'Single shot', charge: 'Coil, charges before firing' };
 
+// A rifle the shop has opened that you have not looked at yet.
+function uiGunNew(g) { const d = Save.data; return !d.guns[g.id] && !g.special && gateOpen(g) && !(d.seenGuns || {})[g.id]; }
 UI.armory = function () {
   const d = Save.data;
+  if (d.newArmory) { d.newArmory = false; Save.write(); }
+  let nNew = 0, nCan = 0;
   const cards = GUNS.map((g) => {
-    const own = !!d.guns[g.id], cfg = own ? gunCfg(g.id) : defaultConfig(g.id), st = buildStats(g.id, cfg), open = gateOpen(g);
+    const own = !!d.guns[g.id], cfg = own ? gunCfg(g.id) : defaultConfig(g.id), st = buildStats(g.id, cfg), open = gateOpen(g), fresh = uiGunNew(g), can = !own && !g.special && open && d.credits >= g.price;
+    if (fresh) nNew++; if (can) nCan++;
     let tag;
     if (own) tag = d.equipped === g.id ? '<span class="tag eq">In use</span>' : '<span class="tag own">Owned</span>';
     else if (g.special) tag = '<span class="tag lock">' + ICON.lock + ' Story</span>';
     else if (!open) tag = '<span class="tag lock">' + ICON.lock + ' Rank ' + gateRank(g).n + '</span>';
-    else tag = '<span class="tag buy ' + (d.credits >= g.price ? 'can' : '') + '">' + fmtCr(g.price) + ' cr</span>';
-    return `<button class="acard ${own ? 'own' : ''} ${d.equipped === g.id ? 'eq' : ''} ${!own && (g.special || !open) ? 'shut' : ''}" data-a="gun" data-id="${g.id}">
-      <span class="ac-pic plate"><canvas data-gun="${g.id}" data-lazy ${uiCfgAttr(cfg)}></canvas>${tag}</span>
+    else tag = '<span class="tag buy ' + (can ? 'can' : '') + '">' + (can ? ICON.check : '') + fmtCr(g.price) + ' cr</span>';
+    const mb = own && CB.Mastery ? CB.Mastery.badge(g.id) : '';
+    return `<button class="acard ${own ? 'own' : ''} ${d.equipped === g.id ? 'eq' : ''} ${!own && (g.special || !open) ? 'shut' : ''} ${fresh ? 'fresh' : ''} ${can ? 'can' : ''}" data-a="gun" data-id="${g.id}">
+      <span class="ac-pic plate"><canvas data-gun="${g.id}" data-lazy ${uiCfgAttr(cfg)}></canvas>${tag}${fresh ? '<em class="newtag">New</em>' : ''}${mb}</span>
       <span class="ac-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${ACTION_NAME[g.action].split(',')[0]}  ·  ${st.eff} m</i></span></button>`;
   }).join('');
+  const lead = nNew ? `<b>${nNew === 1 ? 'One rifle is' : nNew + ' rifles are'} new at Pip's.</b> ` : '';
   UI.render(UI.shell('<div class="hd"><div class="eyebrow">Pip\'s bench</div><h2>Armory</h2></div><button class="btn ghost sm gr-in" data-a="gunroom">' + ICON.room + '<span>Gun room</span></button>',
-    `<div class="scroll"><p class="dim lead">Sixteen rifles. Each one shoots differently: how steady it sits, how fast the bullet flies, how far it falls, how loud it is. Tap one to look closer and change its parts.</p><div class="alist">${cards}</div></div>`),
+    `<div class="scroll"><p class="dim lead">${lead}Sixteen rifles, each its own way to shoot: how steady it sits, how fast the bullet flies, how far it falls, how loud it is.${nCan ? ' A tick on the price means you can buy it now.' : ''} Tap one to look closer and change its parts.</p><div class="alist">${cards}</div></div>`),
     UI.shellHandlers({ gun(ds) { UI.backTo = null; UI.bench(ds.id); } }), 'is-armory');
 };
 
@@ -46,13 +53,25 @@ function statDeltas(a, b) {
 function uiSlotOptions(slot, g) { return slot === 'scope' ? SCOPES.filter((sc) => scopeFits(sc, g)) : PARTS.filter((p) => p.slot === slot && partFits(p, g)); }
 function uiScopeFacts(p) { return (p.zoom[0] === p.zoom[1] ? p.zoom[0] + 'x fixed' : p.zoom[0] + ' to ' + p.zoom[1] + 'x') + (p.turret ? '  ·  zero dial' : '') + (p.lrf ? '  ·  rangefinder' : '') + (p.nv ? '  ·  night vision' : '') + (p.smart ? '  ·  aim computer' : ''); }
 
+// The eight stat bars, each with its number out of 100. Given a second set (to), each bar shows
+// the change as a ghost: green for what it would gain, red for what it would lose.
+UI.statBarsHtml = function (bars, to) {
+  return STAT_LABELS.map(([k, label]) => {
+    const a = Math.round(bars[k] * 100);
+    if (!to) return `<div class="sbar"><span>${label}<em>${a}</em></span><i><i style="width:${a}%"></i></i></div>`;
+    const b = Math.round(to[k] * 100), lo = Math.min(a, b), dv = b - a;
+    return `<div class="sbar ${dv > 0 ? 'up' : dv < 0 ? 'down' : ''}"><span>${label}<em>${dv ? a + ' &rarr; ' + b : a}</em></span><i><i style="width:${lo}%"></i>${dv ? `<i class="gh ${dv > 0 ? 'up' : 'down'}" style="left:${lo}%;width:${Math.abs(dv)}%"></i>` : ''}</i></div>`;
+  }).join('');
+};
+
 // ---- the workbench ---------------------------------------------------------------------------
 // The rifle on the left with its numbers and the one button that matters; on the right a tile for
 // every slot, each showing a side view of what is fitted there.
 UI.bench = function (gunId) {
   const d = Save.data, g = GUN_BY_ID[gunId], own = !!d.guns[gunId], cfg = own ? gunCfg(gunId) : defaultConfig(gunId);
   const st = buildStats(gunId, cfg), bars = statBars(st), rank = Progress.rankNow().n, cfgA = uiCfgAttr(cfg);
-  const barsHtml = STAT_LABELS.map(([k, label]) => `<div class="sbar"><span>${label}</span><i><i style="width:${Math.round(bars[k] * 100)}%"></i></i></div>`).join('');
+  if (gateOpen(g) && !(d.seenGuns || {})[gunId]) { if (!d.seenGuns) d.seenGuns = {}; d.seenGuns[gunId] = 1; Save.write(); }
+  const barsHtml = UI.statBarsHtml(bars);
   const facts = `<div class="facts"><div><b>${Math.round(st.v0)}</b><i>m/s at the muzzle</i></div><div><b>${st.mag}</b><i>${st.mag === 1 ? 'round' : 'rounds'}</i></div><div><b>${fmt(st.cycle, 1)} s</b><i>between shots</i></div><div><b>${fmt(st.zoomMin, 0)}-${fmt(st.zoomMax, 0)}x</b><i>zoom</i></div><div><b>${st.silent ? 'Silent' : st.quiet ? 'Quiet' : 'Loud'}</b><i>${st.silent ? 'nobody hears it' : st.quiet ? 'bullet crack only' : 'heard to ' + Math.round(st.noise) + ' m'}</i></div><div><b>${st.pen >= 3 ? 'Walls' : st.pen >= 1.4 ? 'Thin cover' : st.pen >= 0.2 ? 'Glass' : 'Nothing'}</b><i>${st.pen >= 3 ? 'goes through one' : st.pen >= 1.4 ? 'and glass, cleanly' : st.pen >= 1 ? 'goes through cleanly' : st.pen >= 0.2 ? 'through, knocked off line' : 'glass stops it'}</i></div></div>`;
   let action;
   if (own) action = d.equipped === gunId ? '<div class="inuse">' + ICON.check + ' This is the rifle you carry</div>' : '<button class="btn pri wide" data-a="equip" data-snd="equip">Carry this rifle</button>';
@@ -87,7 +106,7 @@ UI.bench = function (gunId) {
     </div></div>`, {
     back() { if (UI.backTo) { const f = UI.backTo; UI.backTo = null; f(); } else { UI.tab = 'armory'; UI.hub(); } },
     equip() { d.equipped = gunId; Save.write(); UI.keepScroll(); UI.bench(gunId); UI.toast(g.name + ' is now your rifle.'); },
-    buy() { const err = Progress.buy('gun', gunId); if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; } d.equipped = gunId; Save.write(); UI.toast('Bought: ' + g.name, 'good'); UI.bench(gunId); },
+    buy() { const err = Progress.buy('gun', gunId); if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; } d.equipped = gunId; Save.write(); UI.bench(gunId); UI.unbox(gunId, 'Bought from Pip', true); },
     slot(ds) { if (ds.slot === 'skin') UI.skinPicker(gunId); else UI.partPicker(gunId, ds.slot); },
     dope() { UI.dope(st); },
   }, 'is-bench');
@@ -102,28 +121,7 @@ UI.partPicker = function (gunId, slot) {
   const opts = uiSlotOptions(slot, g);
   if (opts.length <= 1) { UI.toast('Nothing else fits here on this rifle.'); return; }
   const st0 = buildStats(gunId, cfg), base = statBars(st0), cfgA = uiCfgAttr(cfg);
-  // what the eight bars do not show: magazine size, reload time, breath, how the rifle handles
-  const facts = (a, b) => {
-    const o = [], dm = b.mag - a.mag, dr = b.reload - a.reload, db = b.breath - a.breath, dh = b.handling - a.handling;
-    if (dm) o.push([(dm > 0 ? '+' : '') + dm + ' rounds', dm > 0]);
-    if (Math.abs(dr) >= 0.05) o.push(['Reload ' + (dr > 0 ? '+' : '') + fmt(dr, 1) + ' s', dr < 0]);
-    const dc = b.cycle - a.cycle; // the rate bar cannot show this for the slowest rifles, so say it in seconds
-    if (Math.abs(dc) >= 0.04 && Math.abs(statBars(b).rate - statBars(a).rate) < 0.02) o.push(['Next shot ' + (dc > 0 ? '+' : '') + fmt(dc, 2) + ' s', dc < 0]);
-    if (Math.abs(db) >= 0.1) o.push(['Hold breath ' + (db > 0 ? '+' : '') + fmt(db, 1) + ' s', db > 0]);
-    if (Math.abs(dh) >= 0.03) o.push([dh > 0 ? 'Settles faster' : 'Settles slower', dh > 0]);
-    if (Math.abs(b.pan - a.pan) >= 0.02) o.push([b.pan < a.pan ? 'Slower to swing' : 'Quicker to swing', b.pan > a.pan]);
-    if (b.jerk < a.jerk - 0.005) o.push(['Cleaner trigger pull', true]); else if (b.jerk > a.jerk + 0.005) o.push(['Rougher trigger pull', false]);
-    if (b.tracer !== a.tracer) o.push([b.tracer ? 'You see the bullet fly' : 'No glowing bullet', b.tracer]);
-    // what it gets through: glass, cover, walls, people, body armour
-    const pa = uiPenStep(a.pen), pb = uiPenStep(b.pen);
-    if (pb > pa) o.push([UI_PEN_UP[pb], true]); else if (pb < pa) o.push([UI_PEN_DOWN[pa], false]);
-    if ((a.pen >= 1.2) !== (b.pen >= 1.2)) o.push([b.pen >= 1.2 ? 'Goes on through people' : 'Stays in the body', null]);
-    if ((a.pen >= 0.5) !== (b.pen >= 0.5)) o.push([b.pen >= 0.5 ? 'Beats body armour' : 'Body armour stops it', b.pen >= 0.5]);
-    if (a.silent && !b.silent) o.push(['No longer silent', false]); else if (!a.silent && b.silent) o.push(['Silent', true]);
-    if (!a.quiet && !b.quiet && Math.abs(b.noise - a.noise) >= 30) o.push(['Heard to ' + fmtCr(Math.round(b.noise / 10) * 10) + ' m', b.noise < a.noise]); // how far away the shot causes panic
-    if (b.eff !== a.eff) o.push(['Reach ' + (b.eff > a.eff ? '+' : '') + (b.eff - a.eff) + ' m', b.eff > a.eff]);
-    return o.map((x) => `<span class="dchip ${x[1] === null ? 'n' : x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
-  };
+  const facts = uiPartFacts;
   const rows = opts.map((p) => {
     const own = isScope ? ownsScope(p.id) : ownsPart(p.id), cur = (isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === p.id, locked = !own && !gateOpen(p);
     const c2 = Object.assign({}, cfg); c2[slot] = p.id;
@@ -136,7 +134,7 @@ UI.partPicker = function (gunId, slot) {
     if (cur) btn = '<span class="st fitted">Fitted</span>';
     else if (own) btn = '<span class="st fit">Owned  ·  fit</span>';
     else if (locked) btn = '<span class="st lock">' + ICON.lock + ' Rank ' + gateRank(p).n + '</span>';
-    else btn = '<span class="st buy ' + (d.credits >= p.price ? 'can' : '') + '">' + (d.credits >= p.price ? 'Buy  ·  ' : '') + fmtCr(p.price) + ' cr</span>';
+    else btn = '<span class="st buy ' + (d.credits >= p.price ? 'can' : '') + '">' + (d.credits >= p.price ? 'Try  ·  ' : '') + fmtCr(p.price) + ' cr</span>';
     return `<button class="prow ${cur ? 'on' : ''} ${locked ? 'locked' : ''} ${isScope ? 'scope' : ''}" data-a="pick" data-id="${p.id}">
       <span class="pr-pic plate"><canvas data-lazy data-part-slot="${slot}" data-part-id="${p.id}" data-gun="${gunId}" ${cfgA} ${locked ? 'data-dim="0.85"' : ''}></canvas></span>
       <span class="pr-b"><span class="pr-t"><b>${esc(p.name)}</b>${btn}</span><span class="pr-d">${esc(p.desc)}</span><span class="chipsrow">${chips || (cur ? '<span class="dchip">On the rifle now</span>' : '')}</span></span>
@@ -144,17 +142,75 @@ UI.partPicker = function (gunId, slot) {
     </button>`;
   }).join('');
   const title = (SLOTS.find((s) => s.id === slot) || {}).name;
-  UI.overlay(`<div class="sheet tall picker"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${esc(g.name)}</div><h3>${esc(title)}</h3></div><div class="cr"><b>${fmtCr(d.credits)}</b><small>credits</small></div><button class="x" data-a="close">${ICON.cross}</button></div><div class="sh-body"><div class="pgrid ${isScope ? 'scopes' : ''}">${rows}</div></div></div>`, {
+  UI.overlay(`<div class="sheet tall picker"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${esc(g.name)}  ·  try one on before you buy it</div><h3>${esc(title)}</h3></div><div class="cr"><b>${fmtCr(d.credits)}</b><small>credits</small></div><button class="x" data-a="close">${ICON.cross}</button></div><div class="sh-body"><div class="pgrid ${isScope ? 'scopes' : ''}">${rows}</div></div></div>`, {
     close() { UI.closeOverlay(); },
     pick(ds) {
-      const id = ds.id, p = isScope ? SCOPE_BY_ID[id] : PART_BY_ID[id], own = isScope ? ownsScope(id) : ownsPart(id);
+      const id = ds.id, own = isScope ? ownsScope(id) : ownsPart(id);
       if ((isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === id) return;
-      if (!own) { const err = Progress.buy(isScope ? 'scope' : 'part', id); if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; } Sfx.ui('buy'); UI.toast('Bought: ' + p.name, 'good'); } else Sfx.ui('equip');
+      if (!own) { const b = UI.over.querySelector('.sh-body'); UI._pickScroll = b ? b.scrollTop : 0; UI.partPreview(gunId, slot, id); return; }
+      Sfx.ui('equip');
       cfg[slot] = id; d.guns[gunId].cfg = cfg; Save.write();
       UI.closeOverlay(); UI.keepScroll(); UI.bench(gunId);
     },
   });
+  if (UI._pickScroll) { const b = UI.over.querySelector('.sh-body'); if (b) b.scrollTop = UI._pickScroll; UI._pickScroll = 0; }
 };
+// A part you do not own, tried on the rifle: the rifle wearing it, every bar with its change shown
+// as a ghost, what else it changes, and only then the price and a button to buy it.
+UI.partPreview = function (gunId, slot, id) {
+  const d = Save.data, g = GUN_BY_ID[gunId], cfg = gunCfg(gunId), isScope = slot === 'scope', p = isScope ? SCOPE_BY_ID[id] : PART_BY_ID[id];
+  const c2 = Object.assign({}, cfg); c2[slot] = id;
+  const st0 = buildStats(gunId, cfg), st2 = buildStats(gunId, c2), b0 = statBars(st0), b2 = statBars(st2);
+  const locked = !gateOpen(p), can = !locked && d.credits >= p.price, title = (SLOTS.find((s) => s.id === slot) || {}).name;
+  const note = isScope ? uiScopeFacts(p) : uiFitNote(p, g);
+  let act;
+  if (locked) act = `<div class="lockmsg">${ICON.lock} Needs rank ${gateRank(p).n} (${esc(gateRank(p).name)}).</div>`;
+  else act = `<button class="btn pri wide ${can ? '' : 'off'}" data-a="buy" data-snd="buy">${can ? 'Buy and fit  ·  ' + fmtCr(p.price) + ' cr' : 'Not enough credits: ' + fmtCr(p.price - d.credits) + ' short'}</button>`;
+  UI.overlay(`<div class="sheet tall picker preview"><div class="sh-head"><button class="ib" data-a="back" data-snd="back" aria-label="Back to the list">${ICON.back}</button><div class="sh-t"><div class="eyebrow">${esc(g.name)}  ·  trying a ${esc(title.toLowerCase())}</div><h3>${esc(p.name)}</h3></div><div class="cr"><b>${fmtCr(d.credits)}</b><small>credits</small></div></div>
+    <div class="sh-body split">
+      <div class="side">
+        <div class="stage plate"><canvas data-gun="${gunId}" data-live="1" ${uiCfgAttr(c2)}></canvas><span class="pv-tag">Trying it on</span></div>
+        <div class="pv-part"><span class="pv-pic plate"><canvas data-part-slot="${slot}" data-part-id="${id}" data-gun="${gunId}" ${uiCfgAttr(c2)}></canvas></span><span class="pv-t">${note ? '<i>' + esc(note) + '</i>' : ''}<b>${fmtCr(p.price)} credits</b></span>${isScope ? `<canvas class="glass" data-glass="${id}" data-gun="${gunId}" ${uiCfgAttr(c2)}></canvas>` : ''}</div>
+        <div class="cta col">${act}<button class="btn ghost wide" data-a="back" data-snd="back">Back to the list</button></div>
+      </div>
+      <div class="main scroll">
+        <p class="pv-d">${esc(p.desc)}</p>
+        <div class="bars pv-bars">${UI.statBarsHtml(b0, b2)}</div>
+        <div class="chipsrow pv-chips">${uiPartFacts(st0, st2) || '<span class="dchip">No other change</span>'}</div>
+      </div>
+    </div></div>`, {
+    back() { UI.partPicker(gunId, slot); },
+    buy() {
+      const err = Progress.buy(isScope ? 'scope' : 'part', id); if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; }
+      const c = gunCfg(gunId); c[slot] = id; d.guns[gunId].cfg = c; Save.write();
+      UI.toast('Bought and fitted: ' + p.name, 'good');
+      UI.closeOverlay(); UI.keepScroll(); UI.bench(gunId);
+    },
+  });
+};
+// What the eight bars do not show: magazine size, reload time, breath, how the rifle handles,
+// what it gets through, how far it is heard. As chips, green for better and red for worse.
+function uiPartFacts(a, b) {
+  const o = [], dm = b.mag - a.mag, dr = b.reload - a.reload, db = b.breath - a.breath, dh = b.handling - a.handling;
+  if (dm) o.push([(dm > 0 ? '+' : '') + dm + ' rounds', dm > 0]);
+  if (Math.abs(dr) >= 0.05) o.push(['Reload ' + (dr > 0 ? '+' : '') + fmt(dr, 1) + ' s', dr < 0]);
+  const dc = b.cycle - a.cycle; // the rate bar cannot show this for the slowest rifles, so say it in seconds
+  if (Math.abs(dc) >= 0.04 && Math.abs(statBars(b).rate - statBars(a).rate) < 0.02) o.push(['Next shot ' + (dc > 0 ? '+' : '') + fmt(dc, 2) + ' s', dc < 0]);
+  if (Math.abs(db) >= 0.1) o.push(['Hold breath ' + (db > 0 ? '+' : '') + fmt(db, 1) + ' s', db > 0]);
+  if (Math.abs(dh) >= 0.03) o.push([dh > 0 ? 'Settles faster' : 'Settles slower', dh > 0]);
+  if (Math.abs(b.pan - a.pan) >= 0.02) o.push([b.pan < a.pan ? 'Slower to swing' : 'Quicker to swing', b.pan > a.pan]);
+  if (b.jerk < a.jerk - 0.005) o.push(['Cleaner trigger pull', true]); else if (b.jerk > a.jerk + 0.005) o.push(['Rougher trigger pull', false]);
+  if (b.tracer !== a.tracer) o.push([b.tracer ? 'You see the bullet fly' : 'No glowing bullet', b.tracer]);
+  // what it gets through: glass, cover, walls, people, body armour
+  const pa = uiPenStep(a.pen), pb = uiPenStep(b.pen);
+  if (pb > pa) o.push([UI_PEN_UP[pb], true]); else if (pb < pa) o.push([UI_PEN_DOWN[pa], false]);
+  if ((a.pen >= 1.2) !== (b.pen >= 1.2)) o.push([b.pen >= 1.2 ? 'Goes on through people' : 'Stays in the body', null]);
+  if ((a.pen >= 0.5) !== (b.pen >= 0.5)) o.push([b.pen >= 0.5 ? 'Beats body armour' : 'Body armour stops it', b.pen >= 0.5]);
+  if (a.silent && !b.silent) o.push(['No longer silent', false]); else if (!a.silent && b.silent) o.push(['Silent', true]);
+  if (!a.quiet && !b.quiet && Math.abs(b.noise - a.noise) >= 30) o.push(['Heard to ' + fmtCr(Math.round(b.noise / 10) * 10) + ' m', b.noise < a.noise]); // how far away the shot causes panic
+  if (b.eff !== a.eff) o.push(['Reach ' + (b.eff > a.eff ? '+' : '') + (b.eff - a.eff) + ' m', b.eff > a.eff]);
+  return o.map((x) => `<span class="dchip ${x[1] === null ? 'n' : x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
+}
 
 // ---- skins -------------------------------------------------------------------------------------
 // Six shelves: the five rarities that come out of caches, and the trophies that are earned.

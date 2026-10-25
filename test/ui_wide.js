@@ -302,11 +302,18 @@ function richSaveInPage() {
       await tapSel('.acard[data-id="corvid"]'); await wait(400);
       await tapSel('[data-a="buy"]'); await wait(400);
       ok(await ev(() => !!CB.Save.data.guns.corvid && CB.Save.data.credits === 30000 - 11500 && CB.Save.data.equipped === 'corvid'), 'buying a rifle spends the credits and puts it in your hands');
+      // a new rifle comes out of its case first (on purpose: the unboxing is new)
+      await look('68_unbox', '#overlay .takeover .btn[data-a="close"]', 1200);
+      await tapSel('#overlay .takeover .btn[data-a="close"]'); await wait(300);
       await tapSel('.slot[data-slot="muzzle"]'); await wait(400);
       ok(await page.locator('#overlay .prow').count() >= 4, 'tapping the muzzle tile opens its part cards');
       const c0 = await ev(() => CB.Save.data.credits);
+      // tapping a part you do not own tries it on the rifle first; nothing is bought until Buy (on purpose: it used to buy at once)
       await tapSel('#overlay .prow[data-id="mz_suph"]'); await wait(450);
-      ok(await ev((c) => CB.Save.data.parts.mz_suph === 1 && CB.Save.data.guns.corvid.cfg.muzzle === 'mz_suph' && CB.Save.data.credits === c - 3600, c0), 'tapping a part you do not own buys it and fits it');
+      ok(await ev((c) => !CB.Save.data.parts.mz_suph && CB.Save.data.credits === c && !!document.querySelector('#overlay .preview .gh'), c0), 'tapping a part you do not own shows it on the rifle with the changes, without buying it');
+      await look('69_part_preview', '#overlay [data-a="buy"]', 300);
+      await tapSel('#overlay [data-a="buy"]'); await wait(450);
+      ok(await ev((c) => CB.Save.data.parts.mz_suph === 1 && CB.Save.data.guns.corvid.cfg.muzzle === 'mz_suph' && CB.Save.data.credits === c - 3600, c0), 'Buy in the preview buys the part and fits it');
       ok(await ev(() => { const c = document.querySelector('.slot[data-slot="muzzle"] canvas'); return c && c.dataset.partId === 'mz_suph' && c.width > 100; }), 'the muzzle tile now shows a picture of the new part');
       await tapSel('.slot[data-slot="muzzle"]'); await wait(350);
       await tapSel('#overlay .prow[data-id="mz_supl"]'); await wait(450);

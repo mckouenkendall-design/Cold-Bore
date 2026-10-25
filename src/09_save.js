@@ -62,7 +62,7 @@ Save.migrate = function (d) {
     d.cos = d.cos || { cards: { plain: 1 }, card: 'plain', tints: { black: 1 }, tint: 'black' };
     if (typeof rankReward === 'function') for (let r = 2; r <= n; r++) { const w = rankReward(r, 0); if (w && (w.k === 'card' || w.k === 'tint')) d.cos[w.k === 'card' ? 'cards' : 'tints'][w.id] = 1; }
   }
-  if (!d.seenGuns) { d.seenGuns = {}; for (const id in (d.guns || {})) d.seenGuns[id] = 1; }
+  if (!d.seenGuns) { d.seenGuns = {}; GUNS.forEach((g) => { if (d.guns && d.guns[g.id] || (d.xp || 0) >= gateRank(g).xp) d.seenGuns[g.id] = 1; }); }
   // older saves kept only the last way each choice went: that one counts as seen
   if (!d.outcomes) { d.outcomes = {}; for (const id in (d.missions || {})) { const o = d.missions[id].outcome; if (o) { d.outcomes[id] = {}; d.outcomes[id][o] = 1; } } }
   if (!d.endings) { d.endings = {}; if (d.seen && d.seen.ending && typeof epilogue === 'function') d.endings[epilogue(d.flags || {}).title] = 1; }

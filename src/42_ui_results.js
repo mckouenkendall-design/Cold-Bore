@@ -270,7 +270,7 @@ UI.rankUp = function (pay) {
     <div class="tk-foot">Tap to continue</div>`, null, 'rankup');
 };
 // A new rifle out of its case: it rises into the light, with what makes it different.
-UI.unbox = function (gunId, sub) {
+UI.unbox = function (gunId, sub, onBench) {
   const d = Save.data, g = GUN_BY_ID[gunId]; if (!g) return;
   const cfg = gunCfg(gunId), st = buildStats(gunId, cfg), bars = statBars(st);
   d.seenGuns[gunId] = 1; Save.write();
@@ -283,7 +283,7 @@ UI.unbox = function (gunId, sub) {
         <h2>${esc(g.name)}</h2>
         <p class="ub-sub">${esc(g.calName)}  ·  ${ACTION_NAME[g.action].split(',')[0]}  ·  good to ${st.eff} m</p>
         <div class="bars ub-bars">${best.map(([k, label]) => `<div class="sbar"><span>${label}<em>${Math.round(bars[k] * 100)}</em></span><i><i style="width:${Math.round(bars[k] * 100)}%"></i></i></div>`).join('')}</div>
-        <div class="cta two"><button class="btn ghost" data-a="bench">Fit parts</button><button class="btn pri" data-a="close" data-snd="go">${d.equipped === gunId ? 'Carry it' : 'Continue'}</button></div>
+        <div class="cta two">${onBench ? `<p class="ub-note">${d.equipped === gunId ? 'It is the rifle you carry now.' : ''} Its parts are on the bench.</p><button class="btn pri" data-a="close" data-snd="go">Continue</button>` : `<button class="btn ghost" data-a="bench">Fit parts</button><button class="btn pri" data-a="close" data-snd="go">Continue</button>`}</div>
       </div></div>`, {
     bench() { UI.closeOverlay(); UI.afterTakeover = null; UI.payStop(); UI.bench(gunId); },
   }, 'unbox');
