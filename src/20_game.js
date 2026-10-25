@@ -75,14 +75,20 @@ Game.buildHud = function () {
   h.pills = mk('h-pills');
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
+  // The read-outs. HOLD is the number the player acts on, so it is the big one. ZERO only shows for
+  // a scope with a dial (anything else is fixed at 100 m and needs no box). The zoom is on the slider.
   h.strip = mk('h-strip');
   h.sRange = mk('cell cell-range', '<i>RANGE</i><b>--</b>', h.strip);
-  h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
-  h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
+  h.sWind = mk('cell cell-wind', '<i>WIND M/S</i><b>--</b>', h.strip);
+  h.sHold = mk('cell cell-hold', '<i>HOLD <em>MILS</em></i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
-  h.sZoom = mk('cell', '<i>ZOOM</i><b>3.0x</b>', h.strip);
   h.msg = mk('h-msg');
-  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zk"></div></div><span class="zl">ZOOM</span>');
+  // radio lines from the people in the story, as a subtitle across the lower third (sideways only)
+  h.sub = mk('h-sub');
+  // what the last round did, when the kill camera does not show it: "HEADSHOT 412 m", "MISS 0.6 mil high"
+  h.call = mk('h-call', '<b></b><span></span>');
+  // zoom slider: ticks at whole steps of the scope's power, and a handle that shows the zoom
+  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zticks"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
   h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
@@ -100,6 +106,7 @@ Game.placeHud = function () {
   if (!h.top) return;
   const P = (e, o) => { for (const k in o) e.style[k] = typeof o[k] === 'number' ? o[k] + 'px' : o[k]; };
   if (G.mode === 'portrait') {
+    document.body.classList.remove('sub-top');
     const sb = V.cy + V.R; // bottom of the scope
     const small = Hh < 720;
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
@@ -108,7 +115,7 @@ Game.placeHud = function () {
     const top = small && G.coach;
     P(h.pills, { left: 0, right: 0, top: top ? G.safe.t + 96 : V.cy - V.R + 10, width: 'auto' });
     P(h.coach, top ? { left: 58, right: 8, top: G.safe.t + 6, width: 'auto', bottom: 'auto' } : { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
-    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 64), width: 'auto', bottom: 'auto' });
+    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 24 + (h.strip.offsetHeight || 40)), width: 'auto', bottom: 'auto' });
     document.body.classList.toggle('coach-top', !!top);
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
@@ -151,7 +158,19 @@ Game.placeHud = function () {
     P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: pt });
     V.lrfY = pt + 36; // the rangefinder's number in the glass goes just under the pills, clear of the objective and the coach
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
+    // The subtitle sits in the lower third, between whatever is on the left (MARK, or the zoom
+    // slider) and the HOLD BREATH button, just above the read-outs.
+    // On a narrow phone there is not room enough down there for two lines, so the subtitle takes the
+    // objective line's place at the top instead (body.sub-top hides the objective while one shows).
+    const stripTop = Hh - sb - (h.strip.offsetHeight || 46);
+    const subL = (h.mark.style.display === 'none' || !G.touch ? sl : sl + rl) + 12, subR = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
+    G.subTop = W - subL - subR < 320;
+    if (G.subTop) P(h.sub, { left: L + 62, right: Rt + 66, top: sf.t + (G.coach ? 130 : 4), bottom: 'auto', width: 'auto' });
+    else P(h.sub, { left: subL, right: subR, bottom: Hh - stripTop + 10, width: 'auto', top: 'auto' });
+    document.body.classList.toggle('sub-top', G.subTop);
   }
+  // the callout for a round sits just right of the crosshair and a little above, off the target and off the drop marks below
+  P(h.call, { left: V.cx + 58, top: V.cy - 56, width: 'auto', right: 'auto', bottom: 'auto' });
 };
 
 Game.updateHud = function (dt) {
@@ -163,19 +182,20 @@ Game.updateHud = function (dt) {
   h.mark.classList.toggle('on', !!mark); set(h.mark.lastChild, mark ? Math.round(mark.d) + ' m' : '');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
-  let hold = '--';
+  let hold = '<span class="hu">--</span>';
   if ((A !== 'veteran' || st.scope.smart) && V.hold && V.hold.ok && r && r.d) {
     const up = V.hold.up, rt = V.hold.right;
     const us = Math.abs(up) < 0.15 ? 'dead on' : (up > 0 ? '&uarr;' : '&darr;') + fmt(Math.abs(up), 1);
-    const ws = Math.abs(rt) < 0.15 ? '' : ' ' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
-    hold = us + ws;
-  } else if (V.hold && !V.hold.ok) hold = 'out of reach';
+    const ws = Math.abs(rt) < 0.15 ? '' : (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
+    hold = '<span class="hu">' + us + '</span>' + (ws ? '<span class="hw">' + ws + '</span>' : '');
+  } else if (V.hold && !V.hold.ok) hold = '<span class="hu far">out of reach</span>';
   set(h.sHold.lastChild, hold);
   set(h.sZero.querySelector('b'), st.scope.turret ? String(sh.zeroR) : sh.zeroR + ' m');
-  set(h.sZoom.lastChild, fmt(sh.zoom, 1) + 'x');
-  // zoom slider
+  // zoom slider: the handle carries the zoom it is set to
   const zu = st.zoomMax > st.zoomMin ? (Math.log(sh.zoomT / st.zoomMin) / Math.log(st.zoomMax / st.zoomMin)) : 0;
-  h.zoom.querySelector('.zk').style.bottom = (zu * 100) + '%'; h.zoom.querySelector('.zf').style.height = (zu * 100) + '%';
+  const zk = h.zk || (h.zk = h.zoom.querySelector('.zk')), zf = h.zf || (h.zf = h.zoom.querySelector('.zf'));
+  const zs = (zu * 100).toFixed(2) + '%'; if (zk._b !== zs) { zk._b = zs; zk.style.bottom = zs; zf.style.height = zs; }
+  set(zk.firstChild, Math.abs(sh.zoomT - Math.round(sh.zoomT)) < 0.05 ? String(Math.round(sh.zoomT)) : fmt(sh.zoomT, 1));
   // breath ring
   const fg = h.breath.querySelector('.fg'), frac = clamp(sh.breath / st.breath, 0, 1);
   fg.style.strokeDashoffset = String(289 * (1 - frac));
@@ -196,11 +216,12 @@ Game.updateHud = function (dt) {
   h.alarm.classList.toggle('show', sim.alarmT !== null);
   h.ff.classList.toggle('on', !!G.ffOn); h.ff.classList.toggle('off', !G.canFF());
   document.body.classList.toggle('ffwd', !!G.ffOn);
+  const subOn = h.sub.children.length > 0; if (G._subOn !== subOn) { G._subOn = subOn; document.body.classList.toggle('sub-on', subOn); }
   const R = sim.rules;
   if (R.time) { const left = R.time - sim.t; set(h.timer, fmtTime(left)); h.timer.classList.toggle('low', left < 15); h.timer.style.display = ''; } else if (sim.clock) { set(h.timer, sim.clock(sim)); h.timer.style.display = ''; } else h.timer.style.display = 'none';
   // radio messages fade out
   const now = sim.t;
-  for (let i = h.msg.children.length - 1; i >= 0; i--) { const c = h.msg.children[i]; if (now > c._until) c.classList.add('out'); if (now > c._until + 0.6) h.msg.removeChild(c); }
+  [h.msg, h.sub].forEach((box) => { for (let i = box.children.length - 1; i >= 0; i--) { const c = box.children[i]; if (now > c._until) c.classList.add('out'); if (now > c._until + 0.6) box.removeChild(c); } });
   if (G.coach) G.coachHud(set);
 };
 // The coach's card, and a glow on whichever button it is asking for.
@@ -221,10 +242,37 @@ Game.pushMsg = function (who, text, dur) {
   const G = Game, h = G.hud;
   const hintMsg = who === 'hint';
   if (hintMsg) { for (let i = h.msg.children.length - 1; i >= 0; i--) if (h.msg.children[i].classList.contains('hintbox')) h.msg.removeChild(h.msg.children[i]); const c = el('div', 'hintbox', text); c._until = G.sim.t + (dur || 9); h.msg.insertBefore(c, h.msg.firstChild); while (h.msg.children.length > 2) h.msg.removeChild(h.msg.lastChild); return; }
+  // Sideways, a line from somebody in the story is a subtitle across the lower third, with their
+  // face (if the menus can draw one, CB.portrait) or a badge with their initial. One at a time:
+  // a new line takes the old one's place. Upright, it goes in the message box as before.
+  if (G.mode !== 'portrait') {
+    for (let i = h.sub.children.length - 1; i >= 0; i--) h.sub.removeChild(h.sub.children[i]);
+    const c = el('div', 'radio sub', '<div class="sub-who"></div><div class="sub-tx"><b>' + esc(who) + '</b><span>' + text + '</span></div>');
+    G.speaker(c.firstChild, who);
+    c._until = G.sim.t + Math.max(dur || 5, 2.2 + text.length * 0.055);
+    h.sub.appendChild(c);
+    return;
+  }
   const c = el('div', 'radio', '<b>' + esc(who) + '</b><span>' + text + '</span>');
   c._until = G.sim.t + (dur || 5);
   h.msg.appendChild(c);
   while (h.msg.children.length > 2) h.msg.removeChild(h.msg.firstChild);
+};
+// The face beside a subtitle: the menus' portrait if there is one, otherwise a round badge with the
+// speaker's initial in their own colour.
+const SPEAKER_COL = { Marlow: '#ffaa3c', Pip: '#5fd38a', Varga: '#6fb6ff', Rook: '#ff4a3d', Brandt: '#c58bff', Reyes: '#e2b33c' };
+Game.speaker = function (box, who) {
+  if (CB.portrait) {
+    try {
+      const S = 44, dpr = Math.min(3, window.devicePixelRatio || 1), cv = document.createElement('canvas');
+      cv.width = cv.height = Math.round(S * dpr); cv.style.width = cv.style.height = S + 'px';
+      const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+      CB.portrait(ctx, who, 0, 0, S, 'radio');
+      box.appendChild(cv); box.classList.add('pic'); return;
+    } catch (e) { box.innerHTML = ''; }
+  }
+  const col = SPEAKER_COL[who] || '#a9b4c0';
+  box.innerHTML = '<span style="border-color:' + col + ';color:' + col + '">' + esc(String(who).charAt(0)) + '</span>';
 };
 Game.banner = function (text, cls) { const b = Game.hud.banner; b.className = 'h-banner show ' + (cls || ''); b.innerHTML = text; clearTimeout(b._t); b._t = setTimeout(() => { b.className = 'h-banner'; }, 1700); };
 
@@ -248,7 +296,7 @@ Game.start = function (missionId, opts) {
   G.ilog = [];
   // a shadow copy of the mission that can be run ahead to see where a shot will land
   G.oracle = null;
-  if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
+  if (G.killcamWhen() !== 'off' && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   // a guided run: the coach reads the mission's own three-star script and shows each step
   G.coach = null;
   if (opts.guided) { try { G.coach = new Coach(G.sim); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
@@ -266,7 +314,10 @@ Game.start = function (missionId, opts) {
   h.obj.innerHTML = '<b>' + esc(M.title) + '</b><span>' + esc(typeof M.objective === 'function' ? M.objective(Save.data.flags) : M.objective) + '</span>';
   h.msg.innerHTML = ''; h.fade.className = 'h-fade in';
   h.sZero.classList.toggle('dial', !!st.scope.turret); h.strip.classList.toggle('has-dial', !!st.scope.turret);
+  h.sZero.style.display = st.scope.turret ? '' : 'none';
   h.zoom.style.display = st.zoomMax > st.zoomMin ? '' : 'none';
+  G.zoomTicks(st);
+  h.sub.innerHTML = ''; h.call.className = 'h-call'; G.callT = 0; G.seenFx = null;
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
@@ -396,8 +447,10 @@ Game.loop = function (ts) {
   if (G.cine) { KC.draw(0); return; }
   G.view.updateReadout(sim, dt);
   if (G.coach) G.coach.update(); // after the world has moved on, before the picture is drawn
+  G.watchRounds();
   G.view.draw(sim, dt, dt * G.scale * (G.simRate || 1));
   if (G.coach) G.coach.draw(G.view, G.view.rt);
+  G.drawSeen(G.view);
   G.updateHud(dt);
   Sfx.tick(sim, dt, G.scale);
 };
@@ -413,20 +466,39 @@ Game.pumpEvents = function () {
     if (e.k === 'msg') G.pushMsg(e.who, e.text, e.dur);
     else if (e.k === 'winning' && !G.cine && sim.kills.length && sim.kills[sim.kills.length - 1].how === 'shot' && sim.t - sim.kills[sim.kills.length - 1].t < 0.1) G.slowT = 0.75;
     else if (e.k === 'alarm') G.banner('ALARM RAISED', 'bad');
+    else if (e.k === 'giveaway') G.noteGiveaway(sim);
     else if (e.k === 'duck') G.banner('RUBBER DUCK FOUND', 'good');
     else if (e.k === 'nobreath') G.hud.breath.classList.add('shake'), setTimeout(() => G.hud.breath.classList.remove('shake'), 300);
     else if (e.k === 'end') G.finish();
   }
 };
+// When the kill camera runs: Save.data.settings.killcamWhen is 'always' (the default, as it always
+// was), 'notable' or 'off'. The older on/off switch (settings.killcam) still turns it off.
+(function () { const f0 = Save.fresh; Save.fresh = function () { const d = f0.apply(this, arguments); d.settings.killcamWhen = 'always'; return d; }; })();
+Game.killcamWhen = function () { const s = Save.data.settings; if (s.killcam === false) return 'off'; return s.killcamWhen === 'notable' || s.killcamWhen === 'off' ? s.killcamWhen : 'always'; };
+// A shot worth the camera on 'notable': a headshot, two at once, a long one (500 m or more, or half as
+// far again as the contract's own range), a moving target, a round through glass or cover, or the
+// last contract of a chapter.
+Game.notable = function (pr) {
+  const sim = Game.sim, M = sim.M, k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], d = k.z - pr.path[0][3];
+  if (pr.kills.length >= 2 || pr.kills.some((q) => q.part === 'head')) return true;
+  if (d >= 500 || (M.range && d >= M.range * 1.5)) return true;
+  if (a && ((a.inVeh && a.inVeh.v > 2) || (!a.inVeh && a.goal !== null))) return true;
+  if (pr.kills.some((q) => q.cover && q.cover.length)) return true;
+  const chap = MISSIONS.filter((m) => m.ch === M.ch);
+  return chap.length > 0 && chap[chap.length - 1] === M;
+};
 // Start the kill camera for a shot the oracle says will finish the contract with a hit on a person.
 Game.startCine = function (pr) {
   const G = Game, sim = G.sim, KC = CB.KillCam, set = Save.data.settings;
-  if (!pr || !KC || !set.killcam || !pr.win || !pr.kills.length || G.cine) return false;
+  if (!pr || !KC || !pr.win || !pr.kills.length || G.cine) return false;
+  const when = G.killcamWhen(); if (when === 'off' || (when === 'notable' && !G.notable(pr))) return false;
   const k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], b = sim.bullets[pr.i];
   if (!a || !b) return false;
   let ok = false;
   try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
   if (!ok) return false;
+  b.cine = true; // (no callout under the crosshair for this round: the kill camera shows what it did)
   G.cine = true; G.acc = 0; document.body.classList.add('cine');
   return true;
 };
@@ -487,6 +559,20 @@ Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.s
 const MARK_HOLD = 0.6; // seconds held down that clear the mark
 Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
 Game.markUp = function () { clearTimeout(Game.markT); };
+// The zoom slider's ticks: the scope's lowest power and whole multiples of it up to the highest
+// (3x 6x 9x on the plain scope, 4x 8x 12x on the mil-dot, 5x 10x 15x 20x on the tactical one).
+Game.zoomStops = function (st) {
+  const a = st.zoomMin, b = st.zoomMax, out = [];
+  if (!(b > a)) return out;
+  let step = a; while ((b - a) / step > 4.01) step *= 2;
+  for (let z = a; z <= b + 1e-6; z += step) out.push(z);
+  if (b - out[out.length - 1] > step * 0.35) out.push(b); else out[out.length - 1] = b;
+  return out;
+};
+Game.zoomTicks = function (st) {
+  const box = Game.hud.zoom.querySelector('.zticks'), a = st.zoomMin, b = st.zoomMax;
+  box.innerHTML = Game.zoomStops(st).map((z) => '<span style="bottom:' + ((Math.log(z / a) / Math.log(b / a)) * 100).toFixed(2) + '%"><i></i>' + (Math.abs(z - Math.round(z)) < 0.05 ? Math.round(z) : fmt(z, 1)) + 'x</span>').join('');
+};
 Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -525,11 +611,13 @@ Game.bindInput = function () {
   const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null; };
   // a quick tap on a radio message or a hint closes it early (a drag that starts there still aims)
   let tap = null;
-  h.msg.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
-  h.msg.addEventListener('pointerup', (e) => {
-    const T = tap; tap = null;
-    if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
-    if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+  [h.msg, h.sub].forEach((area) => {
+    area.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
+    area.addEventListener('pointerup', (e) => {
+      const T = tap; tap = null;
+      if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
+      if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+    });
   });
   stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
   document.addEventListener('pointerlockchange', () => { G.locked = document.pointerLockElement === stage; if (!G.locked && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && G.wasLocked) G.pause(true); G.wasLocked = G.locked; });
@@ -551,7 +639,12 @@ Game.bindInput = function () {
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
   const zt = h.zoom;
-  const zset = (e) => { const r = zt.querySelector('.zt').getBoundingClientRect(); G.zoomTo(1 - (e.clientY - r.top) / r.height); };
+  // (the ticks pull the handle onto them when it comes close, so 6x is easy to hit exactly)
+  const zset = (e) => {
+    const r = zt.querySelector('.zt').getBoundingClientRect(), s = G.sim; let u = clamp(1 - (e.clientY - r.top) / r.height, 0, 1);
+    if (s && s.st.zoomMax > s.st.zoomMin) G.zoomStops(s.st).forEach((z) => { const us = Math.log(z / s.st.zoomMin) / Math.log(s.st.zoomMax / s.st.zoomMin); if (Math.abs(u - us) < 0.035) u = us; });
+    G.zoomTo(u);
+  };
   zt.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zt.setPointerCapture(e.pointerId); zt._d = true; zset(e); });
   zt.addEventListener('pointermove', (e) => { if (zt._d) zset(e); });
   const zr = () => { zt._d = false; }; zt.addEventListener('pointerup', zr); zt.addEventListener('pointercancel', zr);

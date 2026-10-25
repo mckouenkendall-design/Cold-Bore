@@ -829,7 +829,7 @@ Sim.prototype.hitPlane = function (P, b, bx, by) {
     for (let s = 0; s < v.seats.length; s++) {
       const a = sim.byId[v.seats[s]]; if (!a || a.dead || a.inVeh !== v) continue;
       const part = figHit(actorJoints(a), bx + ox - a.x, by + oy - a.y);
-      if (part === 'head' || part === 'torso' || part === 'arm') { sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
+      if (part === 'head' || part === 'torso' || part === 'arm') { (b.hits = b.hits || []).push({ id: a.id, part: part === 'arm' ? 'torso' : part, lethal: true, role: a.role, d: P.z - b.oz }); sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
     }
     sim.scareVehicle(v);
     if (got) { if (st.pen < 1.2) { sim.stopBullet(b); return true; } sim.stats.collateral++; }
@@ -897,7 +897,9 @@ Sim.prototype.scareVehicle = function (v) {
 };
 Sim.prototype.hitActor = function (a, part, b, bx, by) {
   const sim = this, st = sim.st;
-  if (a.vest && part === 'torso' && st.pen < 0.5) { sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  // (what each round did is noted on it, for the hit and miss callout: see Game.watchRounds)
+  if (a.vest && part === 'torso' && st.pen < 0.5) { b.vest = true; sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  (b.hits = b.hits || []).push({ id: a.id, part, lethal: part === 'head' || part === 'torso', role: a.role, d: a.plane.z - b.oz });
   if (part === 'head' || part === 'torso') sim.killActor(a, part, 'shot', b);
   else sim.woundActor(a, part, b);
   sim.ev.push({ k: 'hit', x: bx, y: by, plane: a.plane, part, tof: sim.t - b.t0, dist: a.plane.z - b.oz, lethal: part === 'head' || part === 'torso' });
@@ -909,6 +911,7 @@ Sim.prototype.hitObject = function (ob, b, bx, by) {
   const sim = this, S = sim.S, P = ob.plane;
   sim.stats.objects++;
   const k = ob.kind;
+  if (!b.obj) b.obj = ob;
   sim.ev.push({ k: 'objhit', kind: k, id: ob.id, x: bx, y: by, plane: P, tof: sim.t - b.t0, dist: P.z - b.oz });
   sim.crack(b, bx, by, P);
   if (k === 'lamp' || k === 'bulb') {
