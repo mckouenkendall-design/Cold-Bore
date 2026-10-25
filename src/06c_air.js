@@ -136,3 +136,13 @@ View.prototype.drawGrade = function (sim, cam) {
   }
   ctx.restore();
 };
+
+// Keep a copy of the finished world for the water to mirror next frame (only where there is
+// water: it costs one copy of the picture).
+View.prototype.keepFrame = function (sim) {
+  const S = sim.S; if (!S._water) return;
+  const cv = this.ctx.canvas;
+  if (!this._frame || this._frame.width !== cv.width || this._frame.height !== cv.height) { this._frame = kxCanvas(cv.width, cv.height); this._frameG = this._frame.getContext('2d'); }
+  this._frameG.globalCompositeOperation = 'copy'; this._frameG.drawImage(cv, 0, 0);
+  kxRefl.src = this._frame; kxRefl.srcCv = cv;
+};

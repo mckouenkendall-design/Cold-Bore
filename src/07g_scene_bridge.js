@@ -41,7 +41,7 @@ K.shore = function (S, P, o) {
   P.groundY = 0; P._gm = 'water';
   P.groundFn = (x) => { const dry = x < xl || x > xr; P._gm = dry ? 'hard' : 'water'; return dry ? qy : 0; };
   Object.defineProperty(P, 'groundMat', { get() { return P._gm; }, set() {}, configurable: true });
-  (S._brWater = S._brWater || []).push(P);
+  (S._brWater = S._brWater || []).push(P); S._water = true;
   // what lies on a paved quay, picked once: oil stains, tyre marks, drain covers, patched slabs
   const pv = [], stainC = 'rgba(20,18,16,0.22)', tyreC = 'rgba(20,18,16,0.16)', patchC = S.tone(lighten(o.col || '#6b6660', 0.06), P), grate = S.tone('#2a2826', P);
   if (o.pave) { const D = makeRng(Math.round(P.z * 3) + 4447); for (let sg = -1; sg <= 1; sg += 2) { const e = sg < 0 ? xl : xr; if (Math.abs(e) > 1e5) continue; for (let i = 0; i < 30; i++) pv.push([e - sg * D.r(3, 150), qy - D.r(1.0, 7.5), D.i(0, 3), D.r(0.8, 2.6)]); } }
@@ -55,9 +55,12 @@ K.shore = function (S, P, o) {
     if (b > a && env.y1 > -60) {
       R4(ctx, a, -400, b - a, 400, wt);
       R4(ctx, a, -1.6, b - a, 1.6, band2); R4(ctx, a, -0.55, b - a, 0.55, band);
+      const cut = brCut(S, P, env);
+      // the far bank, the bridge and the sky mirrored in the river
+      kxReflect(ctx, env, 0, Math.max(cut, env.y0), a, b, rain ? 0.3 : dark > 0.5 ? 0.55 : 0.48, (rain ? 2 : 1) + Math.abs(env.wind) * 0.12, P.z);
       // ripples drifting toward us with the current; each row fades in at the far side.
       // Rows that nearer water would hide are left out.
-      const step = Math.max(4, env.px * 30), flow = t * 0.05, ph = flow - Math.floor(flow), cut = brCut(S, P, env);
+      const step = Math.max(4, env.px * 30), flow = t * 0.05, ph = flow - Math.floor(flow);
       ctx.strokeStyle = hi; ctx.lineWidth = Math.max(0.07, env.px);
       for (let row = 0; row < 7; row++) {
         const u = row + ph, yy = -0.3 - u * u * 0.95 - u * 0.75, id = row - Math.floor(flow), s0 = Math.floor(a / step) * step;

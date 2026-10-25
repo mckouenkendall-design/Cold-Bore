@@ -315,6 +315,39 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// ---- reflections in water --------------------------------------------------------------
+// Whatever has already been drawn above a waterline (the far bank, a ship, the quay and its
+// lamps, the bridge, the sky) is copied once, turned over and laid under the line in thin
+// strips, each strip pushed sideways by the ripples and fading out with depth, so water
+// mirrors the scene that actually stands over it. yW is the waterline and yN the nearest
+// height of this stretch of water (both on the plane being drawn), xa..xb how far it runs,
+// a how strong the reflection is, rough how much the ripples break it up. Picture only.
+const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null };
+// The last finished picture of the world (kept by the view when a scene has water), so the
+// water can mirror things drawn after it: the quay, its lamps, the people and boats on it.
+// It is one frame old, which nobody can see.
+function kxReflSource(ctx) { return kxRefl.src && kxRefl.srcCv === ctx.canvas && kxRefl.src.width === ctx.canvas.width && kxRefl.src.height === ctx.canvas.height ? kxRefl.src : ctx.canvas; }
+function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed) {
+  const m = kxM(ctx); if (m.b || m.c || m.d >= 0 || a < 0.02) return;
+  const cv = ctx.canvas, Wc = cv.width, Hc = cv.height, Yw = m.d * yW + m.f, Yn = Math.min(Hc, m.d * yN + m.f);
+  const X0 = Math.max(0, Math.floor(m.a * xa + m.e)), X1 = Math.min(Wc, Math.ceil(m.a * xb + m.e)), w = X1 - X0;
+  if (w < 4 || Yn <= Math.max(0, Yw) + 2) return;
+  const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460)); if (depth < 6) return;
+  if (!kxRefl.c || kxRefl.w < w || kxRefl.h < depth) { kxRefl.w = Math.max(kxRefl.w, w); kxRefl.h = Math.max(kxRefl.h, depth); if (!kxRefl.c) kxRefl.c = kxCanvas(kxRefl.w, kxRefl.h); else { kxRefl.c.width = kxRefl.w; kxRefl.c.height = kxRefl.h; } kxRefl.g = kxRefl.c.getContext('2d'); }
+  const g = kxRefl.g; g.clearRect(0, 0, w, depth); g.drawImage(kxReflSource(ctx), X0, Yw - depth, w, depth, 0, 0, w, depth);
+  const t = env.t, k = Math.abs(m.d) / Math.max(1e-6, env.s), sd = seed || 0;   // k: device pixels per CSS pixel
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  let d = Math.max(0, Math.floor(-Yw));
+  while (d < depth) {
+    const hb = Math.max(2, Math.round((1.5 + d * 0.03) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
+    const u = d / depth, wob = Math.sin(t * (1.3 + (d % 7) * 0.09) + d * 0.23 + sd) * (0.3 + d * 0.035) * rough * k;
+    ctx.globalAlpha = a * Math.pow(1 - u, 0.8);
+    ctx.drawImage(kxRefl.c, 0, sy, w, hb, X0 + wob, Yw + d, w, hb);
+    d += hb;
+  }
+  ctx.restore();
+}
+
 // ---- smoke and steam ------------------------------------------------------------------
 // The light in the air this frame, set by the view as it draws the sky: which side the sun
 // (or moon) is on, and the colours a puff of smoke takes on its lit and its shaded side.

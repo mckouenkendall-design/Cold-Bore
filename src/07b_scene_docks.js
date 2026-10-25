@@ -155,6 +155,9 @@ function dkSeaSetup(S, dk) {
   for (let i = 0; i < S.objects.length; i++) { const ob = S.objects[i]; if (ob.kind === 'lamp' && ob.plane) dkLight(S, { P: ob.plane, x: ob.x, y: ob.y, a: S.pal.dark > 0.5 ? 0.85 : 0.32, w: 0.55, ob }); }
   const clear = S.weather === 'clear', fog = S.weather === 'fog';
   dk.sunA = clear ? (S.pal.dark > 0.5 ? 0.42 : 0.6) : fog ? 0.22 : 0; dk.sunCss = S.pal.sun;
+  // how clearly the water mirrors what stands over it: rain and wind break it up
+  const wet = S.weather === 'rain' || S.weather === 'storm';
+  dk.reflA = wet ? 0.3 : fog ? 0.34 : S.pal.dark > 0.5 ? 0.55 : 0.5; dk.reflR = S.weather === 'storm' ? 3 : wet ? 2 : 1;
 }
 K.sea = function (S, P, o) {
   o = o || {};
@@ -164,7 +167,7 @@ K.sea = function (S, P, o) {
   if (o.sheen) col = mix(col, S.tone(o.sheen, P, true), 0.6);       // the sky lying on the water near the horizon
   const hi = mix(col, night ? '#8fa6cc' : '#ffffff', o.shine === undefined ? (night ? 0.17 : 0.26) : o.shine), lo = mix(col, '#000812', night ? 0.34 : 0.17);
   const X0 = o.x0 === undefined ? -6000 : o.x0, X1 = o.x1 === undefined ? 6000 : o.x1;
-  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z) };
+  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z) }; S._water = true;
   dk.seas.push(me);
   if (o.ground !== false) { P.groundY = y; P.groundMat = 'water'; }
   P.add({ x0: X0, x1: X1, layer: o.layer || 0, draw(ctx, env) { dkSeaDraw(ctx, env, S, dk, me); } });
@@ -182,6 +185,8 @@ function dkSeaDraw(ctx, env, S, dk, me) {
   const yb = Math.max(e0 - 2 * px, cut ? ybn - 2 * px : y - 400), yt = Math.min(y, e1 + 2 * px); if (yb >= yt) return;
   if ((y - ybn) * s < 6) R4(ctx, xa, yb, xb - xa, yt - yb, me.col);
   else { const g = ctx.createLinearGradient(0, y, 0, ybn); g.addColorStop(0, me.col); g.addColorStop(1, me.bot); ctx.fillStyle = g; ctx.fillRect(xa, yb, xb - xa, yt - yb); }
+  // the quay, the ships, the lamps and the sky standing over this water, mirrored in it
+  kxReflect(ctx, env, y, yb, xa, xb, dk.reflA, dk.reflR + Math.abs(env.wind) * 0.12, me.sd);
 
   // dark shapes: the quay wall, piles and hulls mirrored in the water, broken into bands
   const ms = dk.mirrors;

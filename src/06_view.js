@@ -305,6 +305,7 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   // ---- weather in front of everything, then the colour of the hour (06c_air.js) ----
   V.drawWeather(sim, cam);
   V.drawGrade(sim, cam);
+  V.keepFrame(sim);
 };
 
 // Rain. Three depths of streaks, every drop with its own speed, length, brightness and
