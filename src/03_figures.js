@@ -427,16 +427,52 @@ function figSkirtPath(c, G, ww, len, flare, sag, swing, follow) {
   if (sag) c.quadraticCurveTo((x0 + x1) / 2 + (ax + bx) * sag, (y0 + y1) / 2 + (ay + by) * sag, x0, y0); else c.lineTo(x0, y0);
   c.lineTo(figPX(G, 0.06, -ww), figPY(G, 0.06, -ww)); c.closePath();
 }
-// A hand at the end of a forearm. Open hands curl a little and are never quite still.
-function figHandPath(c, G, el, ha, grip) {
-  const r = 0.033 * G.bw;
-  if (grip) { c.moveTo(ha[0] + r * 1.08, ha[1]); c.arc(ha[0], ha[1], r * 1.08, 0, TAU); return; }
+// A hand at the end of a forearm, close up. What shape it makes says what it is doing (G.handR,
+// G.handL, set in drawFigure; the far hand is L):
+//   relaxed  fingers curled a little, never quite still     grip   closed round something held
+//   fist     clenched                                        open   a flat palm, the thumb out
+//   point    a fist with the first finger out                splay  fingers spread (fright)
+// All of it is the same black as the arm: a hand reads by its outline.
+function figHandPath(c, G, el, ha, grip, which) {
+  const r = 0.033 * G.bw, type = grip ? 'grip' : (which ? G.handL : G.handR) || 'relaxed';
+  if (type === 'grip') { c.moveTo(ha[0] + r * 1.08, ha[1]); c.arc(ha[0], ha[1], r * 1.08, 0, TAU); return; }
   let dx = ha[0] - el[0], dy = ha[1] - el[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+  const nx = -dy * G.fs, ny = dx * G.fs; // across the hand, toward the thumb
+  const P = (u, v, i) => { FIG_TMP[i] = ha[0] + dx * u + nx * v; FIG_TMP[i + 1] = ha[1] + dy * u + ny * v; };
+  const cap = (u0, v0, u1, v1, r0, r1) => { P(u0, v0, 0); P(u1, v1, 2); figCap(c, FIG_TMP[0], FIG_TMP[1], FIG_TMP[2], FIG_TMP[3], r0, r1); };
+  const b = G.bw;
+  if (type === 'fist' || type === 'point') {
+    cap(-0.004, 0, 0.03 * b, -0.004, r * 1.02, r * 0.95); // the knuckles
+    cap(0.006, 0.018 * b, 0.03 * b, 0.026 * b, r * 0.4, r * 0.34); // the thumb across them
+    if (type === 'point') cap(0.035 * b, -0.008, 0.112 * b, -0.012, r * 0.36, r * 0.3); // and the finger out
+    return;
+  }
+  if (type === 'open' || type === 'splay') {
+    cap(0, 0, 0.045 * b, 0, r * 0.95, r * 0.86); // the palm
+    if (type === 'open') cap(0.045 * b, -0.002, 0.098 * b, -0.006, r * 0.72, r * 0.55); // the fingers together
+    else for (let i = 0; i < 4; i++) { const a = (i - 1.5) * 0.24; cap(0.045 * b, -0.01 + i * 0.006, (0.045 + Math.cos(a) * 0.058) * b, (-0.01 + Math.sin(a) * 0.058) * b, r * 0.26, r * 0.2); }
+    cap(0.008, 0.02 * b, 0.034 * b, 0.058 * b, r * 0.36, r * 0.3); // the thumb, out
+    return;
+  }
   const k = (0.45 + 0.22 * Math.sin(G.t * 1.1 + G.seed * 3 + el[1] * 7)) * G.fs, cs = Math.cos(k), sn = Math.sin(k);
   const fx = dx * cs - dy * sn, fy = dx * sn + dy * cs;
   figCap(c, ha[0], ha[1], ha[0] + fx * 0.052, ha[1] + fy * 0.052, r, r * 0.66);
   const tx = ha[0] - dy * G.fs * r * 0.8 + dx * 0.012, ty = ha[1] + dx * G.fs * r * 0.8 + dy * 0.012;
   c.moveTo(tx + r * 0.5, ty); c.arc(tx, ty, r * 0.5, 0, TAU);
+}
+// What each hand is doing, from the pose and the mood (see figHandPath).
+function figHandTypes(G, A) {
+  const an = G.anim, mood = A._mood;
+  let R = 'relaxed', L = 'relaxed';
+  if (G.dead) { G.handR = 'relaxed'; G.handL = 'open'; return; }
+  if (an === 'point') { R = 'point'; L = 'relaxed'; }
+  else if (an === 'hands') { R = L = 'open'; }
+  else if (an === 'wave') R = 'open';
+  else if (an === 'talk') { R = Math.sin(G.t * 1.3 + G.seed) > 0.2 ? 'open' : 'relaxed'; L = 'relaxed'; }
+  else if (an === 'panic' || an === 'cower') { R = L = 'splay'; }
+  else if (mood === 'alarm' || mood === 'hurt' || (A.state === 'susp' && A.role === 'guard')) { R = L = 'fist'; }
+  else if (an === 'arms') { R = L = 'fist'; }
+  G.handR = R; G.handL = L;
 }
 // Limbs are painted in as few goes as possible, because every fill and stroke costs time on a phone.
 const FIG_ANKLE = 0.87, FIG_CUFF = 0.8; // how far down the shin the leg stops (inside the shoe), and where a sleeve or trouser leg ends
@@ -465,7 +501,7 @@ function figLimbsBack(c, G, K, farGrip) {
   // skin first: the far hand and whatever of the limbs is bare
   c.fillStyle = G.ink; c.beginPath();
   if (sl) figCap(c, cx, cy, haL[0], haL[1], ar2, ar2 * 0.94); else figChain(c, sh[0], sh[1], elL[0], elL[1], haL[0], haL[1], ar0, ar1, ar2, false);
-  if (fine) figHandPath(c, G, elL, haL, farGrip); else { c.moveTo(haL[0] + 0.036 * bw, haL[1]); c.arc(haL[0], haL[1], 0.036 * bw, 0, TAU); }
+  if (fine) figHandPath(c, G, elL, haL, farGrip, 1); else { c.moveTo(haL[0] + 0.036 * bw, haL[1]); c.arc(haL[0], haL[1], 0.036 * bw, 0, TAU); }
   if (lg) { if (fine) { figCap(c, kLx, kLy, aLx, aLy, lr2, lr2); figCap(c, kRx, kRy, aRx, aRy, lr2, lr2); } }
   else { figChain(c, hip[0], hip[1], knL[0], knL[1], aLx, aLy, lr0 - 0.004, lr1 - 0.004, lr2, true); figChain(c, hip[0], hip[1], knR[0], knR[1], aRx, aRy, lr0 - 0.004, lr1 - 0.004, lr2, false); }
   c.fill();
@@ -497,7 +533,7 @@ function figArmNear(c, G, K, grip) {
   if (sl) { c.fillStyle = figC(sl); c.beginPath(); figChain(c, sh[0], sh[1], el[0], el[1], cx, cy, r0 + sa, r1 + sa, r2 + sa * 0.8, true); c.fill(); }
   c.fillStyle = G.ink; c.beginPath();
   if (sl) figCap(c, cx, cy, ha[0], ha[1], r2, r2 * 0.94); else figChain(c, sh[0], sh[1], el[0], el[1], ha[0], ha[1], r0, r1, r2, true);
-  if (G.fine) figHandPath(c, G, el, ha, grip); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
+  if (G.fine) figHandPath(c, G, el, ha, grip, 0); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
   c.fill();
   if (G.fine && sl && (G.st.v & 1) && !G.dead) { // a watch just below the cuff
     const wx = lerp(el[0], ha[0], FIG_CUFF + 0.07), wy = lerp(el[1], ha[1], FIG_CUFF + 0.07);
@@ -799,6 +835,8 @@ function figHead(c, G, mode) {
   c.fill();
   if (hi && G.la > 0.03) { const a = Math.atan2(G.hly, G.hlx); c.beginPath(); c.arc(0, 0, hr - Math.max(0.011, px * 0.5), a - 0.85, a + 0.85); figLit(c, G, 0.02, 0.9); }
   if (fine && !hood && hat !== 'helmet' && hair !== 'long' && !L.phones && G.fa > 0.5) { c.strokeStyle = G.ear; c.lineWidth = Math.max(0.011, px * 0.8); c.beginPath(); if (f > 0) c.arc(-hr * 0.26, -hr * 0.03, 0.026, 0.9, 4.5); else c.arc(hr * 0.26, -hr * 0.03, 0.026, Math.PI - 4.5, Math.PI - 0.9); c.stroke(); }
+  const face = fine && G.face; // eyes, brows and mouth (src/03b_faces.js)
+  if (face && !hood && L.glasses !== 'shades') figFace(c, G, 'eyes');
   // hair on the head
   if (hair && !hood && hat !== 'helmet') {
     c.fillStyle = figC(hcol);
@@ -825,12 +863,14 @@ function figHead(c, G, mode) {
     c.fillStyle = figC(bc); c.beginPath(); c.moveTo(Math.cos(a0) * R, Math.sin(a0) * R); c.arc(f * 0.012, -0.014, R, a0, -Math.PI / 2 + sr); c.quadraticCurveTo(f * hr * 0.36, -hr * 0.2, Math.cos(a0) * R, Math.sin(a0) * R); c.closePath(); c.fill();
     if (fine) { c.strokeStyle = figSh(bc, 0.3); c.lineWidth = Math.max(0.008, px * 0.7); c.beginPath(); c.moveTo(f * hr * 0.55, -hr * 0.5); c.lineTo(f * hr * 0.62, -hr * 0.92); c.moveTo(f * hr * 0.2, -hr * 0.62); c.lineTo(f * hr * 0.22, -hr * 1.02); c.stroke(); }
   }
+  if (face && !L.mask && !hood) figFace(c, G, 'mouth');
   if (L.mask) {
     c.fillStyle = figC(L.mask); c.beginPath(); c.arc(0, 0, hr * 1.03, Math.PI + 0.22, TAU - 0.22); c.closePath(); c.fill();
     if (hi) { c.strokeStyle = figHi(L.mask, 0.3); c.lineWidth = Math.max(0.011, px * 0.8); c.beginPath(); c.moveTo(-hr * 0.99, -hr * 0.2); c.lineTo(hr * 0.99, -hr * 0.2); c.stroke(); }
   }
   if (L.phones) { c.strokeStyle = figC(L.phones); c.lineWidth = Math.max(0.04, px); c.beginPath(); c.arc(0, 0, hr * 1.13, 0.32, Math.PI - 0.32); c.stroke(); }
   if (hat) figHat(c, G, hat);
+  if (face && hood) figFace(c, G, 'eyes'); // eyes in the shadow of the hood
   if (L.phones) {
     c.fillStyle = figC(L.phones); c.beginPath(); c.ellipse(-f * 0.022, -0.004, 0.066, 0.085, 0, 0, TAU); c.fill();
     if (hi) { c.fillStyle = figSh(L.phones, 0.4); c.beginPath(); c.ellipse(-f * 0.022, -0.004, 0.036, 0.052, 0, 0, TAU); c.fill(); }
@@ -1276,6 +1316,10 @@ function figProps(c, G) {
     c.fillStyle = figC('#23272e'); c.beginPath(); figRR(c, -0.04, -0.045, 0.08, 0.155, 0.014); c.fill();
     if (env.dark) { c.fillStyle = '#cfe6ff'; c.fillRect(-0.03, -0.03, 0.06, 0.125); }
     else if (hi) { c.fillStyle = figC('#5d7691'); c.fillRect(-0.03, -0.03, 0.06, 0.125); }
+    if (G.fine) { // close up: a thumb working the screen
+      const k = Math.sin(G.t * 7.3 + G.seed) * Math.sin(G.t * 1.7 + G.seed * 2), ty = 0.012 + 0.04 * Math.max(0, k), tx = 0.012 * Math.sin(G.t * 3.1 + G.seed);
+      c.fillStyle = G.ink; c.beginPath(); figCap(c, f * 0.046, -0.03, f * 0.004 + tx, ty, 0.014, 0.011); c.fill();
+    }
     c.restore();
     if (env.dark) { // the screen lights the side of the face
       c.fillStyle = '#cfe6ff'; c.globalAlpha = 0.1; c.beginPath(); c.arc(ha[0], ha[1] + 0.04, 0.34, 0, TAU); c.fill();
@@ -1772,6 +1816,8 @@ function drawFigure(ctx, A, env) {
     G.cR = G.dR; G.cL = G.dL;
   }
   G.hat = L.hat && figHatOff(G) ? null : L.hat; // a hat knocked off or shaken off lies on the ground (src/03c_loose.js)
+  if (G.fine) { A._mood = faceMood(A); G.face = true; G.back = false; } else G.face = false;
+  G.anim = an; if (G.fine) figHandTypes(G, A);
   const K = figWear(G), bag = L.bag, anim = G.anim = an;
   const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
   const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
