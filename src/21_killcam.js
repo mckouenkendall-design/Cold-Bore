@@ -284,7 +284,7 @@ KillCam.start = function (o) {
   K.Td = K.Tc + kcTune.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
   K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
-  K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.gunLay = null; K.snd = {}; K.err = null;
+  K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
   K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null;
@@ -429,6 +429,15 @@ function kcAdvance(K, o, dt) {
     kcStepParts(K, frozen ? 0 : dt * (K.holdT0 !== null ? Math.max(0.3, wr) : 0.15));
     // a .50 through the head: a moment after it goes in, the vault bursts
     if (K.burst && K.dmg.burst !== undefined && !K.burstDone && K.ct >= K.dmg.burst) { K.burstDone = true; kcBurst(K); }
+    // the coil slug's channel is seared: steam curls up out of the holes it made
+    if (K.steel && K.hitT !== null && !frozen && K.parts.length < kcTune.maxParts) {
+      K.steamT = (K.steamT || 0) + dt;
+      while (K.steamT > 0.05) {
+        K.steamT -= 0.05;
+        const out = K.dmg.skin1 !== undefined && K.rng.f() < 0.5, sh = out ? pl.sOut : pl.sIn, Hh = pl.H, d0 = K.dir;
+        kcSpray(K, 12, 1, [Hh[0] + d0[0] * sh, Hh[1] + d0[1] * sh + 0.01, Hh[2] + d0[2] * sh], out ? 1 : -1, 0.9, 0.05, 0.25, 0.008, 0.016, 2.6);
+      }
+    }
   }
   // what the sound is told: the world's clock, a little smoothed, never below the floor
   K.wr = K.T <= dt + 1e-9 ? wr : K.wr + (wr - K.wr) * Math.min(1, dt * 18);
@@ -626,7 +635,8 @@ function kcSpray(K, kind, n, at, way, spread, sp0, sp1, r0, r1, life, list) {
 // how the bits in the air slow down (drag) and fall (gravity), by kind: 0 mist, 1 drops, 2 bone,
 // 3 brain, 4 dust, 5 glass, 6 splinters of wood, 7 sparks, 8 chips of brick or plaster, 9 a hanging
 // cloud of mist, 10 tissue
-const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5, 4.5, 0.6], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8, 0.35, 9.8];
+// (12 is steam, which rises)
+const kcDrag = [3.2, 0.5, 0.5, 0.5, 3.2, 0.8, 0.6, 1.6, 0.5, 4.5, 0.6, 0.5, 2.8], kcFall = [1.2, 9.8, 9.8, 9.8, 1.2, 9.8, 9.8, 3.5, 9.8, 0.35, 9.8, 9.8, -0.9];
 function kcStepParts(K, dt, list, world) { // dt here is already slowed: the spray flies in slow motion
   const ps = list || K.parts, wz = !world && K.wallB ? K.wallB.dz : 1e9;
   for (let i = ps.length - 1; i >= 0; i--) {
@@ -831,108 +841,7 @@ function kcOverlay(K, V, ctx) {
   }
 }
 
-// ---- stage 0: at the rifle ---------------------------------------------------------------
-// Where the rifle sits and how big it is drawn. Sizes are worked out in "rifle units", the
-// units the rifle artwork is drawn in (a rifle is about 130 of them long).
-function kcGunLayout(o, W, H) {
-  const wide = W >= H, bw = W * (wide ? 0.86 : 0.94), bh = wide ? H * 0.56 : H * 0.3;
-  let x0 = -38, x1 = 92, by = -3.4;
-  try { if (typeof gunShapes === 'function') { const G = gunShapes(o.gunId, o.cfg); if (G && isFinite(G.x0) && isFinite(G.x1) && G.x1 > G.x0) { x0 = G.x0; x1 = G.x1; if (G.art && G.art.type === 'rail') by = -4.6; } } } catch (e) { /* use the guess */ }
-  const top = -15, bot = o.cfg && o.cfg.support === 'sp_tripod' ? 28 : 17, span = x1 - x0;
-  const sc = Math.min(bw / span, bh / (bot - top)) * 0.96;
-  const gcx = W * 0.5, gcy = H * 0.5;
-  return { W, H, bw, bh, sc, gcx, gcy, span, mx: gcx + (span / 2 - 1) * sc, my: gcy + (by - (top + bot) / 2) * sc, floor: gcy + (bot - 0.5 - (top + bot) / 2) * sc };
-}
-function kcDrawBeat(K, V, ctx) {
-  const o = K.o, W = V.W, H = V.H, T = K.T, pal = kcPal(o), dpr = V.dpr, wide = W >= H;
-  if (!K.gunLay || K.gunLay.W !== W || K.gunLay.H !== H) K.gunLay = kcGunLayout(o, W, H);
-  const L = K.gunLay, sc = L.sc;
-  // the camera pushes in on the muzzle, then whips away after the round
-  const e = easeOut((T - 0.1) / 0.7), z = lerp(1, wide ? 1.42 : 2.3, e), wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
-  const Mx = lerp(L.mx, W * (wide ? 0.56 : 0.5), e) - W * 1.5 * wh * wh * wh, My = lerp(L.my, H * 0.5, e);
-  const k = sc * z; // screen pixels per rifle unit
-  // sky behind, a low wall under the rifle
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, mix(pal.skyTop, '#000000', 0.5)); g.addColorStop(1, mix(pal.skyBot, '#000000', 0.4));
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  if (pal.star > 0.2) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 46; i++) { ctx.globalAlpha = pal.star * (0.2 + 0.5 * kcHash(i * 3.1)); ctx.fillRect(kcHash(i) * W - wh * W * 0.3, kcHash(i + 60) * H * 0.6, 1.3, 1.3); } ctx.globalAlpha = 1; }
-  const fy = My + (L.floor - L.my) * z;
-  ctx.fillStyle = mix(pal.ink, pal.skyBot, 0.1); ctx.fillRect(0, fy, W, H - fy);
-  ctx.fillStyle = rgba(mix(pal.skyBot, '#ffffff', 0.3), 0.3); ctx.fillRect(0, fy, W, 1.5);
-  // recoil: in this near-frozen moment the rifle has only begun to come back
-  const rc = easeOut((T - 0.03) / 0.6) * 1.5, mxs = Mx - rc * k, mys = My - rc * 0.12 * k;
-  const t1 = T - 0.03, loud = !K.quiet, rail = K.steel;
-  const grow = easeOut(t1 / 0.16), fade = t1 > 0 ? 1 - smooth((t1 - 0.2) / 0.5) : 0;
-  // gas behind the rifle first, so the muzzle stays crisp in front of it
-  if (t1 > 0) {
-    const e2 = easeOut(T / 0.95);
-    ctx.fillStyle = loud ? '#e9e0cd' : '#c9ced3';
-    for (let i = 0; i < 22; i++) { // a cone of small puffs, thick near the bore and thinning as it spreads
-      const al = kcHash(i + 9), dist = (1 + 24 * e2) * (0.15 + 0.85 * al), off = (kcHash(i + 5) - 0.5) * (1.2 + dist * 0.55), r = k * (0.6 + (loud ? 2.6 : 1.6) * e2 * (0.5 + al)) * (0.7 + 0.6 * kcHash(i + 2));
-      ctx.globalAlpha = (loud ? 0.13 : 0.1) * (1 - 0.55 * e2) * (1.2 - al);
-      ctx.beginPath(); ctx.arc(mxs + dist * k, mys + off * k, r, 0, TAU); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  }
-  // the rifle, in the player's own skin
-  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (Mx - L.mx * z), dpr * (My - L.my * z));
-  ctx.translate(-rc * sc, -rc * 0.12 * sc);
-  try { const r = drawGun(ctx, o.gunId, o.cfg, L.gcx, L.gcy, L.bw, L.bh, { time: 1.2 + T * 0.3 }); if (r && r.scale > 0 && Math.abs(r.scale - L.sc) > L.sc * 0.02) { const q = r.scale / L.sc; L.sc = r.scale; L.mx = L.gcx + (L.mx - L.gcx) * q; L.my = L.gcy + (L.my - L.gcy) * q; L.floor = L.gcy + (L.floor - L.gcy) * q; } } catch (er) { /* no rifle art: the flash and the round still play */ }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // the flash
-  if (t1 > 0 && fade > 0.01) {
-    const hot = rail ? [150, 235, 255] : [255, 196, 96], R1 = k * (loud ? 10 : 3.2) * grow;
-    if (loud) {
-      // spikes: one long tongue forward and shorter ones fanned around it
-      const sp = [0, 20, 0.5, 10, -0.55, 11, 1.1, 7, -1.2, 6.5, 1.95, 4.5, -2.0, 4];
-      ctx.fillStyle = 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.8 * fade).toFixed(3) + ')';
-      ctx.beginPath();
-      for (let i = 0; i < sp.length; i += 2) {
-        const an = sp[i] + 0.06 * Math.sin(T * 50 + i), len = sp[i + 1] * k * grow * (0.85 + 0.15 * Math.sin(T * 37 + i * 2)), wd = len * 0.13 + k * 0.5;
-        const ca = Math.cos(an), sa = Math.sin(an);
-        ctx.moveTo(mxs, mys); ctx.lineTo(mxs + ca * len * 0.35 - sa * wd, mys + sa * len * 0.35 + ca * wd); ctx.lineTo(mxs + ca * len, mys + sa * len); ctx.lineTo(mxs + ca * len * 0.35 + sa * wd, mys + sa * len * 0.35 - ca * wd); ctx.closePath();
-      }
-      ctx.fill();
-    }
-    const fg = ctx.createRadialGradient(mxs + R1 * 0.2, mys, 0, mxs + R1 * 0.2, mys, R1);
-    fg.addColorStop(0, 'rgba(255,253,240,' + fade.toFixed(3) + ')'); fg.addColorStop(0.35, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.75 * fade).toFixed(3) + ')'); fg.addColorStop(1, 'rgba(' + hot[0] + ',' + Math.round(hot[1] * 0.6) + ',' + Math.round(hot[2] * 0.5) + ',0)');
-    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(mxs + R1 * 0.2, mys, R1, 0, TAU); ctx.fill();
-    if (loud) { // the flash lights everything near it
-      ctx.globalCompositeOperation = 'lighter';
-      const lg = ctx.createRadialGradient(mxs, mys, 0, mxs, mys, k * 70);
-      lg.addColorStop(0, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',' + (0.3 * fade).toFixed(3) + ')'); lg.addColorStop(1, 'rgba(' + hot[0] + ',' + hot[1] + ',' + hot[2] + ',0)');
-      ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over';
-    }
-  }
-  // the shock ring, a thin hoop seen edge on, moving out ahead of the muzzle
-  const e3 = easeOut((T - 0.05) / 0.75);
-  if (T > 0.05 && e3 < 0.99) {
-    ctx.strokeStyle = 'rgba(255,255,255,' + (0.5 * (1 - e3)).toFixed(3) + ')'; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.ellipse(mxs + k * (2 + 15 * e3), mys, k * (0.5 + 3.4 * e3), k * (2 + (loud ? 15 : 8) * e3), 0, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,' + (0.22 * (1 - e3)).toFixed(3) + ')';
-    ctx.beginPath(); ctx.ellipse(mxs + k * (1 + 8 * e3), mys, k * (0.3 + 1.8 * e3), k * (1.5 + (loud ? 9 : 5) * e3), 0, 0, TAU); ctx.stroke();
-  }
-  // the round, coming out of the bore. It is the same 3D round as in the rest of the film, seen
-  // through a long lens from the side: a camera 1000 rifle units away looking square across the barrel.
-  const tip = T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
-  const bc = kcCamAim({ x: 1000, y: 0, z: 0, yaw: -Math.PI / 2, pitch: 0, f: 1000 * k, px: mxs, py: mys });
-  ctx.save(); ctx.beginPath(); ctx.rect(mxs, 0, W * 3, H); ctx.clip();
-  const bo = { len: 6.4, rad: 0.78, spin: K.spin * 2.2, mush: 0, steel: rail, hot: 0.5 * fade };
-  if (K.sonic && tip > 4) kcWake(ctx, bc, 0, 0, tip, 0, 0, 1, { len: 6.4, rad: 0.78, a: 0.8 * smooth((tip - 4) / 8), t: T });
-  kcBullet(ctx, bc, 0, 0, tip, 0, 0, 1, bo);
-  ctx.restore();
-  // a spent case, from rifles that throw one out by themselves
-  if (K.action === 'semi' && T > 0.42) {
-    const u = (T - 0.42) / 0.6, cxs = mxs - Math.min(L.span * 0.66 * k, mxs * 0.6) - u * 5 * k, cys = mys - (4 + 13 * u - 7 * u * u) * k;
-    ctx.save(); ctx.translate(cxs, cys); ctx.rotate(-0.6 - u * 5); ctx.fillStyle = '#c9a24a'; ctx.fillRect(-1.7 * k, -0.5 * k, 3.4 * k, k); ctx.fillStyle = '#8a6a26'; ctx.fillRect(-1.7 * k, -0.5 * k, 0.5 * k, k); ctx.restore();
-  }
-  // streaks as the camera whips after the round
-  if (wh > 0) {
-    ctx.strokeStyle = 'rgba(255,255,255,' + (0.35 * wh).toFixed(3) + ')'; ctx.lineWidth = 1.2; ctx.beginPath();
-    for (let i = 0; i < 26; i++) { const y = kcHash(i + 3) * H, x = kcHash(i + 40) * W; ctx.moveTo(x, y); ctx.lineTo(x + W * 0.5 * wh, y); }
-    ctx.stroke();
-  }
-}
+// ---- stage 0: at the rifle: see src/21d_kcrifle.js ----------------------------------------------
 
 // ---- stage 1: the flight -------------------------------------------------------------------
 // The chase camera, in world space. It sits a hand's width behind the round, a little above,
@@ -1058,8 +967,8 @@ function kcBullet(ctx, c, tx, ty, tz, dx, dy, dz, o) {
     ctx.beginPath();
     for (let k = 0; k < 6; k++) {
       const an = o.spin * 0.5 + (k * TAU) / 6;
-      const c0 = Math.cos(an - 0.32), s0 = Math.sin(an - 0.32), c1 = Math.cos(an + 0.32), s1 = Math.sin(an + 0.32), cm = Math.cos(an), sm = Math.sin(an);
-      const reach = rad * (0.6 + 1.7 * pe), back = len * (0.12 * (1 - pe) - 0.14 * pe);
+      const c0 = Math.cos(an - 0.45), s0 = Math.sin(an - 0.45), c1 = Math.cos(an + 0.45), s1 = Math.sin(an + 0.45), cm = Math.cos(an), sm = Math.sin(an);
+      const reach = rad * (0.5 + 1.25 * pe), back = len * (0.1 * (1 - pe) - 0.34 * pe); // peeled back along the body
       if (!kcProj(c, fx + (e1x * c0 + e2x * s0) * rr, fy + e2y * s0 * rr, fz + (e1z * c0 + e2z * s0) * rr, kcQ)) continue; ctx.moveTo(kcQ[0], kcQ[1]);
       if (!kcProj(c, fx + dx * back + (e1x * cm + e2x * sm) * (rr + reach), fy + dy * back + e2y * sm * (rr + reach), fz + dz * back + (e1z * cm + e2z * sm) * (rr + reach), kcQ)) continue; ctx.lineTo(kcQ[0], kcQ[1]);
       if (!kcProj(c, fx + (e1x * c1 + e2x * s1) * rr, fy + e2y * s1 * rr, fz + (e1z * c1 + e2z * s1) * rr, kcQ)) continue; ctx.lineTo(kcQ[0], kcQ[1]); ctx.closePath();
@@ -1133,7 +1042,7 @@ function kcDrawXray(K, V, ctx, dt) {
   }
   if (bgA > 0.004) { kcBgDraw(K, V, ctx, c, bgA); kcDrawPanes(ctx, K, c, bgA); }
   // how far the skin has turned to film
-  const xr = smooth((T - (K.Tc - 0.5)) / 0.55), infl = smooth((u - 0.12) / 0.5);
+  const xr = smooth((T - (K.Tc - 0.85)) / 0.5), infl = smooth((u - 0.12) / 0.5);
   if (xr < 0.99 && xa > 0.01) kcShell(ctx, K, c, fig, figA * xa, xr, infl, pal);
   if (xr > 0.01) kcXDraw(ctx, K, c, fig, figA * xr * xa);
   if (K.hitT !== null && xa > 0.01) { kcHoles(ctx, K, c, fig, figA * xa); kcRipples(ctx, K, c, fig); }
@@ -1362,7 +1271,7 @@ function kcHoles(ctx, K, c, fig, alpha) {
 function kcBurst(K) {
   const pl = K.plan, d = K.dir, H = pl.H, at = [H[0], H[1] + 0.02, H[2]], N = (x) => Math.max(0, Math.round(x));
   if (K.gore) {
-    kcSpray(K, 3, N(60), at, 1, 0.9, 0.6, 4.5, 0.006, 0.016, 3);
+    kcSpray(K, 3, N(22), at, 1, 0.9, 0.6, 4, 0.005, 0.012, 3);
     kcSpray(K, 1, N(120), at, 1, 0.85, 0.8, 6, 0.003, 0.012, 3);
     kcSpray(K, 0, N(60), at, 1, 0.9, 0.4, 3, 0.004, 0.01, 0.8);
     kcSpray(K, 9, N(8), at, 1, 0.8, 0.3, 1.6, 0.04, 0.09, 2.4);
@@ -1482,11 +1391,11 @@ function kcDrawParts(ctx, K, c, list, al) {
     ctx.globalAlpha = al * 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
   }
   // mist and dust: soft dots that swell and thin (a faint wider ring round each, so they blur together)
-  for (let pass = 0; pass < 5; pass += 4) {
-    ctx.fillStyle = pass === 0 ? '#a3141c' : '#cfe4f5';
+  for (let pass = 0; pass < 13; pass += pass === 4 ? 8 : 4) {
+    ctx.fillStyle = pass === 0 ? '#a3141c' : pass === 4 ? '#cfe4f5' : '#eaf7fc';
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i]; if (p.k !== pass || !kcProj(c, p.x, p.y, p.z, kcQ)) continue;
-      const u = p.age / p.life, a = (pass ? 0.22 : 0.4) * (1 - u) * (1 - u * 0.5), r = Math.max(1, p.r * kcQ[2] * (pass ? 0.7 : 1) * (1 + u * (pass ? 1.4 : 2.4)));
+      const u = p.age / p.life, st = pass === 12, a = (st ? 0.11 * smooth(u / 0.15) : pass ? 0.22 : 0.4) * (1 - u) * (1 - u * 0.5), r = Math.max(1, p.r * kcQ[2] * (st ? 1 : pass ? 0.7 : 1) * (1 + u * (st ? 5 : pass ? 1.4 : 2.4)));
       ctx.globalAlpha = al * a * 0.3; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r * 1.9, 0, TAU); ctx.fill();
       ctx.globalAlpha = al * a * 0.75; ctx.beginPath(); ctx.arc(kcQ[0], kcQ[1], r, 0, TAU); ctx.fill();
     }

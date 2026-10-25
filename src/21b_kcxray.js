@@ -98,6 +98,21 @@ function kcXEgg(ctx, c, fr, a, b, cc, ra, rb, rc) {
   kcMul(kcXV, fr.S, ra); kcMul(kcXV2, fr.U, rb); kcMul(kcXV3, fr.F, rc);
   return kcEll(ctx, c, kcXL[0], kcXL[1], kcXL[2], kcXV, kcXV2, kcXV3);
 }
+// The outline of a box round (x, y, z) with half-axes A, B, C (arrows in space), added to the path:
+// its eight corners put through the camera, and the outside of them walked round.
+const kcHX = new Float32Array(8), kcHY = new Float32Array(8);
+function kcXBox(ctx, c, x, y, z, A, B, C) {
+  for (let i = 0; i < 8; i++) {
+    const a = i & 1 ? 1 : -1, b = i & 2 ? 1 : -1, d = i & 4 ? 1 : -1;
+    if (!kcProj(c, x + A[0] * a + B[0] * b + C[0] * d, y + A[1] * a + B[1] * b + C[1] * d, z + A[2] * a + B[2] * b + C[2] * d, kcXQ)) return false;
+    kcHX[i] = kcXQ[0]; kcHY[i] = kcXQ[1];
+  }
+  let st = 0; for (let i = 1; i < 8; i++) if (kcHX[i] < kcHX[st]) st = i;
+  ctx.moveTo(kcHX[st], kcHY[st]);
+  let cur = st, guard = 0;
+  do { let nx = (cur + 1) % 8; for (let i = 0; i < 8; i++) { const cr = (kcHX[nx] - kcHX[cur]) * (kcHY[i] - kcHY[cur]) - (kcHY[nx] - kcHY[cur]) * (kcHX[i] - kcHX[cur]); if (cr < 0) nx = i; } cur = nx; ctx.lineTo(kcHX[cur], kcHY[cur]); } while (cur !== st && guard++ < 9);
+  ctx.closePath(); return true;
+}
 // a run of points [a, b, c, ...] in a frame (times k, a times flip), added to the path; b may be a share of L (bl)
 function kcXRun(ctx, c, fr, pts, k, flip, bl, close) {
   let ok = false;
@@ -239,11 +254,8 @@ function kcXBones(ctx, K, c, fig, al, items) {
     // the neck: from the top of the trunk to the base of the skull
     kcLoc(tor, 0, L * 1.0, -0.042 * sc, kcXV2); kcLoc(hd, 0, -0.085 * sc, -0.035 * sc, kcXV3);
     let iC = -1; if (aC >= 0 && pl && pl.part === 'head') iC = clamp(Math.round(((pl.u0 / sc + 0.07) / -0.07) * 6), 1, 5);
-    // each a short drum: a rounded middle and the flat plates at its top and bottom
-    const body = (x, y, z, Uv, hw, hh) => {
-      kcMul(kcXV, tor.S, hw); kcSet(kcL0, Uv[0] * hh, Uv[1] * hh, Uv[2] * hh); kcMul(kcL1, tor.F, hw * 0.85); kcEll(ctx, c, x, y, z, kcXV, kcL0, kcL1);
-      const k = 0.78; kcEll(ctx, c, x + Uv[0] * hh * k, y + Uv[1] * hh * k, z + Uv[2] * hh * k, kcXV, kcL1); kcEll(ctx, c, x - Uv[0] * hh * k, y - Uv[1] * hh * k, z - Uv[2] * hh * k, kcXV, kcL1);
-    };
+    // each a short block, rounded at its corners by the line join
+    const body = (x, y, z, Uv, hw, hh) => { kcMul(kcXV, tor.S, hw); kcSet(kcL0, Uv[0] * hh, Uv[1] * hh, Uv[2] * hh); kcMul(kcL1, tor.F, hw * 0.8); kcXBox(ctx, c, x, y, z, kcXV, kcL0, kcL1); };
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       if (i === iB) continue;
@@ -254,9 +266,9 @@ function kcXBones(ctx, K, c, fig, al, items) {
     for (let i = 0; i < 7; i++) {
       if (i === iC) continue;
       const t = (i + 0.5) / 7, x = lerp(kcXV2[0], kcXV3[0], t), y = lerp(kcXV2[1], kcXV3[1], t), z = lerp(kcXV2[2], kcXV3[2], t) + (iC >= 0 && Math.abs(i - iC) === 1 ? (i > iC ? 0.01 : -0.006) * sc * easeOut(aC / 0.3) : 0);
-      kcMul(kcXV, tor.S, 0.0145 * sc); kcMul(kcL0, hd.U, 0.0068 * sc); kcMul(kcL1, tor.F, 0.012 * sc); kcEll(ctx, c, x, y, z, kcXV, kcL0, kcL1);
+      body(x, y, z, hd.U, 0.0135 * sc, 0.0062 * sc);
     }
-    kcXPlate(ctx, 0.0022 * ps, al * 0.8, 0.6, false);
+    ctx.lineJoin = 'round'; kcXPlate(ctx, 0.0022 * ps, al * 0.8, 0.6, false);
     // spikes and wings
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -629,8 +641,8 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
   const bruiseAt = (g, ag, k) => {
     if (ag < 0 || !pl || pl.part !== 'torso') return;
     const gr = smooth(ag / 1.1), a = g.a * sc * bw;
-    ctx.beginPath(); kcXEgg(ctx, c, tor, a, pl.b0, pl.c0, g.ra * sc * bw * (0.4 + 0.5 * gr) * k, (0.012 + 0.03 * gr) * sc * k, (0.015 + 0.025 * gr) * sc * k);
-    ctx.globalAlpha = al * 0.5; ctx.fillStyle = bruise + '1)'; ctx.fill();
+    ctx.beginPath(); kcXEgg(ctx, c, tor, a, pl.b0, pl.c0, g.ra * sc * bw * (0.3 + 0.35 * gr) * k, (0.01 + 0.018 * gr) * sc * k, (0.012 + 0.016 * gr) * sc * k);
+    ctx.globalAlpha = al * 0.32; ctx.fillStyle = bruise + '1)'; ctx.fill();
     ctx.beginPath(); kcXEgg(ctx, c, tor, a, pl.b0, pl.c0, g.ra * sc * bw * 0.85, 0.008 * sc, 0.008 * sc); ctx.globalAlpha = al * 0.8; ctx.fillStyle = kcXC.redD; ctx.fill();
   };
   for (let i = 0; i < kcOrgans.length; i++) {
@@ -655,7 +667,7 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
         ctx.globalAlpha = al * 0.38; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = Math.max(1, 0.0035 * ps); ctx.stroke();
         if (col > 0.02) { // where it was, before it fell in
           ctx.beginPath(); kcXEgg(ctx, c, tor, ax, by, cz, g.ra * sc * bw, g.rb * sc, g.rc * sc);
-          ctx.setLineDash([3, 5]); ctx.globalAlpha = al * 0.25 * col; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+          ctx.globalAlpha = al * 0.18 * col; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = 1; ctx.stroke();
         }
       }
       bruiseAt(g, ag, 1);
@@ -718,7 +730,8 @@ function kcXHeart(ctx, K, c, fig, al, g, ag, ps) {
     ctx.moveTo(px0 - tx * BIG, py0 - ty * BIG); ctx.lineTo(px0 + tx * BIG, py0 + ty * BIG); ctx.lineTo(px0 + tx * BIG + nx * side * BIG, py0 + ty * BIG + ny * side * BIG); ctx.lineTo(px0 - tx * BIG + nx * side * BIG, py0 - ty * BIG + ny * side * BIG); ctx.closePath(); ctx.clip();
     ctx.translate(nx * side * gap * 0.5, ny * side * gap * 0.5);
     heart(split);
-    // the torn edge
+    // the torn edge (inside the heart only)
+    ctx.beginPath(); egg(0, 0, 0.068, 0.047, 0.043); ctx.clip();
     ctx.beginPath(); for (let i = -14; i <= 14; i++) { const j = (kcHash(i * 3.3 + side) - 0.5) * gap * 0.7, x = px0 + tx * i * 5, y = py0 + ty * i * 5; if (i > -14) ctx.lineTo(x + nx * side * j, y + ny * side * j); else ctx.moveTo(x + nx * side * j, y + ny * side * j); }
     ctx.globalAlpha = al * 0.9; ctx.strokeStyle = kcXc(K, 'red'); ctx.lineWidth = 1.4; ctx.stroke();
     ctx.restore();

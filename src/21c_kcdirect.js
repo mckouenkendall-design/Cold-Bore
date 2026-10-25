@@ -45,7 +45,8 @@ const kcWrap = (a) => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += 
 
 // Pick and vary this film's recipe (from the shot's own seed: where the round hit).
 function kcPickRecipe(K) {
-  const R = makeRng(Math.round(K.cavSeed * 1000) + 31), r = kcRecipes[Math.floor(R.f() * kcRecipes.length) % kcRecipes.length];
+  const R = makeRng(Math.round(K.cavSeed * 1000) + 31), pick = Math.floor(R.f() * kcRecipes.length) % kcRecipes.length;
+  const r = kcRecipes.find((q) => q.id === KillCam.testRecipe) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
   const szK = K.part === 'head' ? 0.7 : 1;
   const jit = (v) => [v[0] + (R.f() - 0.5) * 14, v[1] + (R.f() - 0.5) * 12, v[2] * szK * (0.9 + R.f() * 0.2), v[3], v[4] * (R.f() < 0.25 ? -1 : 1)];
   const rec = { id: r.id, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88 + (R.f() - 0.5) * 30, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
@@ -199,7 +200,7 @@ function kcWorld(K, V, ctx, c, Wd, Hd, dpr, dt, simDt, hide, near) {
   const lc = kcLayerCamWH(Wd, Hd, wc, (c.fpx || 0) + O[0], (c.fpy || 0) + O[1], (c.fpz || 0) + O[2]);
   const keepCtx = V.ctx, keepDpr = V.dpr, keepHide = a ? a.hidden : false, id = a ? a.id : null, keepById = id !== null ? sim.byId[id] : null;
   const held = [], fxAll = V.fx || [];
-  if (fxAll.length) { const show = []; for (let i = 0; i < fxAll.length; i++) { const f = fxAll[i]; ((f.k === 'star' || (f.k === 'puff' && f.col === '#f1ede2')) ? held : show).push(f); } V.fx = show; }
+  if (fxAll.length) { const show = [], ax = a ? a.x : 0, az = O[2]; for (let i = 0; i < fxAll.length; i++) { const f = fxAll[i]; ((f.k === 'star' || (f.k === 'puff' && Math.abs(f.x - ax) < 4 && Math.abs(f.z - az) < 8)) ? held : show).push(f); } V.fx = show; }
   try {
     V.ctx = ctx; V.dpr = dpr;
     if (hide && a) { a.hidden = true; if (a.inVeh) sim.byId[id] = null; } // (a passenger is drawn through the car's window by id)
