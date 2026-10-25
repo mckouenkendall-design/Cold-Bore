@@ -720,6 +720,15 @@ K.industry = function (S, z, o) {
     for (let q = 0; q < vis.length; q++) { const th = things[vis[q]]; if (th.t === 'stack' && Math.sin(env.t * 2.2 + th.ph * 6) > 0.2) { const r = Math.max(0.9, env.px * 1.6); ctx.moveTo(th.x + th.w / 2 + r, base + th.h + 1.2); ctx.arc(th.x + th.w / 2, base + th.h + 1.2, r, 0, TAU); } }
     ctx.fill();
     if (s > 0.25) { ctx.fillStyle = lit; ctx.beginPath(); for (let q = 0; q < vis.length; q++) { const i = vis[q], th = things[i]; if (th.t !== 'shed') continue; for (let k = 0; k < th.win.length; k++) ctx.rect(th.win[k][0], th.win[k][1], 3, 1.6); if (fine && dark > 0.25 && i % 3 === 0) ctx.rect(th.x + th.w * 0.42 + 1, base, 7, th.h * 0.3); } ctx.fill(); }
+    // now and then a freight train runs along the far line in front of the works
+    { const per = 95, run = (x1 - x0 + 400) / 14, u = ((env.t + 40) % per) / run;
+      if (u < 1) {
+        const dir = Math.floor((env.t + 40) / per) % 2 ? -1 : 1, head = dir > 0 ? x0 - 200 + u * (x1 - x0 + 400) : x1 + 200 - u * (x1 - x0 + 400);
+        ctx.fillStyle = c3; ctx.beginPath();
+        for (let k = 0; k < 14; k++) { const wx = head - dir * k * 17, w = k ? 16 : 18, h = k ? (k % 3 ? 4.2 : 3.6) : 4.6; if (wx + w < env.x0 || wx - w > env.x1) continue; ctx.rect(wx - (dir > 0 ? w : 0), base + 0.6, w - 0.8, h); }
+        ctx.fill();
+        if (dark > 0.25 && head > env.x0 - 5 && head < env.x1 + 5) { circ(ctx, head, base + 2.2, Math.max(0.5, env.px * 1.2), '#fff2c8'); if (s > 0.6) kxGlow(ctx, '#fff2c8', head + dir * 3, base + 2.2, Math.max(6, env.px * 14), 0.5); }
+      } }
     // smoke and steam, leaning with the wind
     for (let q = 0; q < vis.length; q++) { const th = things[vis[q]];
       if (th.t === 'stack') ydSmoke(ctx, env, th.x + th.w / 2, base + th.h + 4, smokeCol, 5, 48, 4, 21, 0.035, dark > 0.5 ? 0.2 : 0.26, (env.wind || 0) * 26, th.ph);

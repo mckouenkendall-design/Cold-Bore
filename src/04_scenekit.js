@@ -315,6 +315,9 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// Is the air wet enough to catch light (rain, a storm, fog)?
+function kxMisty(S) { return S.weather === 'rain' || S.weather === 'storm' || S.weather === 'fog'; }
+
 // ---- birds that take fright -------------------------------------------------------------
 // A loud shot reaches the birds sitting about the scene a moment after it is fired (sound
 // covers about 343 metres a second). They burst off their perches, climb away from the noise
@@ -962,6 +965,21 @@ K.skyline = function (S, z, o) {
       const bx = b.x + b.w * 0.5, by = b.top === 2 ? base + b.h * 1.18 : b.kind === 5 ? base + b.h * (1.16 + b.k1 * 0.1) : base + b.h + 1.4, r = Math.max(0.7, env.px * 1.3);
       circ(ctx, bx, by, r, '#ff4a3d'); if (s > 0.8) kxGlow(ctx, '#ff4a3d', bx, by, r * 5, 0.5);
     }
+    // after dark, traffic on the roads along the foot of the row: white lamps one way, red the other
+    if (S.pal.dark > 0.3 && o.traffic !== false && s > 0.12) {
+      const span = x1 - x0, r = Math.max(env.px * 0.9, 0.35);
+      for (let lane = 0; lane < 2; lane++) {
+        ctx.fillStyle = lane ? '#ff5a48' : '#fff2cc'; ctx.beginPath();
+        const dir = lane ? -1 : 1, sp = lane ? 11 : 13, gap = 37 + lane * 11, yy = base + 0.9 + lane * 0.5;
+        for (let k = 0; k * gap < span; k++) {
+          const h = kxH(k * 1.3 + lane, (o.seed || 11)); if (h < 0.35) continue;
+          const xx = x0 + ((((k * gap + h * 20 + dir * env.t * sp * (0.8 + h * 0.4)) % span) + span) % span);
+          if (xx < env.x0 - 2 || xx > env.x1 + 2) continue;
+          ctx.rect(xx - r * 1.4, yy, r, r); ctx.rect(xx + r * 0.4, yy, r, r);
+        }
+        ctx.fill();
+      }
+    }
     // the foot of the row sinks into the air
     if (hz > 0) kxFadeAt(ctx, fogC, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), (o.hMin || 30) * 1.6, hz);
   } });
@@ -1012,6 +1030,17 @@ K.mountains = function (S, z, o) {
         ctx.fillStyle = light; ctx.beginPath(); ctx.moveTo(b[0], b[1]); for (let k = 0; k < rg.length; k += 2) ctx.lineTo(rg[k], rg[k + 1]); ctx.lineTo(rg[rg.length - 2] - (b[1] - base) * 0.12, rg[rg.length - 1]); ctx.lineTo(lerp(b[0], a[0], 0.45), lerp(b[1], a[1], 0.45)); ctx.closePath(); ctx.fill();
         ctx.fillStyle = deep; ctx.beginPath(); ctx.moveTo(b[0] + (c[0] - b[0]) * 0.1, b[1] - (b[1] - c[1]) * 0.1); ctx.lineTo(lerp(b[0], c[0], 0.5), lerp(b[1], c[1], 0.5)); ctx.lineTo(lerp(b[0], c[0], 0.3), base + (b[1] - base) * 0.2); ctx.closePath(); ctx.fill();
         if (env.s > 0.05) { ctx.strokeStyle = shade; ctx.lineWidth = Math.max(1.2, env.px); ctx.beginPath(); const gl = peaks[q].gul; for (let g = 0; g < gl.length; g++) { ctx.moveTo(gl[g][0], gl[g][1]); ctx.lineTo(gl[g][2], gl[g][3]); } ctx.stroke(); }
+        if (env.s * (b[1] - base) > 160) { // bands of rock across the faces, tilted the same way, broken here and there
+          const n = env.s * (b[1] - base) > 420 ? 9 : 5, dip = 0.18 + kxH(q, 2) * 0.12;
+          ctx.save(); ctx.beginPath(); ctx.moveTo(a[0], base); ctx.lineTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(c[0], base); ctx.closePath(); ctx.clip();   // kept inside this peak
+          ctx.strokeStyle = deep; ctx.globalAlpha = 0.32; ctx.lineWidth = Math.max(env.px * 1.1, 1.5); ctx.beginPath();
+          for (let k = 1; k <= n; k++) {
+            const yy = base + (b[1] - base) * (0.18 + 0.6 * k / (n + 1)), xa = lerp(a[0], b[0], clamp((yy - a[1]) / Math.max(1, b[1] - a[1]), 0, 1)) + 6, xb = lerp(c[0], b[0], clamp((yy - c[1]) / Math.max(1, b[1] - c[1]), 0, 1)) - 6;
+            if (xb - xa < 20) continue;
+            for (let sgm = 0; sgm < 3; sgm++) { if (kxH(q * 7 + k, sgm) < 0.3) continue; const u0 = sgm / 3 + 0.04, u1 = (sgm + 1) / 3 - 0.04; ctx.moveTo(lerp(xa, xb, u0), yy + (u0 - 0.5) * (xb - xa) * dip); ctx.lineTo(lerp(xa, xb, u1), yy + (u1 - 0.5) * (xb - xa) * dip); }
+          }
+          ctx.stroke(); ctx.globalAlpha = 1; ctx.restore();
+        }
       }
       if (o.snow !== false && b[1] - base > H * sl) {
         const d = (b[1] - base - H * sl) * 0.9 + 12;
@@ -1359,6 +1388,17 @@ K.building = function (S, P, o) {
         else kxSpillAt(ctx, spillSp, op.x, op.y, op.w, op.h, 1, true);
       }
       if (any && stamp) ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      // in rain or mist each lit window throws a soft shaft of light down through the wet air
+      if (any && kxMisty(S) && s > 3) {
+        ctx.globalAlpha = 1;
+        for (const key in B.wins) {
+          const op = B.wins[key]; if (op.x + op.w < vx0 - 2 || op.x > vx1 + 2) continue;
+          if (env.y0 !== undefined && (op.y - 2.6 > env.y1 || op.y < env.y0)) continue;
+          const room = S.rooms[op.room]; if (!room || !room.lit) continue;
+          kxFadeAt(ctx, '#ffd98a', op.x - op.w * 0.08, op.y, op.w * 1.16, -2.6, 0.13 * dark);
+        }
+        ctx.globalAlpha = 0.3 * dark;
+      }
       if (o.shop && S.rooms[B.shop.room].lit && B.shop.x < vx1 + 2 && B.shop.x + B.shop.w > vx0 - 2) { if (!any) { ctx.globalCompositeOperation = 'lighter'; any = true; } ctx.globalAlpha = 0.3 * dark; kxSpillAt(ctx, kxSpill('#ffe7b3'), B.shop.x, B.shop.y, B.shop.w, B.shop.h, 1.6); }
       if (any) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
     }
@@ -1553,6 +1593,19 @@ K.building = function (S, P, o) {
         else if (b[1] === 2) { R4(ctx, bx - 0.6, ry - 0.1, 1.2, 0.4, vc); poly(ctx, [bx - 0.6, ry + 0.3, bx + 0.6, ry + 0.3, bx + 0.45, ry + 0.56, bx - 0.45, ry + 0.56], S.tone(S.pal.glass, P)); if (env.s > 14) { ctx.fillStyle = vc2; ctx.fillRect(bx - 0.02, ry + 0.3, 0.04, 0.26); ctx.fillRect(bx - 0.6, ry + 0.28, 1.2, 0.04); } }
         else { line(ctx, bx, ry - 0.1, bx, ry + 0.5, vc, 0.06, env); ctx.fillStyle = dishC; ctx.beginPath(); ctx.ellipse(bx + 0.06, ry + 0.62, 0.16, 0.36, -0.5, 0, TAU); ctx.fill(); if (env.s > 12) { ctx.fillStyle = dishD; ctx.beginPath(); ctx.ellipse(bx + 0.1, ry + 0.6, 0.09, 0.27, -0.5, 0, TAU); ctx.fill(); line(ctx, bx + 0.08, ry + 0.6, bx + 0.42, ry + 0.82, vc, 0.03, env); } }
       }
+    } });
+  }
+  // the hour of long shadows: with the sun low and clear, the upper floors catch its warm light
+  // while the shadow of the roofs across the way lies over the lower ones, its edge on a slant
+  if ((S.time === 'dusk' || S.time === 'dawn') && S.pal.dark < 0.5 && S.weather === 'clear') {
+    const sd = S.sky.sun[0] < 0 ? -1 : 1, sl = -0.1 * sd, ys = base + H * (0.3 + 0.25 * kxH(x, w)), warm = S.time === 'dusk' ? 'rgba(255,150,80,0.1)' : 'rgba(255,190,150,0.09)', cool = S.time === 'dusk' ? 'rgba(40,24,70,0.16)' : 'rgba(50,50,90,0.13)';
+    P.add({ x0: x, x1: x + w, layer: 0, draw(ctx, env) {
+      if (env.s < 0.8) return;
+      const a = Math.max(x, env.x0), b = Math.min(x + w, env.x1); if (b <= a) return;
+      const ya = ys + (a - x) * sl, yb = ys + (b - x) * sl;
+      ctx.fillStyle = cool; ctx.beginPath(); ctx.moveTo(a, base); ctx.lineTo(a, ya); ctx.lineTo(b, yb); ctx.lineTo(b, base); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = warm; ctx.beginPath(); ctx.moveTo(a, ya); ctx.lineTo(a, base + H); ctx.lineTo(b, base + H); ctx.lineTo(b, yb); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
     } });
   }
   // for detail added on top by a scene: what the wall is made of and what is already fixed to it

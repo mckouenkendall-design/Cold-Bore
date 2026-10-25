@@ -1038,6 +1038,26 @@ K.twSite = function (S, P, o) {
   return Z;
 };
 
+// ---- a city in neon (a mission's look: 07i_looks.js) ---------------------------------
+// The far towers outlined in coloured light: a line along the crown of some, a strip up one
+// edge of others, a few slow colour changes. Painted on the far skyline only, nothing near.
+function twNeonCity(S, P) {
+  const D = makeRng(7717 + Math.round(P.z)), bl = P.kxBuildings || [], cols = ['#ff4fc8', '#4fe8ff', '#b46bff', '#ff8a3d', '#5dff9a'], list = [];
+  for (let i = 0; i < bl.length; i++) { const b = bl[i]; if (!D.chance(0.38)) continue; list.push([b.x, b.w, b.h, D.pick(cols), D.i(0, 2), D.f()]); }
+  P.add({ x0: -2000, x1: 2000, layer: 0, draw(ctx, env) {
+    const s = env.s, lw = Math.max(env.px * 1.6, 0.6), t = env.t;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i], x = q[0], w = q[1], h = q[2]; if (x + w < env.x0 || x > env.x1) continue;
+      const on = q[4] === 2 ? 0.55 + 0.45 * Math.sin(t * 0.8 + q[5] * 9) : 1, col = q[3];
+      ctx.globalAlpha = on; ctx.fillStyle = col;
+      if (q[4] !== 1) ctx.fillRect(x + w * 0.04, h - lw * 1.5, w * 0.92, lw);
+      if (q[4] !== 0) ctx.fillRect(q[5] > 0.5 ? x + w * 0.04 : x + w * 0.96 - lw, h * 0.15, lw, h * 0.83);
+      ctx.globalAlpha = 1;
+      if (s > 0.25) { const gx = x + w / 2; kxGlow(ctx, col, gx, h, Math.max(w * 0.7, env.px * 20), 0.22 * on); }
+    }
+  } });
+}
+
 // ---- a helicopter (a vehicle kind, so it flies on a routine like any car) ----------
 CARS.twheli = { len: 12, h: 3.8, body: 3.8, cab: [-0.5, 0.5], win: [], seats: [], wheel: 0, solid: true,
   draw(ctx, env, S, P, x, y, dir, colHex) {
@@ -1096,8 +1116,9 @@ SCN.towers = function (o) {
   const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet);   // decoration only (a look can leave it wet after rain)
 
   // far away: the rest of the city
-  K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
+  const PSk = K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
   K.skyline(S, z0 + 560, { seed: 17 + seed, hMin: 16, hMax: 30, x0: -700, x1: 700, cols: ['#465264', '#4e5a6c', '#3c4858'] });
+  if (S.look && S.look.dress === 'neon') twNeonCity(S, PSk);
   // fireworks over the harbour (drawn only while they are going off)
   const PW = S.plane(z0 + 400, 'fireworks'); H.fw = null;
   // on the same plane: banks of low cloud drifting over the far rooftops
