@@ -91,13 +91,26 @@ function alpWrap(x, a, span) { return a + ((((x - a) % span) + span) % span); }
 // a closed polygon from a flat list of numbers, added to the current path
 function alpPath(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
 
+// How the valley is dressed for each mission's look (07i_looks.js): the colour of the meadow,
+// how many of the trees on the hills are larches turned gold, and what lies on the grass.
+// None of it stands up off the ground: stripes, rime, dew, leaves and flowers are all flat.
+const VLY_DRESS = {
+  autumn: { meadow: '#9c9a4e', accent: 0.34, accentCol: '#c98f2a', leaves: true },
+  hay: { meadow: '#a2aa5a', stripes: true },
+  frost: { meadow: '#7d957f', rime: true },
+  dew: { dew: true },
+  summer: { meadow: '#79ab58', flowers: 2.6 },
+  windy: {},
+};
+function vlyDressOf(S) { return VLY_DRESS[S.look && S.look.dress] || {}; }
+
 // Grass for an open slope or a lawn: broad patches a shade deeper, the pale ripples wind
 // sends through long grass, tufts whose blades lean downwind, and drifts of small flowers.
 // q.yAt(x) is the top edge of the turf; everything is drawn below it, within q.depth metres.
 // q.skip(x, y) can keep things off paths and paving. Returns the function that draws it.
 function alpTurf(S, P, q) {
   const D = makeRng(q.seed || 5), snowy = S.time === 'snow', x0 = q.x0, x1 = q.x1, span = x1 - x0, dep = q.depth, yAt = q.yAt, top = q.top === undefined ? 0.5 : q.top, skip = q.skip || (() => false);
-  const blade = S.tone(snowy ? '#cfd8e0' : darken(q.col, 0.17), P), pale = S.tone(snowy ? '#fbfcfd' : mix(lighten(q.col, 0.2), '#d9e2a0', 0.25), P), deep = S.tone(snowy ? '#dde4ea' : darken(q.col, 0.055), P);
+  const blade = S.tone(snowy ? '#cfd8e0' : vlyDressOf(S).rime ? mix(darken(q.col, 0.1), '#dfe8f0', 0.45) : darken(q.col, 0.17), P), pale = S.tone(snowy ? '#fbfcfd' : mix(lighten(q.col, 0.2), '#d9e2a0', 0.25), P), deep = S.tone(snowy ? '#dde4ea' : darken(q.col, 0.055), P);
   const flC = ['#f4f1e4', '#f1d24a', '#b48ad0'].map((c) => S.tone(c, P)), TU = [], FL = [], RP = [], PA = [];
   for (let i = 0, n = Math.round(span * (q.tufts === undefined ? 0.9 : q.tufts)); i < n; i++) { const x = D.r(x0, x1), y = yAt(x) - D.r(top, dep); if (!skip(x, y)) TU.push([x, y, D.r(0.22, 0.42), D.r(0, TAU)]); }
   TU.sort((a, b) => a[0] - b[0]);
@@ -107,7 +120,41 @@ function alpTurf(S, P, q) {
   }
   for (let i = 0, n = Math.round(span / 12); i < n; i++) RP.push([x0 + span * (i + D.f()) / n, D.r(top + 0.6, dep * 0.92), D.r(4, 11), D.r(0.24, 0.48), D.r(0, TAU), D.r(0.7, 1.3)]);
   for (let i = 0, n = Math.round(span / 22); i < n; i++) { const x = x0 + span * (i + D.f()) / n; PA.push([x, D.r(top + 1, dep * 0.9), D.r(6, 15), D.r(0.5, 1.3)]); }
+  // the mission's dressing, from a stream of its own
+  const DR = vlyDressOf(S), E = makeRng((q.seed || 5) * 7 + 911), XS = [], XL = [], XF = [];
+  const stripeA = S.tone(lighten(q.col, 0.12), P), stripeB = S.tone(darken(q.col, 0.06), P), rowC = S.tone(darken(q.col, 0.2), P), rime = S.tone('#e6eef6', P), leafC = ['#c4662a', '#d89a32', '#a8442a', '#e0b84a'].map((c) => S.tone(c, P)), flC2 = ['#f4f1e4', '#f1d24a', '#b48ad0', '#e86a6a'].map((c) => S.tone(c, P));
+  if (!snowy && (DR.rime || DR.dew)) for (let i = 0, n = Math.round(span * (DR.rime ? 0.5 : 0.35)); i < n; i++) XS.push([E.r(x0, x1), E.r(top, dep), E.r(0.03, 0.07), E.r(0, TAU), E.r(0.6, 1.2)]);
+  if (!snowy && DR.leaves) for (let i = 0, n = Math.round(span * 0.6); i < n; i++) XL.push([E.r(x0, x1), E.r(top, dep), E.r(0.07, 0.13), E.i(0, 3), E.r(0, TAU)]);
+  if (!snowy && DR.flowers) for (let i = 0, n = Math.round(span * 0.05 * DR.flowers); i < n; i++) XF.push([E.r(x0, x1), E.r(top + 0.5, dep * 0.9), E.r(1.2, 3.5), E.r(0.25, 0.6), E.i(0, 3)]);
+  XS.sort((a, b) => a[0] - b[0]); XL.sort((a, b) => a[0] - b[0]);
+  const dress = (ctx, env) => {
+    const s = env.s, vx0 = Math.max(x0, env.x0), vx1 = Math.min(x1, env.x1); if (vx1 <= vx0) return;
+    if (DR.stripes && s > 0.6) { // mown in broad stripes, each with a row of cut grass along it
+      const n = 7;
+      for (let i = 0; i < n; i++) { const ya = top + (dep - top) * i / n, yb = top + (dep - top) * (i + 1) / n; ctx.fillStyle = i % 2 ? stripeA : stripeB; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(vx0, yAt(vx0) - ya); for (let x = vx0; x <= vx1 + 8; x += 8) ctx.lineTo(Math.min(x, vx1), yAt(Math.min(x, vx1)) - ya - Math.sin(x * 0.05 + i) * 0.12); for (let x = vx1; x >= vx0 - 8; x -= 8) ctx.lineTo(Math.max(x, vx0), yAt(Math.max(x, vx0)) - yb - Math.sin(x * 0.05 + i + 1) * 0.12); ctx.closePath(); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      if (s > 2) { ctx.strokeStyle = rowC; ctx.globalAlpha = 0.55; ctx.lineWidth = Math.max(0.06, env.px * 1.2); ctx.beginPath(); for (let i = 1; i < n; i += 2) { const yy = top + (dep - top) * (i + 0.5) / n; ctx.moveTo(vx0, yAt(vx0) - yy); for (let x = vx0; x <= vx1; x += 3) ctx.lineTo(x, yAt(x) - yy + Math.sin(x * 0.37 + i) * 0.05); } ctx.stroke(); ctx.globalAlpha = 1; }
+    }
+    if (DR.rime && s > 0.8) { // hoar frost lying in the hollows of the grass
+      ctx.fillStyle = rime; ctx.globalAlpha = 0.28; ctx.beginPath();
+      for (let i = 0; i < PA.length; i++) { const p = PA[i]; if (p[0] + p[2] < env.x0 || p[0] - p[2] > env.x1) continue; const y = yAt(p[0]) - p[1]; ctx.moveTo(p[0] + p[2] * 1.1, y); ctx.ellipse(p[0], y, p[2] * 1.1, p[3] * 1.2, 0, 0, TAU); }
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+    if (XS.length && s > 3) { // rime crystals or dew catching the low sun, each glinting now and then
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); const tt = env.t;
+      for (let i = vlyFrom(XS, env.x0 - 1); i < XS.length && XS[i][0] < env.x1 + 1; i++) { const f = XS[i], g = Math.sin(tt * f[4] * 2 + f[3]); if (g < 0.55) continue; const r = Math.max(f[2] * (g - 0.4) * 2, env.px * 0.8); ctx.rect(f[0] - r, yAt(f[0]) - f[1] - r * 0.2, r * 2, r * 0.4); ctx.rect(f[0] - r * 0.2, yAt(f[0]) - f[1] - r, r * 0.4, r * 2); }
+      ctx.fill();
+    }
+    if (XL.length && s > 4) { // fallen leaves blown out over the grass
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = leafC[c]; ctx.beginPath(); for (let i = vlyFrom(XL, env.x0 - 1); i < XL.length && XL[i][0] < env.x1 + 1; i++) { const l = XL[i]; if (l[3] !== c) continue; const r = Math.max(l[2], env.px), y = yAt(l[0]) - l[1]; ctx.moveTo(l[0] + r, y); ctx.ellipse(l[0], y, r, r * 0.45, l[4], 0, TAU); } ctx.fill(); }
+    }
+    if (XF.length && s > 1.5) { // drifts of wild flowers, a haze of colour from far off
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = flC2[c]; ctx.globalAlpha = s > 9 ? 0.35 : 0.55; ctx.beginPath(); for (let i = 0; i < XF.length; i++) { const f = XF[i]; if (f[4] !== c || f[0] + f[2] < env.x0 || f[0] - f[2] > env.x1) continue; const y = yAt(f[0]) - f[1]; ctx.moveTo(f[0] + f[2], y); ctx.ellipse(f[0], y, f[2], f[3], 0, 0, TAU); } ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  };
   return function (ctx, env) {
+    dress(ctx, env);
     const a = alpGale(env), dir = env.wind >= 0 ? 1 : -1, s = env.s;
     if (s > 0.9) { // patches
       ctx.fillStyle = deep; ctx.beginPath(); let n = 0;
@@ -355,7 +402,7 @@ K.forestHill = function (S, z, o) {
   const bodyHex = o.col || '#2c4b3b', body = S.tone(bodyHex, P), cap = S.tone('#f1f5f8', P);
   const th = o.th || 12, rows = o.rows === undefined ? 3 : o.rows, tw = o.tw || 0.2, dens = o.density === undefined ? 0.92 : o.density;
   const tx0 = o.tx0 === undefined ? x0 : o.tx0, tx1 = o.tx1 === undefined ? x1 : o.tx1, drop = o.rowDrop || 0.52;
-  const crags = o.crags || [], glades = o.glades || [], accent = snowy ? 0 : (o.accent === undefined ? 0.07 : o.accent);
+  const DRS = vlyDressOf(S), crags = o.crags || [], glades = o.glades || [], accent = snowy ? 0 : DRS.accent || (o.accent === undefined ? 0.07 : o.accent);
   const R = makeRng(sd * 31 + 7), D = makeRng(sd * 53 + 19), TR = [], cols = [], lits = [];
   const bare = (x, r) => { for (let i = 0; i < crags.length; i++) if (r < 2 && Math.abs(x - crags[i][0]) < crags[i][1] * (r ? 0.26 : 0.42)) return true; for (let i = 0; i < glades.length; i++) if (r < glades[i][2] && x > glades[i][0] && x < glades[i][1]) return true; return false; };
   for (let r = 0; r < rows + (o.more || 0); r++) {
@@ -371,7 +418,7 @@ K.forestHill = function (S, z, o) {
     const hex = r % 2 ? (o.treeCol2 || '#2f5a45') : (o.treeCol || '#24463a');
     cols.push(S.tone(hex, P)); lits.push(S.tone(mix(lighten(hex, 0.13), '#9fb86a', 0.14), P));
   }
-  const accHex = o.accentCol || mix(o.treeCol || '#24463a', '#86a857', 0.34), accC = S.tone(accHex, P), accL = S.tone(lighten(accHex, 0.14), P), trunkC = S.tone(mix(darken(o.treeCol || '#24463a', 0.45), '#3b2d22', 0.45), P);
+  const accHex = DRS.accentCol || o.accentCol || mix(o.treeCol || '#24463a', '#86a857', 0.34), accC = S.tone(accHex, P), accL = S.tone(lighten(accHex, 0.14), P), trunkC = S.tone(mix(darken(o.treeCol || '#24463a', 0.45), '#3b2d22', 0.45), P);
   const mist = o.mist, mistCol = S.pal.fog, mistDeep = z * 0.11, wisps = [], hazy = P.haze > 0.5;
   if (mist) for (let i = 0; i < 12; i++) wisps.push([x0 + (x1 - x0) * (i + D.f()) / 12, lerp(mist[0], mist[1], D.r(0.15, 0.8)), z * D.r(0.05, 0.11), (mist[1] - mist[0]) * D.r(0.1, 0.2), D.r(0.6, 1.4)]);
 
@@ -1157,7 +1204,7 @@ SCN.valley = function (o) {
   const S = makeScene({ time, weather: o.weather || (snowy ? 'snow' : 'clear'), seed: sd, refZ: zR, fog: o.fog, exits: [-112, 112], sun: o.sun || (time === 'dawn' ? [-58, (a6 + 0.016) * 1000] : [58, (a6 + 0.05) * 1000]),
     bounds: { x0: -span, x1: span, y0: onRef(bankY, zD - 95) - 0.02 * zR, y1: o.top === undefined ? lay(a6 + 0.03, zR) : o.top }, ambience: snowy ? 'snow' : 'wild', groundMat: snowy ? 'snow' : 'dirt' });
   const H = { S, z: zR, zD, eye: E, deckY, roadY, kit: VLY };
-  const meadow = snowy ? '#e9eef3' : time === 'dawn' ? '#6f8f5a' : '#7fa860';
+  const meadow = snowy ? '#e9eef3' : vlyDressOf(S).meadow || (time === 'dawn' ? '#6f8f5a' : '#7fa860');
   const sunD = S.sky.sun[0] >= 0 ? 1 : -1, dimK = S.pal.dark > 0.1 || snowy;   // dimK: dull enough for lamps to show
 
   // ---- peaks and hills, far to near ----

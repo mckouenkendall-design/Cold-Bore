@@ -108,26 +108,27 @@ View.prototype.drawFogVeil = function (sim, cam) {
 // the air. Painted in thin flat bands, never as a gradient, and kept light enough that people
 // and the things players look for stay as easy to see as before.
 const AIR_GRADE = {
-  day: { warm: 0.04, sat: 0.1, a: 0.06 }, dawn: { bot: '#ffb08a', top: '#8a9ad0', a: 0.08, glow: 0.12 }, dusk: { bot: '#ff9a50', top: '#5a4aa0', a: 0.1, glow: 0.14 },
+  day: { top: '#3f6fb8', bot: '#ffd29a', a: 0.06 }, dawn: { bot: '#ffb08a', top: '#8a9ad0', a: 0.08, glow: 0.12 }, dusk: { bot: '#ff9a50', top: '#5a4aa0', a: 0.1, glow: 0.14 },
   night: { top: '#3050a0', a: 0.1 }, overcast: { top: '#a8b4c0', a: 0.05 }, snow: { top: '#c4d4e6', a: 0.06 },
 };
 View.prototype.drawGrade = function (sim, cam) {
-  const V = this, ctx = V.ctx, S = sim.S, G = (S.look && S.look.grade) || AIR_GRADE[S.time] || AIR_GRADE.day;
+  const V = this, ctx = V.ctx, S = sim.S, G = S._grade || (S._grade = Object.assign({}, AIR_GRADE[S.time] || AIR_GRADE.day, (S.look && S.look.grade) || {}));
   const x0 = cam.cx - cam.hw, y0 = cam.cy - cam.hh, W = cam.hw * 2, H = cam.hh * 2, a = G.a || 0.08;
   ctx.save();
-  if (G.top || G.bot) {
-    const top = G.top || null, bot = G.bot || null, n = 16;
-    ctx.globalCompositeOperation = 'soft-light';
+  // one pass of soft light in flat bands: the top tint fading down, the bottom tint fading up,
+  // a warm cast over all of it (each band is cut on whole pixels so none overlap)
+  const top = G.top || null, bot = G.bot || null, warm = G.warm || 0;
+  if (top || bot || warm) {
+    const n = 12; ctx.globalCompositeOperation = 'soft-light';
+    let prev = Math.round(y0);
     for (let i = 0; i < n; i++) {
-      const v = (i + 0.5) / n, ka = top ? (1 - v) : 0, kb = bot ? v : 0;
-      if (ka + kb < 0.02) continue;
-      ctx.fillStyle = top && bot ? mix(top, bot, kb / (ka + kb)) : (top || bot);
-      ctx.globalAlpha = clamp(a * 2.4 * Math.max(ka, kb), 0, 1);
-      ctx.fillRect(x0, y0 + (H * i) / n, W, H / n + 0.5);
+      const v = (i + 0.5) / n, ka = top ? 1 - v : 0, kb = bot ? v : 0, next = Math.round(y0 + (H * (i + 1)) / n);
+      let col = top && bot ? mix(top, bot, kb / Math.max(1e-6, ka + kb)) : (top || bot || '#ffb86a'), al = a * 2.4 * Math.max(ka, kb);
+      if (warm) { col = mix(col, '#ffb86a', warm / (warm + al + 1e-6)); al += warm * 2.5; }
+      if (al > 0.005 && next > prev) { ctx.fillStyle = col; ctx.globalAlpha = clamp(al, 0, 1); ctx.fillRect(x0, prev, W, next - prev); }
+      prev = next;
     }
   }
-  if (G.warm) { ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = clamp(G.warm * 2.5, 0, 1); ctx.fillStyle = '#ffb86a'; ctx.fillRect(x0, y0, W, H); }
-  if (G.sat) { ctx.globalCompositeOperation = 'saturation'; ctx.globalAlpha = clamp(G.sat, 0, 1); ctx.fillStyle = '#ff0000'; ctx.fillRect(x0, y0, W, H); }
   // the haze round a low sun, lit up over everything near it
   if (G.glow && S.pal.dark < 0.5) {
     const sx = cam.cx + (S.sky.sun[0] - cam.ax) * cam.ppm, sy = cam.cy - (S.sky.sun[1] - cam.ay) * cam.ppm, R = Math.max(W, H) * 0.9;

@@ -135,7 +135,7 @@ View.prototype.drawSky = function (sim, cam) {
   sky.windNow = sim.wind();
   // tell the smoke and steam how they are lit this frame
   const air = SKY_AIR[S.time] || SKY_AIR.day, side = S.sky.sun[0] < 0 ? -1 : 1;
-  kxAir.side = side; kxAir.lit = sky.wet ? mix(air[0], '#9aa4ae', 0.5) : air[0]; kxAir.shade = air[1]; kxAir.key = S.time + S.weather + side;
+  kxAir.side = side; kxAir.lit = sky.wet ? mix(air[0], '#9aa4ae', 0.5) : air[0]; kxAir.shade = air[1]; kxAir.soft = pal.dark > 0.5; kxAir.key = S.time + S.weather + side;
   const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
   const X = (mx) => cx + (mx - cam.ax) * ppm, Y = (my) => cy - (my - cam.ay) * ppm;
   const top = cy - hh, bot = cy + hh, left = cx - hw, right = cx + hw;

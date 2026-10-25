@@ -327,13 +327,13 @@ function kxBall(col) {
   if (kxBallPics.size > 80) kxBallPics.clear();
   const N = 64; c = kxCanvas(N, N);
   const g = c.getContext('2d'), im = g.createImageData(N, N), d = im.data, B = rgbOf(col.charAt(0) === '#' ? col : kxHexOf(col));
-  const Lt = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.lit, 0.5)), Sh = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.shade, 0.45));
+  const Lt = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.lit, 0.45)), Sh = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.shade, kxAir.soft ? 0.22 : 0.36));
   const lx = kxAir.side * 0.42, ly = 0.78, lz = 0.46;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     // (row 0 is the bottom: planes are drawn with y up, which turns a picture over)
     const u = (i + 0.5) / N * 2 - 1, v = (j + 0.5) / N * 2 - 1, dd = Math.sqrt(u * u + v * v), k = (j * N + i) * 4;
     if (dd >= 1) { d[k + 3] = 0; continue; }
-    const nz = Math.sqrt(1 - dd * dd), dot = u * lx + v * ly + nz * lz, t1 = smooth((dot + 0.05) / 0.3), t2 = smooth((dot - 0.58) / 0.2);
+    const nz = Math.sqrt(1 - dd * dd), dot = u * lx + v * ly + nz * lz, t1 = smooth((dot + 0.15) / 0.45), t2 = smooth((dot - 0.6) / 0.25);
     for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.round(lerp(lerp(Sh[ch], B[ch], t1), Lt[ch], t2));
     d[k + 3] = Math.round(255 * smooth((1 - dd) / 0.2));
   }
@@ -354,7 +354,9 @@ function kxHexOf(css) { // 'rgb(r,g,b)' or 'r,g,b' to '#rrggbb'
 //   a fixed distance at the top in metres; o.ph a phase; o.steam: steam thins out faster.
 const kxPlumeU = [];
 function kxPlume(ctx, env, x, y, o) {
-  const n = o.n || 8, rise = o.rise || 4, r0 = o.r0 || 0.2, r1 = o.r1 || 1.2, a0 = o.a === undefined ? 0.5 : o.a, w = env.wind || 0;
+  const rise = o.rise || 4, r0 = o.r0 || 0.2, r1 = o.r1 || 1.2, a0 = o.a === undefined ? 0.5 : o.a, w = env.wind || 0;
+  // enough puffs that each overlaps the next, so the column never breaks up into separate balls
+  const n = Math.min(26, Math.max(o.n || 8, Math.ceil(rise / ((r0 + r1) * 0.5 * 0.75))));
   const flat = 1 / (1 + Math.abs(w) * (o.flat === undefined ? 0.1 : o.flat)), reach = o.drift !== undefined ? o.drift : w * (o.lean === undefined ? 0.5 : o.lean) * rise;
   const xa = Math.min(x, x + reach) - r1 * 1.6, xb = Math.max(x, x + reach) + r1 * 1.6;
   if (xb < env.x0 || xa > env.x1 || (env.y1 !== undefined && y - r1 > env.y1) || (env.y0 !== undefined && y + rise + r1 * 2 < env.y0)) return;

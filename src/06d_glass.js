@@ -121,11 +121,11 @@ View.prototype.drawFrost = function (sim, cam) {
 };
 
 // The shooter's own hide, right in front of the objective and so far out of focus it is only a
-// soft shape along the bottom of the glass: a roof parapet in town, grass on the hills, camouflage
-// netting at the docks and in the yard. It shows only at low power and has gone by about 5x.
+// soft shape along the bottom of the glass: a roof parapet in town, grass on the hills. It shows
+// only at low power and has gone by about 5x.
 View.prototype.drawHide = function (sim, cam) {
   const V = this, ctx = V.ctx, S = sim.S, z = sim.sh.zoom, k = 1 - smooth((z - 3) / 2.2); if (k < 0.02) return;
-  const kind = S.ambience === 'wild' || S.ambience === 'snow' ? 'grass' : S.ambience === 'harbour' ? 'net' : 'wall';
+  const kind = S.ambience === 'wild' || S.ambience === 'snow' ? 'grass' : 'wall';
   const x0 = cam.cx - cam.hw, W = cam.hw * 2, yb = cam.cy + cam.hh, H = cam.hh * 2, dark = S.pal.dark;
   const ink = dark > 0.5 ? '#05070b' : mix('#2a2622', S.pal.amb, S.pal.ambT * 0.6), panX = cam.ax * cam.ppm * 0.15;
   ctx.save(); ctx.globalAlpha = 0.85 * k;
@@ -139,7 +139,7 @@ View.prototype.drawHide = function (sim, cam) {
     ctx.fillStyle = col;
     // each blade three times, wider and fainter each time: out of focus, without a blur filter
     for (let pass = 0; pass < 3; pass++) {
-      const grow = [1, 1.6, 2.4][pass]; ctx.globalAlpha = [0.22, 0.14, 0.09][pass] * k; ctx.beginPath();
+      const grow = [1, 1.6, 2.4][pass]; ctx.globalAlpha = [0.16, 0.1, 0.07][pass] * k; ctx.beginPath();
       for (let i = 0; i < 9; i++) {
         const bx = x0 + ((i * 131 + 40 - panX) % (W + 80) + W + 80) % (W + 80) - 40, h = H * (0.1 + kxH(i, 5) * 0.12) * (1 + (grow - 1) * 0.15), bw = (10 + kxH(i, 9) * 18) * grow, lean = (kxH(i, 2) - 0.5) * 40 + sway;
         ctx.moveTo(bx - bw, yb + 4); ctx.quadraticCurveTo(bx + lean * 0.4, yb - h * 0.5, bx + lean, yb - h); ctx.quadraticCurveTo(bx + lean * 0.5 + bw * 0.3, yb - h * 0.45, bx + bw, yb + 4); ctx.closePath();
@@ -147,11 +147,6 @@ View.prototype.drawHide = function (sim, cam) {
       ctx.fill();
     }
     ctx.globalAlpha = 0.6 * k; ctx.drawImage(kxBlob(col), x0 - W * 0.2, yb - H * 0.06, W * 1.4, H * 0.18);
-  } else {
-    // netting: a soft dark mesh across the bottom corner
-    ctx.strokeStyle = dark > 0.5 ? 'rgba(4,6,10,0.7)' : 'rgba(40,46,36,0.55)'; ctx.lineWidth = 3; ctx.globalAlpha = 0.45 * k; ctx.beginPath();
-    for (let i = -6; i < 30; i++) { const bx = x0 + i * 34 - (panX % 34); ctx.moveTo(bx, yb + 4); ctx.lineTo(bx + H * 0.16, yb - H * 0.16); ctx.moveTo(bx + 34, yb + 4); ctx.lineTo(bx + 34 - H * 0.16, yb - H * 0.16); }
-    ctx.stroke(); ctx.globalAlpha = 0.55 * k; ctx.drawImage(kxBlob(ink), x0 - W * 0.2, yb - H * 0.05, W * 1.4, H * 0.14);
   }
   ctx.restore();
 };
