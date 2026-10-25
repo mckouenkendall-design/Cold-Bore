@@ -12,7 +12,10 @@ const BUILD = new Date().toLocaleString('en-US', { timeZone: 'America/Detroit', 
 let js = '(function(){\n"use strict";\nconst BUILD = ' + JSON.stringify(BUILD) + ';\n';
 for (const f of files) js += '\n// ===== ' + f + ' =====\n' + fs.readFileSync(path.join(src, f), 'utf8') + '\n';
 js += '\n})();\n';
-const css = fs.readFileSync(path.join(src, 'style.css'), 'utf8');
+// style.css first, then any other src/*.css in filename order (so separate pieces of work can keep
+// their styles in their own files and not trip over each other)
+const cssFiles = ['style.css'].concat(fs.readdirSync(src).filter((f) => f.endsWith('.css') && f !== 'style.css').sort());
+const css = cssFiles.map((f) => (f === 'style.css' ? '' : '\n/* ===== ' + f + ' ===== */\n') + fs.readFileSync(path.join(src, f), 'utf8')).join('');
 
 // The app icon, so "Add to Home Screen" shows the reticle and not a letter. src/icon.svg is the
 // drawing; src/icons.json holds it as PNGs (made by node test/icon.js). Everything goes in as data
