@@ -115,6 +115,8 @@ View.prototype.fxHit = function (e, sim) {
     V.hs = HFX_STOP; V.hsDrawn = false;
   }
   V.hitMark = e.lethal ? 1 : 0.5;
+  // a wound that does not kill: note where on the body it is, for the picture (see figWounded in src/03_figures.js)
+  if (a && !a.dead && !e.lethal) figNoteWound(a, e.part, e.x - a.x, e.y - a.y, sim.t);
 };
 
 // Draws one hit (ctx is in CSS pixels; the particle loop has set it up).

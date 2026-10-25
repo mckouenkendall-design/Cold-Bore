@@ -1832,6 +1832,7 @@ function drawFigure(ctx, A, env) {
     const xa = m.e + m.a * (A.x - 2.3) + m.c * A.y, xb = m.e + m.a * (A.x + 2.3) + m.c * A.y;
     if ((ya > H && yb > H) || (ya < 0 && yb < 0) || (xa > W && xb > W) || (xa < 0 && xb < 0)) return;
   }
+  if (A.woundFx) figBloodTrail(ctx, A, env); // drops left behind by somebody wounded (src/03e_wounded.js)
   if (A.dead) rdLead = env.lead || 0; // a fall drawn in slow motion moves every frame, not only on the world's steps
   const J = actorJoints(A), L = A.look || {}, sc = J.scale || 1, hpx = (1.8 * sc) / env.px;
   rdLead = 0;
@@ -1844,6 +1845,7 @@ function drawFigure(ctx, A, env) {
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
   const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
+  G.pressHand = null; if (A.woundFx && !dead) figWounded(A, G, an); // the flinch and the hand to the wound, drawn only
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
   const mv = dead ? 0 : figMv(A);
   G.mv = dead ? 0 : mv; G.lag = dead ? 0 : clamp((st.s - st.vs * 0.03) * inv, -0.2, 0.2);
@@ -1877,7 +1879,7 @@ function drawFigure(ctx, A, env) {
   }
   G.hat = L.hat && figHatOff(G) ? null : L.hat; // a hat knocked off or shaken off lies on the ground (src/03c_loose.js)
   if (G.fine) { A._mood = faceMood(A); G.face = true; G.back = false; } else G.face = false;
-  G.anim = an; if (G.fine) figHandTypes(G, A);
+  G.anim = an; if (G.fine) { figHandTypes(G, A); if (G.pressHand === 'R') G.handR = 'open'; else if (G.pressHand === 'L') G.handL = 'open'; }
   const K = figWear(G), bag = L.bag, anim = G.anim = an;
   const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
   const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
@@ -1896,6 +1898,7 @@ function drawFigure(ctx, A, env) {
   if (hasRifle && !gunHeld) figRifle(c, G);
   if (bag === 'umbrella') figCarry(c, G, 1); // held on the far side: only its handle shows in front
   figLimbsBack(c, G, K, farGrip);
+  if (A.woundFx && !dead && FIG_WSEG[A.woundFx.seg][2] === 'L') figWoundStain(c, G);
   figClothes(c, G, K);
   if (hi) figDetails(c, G, K);
   if (bag === 'backpack' || bag === 'guitar') figStraps(c, G);
@@ -1909,6 +1912,7 @@ function drawFigure(ctx, A, env) {
   if (hasRifle && gunHeld) figRifle(c, G);
   if (FIG_HAND_BAGS[bag] === 1) figCarry(c, G, bag === 'umbrella' ? 2 : 1);
   figArmNear(c, G, K, nearGrip);
+  if (A.woundFx && !dead && FIG_WSEG[A.woundFx.seg][2] === 'R') figWoundStain(c, G);
   if (bag === 'box' || bag === 'paper') {
     figBoth(c, G, 1);
     if (hi && !dead) { const mx = (G.haL[0] + G.haR[0]) / 2, my = Math.max((G.haL[1] + G.haR[1]) / 2, 0.1), w = bag === 'box' ? 0.25 : 0.212, y = bag === 'box' ? my - 0.07 : my + 0.03; c.fillStyle = G.ink; c.beginPath(); c.arc(mx - w, y, 0.03, 0, TAU); c.moveTo(mx + w + 0.03, y); c.arc(mx + w, y, 0.03, 0, TAU); c.fill(); }
