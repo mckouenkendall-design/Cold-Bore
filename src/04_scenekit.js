@@ -606,7 +606,7 @@ K.ground = function (S, P, o) {
   const edge = o.edge ? S.tone(o.edge, P) : mix(col, '#ffffff', 0.12);
   P.groundY = y; P.groundMat = o.mat || S.groundMat;
   const kind = o.kind || (o.stripes ? 'road' : 'plain');
-  const wet = S.weather === 'rain' || S.weather === 'storm', dark = S.pal.dark;
+  const wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet), dark = S.pal.dark;   // (a look can leave the ground wet after rain)
   const D = makeRng(8101 + Math.round(P.z * 3) + (o.seed || 0) * 17);
   const joint = mix(col, '#000000', 0.2), jointHi = mix(col, '#ffffff', 0.07), paint = S.tone('#d9d2b0', P), paintOld = mix(paint, col, 0.45);
   const bx0 = Math.max(x0, -95), bx1 = Math.min(x1, 95);

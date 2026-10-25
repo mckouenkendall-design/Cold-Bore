@@ -1093,7 +1093,7 @@ SCN.towers = function (o) {
   const S = makeScene({ time: 'night', weather: o.weather, seed, refZ, exits: [-64, 64], ambience: 'city', groundMat: 'hard',
     bounds: { x0: (-50 * refZ) / (z0 - 44) - 3, x1: (50 * refZ) / (z0 - 4) + 3, y0: -2, y1: 60 } });
   const H = { S, z0, refZ, focus };
-  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm';   // decoration only
+  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet);   // decoration only (a look can leave it wet after rain)
 
   // far away: the rest of the city
   K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });

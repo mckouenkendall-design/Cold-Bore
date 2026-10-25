@@ -59,11 +59,11 @@ const LOOKS = {
   c5m7: { name: 'red sunset', pal: { skyTop: '#1a1838', skyBot: '#e2603c', fog: '#aa5c58', amb: '#3a2236' }, sky: { mid: '#7a3450', heaps: 0.35, cirrus: 1 }, grade: { bot: '#ff5a30', a: 0.12, glow: 0.2 } },
   c5m8: { name: 'sodium yard', pal: { skyTop: '#0a0a12', skyBot: '#34282a', fog: '#2a2024', amb: '#140e12' }, lampCol: '#ffaa50', sky: { stars: 0.3, heaps: 0.3, cityGlow: 1.6, cloudCols: { under: '#5a3826', body: '#261c22' } }, grade: { bot: '#ff9030', a: 0.1 } },
   // ---- chapter 6: the ridge ----
-  c6m1: { name: 'high and bright', sky: { heaps: 0.25, cirrus: 0.6 }, grade: { top: '#9ab8e0', a: 0.06 } },
+  c6m1: { name: 'high and bright', pal: { amb: '#fff4e4', ambT: 0.1 }, sky: { heaps: 0.25, cirrus: 0.6 }, grade: { top: '#9ab8e0', a: 0.06 } },
   c6m2: { name: 'alpenglow dusk', pal: { skyTop: '#26285a', skyBot: '#f49478', fog: '#bf8a8a', amb: '#3a2c50' }, sky: { mid: '#7a5080', heaps: 0.3, cirrus: 1, milky: 0 }, grade: { bot: '#ff8a7a', a: 0.1, glow: 0.16 } },
-  c6m3: { name: 'cold dawn', pal: { skyTop: '#32487e', skyBot: '#f0c8b8', fog: '#d4c0c0', amb: '#5e6488' }, sky: { mid: '#8a86aa', heaps: 0.2, cirrus: 1 }, grade: { top: '#9aaee0', bot: '#ffb0a0', a: 0.08 } },
-  c6m4: { name: 'blizzard', sky: { deck: 1 }, grade: { top: '#c0d4ea', a: 0.08 } },
-  c6m5: { name: 'deep blue cold', pal: { skyTop: '#1a5ab8', skyBot: '#b8d4ee' }, sky: { heaps: 0.15, cirrus: 0.9 }, grade: { top: '#6a9ae0', a: 0.08 } },
+  c6m3: { name: 'first sun on the snow', pal: { skyTop: '#3a4c80', skyBot: '#f6d0a8', fog: '#e0c8b4', amb: '#ffc8a0', ambT: 0.2 }, sky: { mid: '#8a86aa', heaps: 0.2, cirrus: 1 }, grade: { top: '#9aaee0', bot: '#ffb0a0', a: 0.08 } },
+  c6m4: { name: 'blizzard', pal: { amb: '#a8b0ba', ambT: 0.26, fog: '#d0d6dc' }, sky: { deck: 1 }, grade: { top: '#c0d4ea', a: 0.08 } },
+  c6m5: { name: 'deep blue cold', pal: { skyTop: '#1a5ab8', skyBot: '#b8d4ee', amb: '#9ab8e8', ambT: 0.24, fog: '#c8dcf0' }, sky: { heaps: 0.15, cirrus: 0.9 }, grade: { top: '#6a9ae0', a: 0.08 } },
   c6m6: { name: 'violet snow at dusk', pal: { skyTop: '#22224e', skyBot: '#c48aa4', fog: '#a88aa8', amb: '#2e2a4e' }, sky: { mid: '#5a4a7a', deck: 0.6 }, grade: { top: '#6a5ab0', bot: '#ff9ab0', a: 0.1 } },
 };
 
