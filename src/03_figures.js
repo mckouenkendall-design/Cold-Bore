@@ -807,7 +807,7 @@ function figHead(c, G, mode) {
   const L = G.L, hr = FIG.headR, f = G.f, wl = G.wl, wr = 1 - wl, hat = G.hat, hair = L.hair, hi = G.hi, fine = G.fine, px = G.px;
   c.save(); c.translate(G.hdx, G.hdy); if (G.htilt) c.rotate(G.htilt);
   if (mode === 0) {
-    c.moveTo(hr, 0); c.arc(0, 0, hr, 0, TAU);
+    figHeadShape(c, G, hr);
     if (hair === 'long' && hat !== 'hood') { if (fine) { figFallPath(c, G, -1, wl); figFallPath(c, G, 1, wr); } }
     else if (hair === 'bun' && !hat) { c.moveTo(-f * hr * 0.82 + 0.078, hr * 0.74); c.arc(-f * hr * 0.82, hr * 0.74, 0.078, 0, TAU); }
     else if (hair === 'mohawk' && !hat) { c.moveTo(-hr * 0.5, hr * 0.8); c.quadraticCurveTo(0, hr * 1.75, hr * 0.5, hr * 0.8); }
@@ -821,7 +821,7 @@ function figHead(c, G, mode) {
   if (hair === 'long' && !hood) { c.fillStyle = figSh(hcol, 0.14); c.beginPath(); figFallPath(c, G, -1, wl); figFallPath(c, G, 1, wr); c.fill(); }
   else if (hair === 'bun' && !hat) { c.fillStyle = figC(hcol); c.beginPath(); c.arc(-f * hr * 0.82, hr * 0.74, 0.078, 0, TAU); c.fill(); if (fine) { c.strokeStyle = figSh(hcol, 0.3); c.lineWidth = Math.max(0.009, px * 0.7); c.beginPath(); c.arc(-f * hr * 0.82, hr * 0.74, 0.045, 0.5, 3.4); c.stroke(); } }
   // the head itself: round, with a little jaw and nose so you can tell which way it looks
-  c.fillStyle = G.ink; c.beginPath(); c.arc(0, 0, hr, 0, TAU);
+  c.fillStyle = G.ink; c.beginPath(); const bitten = figHeadShape(c, G, hr);
   { // the neck, in the same fill
     const cs = Math.cos(G.htilt), sn = Math.sin(G.htilt), dx = figPX(G, 0.95, 0) - G.hdx, dy = figPY(G, 0.95, 0) - G.hdy, nx = dx * cs + dy * sn, ny = -dx * sn + dy * cs, r = 0.04 * G.bw;
     if (hi) figCap(c, 0, 0, nx, ny, r, r); else { c.moveTo(-r, 0); c.lineTo(nx - r, ny); c.lineTo(nx + r, ny); c.lineTo(r, 0); c.closePath(); }
@@ -834,6 +834,7 @@ function figHead(c, G, mode) {
   }
   c.fill();
   if (hi && G.la > 0.03) { const a = Math.atan2(G.hly, G.hlx); c.beginPath(); c.arc(0, 0, hr - Math.max(0.011, px * 0.5), a - 0.85, a + 0.85); figLit(c, G, 0.02, 0.9); }
+  if (bitten && hi) figBiteEdge(c, G, hr);
   if (fine && !hood && hat !== 'helmet' && hair !== 'long' && !L.phones && G.fa > 0.5) { c.strokeStyle = G.ear; c.lineWidth = Math.max(0.011, px * 0.8); c.beginPath(); if (f > 0) c.arc(-hr * 0.26, -hr * 0.03, 0.026, 0.9, 4.5); else c.arc(hr * 0.26, -hr * 0.03, 0.026, Math.PI - 4.5, Math.PI - 0.9); c.stroke(); }
   const face = fine && G.face; // eyes, brows and mouth (src/03b_faces.js)
   if (face && !hood && L.glasses !== 'shades') figFace(c, G, 'eyes');
@@ -1605,6 +1606,14 @@ function figWallBlood(c, G, R) {
     c.moveTo(cx + dr * 1.7, cy); c.ellipse(cx, cy, dr * 1.7, dr, an, 0, TAU);
   }
   c.fill();
+  // a body that was against the wall slides down it and leaves a smear from the spray to where it ends up
+  if (dz <= 0.6 && G.dT > 0.1) {
+    const cy = Math.max(0.12, lerp(G.hip[1], G.neck[1], 0.62)), y1 = Math.min(y, Math.max(cy, y - (y - cy) * smooth((G.dT - 0.1) / 0.8)));
+    if (y - y1 > 0.03) {
+      c.strokeStyle = figC(FIG_BLOOD); c.lineCap = 'round'; c.lineWidth = r * 0.4; c.globalAlpha = 0.78; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + (rng.f() - 0.5) * r * 0.4, (y + y1) / 2, x + (rng.f() - 0.5) * r * 0.5, y1); c.stroke();
+      c.lineWidth = r * 0.18; c.globalAlpha = 0.6; c.beginPath(); c.moveTo(x - r * 0.3, y - r * 0.1); c.lineTo(x - r * 0.25, y1 + r * 0.1); c.moveTo(x + r * 0.32, y - r * 0.1); c.lineTo(x + r * 0.28, y1 + r * 0.15); c.stroke(); c.globalAlpha = 0.86;
+    }
+  }
   // and it runs down the wall, slowly
   if (T > 0.4) {
     const run = 0.04 + 0.26 * smooth((T - 0.4) / 9);
@@ -1663,24 +1672,75 @@ function figGroundBlood(c, G, R) {
   c.globalAlpha = 0.92 * smooth(T / 0.7); c.beginPath(); c.ellipse(x, y, r, h, 0, 0, Math.PI); c.fill();
   if (G.hi) {
     c.fillStyle = figC(FIG_BLOOD2); c.beginPath(); c.ellipse(x + r * 0.08, y, r * 0.58, h * 0.6, 0, 0, Math.PI); c.fill();
-    if (G.la > 0.05 && G.fine) { c.globalAlpha = G.la * 0.45; c.strokeStyle = G.lc; c.lineWidth = Math.max(0.008, G.px * 0.7); c.beginPath(); c.ellipse(x + (G.lx >= 0 ? 1 : -1) * r * 0.25, y, r * 0.5, h * 0.82, 0, Math.PI * 0.3, Math.PI * 0.7); c.stroke(); }
+    // it is wet: the sky (or the lamp) shines in it, brightest on the side toward the light
+    const ls = G.lx >= 0 ? 1 : -1;
+    c.globalAlpha = (G.env.night ? 0.15 + 0.5 * G.la : 0.32) * smooth(T / 1.2); c.fillStyle = G.env.night ? G.lc : '#d7e0ea';
+    c.beginPath(); c.ellipse(x + ls * r * 0.28, y - h * 0.18, r * 0.36, Math.max(G.px * 0.6, h * 0.22), 0, 0, TAU); c.fill();
+    if (G.fine) { c.globalAlpha *= 0.7; c.beginPath(); c.ellipse(x - ls * r * 0.35, y - h * 0.3, r * 0.12, Math.max(G.px * 0.5, h * 0.12), 0, 0, TAU); c.fill(); }
   }
   c.globalAlpha = 1;
 }
-// The wound on the body: blood soaking out round it (more for a round that went through), and
-// close up the hole itself; on the head, blood running down from it.
+// The wound on the body. On the trunk, a stain that soaks out through the clothes for several
+// seconds (faster and further from a round that went through) and never past the edge of the body;
+// then the hole, bright and wet so it shows on a dark coat. On the black head, a bright wound and
+// blood running from it, the way down in the world whichever way the head now lies.
 function figWound(c, G, R) {
-  const p = figWoundPos(G, R), x = p[0], y = p[1], head = R.part === 'head', k = 0.55 + 0.45 * smooth(G.dT / 2.2);
-  const r = (head ? 0.034 : 0.04) + 0.035 * R.exitK + 0.012 * R.power;
-  c.fillStyle = figC('#6a1216'); c.beginPath(); c.arc(x, y, r * k, 0, TAU); c.moveTo(x + r * 0.5 + r * 0.6 * k, y - r * 0.5 * k); c.arc(x + r * 0.5, y - r * 0.5 * k, r * 0.6 * k, 0, TAU);
-  if (G.hi) { c.moveTo(x - r * 0.2 + r * 0.32, y - r * 1.1 * k); c.arc(x - r * 0.2, y - r * 1.1 * k, r * 0.32, 0, TAU); }
+  const p = figWoundPos(G, R), x = p[0], y = p[1], head = R.part === 'head', T = G.dT;
+  const r = (head ? 0.034 : 0.04) + 0.035 * R.exitK + 0.012 * R.power, rng = makeRng(R.seed + 13);
+  if (!head && G.hi) {
+    const grow = 1 - Math.exp(-T / (3.4 - 1.4 * R.exitK)), sr = r * 0.9 + (0.06 + 0.1 * R.exitK + 0.03 * R.power) * grow;
+    c.save(); c.beginPath(); figTorsoPath(c, G, G.ww + 0.004, G.wc + 0.004, G.wsh, -0.06); c.clip();
+    c.fillStyle = figC('#4d070c'); c.globalAlpha = 0.8; c.beginPath(); c.moveTo(x + sr, y); c.arc(x, y, sr, 0, TAU);
+    for (let i = 0; i < 6; i++) { // lobes, more of them below: it runs down as it soaks
+      const an = -Math.PI / 2 + (rng.f() - 0.5) * 3.6, d = sr * (0.45 + 0.5 * rng.f()), lr = sr * (0.35 + 0.3 * rng.f()) * (0.6 + 0.4 * grow), lx = x + Math.cos(an) * d, ly = y + Math.sin(an) * d * (1 + 0.6 * grow);
+      c.moveTo(lx + lr, ly); c.arc(lx, ly, lr, 0, TAU);
+    }
+    c.fill();
+    c.fillStyle = figC('#2c0306'); c.globalAlpha = 0.55; c.beginPath(); c.arc(x, y - sr * 0.15, sr * 0.55, 0, TAU); c.fill(); // wetter in the middle
+    c.globalAlpha = 1; c.restore();
+  }
+  // the hole: a bright wet ring round a dark middle
+  c.fillStyle = figC('#9e1420'); c.beginPath(); c.arc(x, y, r * 0.75, 0, TAU);
+  if (G.hi) { c.moveTo(x + r * 0.3 + r * 0.42, y - r * 0.55); c.arc(x + r * 0.3, y - r * 0.55, r * 0.42, 0, TAU); }
   c.fill();
   if (!G.hi) return;
-  c.fillStyle = figC('#170305'); c.beginPath(); c.arc(x, y, Math.max(G.px * 0.9, 0.007 + 0.008 * R.power), 0, TAU); c.fill();
-  if (head) { // runs down (the way down in the world, whichever way the head now lies)
-    const len = 0.025 + 0.085 * smooth((G.dT - 0.15) / 2.5);
-    c.strokeStyle = figC(FIG_BLOODL); c.lineCap = 'round'; c.lineWidth = Math.max(G.px * 0.8, 0.016); c.beginPath(); c.moveTo(x, y); c.lineTo(x + 0.006, y - len); c.stroke();
+  c.fillStyle = figC('#1c0204'); c.beginPath(); c.arc(x, y, Math.max(G.px * 0.9, r * 0.32), 0, TAU); c.fill();
+  if (G.fine) { c.fillStyle = 'rgba(255,215,215,0.35)'; c.beginPath(); c.arc(x - r * 0.28, y + r * 0.32, Math.max(G.px * 0.6, r * 0.16), 0, TAU); c.fill(); } // its wet shine
+  if (head) { // runs down, and keeps running for a while, two trickles
+    const len = 0.03 + 0.12 * smooth((T - 0.1) / 3);
+    c.strokeStyle = figC('#a3141f'); c.lineCap = 'round'; c.lineWidth = Math.max(G.px * 0.8, 0.018); c.beginPath();
+    c.moveTo(x, y); c.quadraticCurveTo(x + 0.01, y - len * 0.5, x + 0.004, y - len);
+    c.moveTo(x + r * 0.4, y - r * 0.3); c.lineTo(x + r * 0.45, y - r * 0.3 - len * 0.6); c.stroke();
+    c.fillStyle = figC('#a3141f'); c.beginPath(); c.arc(x + 0.004, y - len, 0.014, 0, TAU); c.fill();
   }
+}
+// The heaviest rounds (the .408, the .50, the coil gun) take a piece out of the head where they come
+// out. Adds the head's outline with that bite out of it to the current path (head space), or the plain
+// circle. Leaves where the bite is in FIG_BITE for the ragged red edge.
+const FIG_BITE = [0, 0, 0, 0];
+function figHeadShape(c, G, hr) {
+  const R = G.A.rd;
+  if (!G.dead || !G.gore || !R || R.part !== 'head' || !(R.cal === 'c408' || R.cal === 'c50' || R.cal === 'crail')) { c.moveTo(hr, 0); c.arc(0, 0, hr, 0, TAU); return false; }
+  // the exit: the back of the skull, toward the top (which shows whichever way the body lies)
+  const w = R.wound || { u: 0, n: 0.06 }, rng = makeRng(R.seed + 61);
+  const beta = Math.atan2(0.75, -0.65 * G.fs) + (rng.f() - 0.5) * 0.5 + w.u * 0, rb = hr * (R.cal === 'c408' ? 0.5 : 0.6), D = hr * 1.08;
+  const bx = Math.cos(beta) * D, by = Math.sin(beta) * D, cd = clamp((hr * hr + D * D - rb * rb) / (2 * hr * D), -1, 1), del = Math.acos(cd);
+  c.moveTo(Math.cos(beta + del) * hr, Math.sin(beta + del) * hr);
+  c.arc(0, 0, hr, beta + del, beta - del + TAU);
+  const p2x = Math.cos(beta - del) * hr - bx, p2y = Math.sin(beta - del) * hr - by, p1x = Math.cos(beta + del) * hr - bx, p1y = Math.sin(beta + del) * hr - by;
+  c.arc(bx, by, rb, Math.atan2(p2y, p2x), Math.atan2(p1y, p1x), true);
+  c.closePath();
+  FIG_BITE[0] = bx; FIG_BITE[1] = by; FIG_BITE[2] = rb; FIG_BITE[3] = beta;
+  return true;
+}
+// the torn edge of the bite: bright and ragged, with a fleck or two of bone
+function figBiteEdge(c, G, hr) {
+  const bx = FIG_BITE[0], by = FIG_BITE[1], rb = FIG_BITE[2], beta = FIG_BITE[3], rng = makeRng(G.A.rd.seed + 62);
+  c.strokeStyle = figC('#b0182a'); c.lineWidth = Math.max(G.px, 0.024); c.lineCap = 'round'; c.beginPath();
+  const a0 = beta + Math.PI - 1.15, a1 = beta + Math.PI + 1.15;
+  for (let i = 0; i <= 8; i++) { const a = lerp(a0, a1, i / 8), rr = rb * (1 + (rng.f() - 0.5) * 0.18); if (i) c.lineTo(bx + Math.cos(a) * rr, by + Math.sin(a) * rr); else c.moveTo(bx + Math.cos(a) * rr, by + Math.sin(a) * rr); }
+  c.stroke();
+  if (G.fine) { c.fillStyle = figC('#e8dccb'); c.beginPath(); for (let i = 0; i < 3; i++) { const a = lerp(a0, a1, 0.2 + 0.3 * i), x = bx + Math.cos(a) * rb * 1.04, y = by + Math.sin(a) * rb * 1.04; c.moveTo(x + 0.012, y); c.arc(x, y, 0.012, 0, TAU); } c.fill(); }
 }
 
 // What the ground throws up when a body lands on it: dust off dirt and paving, a burst of powder off
@@ -1824,7 +1884,7 @@ function drawFigure(ctx, A, env) {
 
   c.save(); c.translate(A.x, A.y); if (sc !== 1) c.scale(sc, sc);
   c.lineCap = 'round'; c.lineJoin = 'round';
-  const gore = dead && figBloody(A, env);
+  const gore = G.gore = dead && figBloody(A, env);
   if (gore) { figWallBlood(c, G, A.rd); figMist(c, G, A.rd); }
   if ((light > 0.02 || !env.night) && hpx > 26) figShadow(c, G);
   if (gore) figGroundBlood(c, G, A.rd);
