@@ -75,6 +75,10 @@ const kcTune = {
   fallIn: 0.75,      // seconds for the camera to come round to the fall, the real scene fading back in on the way
   deg: Math.PI / 180,
 };
+// The short cut (KillCam.cut = 'short', or o.cut): the same film in about five seconds, for
+// replays and second kills: a glimpse of the muzzle, a quick chase, the way in, the main thing
+// hit, the way out, the fall.
+const kcShortTune = Object.assign({}, kcTune, { beat: 0.14, flightMin: 0.4, flightMax: 0.55, swing: 0.6, approach: 0.45, touch: 0.16, crawl: 0.85, linger: 0.42, rest: 0.3, insideMax: 2.2, freeze: 0.32, hold: 0.45, holdMax: 1.5, out: 0.22, fallIn: 0.55 });
 KillCam.tune = kcTune; // (for tests and tuning; nothing in the game changes it)
 // bullet diameters in millimetres, by the rifle's calibre
 const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
@@ -226,6 +230,10 @@ KillCam.start = function (o) {
   const h = o.hit, step = o.step > 0 ? o.step : 1 / 120, st = o.sim.st || {};
   if (!(o.tHit > o.sim.t - step * 0.2)) return false;
   K.o = o; K.step = step; K.T = 0; K.stage = 0;
+  // the style (see the top of this file): a mission's own single take, or the short cut
+  const cs = o.sim.M && o.sim.M.cine, style = typeof cs === 'string' ? cs : cs && cs.style;
+  K.take = style === 'take'; K.short = !K.take && (o.cut || KillCam.cut) === 'short';
+  K.tn = K.short ? kcShortTune : kcTune;
   // the round's direction and speed as it arrives
   let v = Math.hypot(h.vx || 0, h.vy || 0, h.vz || 0);
   if (!(v > 20) || !(h.vz > 10)) { K.dir = [0, 0, 1]; v = v > 20 ? v : 600; } else K.dir = [h.vx / v, h.vy / v, h.vz / v];
@@ -242,8 +250,8 @@ KillCam.start = function (o) {
   K.zS = h.z - K.dS * K.dir[2];
   // the timeline, in real seconds
   const far = clamp((K.dist - 100) / 800, 0, 1);
-  K.Tf = lerp(kcTune.flightMin, kcTune.flightMax, far) * clamp(K.dist / 100, 0.45, 1);
-  K.Ta = kcTune.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + kcTune.swing;
+  K.Tf = lerp(K.tn.flightMin, K.tn.flightMax, far) * clamp(K.dist / 100, 0.45, 1);
+  K.Ta = K.tn.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + K.tn.swing;
   // the round itself
   const mm = kcCalMm[st.cal] || 7.8;
   K.rad = (mm / 2000) * kcTune.bulletScale; K.len = K.rad * 2 * (st.cal === 'crail' ? 5.4 : 4.1);
@@ -281,7 +289,7 @@ KillCam.start = function (o) {
   // book-keeping
   K.ret = Math.min(o.sim.t, o.tHit - step * 0.25); K.prevRet = K.ret; K.simDt = 0;
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
-  K.Td = K.Tc + kcTune.approach; // the moment of impact
+  K.Td = K.Tc + K.tn.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
   K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
@@ -292,6 +300,8 @@ KillCam.start = function (o) {
   // the director (src/21c_kcdirect.js): the recipe, the shot now and the one before, the backdrop
   K.rec = null; K.shot = null; K.shotPrev = null; K.shotT0 = 0; K.shotPrevT0 = 0; K.shotWhip = 0; K.whipping = 0; K.fallK = 0;
   K.bg = null; K.cutKey = false; K.cutExit = false; K.cutLodge = false; K.burstDone = false;
+  kcTextInit(K, o); // the shot's numbers and its stamps (src/21e_kctext.js)
+  if (K.take) kcTakeSetup(K, o); // a mission's own single take (src/21c_kcdirect.js)
   K.active = true; K.done = false; K.skipped = false; K.wr = 0; K.rate = kcTune.rateMin;
   return true;
 };
@@ -317,7 +327,7 @@ function kcPathAtZ(K, z, out) {
 KillCam.advance = function (dt) {
   const K = KillCam, o = K.o;
   if (!o) { K.done = true; return K.ret || 0; }
-  try { return kcAdvance(K, o, clamp(+dt || 0, 0, 0.05)); } catch (e) { K.err = e; K.skipped = true; return kcEnd(K, o); }
+  try { return K.take ? (K.skipped ? kcEnd(K, o) : kcAdvanceTake(K, o, clamp(+dt || 0, 0, 0.05))) : kcAdvance(K, o, clamp(+dt || 0, 0, 0.05)); } catch (e) { K.err = e; K.skipped = true; return kcEnd(K, o); }
 };
 // Finish now. The game can only move the world on by half a second each frame, so after a very
 // early skip of a long shot we keep asking for a few frames until the round has really landed.
@@ -362,8 +372,8 @@ function kcAdvance(K, o, dt) {
     if (K.hitT === null) {
       if (T < K.Tc) {
         // the swing: the round eases down from the flight's last speed
-        const u = (T - K.Tb) / kcTune.swing, D = Math.max(0.05, K.dS - pl.sFrom);
-        K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / kcTune.swing;
+        const u = (T - K.Tb) / K.tn.swing, D = Math.max(0.05, K.dS - pl.sFrom);
+        K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / K.tn.swing;
         if (!K.snd.h1 && u > 0.12) { K.snd.h1 = 1; kcBeat(0.1); }
         if (!K.snd.h2 && u > 0.7) { K.snd.h2 = 1; kcBeat(0.12); }
       } else {
@@ -372,7 +382,7 @@ function kcAdvance(K, o, dt) {
         // at the swing's last speed and ends at touchV).
         K.stage = 3;
         if (!K.snd.slow) { K.snd.slow = 1; kcSay(K, 'slow', { len: +kcSlowLen(K).toFixed(2) }); }
-        const Ta = kcTune.approach, u = clamp((T - K.Tc) / Ta, 0, 1), D = Math.max(0.01, pl.sIn - pl.sA);
+        const Ta = K.tn.approach, u = clamp((T - K.Tc) / Ta, 0, 1), D = Math.max(0.01, pl.sIn - pl.sA);
         const m0 = clamp((pl.vA * Ta) / D, 0, 2.9), m1 = clamp((kcTune.touchV * Ta) / D, 0, 1);
         const h = (u * u * u - 2 * u * u + u) * m0 + (-2 * u * u * u + 3 * u * u) + (u * u * u - u * u) * m1;
         const hv = (3 * u * u - 4 * u + 1) * m0 + (-6 * u * u + 6 * u) + (3 * u * u - 2 * u) * m1;
@@ -381,7 +391,7 @@ function kcAdvance(K, o, dt) {
       wr = K.spd / K.v;
       K.ret = Math.max(K.ret, Math.min(o.tHit + K.s / K.v, cap));
       // half a second (on screen) before the round reaches the body
-      if (!K.snd.near && T >= K.Td - 0.5) { K.snd.near = 1; kcSay(K, 'near'); }
+      if (!K.snd.near && T >= K.Td - Math.min(0.5, K.tn.approach * 0.8)) { K.snd.near = 1; kcSay(K, 'near'); }
       if (T >= K.Td) {
         // the tip touches the skin: this is the frame the world is allowed to make the kill
         K.hitT = T; K.stage = 3; K.s = pl.sIn;
@@ -390,16 +400,16 @@ function kcAdvance(K, o, dt) {
     } else {
       // Inside the body. For a moment after it touches, the round hardly moves (the hit lands);
       // then a slow crawl that all but stops again as it reaches the main thing it hits.
-      const since = T - K.hitT, a = o.actor, tch = kcTune.touch;
-      const wake = since < tch ? lerp(kcTune.touchV / kcTune.crawl, 0.12, smooth(since / (tch * 0.4))) : lerp(0.12, 1, smooth((since - tch) / 0.45));
-      let sp = kcTune.crawl * (since < tch ? wake : wake * (1 - 0.55 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.04, 2))));
+      const since = T - K.hitT, a = o.actor, tch = K.tn.touch;
+      const wake = since < tch ? lerp(kcTune.touchV / K.tn.crawl, 0.12, smooth(since / (tch * 0.4))) : lerp(0.12, 1, smooth((since - tch) / 0.45));
+      let sp = K.tn.crawl * (since < tch ? wake : wake * (1 - 0.55 * Math.exp(-Math.pow((K.s - pl.sKey) / 0.04, 2))));
       // at the main thing it hits, the film stops dead for a moment (the round, the spray, everything)
-      if (pl.key && !K.frz && K.s >= pl.sKey && since > tch) K.frz = { t0: T, len: kcTune.freeze };
+      if (pl.key && !K.frz && K.s >= pl.sKey && since > tch) K.frz = { t0: T, len: K.tn.freeze };
       if (frozen) sp = 0;
-      if (K.exit && !K.spent) { if (K.s > pl.sOut) { if (K.exitT === undefined) K.exitT = T; sp = Math.min(7, kcTune.crawl + (K.s - pl.sOut) * 5); } }
+      if (K.exit && !K.spent) { if (K.s > pl.sOut) { if (K.exitT === undefined) K.exitT = T; sp = Math.min(7, K.tn.crawl + (K.s - pl.sOut) * 5); } }
       else if (K.spent) {
         // out of the far side with nothing left: it tumbles a hand's width further and drops
-        if (K.s > pl.sOut) { if (K.spentT === undefined) K.spentT = T; sp = kcTune.crawl * 1.6 * clamp((pl.sSpent - K.s) / 0.12, 0, 1); }
+        if (K.s > pl.sOut) { if (K.spentT === undefined) K.spentT = T; sp = K.tn.crawl * 1.6 * clamp((pl.sSpent - K.s) / 0.12, 0, 1); }
         if (pl.sSpent - K.s < 0.004) K.stopped = true;
       } else { sp *= clamp((pl.sStop - K.s) / 0.06, 0, 1); if (pl.sStop - K.s < 0.004) K.stopped = true; }
       if (K.stopped && K.stopT === undefined) K.stopT = T;
@@ -408,9 +418,9 @@ function kcAdvance(K, o, dt) {
       // the main thing it hits, out to the side as it comes out, or in close where it came to rest
       if (pl.key && !K.cutKey && K.s >= pl.sKey - 0.035) { K.cutKey = true; kcCut(K, 'macro', K.rec.whip); }
       if (K.exit && !K.cutExit && K.s >= pl.sOut - 0.03) { K.cutExit = true; kcCut(K, 'exit', K.rec.whip * 1.15); }
-      if (!K.exit && K.stopped && !K.cutLodge) { K.cutLodge = true; kcCut(K, 'lodged', K.rec.whip); }
+      if (!K.exit && K.stopped && !K.cutLodge) { K.cutLodge = true; kcCut(K, 'lodged', K.rec.whip); K.cap = { ref: 'lodged', t0: T + K.rec.whip * 0.6, s: K.s - K.len * 0.5 }; }
       // the exit hangs in the air a moment; a round that stayed in is held on a moment
-      if (K.holdT0 === null && ((K.exitT !== undefined && T - K.exitT > kcTune.linger) || (K.stopT !== undefined && T - K.stopT > kcTune.rest) || since > kcTune.insideMax)) {
+      if (K.holdT0 === null && ((K.exitT !== undefined && T - K.exitT > K.tn.linger) || (K.stopT !== undefined && T - K.stopT > K.tn.rest) || since > K.tn.insideMax)) {
         K.holdT0 = T; K.stage = 4; kcSay(K, 'resume');
         kcTone({ at: 0.18, f: 55, dur: 1.3, att: 0.05, gain: 0.07, verb: 0.4 }); kcTone({ at: 0.18, f: 110, dur: 0.9, att: 0.05, gain: 0.018, verb: 0.4 });
       }
@@ -418,9 +428,9 @@ function kcAdvance(K, o, dt) {
       if (K.hitT !== null && !K.snd.fall && a && a.dead && isFinite(a.deathAtT)) { const L = rdLanded(a, K.ret - a.deathAtT); if (L) { K.snd.fall = 1; K.landT = T; kcSay(K, 'fall', { mat: L.mat, speed: L.v }); } }
       // The hold: the world speeds up toward real time so the fall is seen, and the film ends a
       // moment after the body is down (or after a few seconds at most).
-      if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > kcTune.hold) || ht > kcTune.holdMax) K.outT0 = T; }
-      if (K.outT0 !== null && T - K.outT0 > kcTune.out) { K.done = true; kcSayEnd(K); try { o.view.blackout = Math.max(o.view.blackout || 0, 0.8); } catch (e) { /* the scope picture is not ours to break */ } }
-      wr = K.holdT0 === null ? (frozen ? 0 : kcTune.creep) : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
+      if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > K.tn.hold) || ht > K.tn.holdMax) K.outT0 = T; }
+      if (K.outT0 !== null && T - K.outT0 > K.tn.out) { K.done = true; kcSayEnd(K); try { o.view.blackout = Math.max(o.view.blackout || 0, 0.8); } catch (e) { /* the scope picture is not ours to break */ } }
+      wr = K.holdT0 === null ? (frozen ? 0 : K.tn.creep) : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
       if (K.outT0 !== null) wr = Math.max(0.3, wr);
       K.ret += dt * wr;
     }
@@ -446,12 +456,12 @@ function kcAdvance(K, o, dt) {
   return K.ret;
 }
 // the speed the round is shown at as the swing begins (metres per second), so the flight can land on it
-function kcSwingV0(K) { return (1.28 * Math.max(0.2, K.dS - kcTune.standOff - 0.2)) / kcTune.swing; }
+function kcSwingV0(K) { return (1.28 * Math.max(0.2, K.dS - kcTune.standOff - 0.2)) / K.tn.swing; }
 // About how long the deep slow motion lasts, from the end of the swing to the hold (for the sound).
 function kcSlowLen(K) {
   const pl = K.plan; if (!pl) return 3;
-  const inside = ((K.exit ? pl.sOut : pl.sStop) - pl.sIn) / kcTune.crawl;
-  return kcTune.approach + kcTune.touch + 0.2 + inside * 1.15 + (pl.key ? kcTune.freeze : 0) + (K.exit && !K.spent ? kcTune.linger + 0.1 : kcTune.rest + 0.2);
+  const inside = ((K.exit ? pl.sOut : pl.sStop) - pl.sIn) / K.tn.crawl;
+  return K.tn.approach + K.tn.touch + 0.2 + inside * 1.15 + (pl.key ? K.tn.freeze : 0) + (K.exit && !K.spent ? K.tn.linger + 0.1 : K.tn.rest + 0.2);
 }
 function kcBeat(g) { kcTone({ f: 62, f1: 40, dur: 0.09, gain: g }); kcTone({ at: 0.16, f: 54, f1: 36, dur: 0.11, gain: g * 0.7 }); }
 
@@ -520,7 +530,7 @@ function kcBeginSwing(K, o) {
   evs.sort((p, q) => p.s - q.s);
   pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
   pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
-  { const D = Math.max(0.05, K.dS - pl.sFrom); pl.sA = -K.dS + D; pl.vA = (D * 0.72) / kcTune.swing; } // exactly where, and how fast it is going
+  { const D = Math.max(0.05, K.dS - pl.sFrom); pl.sA = -K.dS + D; pl.vA = (D * 0.72) / K.tn.swing; } // exactly where, and how fast it is going
   pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
   pl.sSpent = pl.sOut + 0.1 + 0.2 * K.exitK;             // one with nothing left after the far side stops here
   // the caption goes to the most important thing the round actually reaches
@@ -551,7 +561,8 @@ function kcBeginSwing(K, o) {
     // where the X-ray origin sits in the world: first as the flight has it, then pinned to the live target
     ox: K.bp[0] - (Hx[0] - K.dir[0] * K.dS), oy: K.bp[1] - (Hx[1] - K.dir[1] * K.dS), oz: h.z };
   kcPickRecipe(K);
-  kcTone({ f: 70, f1: 230, dur: kcTune.swing + 0.4, att: kcTune.swing, gain: 0.03, lp: 900 });
+  if (K.part !== 'head' && key && K.stamps) { if (key.ref === 'heart') K.stamps.unshift('HEART SHOT'); else if (key.ref === 'spine') K.stamps.unshift('SPINE SHOT'); }
+  kcTone({ f: 70, f1: 230, dur: K.tn.swing + 0.4, att: K.tn.swing, gain: 0.03, lp: 900 });
 }
 
 // One thing on the round's line gives way.
@@ -786,6 +797,7 @@ KillCam.draw = function (dt) {
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   try {
     if (K.skipped || K.err) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(255,246,224,0.55)'; ctx.fillRect(0, 0, W, H); }
+    else if (K.take) kcDrawTake(K, V, ctx, dt || 0);
     else if (K.stage === 0) kcDrawBeat(K, V, ctx);
     else if (K.stage === 1) kcDrawFlight(K, V, ctx, dt || 0);
     else kcDrawXray(K, V, ctx, dt || 0);
@@ -828,8 +840,9 @@ function kcOverlay(K, V, ctx) {
     for (let i = 0; i < 30; i++) { const y = kcHash(i + 11) * H, x = kcHash(i + 50) * W - W * 0.2, l = W * (0.15 + 0.35 * kcHash(i * 3.3)) * K.whipping; ctx.moveTo(x, y); ctx.lineTo(x + l, y); }
     ctx.stroke();
   }
+  if (!K.skipped) { kcStatsDraw(ctx, K, V); kcStampDraw(ctx, K, V); }
   // the end: down to black, and the scope comes back out of it
-  if (K.outT0 !== null) { const a = clamp((T - K.outT0) / kcTune.out, 0, 1); ctx.fillStyle = 'rgba(0,0,0,' + (a * a).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  if (K.outT0 !== null) { const a = clamp((T - K.outT0) / K.tn.out, 0, 1); ctx.fillStyle = 'rgba(0,0,0,' + (a * a).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, lb); ctx.fillRect(0, H - lb, W, lb);
   const ha = 0.6 * smooth(T / 0.4) * (1 - smooth((T - 3) / 0.6));
   if (ha > 0.01 && !K.skipped) {
@@ -1029,10 +1042,10 @@ function kcDrawXray(K, V, ctx, dt) {
   // the middle of the body, for the fall's camera to follow (a little below, so the floor shows)
   { const P = fig.P, fx = (P.hip[0] + P.neck[0]) / 2, fy = Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = (P.hip[2] + P.neck[2]) / 2; if (!K.follow) K.follow = [fx, fy, fz]; else { const k = Math.min(1, (dt || 0) * 5); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
   const c = kcDirect(K, V);
-  const u = clamp((T - K.Tb) / kcTune.swing, 0, 1), figA = smooth((u - 0.01) / 0.11);
+  const u = clamp((T - K.Tb) / K.tn.swing, 0, 1), figA = smooth((u - 0.01) / 0.11);
   if (!K.bg && u >= 0.5) kcBgRender(K, V); // the backdrop, drawn once
   // how far the real scene has come back as the body falls
-  const back = K.holdT0 !== null ? smooth((T - K.holdT0 - kcTune.fallIn * 0.35) / (kcTune.fallIn * 0.6)) : 0;
+  const back = K.holdT0 !== null ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
   const bgA = (K.bg ? smooth((u - 0.5) / 0.45) : 0) * (1 - back), xa = 1 - back;
   if (bgA < 0.999) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -1042,7 +1055,7 @@ function kcDrawXray(K, V, ctx, dt) {
   }
   if (bgA > 0.004) { kcBgDraw(K, V, ctx, c, bgA); kcDrawPanes(ctx, K, c, bgA); }
   // how far the skin has turned to film
-  const xr = smooth((T - (K.Tc - 0.85)) / 0.5), infl = smooth((u - 0.12) / 0.5);
+  const xr = smooth((T - (K.Tc - 0.65 * K.tn.swing)) / (0.38 * K.tn.swing)), infl = smooth((u - 0.12) / 0.5);
   if (xr < 0.99 && xa > 0.01) kcShell(ctx, K, c, fig, figA * xa, xr, infl, pal);
   if (xr > 0.01) kcXDraw(ctx, K, c, fig, figA * xr * xa);
   if (K.hitT !== null && xa > 0.01) { kcHoles(ctx, K, c, fig, figA * xa); kcRipples(ctx, K, c, fig); }
@@ -1459,29 +1472,5 @@ function kcDrawParts(ctx, K, c, list, al) {
     const p = ps[i]; if (p.k !== 7 || !kcProj(c, p.x, p.y, p.z, kcQ) || !kcProj(c, p.x - p.vx * 0.012, p.y - p.vy * 0.012, p.z - p.vz * 0.012, kcQ2)) continue;
     ctx.globalAlpha = al * clamp(1 - p.age / p.life, 0, 1); ctx.lineWidth = Math.max(1, p.r * kcQ[2]); ctx.beginPath(); ctx.moveTo(kcQ[0], kcQ[1]); ctx.lineTo(kcQ2[0], kcQ2[1]); ctx.stroke();
   }
-  ctx.globalAlpha = 1;
-}
-// A small label on the main thing the round broke, for a moment.
-function kcCaption(ctx, K, c, V) {
-  const cp = K.cap; if (!cp || !cp.text || !K.fig) return;
-  const pl = K.plan, age = K.T - cp.t0 - 0.12; if (age < 0 || age > 1.6) return;
-  const fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
-  kcLoc(fr, cp.s * K.fig.fs, pl.part === 'head' ? pl.u0 : pl.b0, pl.c0, kcL0);
-  if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
-  const a = smooth(age / 0.15) * (1 - smooth((age - 1.25) / 0.35)), x = kcQ[0], y = kcQ[1], up = -Math.min(V.H * 0.17, 64), run = Math.min(V.W * 0.07, 40) * easeOut(age / 0.25);
-  // it leans away from the side the spray goes
-  ctx.font = '700 ' + (V.W < 500 ? 12 : 13) + 'px "Avenir Next Condensed","DIN Condensed","Roboto Condensed","Arial Narrow",sans-serif';
-  ctx.textBaseline = 'bottom';
-  let tw = 0; for (let i = 0; i < cp.text.length; i++) tw += ctx.measureText(cp.text[i]).width + 1.6; // letters set a little apart
-  // it leans away from the side the spray goes, unless that would run it off the screen
-  let dirX = c.rz > 0 ? -1 : 1;
-  const reach = Math.abs(up) * 0.55 + Math.min(V.W * 0.07, 40) + tw + 12;
-  if (x + dirX * reach > V.W - 4 || x + dirX * reach < 4) dirX = -dirX;
-  const x1 = x + dirX * Math.abs(up) * 0.55, y1 = y + up, x2 = x1 + dirX * run;
-  ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x1, y1); ctx.lineTo(x2, y1); ctx.stroke();
-  ctx.fillRect(x - 2, y - 2, 4, 4);
-  let tx = dirX > 0 ? x1 + 3 : x1 - 3 - tw; ctx.textAlign = 'left';
-  for (let i = 0; i < cp.text.length; i++) { ctx.fillText(cp.text[i], tx, y1 - 3); tx += ctx.measureText(cp.text[i]).width + 1.6; }
   ctx.globalAlpha = 1;
 }

@@ -117,7 +117,7 @@ const kcWhipK = (u) => { const s = smooth(u); return s * s * (3 - 2 * s); };
 // The swing: from where the chase camera ended, round to the first shot. On the way it frames the
 // whole body for a moment, then pushes in.
 function kcSwingPose(K, V, P) {
-  const sw = K.sw, W = V.W, H = V.H, u = clamp((K.T - K.Tb) / kcTune.swing, 0, 1), e = smooth(u);
+  const sw = K.sw, W = V.W, H = V.H, u = clamp((K.T - K.Tb) / K.tn.swing, 0, 1), e = smooth(u);
   kcShotOrbit(K, V, 'entry', 0, kcO2);
   const k1 = smooth(u * 1.25), push = smooth((u - 0.42) / 0.58), f = lerp(sw.f, kcO2.f, e), Rfull = f / Math.min(W / 1.5, (H * 0.85) / 1.62);
   const o = kcO1;
@@ -148,7 +148,7 @@ function kcShotPose(K, V, P) {
 // Change shot (from the advance, so it happens on the film's own timing).
 function kcCut(K, name, whip) {
   if (K.shot === name) return;
-  K.shotPrev = K.shot; K.shotPrevT0 = K.shotT0; K.shot = name; K.shotT0 = K.T; K.shotWhip = whip;
+  K.shotPrev = K.shot; K.shotPrevT0 = K.shotT0; K.shot = name; K.shotT0 = K.T; K.shotWhip = whip * (K.short ? 0.65 : 1);
 }
 // The fall: a three-quarter view of the body from the shooter's side, a little above, looking
 // straight down range (the only way the scene's flat layers can be shown truthfully), its picture
@@ -168,7 +168,7 @@ function kcDirect(K, V) {
   else P = kcShotPose(K, V, kcP1);
   K.fallK = 0;
   if (K.holdT0 !== null || K.take) {
-    const w = K.take ? 1 : smooth((T - K.holdT0) / kcTune.fallIn);
+    const w = K.take ? 1 : smooth((T - K.holdT0) / K.tn.fallIn);
     if (w > 0) { kcFallPose(K, V, kcP2); P = kcBlendPose(P, kcP2, w, kcP3); }
     K.fallK = w;
   }
@@ -189,7 +189,7 @@ function kcLayerCamWH(Wd, Hd, c, ax, ay, az) {
 // (At first as the flight has it, so the swing starts exactly where the chase ended; pinned to the
 // live target a third of the way into the swing.)
 function kcOrigin(K) {
-  const a = K.o.actor, sw = K.sw, w = smooth((K.T - K.Tb) / (kcTune.swing * 0.3));
+  const a = K.o.actor, sw = K.sw, w = smooth((K.T - K.Tb) / (K.tn.swing * 0.3));
   return [lerp(sw.ox, a && isFinite(a.x) ? a.x : sw.ox, w), lerp(sw.oy, a && isFinite(a.y) ? a.y : sw.oy, w), sw.oz];
 }
 // Draw the real scene through camera c (X-ray space) onto ctx; the target left out if hide.
@@ -199,14 +199,17 @@ function kcWorld(K, V, ctx, c, Wd, Hd, dpr, dt, simDt, hide, near) {
   const wc = { x: c.x + O[0], y: c.y + O[1], z: c.z + O[2], yaw: c.yaw, pitch: c.pitch, f: c.f, px: c.px, py: c.py, rx: c.rx, rz: c.rz, fx: c.fx, fy: c.fy, fz: c.fz, ux: c.ux, uy: c.uy, uz: c.uz };
   const lc = kcLayerCamWH(Wd, Hd, wc, (c.fpx || 0) + O[0], (c.fpy || 0) + O[1], (c.fpz || 0) + O[2]);
   const keepCtx = V.ctx, keepDpr = V.dpr, keepHide = a ? a.hidden : false, id = a ? a.id : null, keepById = id !== null ? sim.byId[id] : null;
+  // (the blood thrown on a wall behind is placed for the shooter's eye; from this camera, close by,
+  // it belongs on the wall where the round would reach it, so that correction is left off here)
+  const rd = a && a.rd, keepEye = rd ? rd.eye : null;
   const held = [], fxAll = V.fx || [];
   if (fxAll.length) { const show = [], ax = a ? a.x : 0, az = O[2]; for (let i = 0; i < fxAll.length; i++) { const f = fxAll[i]; ((f.k === 'star' || (f.k === 'puff' && Math.abs(f.x - ax) < 4 && Math.abs(f.z - az) < 8)) ? held : show).push(f); } V.fx = show; }
   try {
-    V.ctx = ctx; V.dpr = dpr;
+    V.ctx = ctx; V.dpr = dpr; if (rd) rd.eye = null;
     if (hide && a) { a.hidden = true; if (a.inVeh) sim.byId[id] = null; } // (a passenger is drawn through the car's window by id)
     V.drawWorld(sim, lc, dt, simDt, { near: near || 0.6 });
   } finally {
-    V.ctx = keepCtx; V.dpr = keepDpr;
+    V.ctx = keepCtx; V.dpr = keepDpr; if (rd) rd.eye = keepEye;
     if (hide && a) { a.hidden = keepHide; if (a.inVeh) sim.byId[id] = keepById; }
     for (let i = 0; i < held.length; i++) { const f = held[i]; f.t = (f.t || 0) + (simDt || 0); if (f.t < f.life) V.fx.push(f); }
   }
@@ -240,4 +243,42 @@ function kcBgDraw(K, V, ctx, c, al) {
   let x0 = ax - B.ax0 * s, y0 = ay - B.ay0 * s; const w = B.Wb * s, h = B.Hb * s;
   x0 = clamp(x0, W - w, 0); y0 = clamp(y0, H - h, 0);
   ctx.globalAlpha = al; ctx.drawImage(B.cv, x0, y0, w, h); ctx.globalAlpha = 1;
+}
+
+// ---- the single take ------------------------------------------------------------------------
+// For a story moment (a mission with cine: 'take'): no rifle, no chase, no X-ray, no words. One
+// unbroken shot of the target in the real scene, from the shooter's side at three-quarters, the
+// world running at its own speed; the round arrives, the body falls, the camera holds on it a
+// moment and the picture goes down to black.
+function kcTakeSetup(K, o) {
+  const a = o.actor, h = o.hit, d = K.dir, nl = Math.hypot(d[0], d[2]) || 1;
+  K.sw = { N: [d[2] / nl, 0, -d[0] / nl], ox: a ? a.x : h.x, oy: a ? a.y : h.y - 1, oz: h.z };
+  K.Ta = -10; K.Tb = -10; K.Tc = -10; K.plan = null; K.stamps = [];
+}
+function kcAdvanceTake(K, o, dt) {
+  K.T += dt; K.ct += dt;
+  const T = K.T, a = o.actor;
+  K.prevRet = K.ret; K.stage = K.hitT === null ? 2 : 4;
+  if (!K.snd.fly && T >= 0.02) { K.snd.fly = 1; kcSay(K, 'fly'); }
+  K.ret += dt; // real time
+  if (K.hitT === null && K.ret >= o.tHit + K.step) {
+    K.hitT = T; K.holdT0 = T;
+    kcSay(K, 'enter', { spray: K.gore ? +clamp(K.gk, 0, 1).toFixed(2) : 0 });
+    if (K.exit) kcSay(K, 'exit', { size: +K.exitK.toFixed(2), spray: K.gore ? +clamp(K.gx, 0, 1).toFixed(2) : 0 });
+  }
+  if (K.hitT !== null && !K.snd.fall && a && a.dead && isFinite(a.deathAtT)) { const L = rdLanded(a, K.ret - a.deathAtT); if (L) { K.snd.fall = 1; K.landT = T; kcSay(K, 'fall', { mat: L.mat, speed: L.v }); } }
+  if (K.hitT !== null && K.outT0 === null && ((K.landT !== undefined && T - K.landT > 1.4) || T - K.hitT > 4.5)) K.outT0 = T;
+  if (K.outT0 !== null && T - K.outT0 > 0.5) { K.done = true; kcSayEnd(K); }
+  K.rate = 1; K.wr = 1; K.simDt = Math.max(0, K.ret - K.prevRet);
+  return K.ret;
+}
+function kcDrawTake(K, V, ctx, dt) {
+  const W = V.W, H = V.H, fig = kcBuildFig(K), P = fig.P;
+  const fx = (P.hip[0] + P.neck[0]) / 2, fy = Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = (P.hip[2] + P.neck[2]) / 2;
+  if (!K.follow) K.follow = [fx, fy, fz]; else { const k = Math.min(1, (dt || 0) * 4); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; }
+  const Pz = kcFallPose(K, V, kcP2); Pz.f *= 1 + 0.08 * smooth(K.T / 4); // a slow push in
+  const c = kcApplyPose(K.cam, Pz, W, H);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  kcWorld(K, V, ctx, c, W, H, V.dpr, dt, K.simDt, false, 1.2);
+  ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 }
