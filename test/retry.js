@@ -113,6 +113,23 @@ const path = require('path');
     await page.locator('.results [data-a="retryShot"]').click(); await page.waitForTimeout(300);
     ok(await page.evaluate(() => CB.Game.state === 'mission' && Math.abs(CB.Game.sim.t - 7) < 0.6), 'and the button starts the retry (t=' + await page.evaluate(() => CB.Game.sim && CB.Game.sim.t.toFixed(2)) + ')');
   }
+  // ---- 4. help after a fail, one level more each time ----
+  const tiers = [];
+  await page.evaluate(() => { const r = CB.Save.data.missions.c1m1; if (r) r.failsSinceWin = 0; });
+  for (let n = 1; n <= 3; n++) {
+    await page.evaluate(() => { const G = CB.Game; if (G.sim) G.stop(); CB.UI.launch('c1m1', { gun: 'fenwick', shotSeed: 3 }); const s = G.sim; for (let i = 0; i < 60 * 12; i++) window.__frame(1); s.sh.ay = s.lim.y1; s.fire(); for (let i = 0; i < 60 * 40 && G.sim && !G.endShown; i++) window.__frame(1); });
+    await page.waitForTimeout(1500);
+    const b = await page.locator('.results [data-a="coachTier"]').count(), txt = b ? await page.locator('.results [data-a="coachTier"] span').innerText() : '';
+    if (n === 1) await page.screenshot({ path: path.join(__dirname, '..', 'shots', 'retry_coach.png') });
+    if (b) { await page.locator('.results [data-a="coachTier"]').click(); await page.waitForTimeout(300); }
+    const c = await page.evaluate(() => { const G = CB.Game; if (!G.coach) return null; for (let i = 0; i < 60 * 3; i++) window.__frame(1); const o = G.coach.update(); return { tier: G.coach.tier, kind: o.kind, head: o.head, aim: !!o.aim, eyebrow: document.querySelector('.h-coach .cc-eb').textContent }; });
+    tiers.push({ n, txt, c });
+    if (n === 1) await page.screenshot({ path: path.join(__dirname, '..', 'shots', 'retry_watch.png') });
+    await page.evaluate(() => { const G = CB.Game; if (G.sim) G.stop(); });
+  }
+  ok(tiers[0].c && tiers[0].c.tier === 1 && /watch/i.test(tiers[0].txt) && !tiers[0].c.aim, 'after one fail the fail screen offers "' + tiers[0].txt + '": brackets only, no aim mark (' + JSON.stringify(tiers[0].c) + ')');
+  ok(tiers[1].c && tiers[1].c.tier === 2 && /when/i.test(tiers[1].txt) && !tiers[1].c.aim, 'after two, "' + tiers[1].txt + '": waits and NOW, still no aim mark');
+  ok(tiers[2].c && tiers[2].c.tier === 3 && /guide/i.test(tiers[2].txt), 'after three, "' + tiers[2].txt + '": the full guided run');
   console.log(log.join('\n'));
   if (errs.length) { console.log(errs.join('\n')); process.exitCode = 1; } else console.log('fast-forward and retry: all good');
   await browser.close();

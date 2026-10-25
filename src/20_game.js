@@ -32,8 +32,18 @@ Game.init = function () {
 Game.hookResults = function () {
   if (typeof UI === 'undefined' || !UI.results || UI.results._hooked) return;
   const r0 = UI.results;
-  UI.results = function (M, res, last) { r0.apply(this, arguments); try { Game.offerRetry(M, res, last); } catch (e) { if (window.console) console.error(e); } };
+  UI.results = function (M, res, last) { r0.apply(this, arguments); try { Game.offerCoach(M, res, last); Game.offerRetry(M, res, last); } catch (e) { if (window.console) console.error(e); } };
   UI.results._hooked = true;
+};
+// On a fail, the next level of help (unless the menus offer it themselves: data-a="coachTier").
+Game.offerCoach = function (M, res, last) {
+  const root = UI.root, off = res && !res.win && last && Game.coachOffer(M);
+  if (!root || !off) return;
+  if (root.querySelector('[data-a="coachTier"]')) { if (!UI.handlers.coachTier) UI.handlers.coachTier = () => Game.startCoached(last, off.tier); return; }
+  const cta = root.querySelector('.results .cta'); if (!cta) return;
+  const c = el('button', 'btn ghost retryshot coachtier', '<span>' + esc(off.label) + '</span><i>' + esc(off.desc) + '</i>');
+  c.dataset.a = 'coachTier'; cta.parentNode.insertBefore(c, cta);
+  UI.handlers.coachTier = () => Game.startCoached(last, off.tier);
 };
 Game.offerRetry = function (M, res, last) {
   if (M.practice || !last || !last.log || res.retryAt === null || res.retryAt === undefined) return;
@@ -258,7 +268,8 @@ Game.updateHud = function (dt) {
 Game.coachHud = function (set) {
   const h = Game.hud, o = Game.coach.out; if (!o) return;
   const k = o.kind;
-  set(h.coach.children[0], 'Guided run  &middot;  shot ' + Math.min(o.shot, o.shots) + ' of ' + o.shots);
+  const tl = Game.coach.tier === 1 ? 'What to watch' : Game.coach.tier === 2 ? 'When to shoot' : 'Guided run';
+  set(h.coach.children[0], tl + '  &middot;  shot ' + Math.min(o.shot, o.shots) + ' of ' + o.shots);
   set(h.coach.children[1], esc(o.head) + (o.count !== null ? ' <em>' + Math.ceil(o.count) + '</em>' : ''));
   set(h.coach.children[2], esc(o.text || ''));
   const cls = 'h-coach k-' + k + (o.fire ? ' fire' : '') + (o.text ? '' : ' notext');
@@ -332,7 +343,7 @@ Game.start = function (missionId, opts) {
   if (G.killcamWhen() !== 'off' && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   // a guided run: the coach reads the mission's own three-star script and shows each step
   G.coach = null;
-  if (opts.guided) { try { G.coach = new Coach(G.sim); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
+  if (opts.guided) { try { G.coach = new Coach(G.sim, opts.guided === true ? 3 : opts.guided); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
   document.body.classList.toggle('guided', !!G.coach);
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
@@ -550,6 +561,7 @@ Game.finish = function () {
   const last = G.lastStart; last.log = G.ilog; G.ilog = null;
   sim.result.retryAt = G.retryPoint(sim.result);
   G.noteBest(G.mission, sim.result, !!last.opts.guided);
+  G.noteTry(G.mission, sim.result, !!last.opts.guided);
   setTimeout(() => { const res = sim.result, M = G.mission; G.stop(); UI.results(M, res, last); }, 1100);
 };
 
@@ -564,6 +576,32 @@ Game.noteBest = function (M, res, guided) {
     res.newBest = !!(res.win && !guided && res.score.total > (prev || 0));
     if (res.newBest) rec.bestScore = res.score.total;
   } catch (e) { /* no save to read */ }
+};
+
+// ---- help after a fail -------------------------------------------------------------------------
+// Each contract's record counts the runs lost since it was last won (failsSinceWin; guided runs
+// do not count). The fail screen can offer the next level of help with Game.coachOffer(M), which
+// returns { tier, label, desc } (null when the contract has no guided run): after one failure
+// "what to watch", after two "when", after three the full guided run. Game.startCoached(last, tier)
+// starts it, with `last` as UI.results was given it. Coached runs are guided runs: no caches.
+Game.noteTry = function (M, res, guided) {
+  if (!M || M.practice || !res || guided) return;
+  try { const rec = Progress.rec(M.id); rec.failsSinceWin = res.win ? 0 : (rec.failsSinceWin || 0) + 1; } catch (e) { /* no save */ }
+};
+const COACH_TIERS = [null,
+  { label: 'Show me what to watch', desc: 'Who and what matters next, and nothing about when.' },
+  { label: 'Show me when', desc: 'What to watch and when to shoot. The aiming is yours.' },
+  { label: 'Guide me through it', desc: 'Every step, with a mark for the crosshair.' }];
+Game.coachOffer = function (M) {
+  if (!M || M.practice || !M.solve) return null;
+  let n = 1; try { n = Save.data.missions[M.id] && Save.data.missions[M.id].failsSinceWin || 1; } catch (e) { n = 1; }
+  const tier = clamp(n, 1, 3);
+  return Object.assign({ tier }, COACH_TIERS[tier]);
+};
+Game.startCoached = function (last, tier) {
+  if (!last) return false;
+  UI.launch(last.missionId, Object.assign({}, last.opts, { guided: clamp(tier || 3, 1, 3) }));
+  return true;
 };
 
 // ---- controls ---------------------------------------------------------------------------

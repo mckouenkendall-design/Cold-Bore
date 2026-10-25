@@ -124,4 +124,8 @@ body.spotting.portrait .h-strip, body.spotting .h-msg { visibility: hidden; }
 
 /* ---- retry from just before the first shot (added to the results screen if the menus do not offer it) ---- */
 .results .retryshot { width: 100%; flex: none; min-height: 40px; margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; justify-content: space-between; gap: 10px; border-color: rgba(255, 170, 60, .55); color: var(--amber2); }
+.results .retryshot span { white-space: nowrap; flex: none; }
+.results .retryshot i { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.results .coachtier { border-color: rgba(111, 182, 255, .55); color: #a9d4ff; }
+.results .coachtier i { overflow: hidden; text-overflow: ellipsis; }
 .results .retryshot i { font: 600 11.5px var(--body, inherit); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--dim); white-space: nowrap; }
