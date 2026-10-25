@@ -8,6 +8,7 @@
   { id: 'ghost', name: 'Brickworks Ghost', r: 4, ex: 'Earn three stars on every mission', furn: { grad: ['#cfd8e2', '#8fa0b4', '#e8eef5'] }, metal: { grad: ['#5d6a7a', '#aab8c8', '#4a5462'] }, acc: '#3a424e', line: 'rgba(255,255,255,0.35)', shimmer: '#ffffff' },
   { id: 'brass', name: 'Marksman\'s Brass', r: 4, ex: 'Complete every mission challenge', furn: { pat: 'wood', a: '#2a1a10', b: '#120a05' }, metal: { grad: ['#f3d47a', '#b88a2a', '#7a5a14', '#e6c25a'] }, acc: { grad: ['#b88a2a', '#f3d47a'] }, line: '#4a3408', shimmer: '#fff3c4' },
   { id: 'harrow', name: 'Harrow Ridge', r: 4, ex: 'Finish the story', furn: { pat: 'camo', cols: ['#f4f7fa', '#d9e2ea', '#b7c4d0', '#ffffff'] }, metal: '#c8372d', acc: '#2a2e36', shimmer: '#ffffff' },
+  { id: 'kestrelr', name: 'Kestrel', r: 4, ex: 'Reach rank 60', furn: { grad: ['#2a1a10', '#6a3a1a', '#c9773a'] }, metal: { grad: ['#3a3f47', '#c9ced6', '#2a2e36'] }, acc: '#ffaa3c', line: 'rgba(255,190,110,0.5)', shimmer: '#ffd9a0' },
 ].forEach((s) => { SKINS.push(s); SKIN_BY_ID[s.id] = s; });
 
 // Chance in a hundred of each rarity (Common to Legendary) per kind of cache.
@@ -21,6 +22,95 @@ const DUPE_CR = [120, 260, 650, 1600, 4200];
 const DUCK_MILESTONES = [5, 10, 20, 30];
 
 const Progress = CB.Progress = {};
+
+// ---- looks earned along the way (for looks only: nothing here changes how a rifle shoots) ----
+// Calling cards: the banner behind your name on the title screen, the results and the dossier.
+// Each is drawn in code (CB.callingCard in 45_ui_art.js).
+const COS_CARDS = [
+  { id: 'plain', name: 'Field Grey', how: 'Yours from the start' },
+  { id: 'brickworks', name: 'Brickworks Rain', how: 'Rank 4' },
+  { id: 'harbour', name: 'Harbour Lights', how: 'Rank 8' },
+  { id: 'ashlock', name: 'Ashlock Peaks', how: 'Rank 13' },
+  { id: 'towers', name: 'Glass Towers', how: 'Rank 17' },
+  { id: 'ridge', name: 'Harrow Snow', how: 'Rank 22' },
+  { id: 'moon', name: 'Night Glass', how: 'Rank 28' },
+  { id: 'kestrel', name: 'Hover', how: 'Rank 33' },
+  { id: 'storm', name: 'Thunderhead', how: 'Rank 38' },
+  { id: 'brass', name: 'Spent Brass', how: 'Rank 43' },
+  { id: 'coil', name: 'Coil Gun', how: 'Rank 48' },
+  { id: 'aurora', name: 'Northern Light', how: 'Rank 53' },
+  { id: 'coldbore', name: 'One Round', how: 'Rank 60' },
+  { id: 'duck', name: 'Bath Time', how: 'Medal: find 20 rubber ducks' },
+  { id: 'ghostcard', name: 'Nobody Heard', how: 'Medal: Ghost, ten times' },
+  { id: 'kilometre', name: 'One Kilometre', how: 'Medal: a kill past 1,000 m' },
+  { id: 'prestige', name: 'Second Run', how: 'Start the rank track again' },
+  { id: 'shelfmap', name: 'Port Calder Map', how: 'Pip\'s shelf' },
+  { id: 'shelfneon', name: 'Neon Rain', how: 'Pip\'s shelf' },
+  { id: 'shelfsunset', name: 'Last Ferry', how: 'Pip\'s shelf' },
+];
+const COS_CARD_BY_ID = {}; COS_CARDS.forEach((c) => { COS_CARD_BY_ID[c.id] = c; });
+// Reticle tints: the colour of the marks in your scope glass.
+const COS_TINTS = [
+  { id: 'black', name: 'Black', col: 'rgba(6,7,9,0.94)', sw: '#0b0d10', how: 'Yours from the start' },
+  { id: 'amber', name: 'Amber', col: 'rgba(255,176,64,0.95)', sw: '#ffb040', how: 'Rank 5' },
+  { id: 'red', name: 'Red', col: 'rgba(240,58,46,0.95)', sw: '#f03a2e', how: 'Rank 11' },
+  { id: 'green', name: 'Green', col: 'rgba(80,226,120,0.95)', sw: '#50e278', how: 'Rank 20' },
+  { id: 'white', name: 'White', col: 'rgba(245,248,252,0.95)', sw: '#f5f8fc', how: 'Rank 26' },
+  { id: 'cyan', name: 'Ice', col: 'rgba(110,220,255,0.95)', sw: '#6edcff', how: 'Rank 32' },
+  { id: 'violet', name: 'Violet', col: 'rgba(200,140,255,0.95)', sw: '#c88cff', how: 'Rank 42' },
+  { id: 'gold', name: 'Gold', col: 'rgba(255,214,110,0.97)', sw: '#ffd66e', how: 'Rank 52' },
+  { id: 'rose', name: 'Rose', col: 'rgba(255,128,170,0.95)', sw: '#ff80aa', how: 'Pip\'s shelf' },
+  { id: 'lime', name: 'Lime', col: 'rgba(200,255,80,0.95)', sw: '#c8ff50', how: 'Pip\'s shelf' },
+];
+const COS_TINT_BY_ID = {}; COS_TINTS.forEach((c) => { COS_TINT_BY_ID[c.id] = c; });
+// The colour the scope's marks are drawn in, for the picture code (null means the usual black).
+CB.reticleInk = function () { const d = Save.data, t = d && d.cos && COS_TINT_BY_ID[d.cos.tint]; return t && t.id !== 'black' ? t.col : null; };
+
+// ---- the rank track ----
+// What each rank hands you. The ten clearance ranks keep the sealed cache they always paid; every
+// fifth rank past Cold Bore pays a vault cache; looks come at fixed ranks; the rest alternate a
+// field cache and credits. After a prestige, looks you already have are paid as credits instead.
+const RANK_CARD = { 4: 'brickworks', 8: 'harbour', 13: 'ashlock', 17: 'towers', 22: 'ridge', 28: 'moon', 33: 'kestrel', 38: 'storm', 43: 'brass', 48: 'coil', 53: 'aurora', 60: 'coldbore' };
+const RANK_TINT = { 5: 'amber', 11: 'red', 20: 'green', 26: 'white', 32: 'cyan', 42: 'violet', 52: 'gold' };
+function rankReward(n, prestige) {
+  const r = RANKS[n - 1]; if (!r || n < 2) return null;
+  if (n === 60) return prestige ? { k: 'cache', tier: 'vault', text: 'Vault cache' } : { k: 'card', id: 'coldbore', text: 'Calling card: One Round, and the Kestrel trophy skin' };
+  if (r.gate) return { k: 'cache', tier: 'sealed', text: 'Sealed cache' };
+  if (n > 27 && n % 5 === 0) return { k: 'cache', tier: 'vault', text: 'Vault cache' };
+  if (RANK_CARD[n] && !prestige) return { k: 'card', id: RANK_CARD[n], text: 'Calling card: ' + COS_CARD_BY_ID[RANK_CARD[n]].name };
+  if (RANK_TINT[n] && !prestige) return { k: 'tint', id: RANK_TINT[n], text: 'Reticle tint: ' + COS_TINT_BY_ID[RANK_TINT[n]].name };
+  if (n % 2) return { k: 'cache', tier: 'field', text: 'Field cache' };
+  const cr = Math.round((150 + n * 25) / 50) * 50;
+  return { k: 'cr', cr, text: fmtCr(cr) + ' credits' };
+}
+// The rank you see: counted from your last prestige.
+Progress.rankXp = function () { const d = Save.data; return Math.max(0, (d.xp || 0) - (d.prestigeXp || 0)); };
+Progress.rankNow = function () { return rankOf(Progress.rankXp()); };
+Progress.rankNext = function () { return nextRank(Progress.rankXp()); };
+// Hand over one rank's reward. Returns what it was, for the screen that shows it.
+Progress.payRank = function (n, out) {
+  const d = Save.data, w = rankReward(n, d.prestige || 0); if (!w) return null;
+  if (w.k === 'cache') (out ? out.caches : d.caches).push(w.tier);
+  else if (w.k === 'cr') { d.credits += w.cr; if (out) out.rankCr = (out.rankCr || 0) + w.cr; }
+  else if (w.k === 'card') { d.cos.cards[w.id] = 1; if (n === 60) Progress.grantSkin('kestrelr'); }
+  else if (w.k === 'tint') d.cos.tints[w.id] = 1;
+  d.rankPaid = Math.max(d.rankPaid || 1, n);
+  return w;
+};
+// What a new rank opens in the shop: rifles, scopes and parts whose clearance is that rank.
+Progress.opensAt = function (n) {
+  const r = RANKS[n - 1]; if (!r || !r.gate) return { guns: [], scopes: [], parts: [] };
+  const at = (it) => !it.special && (it.rank || 1) === r.gate && r.gate > 1;
+  return { guns: GUNS.filter(at), scopes: SCOPES.filter((s) => at(s) && s.price > 0), parts: PARTS.filter((p) => at(p) && p.price > 0) };
+};
+// Start the rank track again from rank 1: everything you own stays, the shop stays open, and the
+// insignia gains a star. Only at rank 60.
+Progress.canPrestige = function () { return Progress.rankNow().n >= RANKS.length; };
+Progress.prestige = function () {
+  const d = Save.data; if (!Progress.canPrestige()) return false;
+  d.prestige = (d.prestige || 0) + 1; d.prestigeXp = d.xp; d.rankPaid = 1; d.cos.cards.prestige = 1;
+  Save.write(); return true;
+};
 
 // One mission's record. c3paid and chPaid say whether the three-star cache and the challenge cache
 // have been handed out: a guided run can earn the stars and the challenge but not their caches, so
@@ -93,7 +183,11 @@ Progress.apply = function (M, res, info) {
       if (k.how === 'shot') { if (k.part === 'head') g.heads++; g.longest = Math.max(g.longest, Math.round(k.range || 0)); }
     });
   }
-  const rank0 = rankOf(d.xp).n;
+  const rank0 = Progress.rankNow().n;
+  // what the records were before this run, for the "new record" badges on the results
+  out.xpFrom = Progress.rankXp();
+  out.before = { longest: d.stats.longest || 0, time: rec.best ? rec.best.time : null, stars: rec.stars || 0, score: rec.score || 0 };
+  if (res.score && res.score.total) { out.scoreNew = res.score.total > (rec.score || 0) && (rec.score || 0) > 0; if (!rec.score || res.score.total > rec.score) rec.score = res.score.total; }
   if (res.win) {
     d.stats.wins++;
     const base = M.reward.cr, bx = M.reward.xp;
@@ -114,6 +208,8 @@ Progress.apply = function (M, res, info) {
     rec.done = true; rec.stars = Math.max(rec.stars, res.stars);
     if (!rec.best || res.stars > rec.best.stars || (res.stars === rec.best.stars && res.time < rec.best.time)) rec.best = { stars: res.stars, time: Math.round(res.time * 10) / 10, shots: res.shots, gun: info && info.gun };
     if (res.outcome && res.outcome.set) { Object.assign(d.flags, res.outcome.set); rec.outcome = res.outcome.id; }
+    // every way each choice has gone, not only the last, for the dossier
+    if (res.outcome && res.outcome.id) { if (!d.outcomes) d.outcomes = {}; if (!d.outcomes[M.id]) d.outcomes[M.id] = {}; out.outcomeNew = !d.outcomes[M.id][res.outcome.id]; d.outcomes[M.id][res.outcome.id] = 1; }
     if (!wasDone && Progress.chapterDone(M.ch)) {
       out.chapterDone = true;
       if (!d.chDone[M.ch] && !(origDone && M.follows)) { add('Chapter complete', 600 * M.ch, 150 * M.ch); out.caches.push('sealed'); }
@@ -125,7 +221,10 @@ Progress.apply = function (M, res, info) {
     }
     if (M.id === 'c4m6' && Progress.grantGun('stormglass')) out.unlocked.push({ kind: 'gun', id: 'stormglass', text: 'Stormglass X1 prototype' });
     const last = MISSIONS[MISSIONS.length - 1];
-    if (M.id === last.id) { out.storyEnd = true; d.seen.ending = (d.seen.ending || 0) + 1; if (Progress.grantSkin('harrow')) out.unlocked.push({ kind: 'skin', id: 'harrow', text: 'Skin: Harrow Ridge' }); }
+    if (M.id === last.id) {
+      out.storyEnd = true; d.seen.ending = (d.seen.ending || 0) + 1; if (Progress.grantSkin('harrow')) out.unlocked.push({ kind: 'skin', id: 'harrow', text: 'Skin: Harrow Ridge' });
+      const e = epilogue(d.flags); if (!d.endings) d.endings = {}; out.endingNew = !d.endings[e.title]; d.endings[e.title] = 1;
+    }
     d.stats.kills += res.kills.filter((k) => k.how === 'shot').length; d.stats.heads += res.stats.heads; d.stats.longest = Math.max(d.stats.longest, Math.round(res.stats.longest));
   }
   // the duck counts even on a failed run: you found it
@@ -136,8 +235,17 @@ Progress.apply = function (M, res, info) {
     if (n >= MISSIONS.length && Progress.grantSkin('duckie')) out.unlocked.push({ kind: 'skin', id: 'duckie', text: 'Skin: Bath Time' });
   }
   d.credits += out.cr; d.xp += out.xp;
-  const rank1 = rankOf(d.xp);
-  if (rank1.n > rank0) { out.rankUp = rank1; for (let i = rank0; i < rank1.n; i++) out.caches.push('sealed'); }
+  // the rank track: every rank passed hands over its reward (once per run through the track)
+  const rank1 = Progress.rankNow();
+  out.rankUps = [];
+  if (rank1.n > rank0) {
+    out.rankUp = rank1; out.rankFrom = rank0;
+    for (let n = rank0 + 1; n <= rank1.n; n++) {
+      const opens = Progress.opensAt(n), w = n > (d.rankPaid || 1) ? Progress.payRank(n, out) : null;
+      out.rankUps.push({ n, w, opens });
+      if (opens.guns.length || opens.parts.length || opens.scopes.length) d.newArmory = true;
+    }
+  }
   const t = Progress.totals();
   if (t.stars >= t.starsMax && Progress.grantSkin('ghost')) out.unlocked.push({ kind: 'skin', id: 'ghost', text: 'Skin: Brickworks Ghost' });
   if (t.ch >= MISSIONS.length && Progress.grantSkin('brass')) out.unlocked.push({ kind: 'skin', id: 'brass', text: 'Skin: Marksman\'s Brass' });
@@ -176,11 +284,11 @@ Progress.buyCache = function (tier) {
 };
 
 Progress.buy = function (kind, id) {
-  const d = Save.data, rank = rankOf(d.xp).n;
+  const d = Save.data;
   const item = kind === 'gun' ? GUN_BY_ID[id] : kind === 'scope' ? SCOPE_BY_ID[id] : PART_BY_ID[id];
   if (!item) return 'Unknown item.';
   if (item.special) return 'This one cannot be bought.';
-  if (rank < item.rank) return 'Needs rank ' + item.rank + ' (' + RANKS[item.rank - 1].name + ').';
+  if (!gateOpen(item)) { const g = gateRank(item); return 'Needs rank ' + g.n + ' (' + g.name + ').'; }
   if (d.credits < item.price) return 'Not enough credits.';
   d.credits -= item.price;
   if (kind === 'gun') Progress.grantGun(id); else if (kind === 'scope') d.scopes[id] = 1; else d.parts[id] = 1;

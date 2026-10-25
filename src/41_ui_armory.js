@@ -6,15 +6,15 @@ const STAT_LABELS = [['reach', 'Reach'], ['flat', 'Flat shooting'], ['wind', 'Ho
 const ACTION_NAME = { bolt: 'Bolt action', semi: 'Semi-automatic', single: 'Single shot', charge: 'Coil, charges before firing' };
 
 UI.armory = function () {
-  const d = Save.data, rank = rankOf(d.xp).n;
+  const d = Save.data;
   const cards = GUNS.map((g) => {
-    const own = !!d.guns[g.id], cfg = own ? gunCfg(g.id) : defaultConfig(g.id), st = buildStats(g.id, cfg);
+    const own = !!d.guns[g.id], cfg = own ? gunCfg(g.id) : defaultConfig(g.id), st = buildStats(g.id, cfg), open = gateOpen(g);
     let tag;
     if (own) tag = d.equipped === g.id ? '<span class="tag eq">In use</span>' : '<span class="tag own">Owned</span>';
     else if (g.special) tag = '<span class="tag lock">' + ICON.lock + ' Story</span>';
-    else if (rank < g.rank) tag = '<span class="tag lock">' + ICON.lock + ' Rank ' + g.rank + '</span>';
+    else if (!open) tag = '<span class="tag lock">' + ICON.lock + ' Rank ' + gateRank(g).n + '</span>';
     else tag = '<span class="tag buy ' + (d.credits >= g.price ? 'can' : '') + '">' + fmtCr(g.price) + ' cr</span>';
-    return `<button class="acard ${own ? 'own' : ''} ${d.equipped === g.id ? 'eq' : ''} ${!own && (g.special || rank < g.rank) ? 'shut' : ''}" data-a="gun" data-id="${g.id}">
+    return `<button class="acard ${own ? 'own' : ''} ${d.equipped === g.id ? 'eq' : ''} ${!own && (g.special || !open) ? 'shut' : ''}" data-a="gun" data-id="${g.id}">
       <span class="ac-pic plate"><canvas data-gun="${g.id}" data-lazy ${uiCfgAttr(cfg)}></canvas>${tag}</span>
       <span class="ac-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${ACTION_NAME[g.action].split(',')[0]}  ·  ${st.eff} m</i></span></button>`;
   }).join('');
@@ -51,13 +51,13 @@ function uiScopeFacts(p) { return (p.zoom[0] === p.zoom[1] ? p.zoom[0] + 'x fixe
 // every slot, each showing a side view of what is fitted there.
 UI.bench = function (gunId) {
   const d = Save.data, g = GUN_BY_ID[gunId], own = !!d.guns[gunId], cfg = own ? gunCfg(gunId) : defaultConfig(gunId);
-  const st = buildStats(gunId, cfg), bars = statBars(st), rank = rankOf(d.xp).n, cfgA = uiCfgAttr(cfg);
+  const st = buildStats(gunId, cfg), bars = statBars(st), rank = Progress.rankNow().n, cfgA = uiCfgAttr(cfg);
   const barsHtml = STAT_LABELS.map(([k, label]) => `<div class="sbar"><span>${label}</span><i><i style="width:${Math.round(bars[k] * 100)}%"></i></i></div>`).join('');
   const facts = `<div class="facts"><div><b>${Math.round(st.v0)}</b><i>m/s at the muzzle</i></div><div><b>${st.mag}</b><i>${st.mag === 1 ? 'round' : 'rounds'}</i></div><div><b>${fmt(st.cycle, 1)} s</b><i>between shots</i></div><div><b>${fmt(st.zoomMin, 0)}-${fmt(st.zoomMax, 0)}x</b><i>zoom</i></div><div><b>${st.silent ? 'Silent' : st.quiet ? 'Quiet' : 'Loud'}</b><i>${st.silent ? 'nobody hears it' : st.quiet ? 'bullet crack only' : 'heard to ' + Math.round(st.noise) + ' m'}</i></div><div><b>${st.pen >= 3 ? 'Walls' : st.pen >= 1.4 ? 'Thin cover' : st.pen >= 0.2 ? 'Glass' : 'Nothing'}</b><i>${st.pen >= 3 ? 'goes through one' : st.pen >= 1.4 ? 'and glass, cleanly' : st.pen >= 1 ? 'goes through cleanly' : st.pen >= 0.2 ? 'through, knocked off line' : 'glass stops it'}</i></div></div>`;
   let action;
   if (own) action = d.equipped === gunId ? '<div class="inuse">' + ICON.check + ' This is the rifle you carry</div>' : '<button class="btn pri wide" data-a="equip" data-snd="equip">Carry this rifle</button>';
   else if (g.special) action = '<div class="lockmsg">' + ICON.lock + ' Not for sale. The story will put it in your hands.</div>';
-  else if (rank < g.rank) action = '<div class="lockmsg">' + ICON.lock + ' Needs rank ' + g.rank + ' (' + RANKS[g.rank - 1].name + '). You are rank ' + rank + '.</div>';
+  else if (!gateOpen(g)) action = '<div class="lockmsg">' + ICON.lock + ' Needs rank ' + gateRank(g).n + ' (' + gateRank(g).name + '). You are rank ' + rank + '.</div>';
   else action = '<button class="btn pri wide ' + (d.credits >= g.price ? '' : 'off') + '" data-a="buy" data-snd="buy">Buy for ' + fmtCr(g.price) + ' credits' + (d.credits >= g.price ? '' : ' (you have ' + fmtCr(d.credits) + ')') + '</button>';
   const tile = (s) => {
     const fixed = uiSlotOptions(s.id, g).length <= 1, isScope = s.id === 'scope', id = isScope ? st.scope.id : uiFitted(gunId, cfg, s.id);
@@ -97,7 +97,7 @@ UI.bench = function (gunId) {
 // One card per option: its picture, what it is, what it changes against what is fitted now, and
 // what it costs. Scope cards also show the view through the glass, bottom right.
 UI.partPicker = function (gunId, slot) {
-  const d = Save.data, g = GUN_BY_ID[gunId], cfg = gunCfg(gunId), rank = rankOf(d.xp).n;
+  const d = Save.data, g = GUN_BY_ID[gunId], cfg = gunCfg(gunId);
   const isScope = slot === 'scope';
   const opts = uiSlotOptions(slot, g);
   if (opts.length <= 1) { UI.toast('Nothing else fits here on this rifle.'); return; }
@@ -125,7 +125,7 @@ UI.partPicker = function (gunId, slot) {
     return o.map((x) => `<span class="dchip ${x[1] === null ? 'n' : x[1] ? 'up' : 'down'}">${x[0]}</span>`).join('');
   };
   const rows = opts.map((p) => {
-    const own = isScope ? ownsScope(p.id) : ownsPart(p.id), cur = (isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === p.id, locked = !own && rank < p.rank;
+    const own = isScope ? ownsScope(p.id) : ownsPart(p.id), cur = (isScope ? st0.scope.id : uiFitted(gunId, cfg, slot)) === p.id, locked = !own && !gateOpen(p);
     const c2 = Object.assign({}, cfg); c2[slot] = p.id;
     const st2 = cur ? null : buildStats(gunId, c2), dl = cur ? [] : statDeltas(base, statBars(st2));
     let extra = cur ? '' : facts(st0, st2);
@@ -135,7 +135,7 @@ UI.partPicker = function (gunId, slot) {
     let btn;
     if (cur) btn = '<span class="st fitted">Fitted</span>';
     else if (own) btn = '<span class="st fit">Owned  ·  fit</span>';
-    else if (locked) btn = '<span class="st lock">' + ICON.lock + ' Rank ' + p.rank + '</span>';
+    else if (locked) btn = '<span class="st lock">' + ICON.lock + ' Rank ' + gateRank(p).n + '</span>';
     else btn = '<span class="st buy ' + (d.credits >= p.price ? 'can' : '') + '">' + (d.credits >= p.price ? 'Buy  ·  ' : '') + fmtCr(p.price) + ' cr</span>';
     return `<button class="prow ${cur ? 'on' : ''} ${locked ? 'locked' : ''} ${isScope ? 'scope' : ''}" data-a="pick" data-id="${p.id}">
       <span class="pr-pic plate"><canvas data-lazy data-part-slot="${slot}" data-part-id="${p.id}" data-gun="${gunId}" ${cfgA} ${locked ? 'data-dim="0.85"' : ''}></canvas></span>

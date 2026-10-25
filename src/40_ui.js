@@ -28,6 +28,7 @@ const ICON = {
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 10-3-3M3 14h15a3 3 0 11-3 3M3 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   room: '<svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 9.5h12M6 15.5h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="8.5" cy="17.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="17.6" r="1.1" fill="currentColor"/></svg>',
   guide: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 17c5-1.2 1.5-7.8 7-9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.4 2.6" stroke-linecap="round"/></svg>',
+  file: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6l2 2h8v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 const fmtCr = (n) => Math.round(n).toLocaleString('en-US');
@@ -49,6 +50,7 @@ function uiSkinMoves(s) {
 UI.ensure = function () {
   if (UI.root) return;
   UI.root = document.getElementById('ui'); UI.over = document.getElementById('overlay');
+  CB.grunge();
   const click = (map) => (e) => {
     const t = e.target.closest('[data-a]'); if (!t || t.classList.contains('off')) return;
     Sfx.unlock(); if (Sfx.mode === 'off' && Game.state !== 'mission') Sfx.menu();
@@ -135,6 +137,14 @@ UI.jobFor = function (cv) {
     return { cv, lazy, kind: 'swatch', skin: sk, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
   }
   if (ds.mthumb) return { cv, lazy, kind: 'thumb', id: ds.mthumb, v: +ds.v || 0 };
+  // drawn pictures (45_ui_art.js and 44_portraits.js); the ones that move are redrawn while on screen
+  if (ds.insignia) return { cv, lazy, kind: 'insig', n: +ds.insignia, pres: +ds.pres || 0 };
+  if (ds.portrait) return { cv, lazy, kind: 'portrait', who: ds.portrait, mood: ds.mood || 'calm', anim: ds.mood === 'talk' };
+  if (ds.card) return { cv, lazy, kind: 'card', id: ds.card, anim: !!ds.live && CB.cardMoves(ds.card) };
+  if (ds.case) return { cv, lazy, kind: 'case', tier: ds.case, open: +ds.open || 0, anim: !!ds.live };
+  if (ds.medal) return { cv, lazy, kind: 'medal', id: ds.medal, tier: +ds.tier || 0 };
+  if (ds.tint) return { cv, lazy, kind: 'tint', id: ds.tint };
+  if (ds.drill) return { cv, lazy, kind: 'drill', id: ds.drill };
   if (ds.gun) { const cfg = cfgOf(ds.gun); return { cv, lazy, kind: 'gun', id: ds.gun, cfg, anim: !!ds.live && (uiSkinMoves(SKIN_BY_ID[cfg.skin || 'factory']) || ds.gun === 'stormglass') }; }
   return null;
 };
@@ -161,7 +171,14 @@ UI.paintJob = function (j, time) {
         const g = x.createLinearGradient(bx - bw, 0, bx + bw, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, rgba(j.skin.shimmer, 0.55)); g.addColorStop(1, 'rgba(255,255,255,0)');
         x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; x.transform(1, 0, -0.5, 1, h * 0.25, 0); x.fillRect(bx - bw, -2, bw * 2, h + 4); x.restore();
       }
-    } else if (j.kind === 'thumb') {
+    } else if (j.kind === 'insig') { const s = Math.min(w, h); CB.insignia(x, j.n, (w - s) / 2, (h - s) / 2, s, j.pres); }
+    else if (j.kind === 'portrait') { const s = Math.min(w, h); CB.portrait(x, j.cv.dataset.portrait || j.who, (w - s) / 2, (h - s) / 2, s, { mood: j.cv.dataset.mood || j.mood, t }); }
+    else if (j.kind === 'card') CB.callingCard(x, j.id, 0, 0, w, h, t);
+    else if (j.kind === 'case') CB.drawCase(x, j.tier, w, h, { t, open: j.open, glow: j.cv._glow || 0, rar: j.cv._rar });
+    else if (j.kind === 'medal') { const s = Math.min(w, h); CB.drawMedal(x, j.id, (w - s) / 2, (h - s) / 2, s, j.tier); }
+    else if (j.kind === 'tint') CB.drawTint(x, j.id, w, h);
+    else if (j.kind === 'drill') CB.drawDrill(x, j.id, w, h);
+    else if (j.kind === 'thumb') {
       const M = MISSION_BY_ID[j.id], s = M && UI.sceneShot(M, j.v, w, h);
       if (s) { x.drawImage(s.cv, 0, 0, s.cv.width, s.cv.height, 0, 0, w, h); if (j.cv.id === 'thumb') { const lab = document.getElementById('thtime'); if (lab) lab.textContent = s.label + '  ·  ' + s.dist + ' m'; } }
     }
@@ -239,7 +256,11 @@ UI.tick = function (dt) {
   if (UI.attract) UI.attractStep(dt);
   if (Sfx.ok && Sfx.mode !== 'off') Sfx.pump();
   if (UI.onTick) UI.onTick(dt);
+  if (UI.anims.length) { const a = UI.anims; UI.anims = []; for (let i = 0; i < a.length; i++) { let keep = false; try { keep = a[i](dt) !== false; } catch (e) { keep = false; } if (keep) UI.anims.push(a[i]); } }
 };
+// Run fn(dt) every frame while the menus are up, until it returns false.
+UI.anims = [];
+UI.anim = function (fn) { UI.anims.push(fn); };
 
 // ---- the scope drifting over a night street on the title -------------------------------
 UI.attractStart = function () {
@@ -333,17 +354,16 @@ UI.chapterIntro = function (n, done) {
 // The frame around the five main screens: the rail of tabs, and a slim bar across the top with
 // whatever `head` the screen wants on the left and the rank and credits on the right.
 UI.shell = function (head, body, cls) {
-  const d = Save.data, r = rankOf(d.xp), nx = nextRank(d.xp);
-  const pct = nx ? ((d.xp - r.xp) / (nx.xp - r.xp)) * 100 : 100;
+  const d = Save.data, x = Progress.rankXp(), r = rankOf(x), pct = UI.xpPct(x);
   const tab = (id, icon, label, badge) => `<button class="tabb ${UI.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${ICON[icon]}<span>${label}</span>${badge ? '<em>' + badge + '</em>' : ''}</button>`;
   return `<div class="scr hub ${cls || ''}">
     <nav class="tabs">
-      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
+      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory', d.newArmory ? 'New' : '')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('dossier', 'file', 'Dossier')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
     </nav>
     <div class="hubmain">
       <div class="top">
         <div class="top-l">${head || ''}</div>
-        <button class="rank" data-a="rankinfo"><b>${r.n}</b><span><i>${esc(r.name)}</i><i class="xp"><i style="width:${pct.toFixed(0)}%"></i></i></span></button>
+        <button class="rank" data-a="rankinfo"><canvas class="rk-ins" data-insignia="${r.n}" data-pres="${d.prestige || 0}"></canvas><span><i>${r.n}  ·  ${esc(r.name)}</i><i class="xp"><i style="width:${pct.toFixed(0)}%"></i></i></span></button>
         <div class="cr"><b>${fmtCr(d.credits)}</b><small>credits</small></div>
       </div>
       ${body}
@@ -362,14 +382,31 @@ UI.hub = function () {
   if (UI.tab === 'collection') return UI.collection();
   if (UI.tab === 'range') return UI.range();
   if (UI.tab === 'settings') return UI.settings(false);
+  if (UI.tab === 'dossier' && UI.dossier) return UI.dossier();
   return UI.contracts();
 };
+// The rank track: every rank in a row along a rail, its insignia, its xp and what it hands you.
+// Where you are is lit and the view opens there. At the top, a prestige starts the track again.
 UI.rankInfo = function () {
-  const d = Save.data, r = rankOf(d.xp), nx = nextRank(d.xp);
-  UI.overlay(`<div class="sheet"><div class="sh-head"><h3>Rank</h3><button class="x" data-a="close">${ICON.cross}</button></div>
-    <div class="sh-body"><p class="dim">Experience (xp) comes from finishing contracts, earning stars and completing challenges. Higher ranks unlock rifles and parts in the armory. Each new rank also brings a sealed cache.</p>
-    <div class="ranks">${RANKS.map((k) => `<div class="rk ${k.n === r.n ? 'cur' : k.n < r.n ? 'had' : ''}"><b>${k.n}</b><span>${esc(k.name)}</span><i>${fmtCr(k.xp)} xp</i></div>`).join('')}</div>
-    <p class="dim">You have ${fmtCr(d.xp)} xp${nx ? ', ' + fmtCr(nx.xp - d.xp) + ' to go until ' + esc(nx.name) : ''}.</p></div></div>`, { close() { UI.closeOverlay(); } });
+  const d = Save.data, x = Progress.rankXp(), r = rankOf(x), nx = nextRank(x), pres = d.prestige || 0;
+  const node = (k) => {
+    const w = rankReward(k.n, pres), got = k.n <= r.n, opens = Progress.opensAt(k.n), sale = opens.guns.length + opens.parts.length + opens.scopes.length;
+    return `<div class="rn ${k.n === r.n ? 'cur' : got ? 'had' : ''} ${k.grade === 1 ? 'fam' : ''}" ${k.n === r.n ? 'id="rncur"' : ''}>
+      <canvas data-insignia="${k.n}" data-pres="${pres}" data-lazy></canvas><b>${k.n}</b><span>${esc(k.name)}</span><i>${fmtCr(k.xp)} xp</i>
+      ${w ? `<em class="rw k-${w.k}">${got ? ICON.check : ''}${esc(w.text.replace(/^Calling card: /, 'Card: ').replace(/^Reticle tint: /, 'Tint: '))}</em>` : '<em class="rw none">Where it starts</em>'}
+      ${sale ? `<em class="rs">${opens.guns.length ? opens.guns.length + (opens.guns.length === 1 ? ' rifle' : ' rifles') : ''}${opens.guns.length && opens.parts.length + opens.scopes.length ? ', ' : ''}${opens.parts.length + opens.scopes.length ? opens.parts.length + opens.scopes.length + ' parts' : ''} for sale</em>` : ''}
+    </div>`;
+  };
+  UI.overlay(`<div class="sheet tall rtrack"><div class="sh-head"><canvas class="rt-ins" data-insignia="${r.n}" data-pres="${pres}"></canvas><div class="sh-t"><div class="eyebrow">Rank ${r.n} of ${RANKS.length}${pres ? '  ·  prestige ' + pres : ''}</div><h3>${esc(r.name)}</h3></div>
+      <div class="rt-xp"><div class="xpbar"><i style="width:${UI.xpPct(x).toFixed(1)}%"></i></div><span>${nx ? fmtCr(nx.xp - x) + ' xp to ' + esc(nx.name) : 'The top of the track'}</span></div><button class="x" data-a="close">${ICON.cross}</button></div>
+    <div class="sh-body"><div class="rtrail">${RANKS.map(node).join('')}</div>
+      <div class="rt-foot"><p class="dim">Experience comes from contracts, stars, challenges, medals and rifle mastery. Every rank hands you something on the way, and the ten marked with a clearance open rifles and parts at Pip's. Rank only ever counts up: the shop never closes again.</p>
+      ${Progress.canPrestige() ? '<button class="btn pri" data-a="prestige">Start the track again</button>' : `<p class="dim">At rank ${RANKS.length} you can start the track again from rank 1, keeping everything you own, with a star on your insignia for each time round.</p>`}</div></div></div>`, {
+    close() { UI.closeOverlay(); },
+    prestige() { if (Progress.prestige()) { UI.closeOverlay(); UI.toast('Prestige ' + Save.data.prestige + '. The track starts again.', 'good'); UI.hub(); } },
+  });
+  const cur = document.getElementById('rncur'), box = UI.over.querySelector('.rtrack .sh-body');
+  if (cur && box) box.scrollTop = Math.max(0, cur.offsetTop - box.clientHeight / 2 + cur.offsetHeight / 2);
 };
 
 // ---- contracts -------------------------------------------------------------------------------

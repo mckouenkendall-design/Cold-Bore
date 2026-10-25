@@ -342,7 +342,7 @@ function grNameplate(ctx, id, cx, y, maxW) {
   grPlate(ctx, cx - w / 2, y, w, 27, [{ s: g.name.toUpperCase(), size: 12, font: '800 %px ' + GR_HEAD }, { s: l2, size: 9.5, font: '600 %px ' + GR_BODY, col: '#9eabb9' }]);
 }
 UI.grPaintRack = function (G, S, ctx, si) {
-  const L = G.L, d = Save.data, rank = rankOf(d.xp).n, fav = G.fav;
+  const L = G.L, d = Save.data, fav = G.fav;
   const lay = grSlots(L, S);
   grWall(ctx, L, 31 + si * 17);
   // the panels: one pegboard for each column, with its LED bar along the top
@@ -380,8 +380,8 @@ UI.grPaintRack = function (G, S, ctx, si) {
     } else {
       grEtched(ctx, r, rx, ry, '#c4d4e6', 0.55, 0.28);
       pegs.forEach((p) => grHook(ctx, p.x, p.y - 1));
-      const special = !!g.special, can = !special && rank >= g.rank && d.credits >= g.price;
-      grDogTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : 'RANK ' + g.rank, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can, sl.x0 + sl.w - 8);
+      const special = !!g.special, can = !special && gateOpen(g) && d.credits >= g.price;
+      grDogTag(ctx, pegs[1].x, pegs[1].y + 3, special ? 'THE STORY' : 'RANK ' + gateRank(g).n, special ? 'Not for sale' : fmtCr(g.price) + ' cr', can, sl.x0 + sl.w - 8);
       grText(ctx, g.name.toUpperCase(), sl.cx - S.ux * 0.35, plateY + 12, '800 12px ' + GR_HEAD, 'rgba(206,220,236,0.5)');
     }
   });
