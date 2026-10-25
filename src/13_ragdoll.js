@@ -756,7 +756,7 @@ function rdWatch(R, s) {
     if (hit > 0.0012 && (sat || hy < 0.45 * s.sc)) {
       s.landT = s.t; s.landV = hit / RDH;
       // where and how hard (for the dust it throws up, src/03_figures.js), and when it may be still
-      s.land = [(p[6] + p[9]) / 2, hy, (p[3 * RD_HEAD] + p[6] + p[9]) / 3, (p[1] - o[1] + p[4] - o[4]) / (2 * RDH)];
+      s.land = [(p[6] + p[9]) / 2, hy, (p[8] + p[11]) / 2, (p[1] - o[1] + p[4] - o[4]) / (2 * RDH), p[RD_HEAD * 3], p[RD_HEAD * 3 + 1]];
       if (s.twitch) s.wake = s.t + s.twitch[s.twitch.length - 1].at + 0.3;
     }
   }

@@ -54,12 +54,7 @@ View.prototype.onEvent = function (e, sim) {
       break;
     }
     case 'hit': V.fxHit(e, sim); break; // the burst, the spray, the flash and the hit-stop: src/06b_hitfx.js
-    case 'kill': {
-      V.fxHurt(e, sim);
-      const a = sim.byId[e.id];
-      if (a && a.look && a.look.hat && e.how === 'shot' && a.look.hat !== 'hood') { V.add({ k: 'hat', t: 0, x: a.x, y: a.y + 1.8, z: e.plane.z, vx: (R() - 0.5) * 3, vy: 3.2, rot: 0, vr: (R() - 0.5) * 14, life: 1.3, col: a.look.hatCol || '#2a2d33', floor: a.y }); a.look.hat = null; }
-      break;
-    }
+    case 'kill': V.fxHurt(e, sim); break; // (a hat knocked off is the figure's own now: src/03c_loose.js)
     case 'glass': burst(14, () => ({ k: 'shard', x: e.x + (R() - 0.5) * 0.9, y: e.y + (R() - 0.5) * 0.9, z: e.plane.z, vx: (R() - 0.5) * 3, vy: R() * 2, rot: R() * 6, vr: (R() - 0.5) * 20, life: 0.9 + R() * 0.5, r: 0.06 + R() * 0.1 })); break;
     case 'lampout': case 'zap': case 'spark': burst(10, () => ({ k: 'spark', x: e.x, y: e.y, z: e.plane.z, vx: (R() - 0.5) * 7, vy: (R() - 0.3) * 7, life: 0.3 + R() * 0.35, col: '#bfe4ff' })); break;
     case 'boom': {

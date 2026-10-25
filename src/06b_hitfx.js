@@ -49,7 +49,7 @@ View.prototype.drawGlassFx = function (sim, cam, dt) {
   if (V.flashing && V.flashing.length) { for (let i = V.flashing.length - 1; i >= 0; i--) { const a = V.flashing[i]; if (--a._flash <= 0) { a._flash = 0; V.flashing.splice(i, 1); } } }
   const S = V.smoke; if (!S) return;
   S.t += dt;
-  const t = S.t, life = 1.1 + 1.2 * S.k; if (t > life) { V.smoke = null; return; }
+  const t = S.t, life = 0.9 + 0.8 * S.k; if (t > life) { V.smoke = null; return; }
   const cx = cam.cx, cy = cam.cy, R = V.R, pal = sim.S && sim.S.pal, dark = pal ? pal.dark || 0 : 0;
   const col = dark > 0.5 ? '#6f7680' : '#d5d8dc', u = t / life;
   const fade = smooth(t / 0.08) * (1 - u) * (1 - u);
@@ -60,7 +60,7 @@ View.prototype.drawGlassFx = function (sim, cam, dt) {
     const ph = S.seed + i * 2.17, sx = Math.sin(ph) * 0.5, gr = easeOut(t / (0.45 + 0.1 * i));
     const x = cx + R * (sx * 0.6 + drift * t * (0.8 + 0.1 * i) + (i - 3.5) * 0.13), y = cy + R * (1.1 - (0.6 + 0.15 * Math.cos(ph)) * gr - 0.14 * t);
     const r = R * (0.24 + 0.55 * gr) * (0.7 + 0.5 * S.k) * (0.85 + 0.25 * Math.cos(ph * 1.7));
-    const a = 0.36 * S.k * fade * blast * (0.75 + 0.25 * Math.sin(ph * 3.1));
+    const a = 0.3 * S.k * fade * blast * (0.75 + 0.25 * Math.sin(ph * 3.1));
     if (a < 0.01 || r < 2) continue;
     const g = ctx.createRadialGradient(x, y, r * 0.15, x, y, r);
     g.addColorStop(0, rgba(col, a)); g.addColorStop(0.55, rgba(col, a * 0.55)); g.addColorStop(1, rgba(col, 0));

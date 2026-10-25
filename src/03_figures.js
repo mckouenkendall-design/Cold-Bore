@@ -768,7 +768,7 @@ function figHat(c, G, hat) {
 }
 // The head: neck up. mode 0 only traces the outline (for the pale rim); mode 1 paints it.
 function figHead(c, G, mode) {
-  const L = G.L, hr = FIG.headR, f = G.f, wl = G.wl, wr = 1 - wl, hat = L.hat, hair = L.hair, hi = G.hi, fine = G.fine, px = G.px;
+  const L = G.L, hr = FIG.headR, f = G.f, wl = G.wl, wr = 1 - wl, hat = G.hat, hair = L.hair, hi = G.hi, fine = G.fine, px = G.px;
   c.save(); c.translate(G.hdx, G.hdy); if (G.htilt) c.rotate(G.htilt);
   if (mode === 0) {
     c.moveTo(hr, 0); c.arc(0, 0, hr, 0, TAU);
@@ -935,10 +935,20 @@ function figStraps(c, G) {
 // Carried in both hands in front of the body: a box, or an open newspaper.
 function figBoth(c, G, mode) {
   const L = G.L, bag = L.bag, px = G.px, hi = G.hi, fine = G.fine;
-  const mx = (G.cL[0] + G.cR[0]) / 2, ls = G.lx >= 0 ? 1 : -1;
-  let my = (G.cL[1] + G.cR[1]) / 2;
+  let mx = (G.cL[0] + G.cR[0]) / 2, my = (G.cL[1] + G.cR[1]) / 2;
+  const ls = G.lx >= 0 ? 1 : -1;
+  // dropped: the box (or the newspaper) falls from between the hands and lies where it lands
+  let lz = null;
+  if (G.dead && (bag === 'box' || bag === 'paper')) {
+    const C = FIG_LOOSE[bag]; lz = figLoose(G, bag, figLooseFrom(G, bag, mx + C.cx, Math.max(my, 0.1) + C.cy, 0.7));
+    if (lz) { c.save(); c.translate(lz.x, lz.y); c.rotate(lz.r); c.translate(-C.cx, -C.cy); mx = 0; my = 0; }
+  }
+  if (lz) { figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, true); c.restore(); return; }
+  figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, false);
+}
+function figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, loose) {
   if (bag === 'box') {
-    my = Math.max(my, 0.1);
+    if (!loose) my = Math.max(my, 0.1);
     if (!mode) { figRR(c, mx - 0.25, my - 0.09, 0.5, 0.37, 0.014); return; }
     const col = L.bagCol || '#b08a52', dark = figSh(col, 0.3);
     c.fillStyle = figC(col); c.beginPath(); figRR(c, mx - 0.25, my - 0.09, 0.5, 0.37, 0.014); c.fill();
@@ -953,7 +963,7 @@ function figBoth(c, G, mode) {
       c.beginPath(); c.moveTo(mx - 0.23, my + 0.268); c.lineTo(mx + 0.23, my + 0.268); figGlint(c, G, 0.014, 0.8);
     }
   } else if (bag === 'paper') {
-    my = Math.max(my, 0.06);
+    if (!loose) my = Math.max(my, 0.06);
     const col = '#e9e6dc', dip = 0.03;
     const trace = () => { c.moveTo(mx - 0.215, my - 0.03); c.lineTo(mx, my - 0.03 - dip); c.lineTo(mx + 0.215, my - 0.03); c.lineTo(mx + 0.215, my + 0.28); c.lineTo(mx, my + 0.28 - dip); c.lineTo(mx - 0.215, my + 0.28); c.closePath(); };
     if (!mode) { trace(); return; }
@@ -979,14 +989,17 @@ function figCarry(c, G, mode) {
   const L = G.L, bag = L.bag, ha = G.cR, px = G.px, hi = G.hi, fine = G.fine, f = G.f, env = G.env, ls = G.lx >= 0 ? 1 : -1;
   switch (bag) {
     case 'case': {
-      c.save(); figHang(c, G, ha, 0.34);
+      if (G.dead && mode) figCasePapers(c, G);
+      c.save(); figHold(c, G, ha, 0.34, 'case');
       if (!mode) { figRR(c, -0.215, -0.335, 0.43, 0.285, 0.03); c.restore(); return; }
+      const burst = G.dead && G.st.loose && G.st.loose.case && G.st.loose.case.land !== null;
       const col = L.bagCol || '#7b5a36', dark = figSh(col, 0.36), metal = figC('#cdb67a');
       c.strokeStyle = dark; c.lineWidth = Math.max(0.024, px); c.beginPath(); c.moveTo(-0.07, -0.055); c.lineTo(-0.07, -0.012); c.quadraticCurveTo(-0.07, 0.004, -0.05, 0.004); c.lineTo(0.05, 0.004); c.quadraticCurveTo(0.07, 0.004, 0.07, -0.012); c.lineTo(0.07, -0.055); c.stroke();
       c.fillStyle = figC(col); c.beginPath(); figRR(c, -0.215, -0.335, 0.43, 0.285, 0.03); c.fill();
       if (hi) {
         c.fillStyle = '#000000'; c.globalAlpha = 0.17; c.beginPath(); figRR(c, -0.215, -0.335, 0.43, 0.1, 0.03); c.fill(); c.globalAlpha = 1;
         c.strokeStyle = dark; c.lineWidth = Math.max(0.012, px * 0.8); c.beginPath(); c.moveTo(-0.215, -0.128); c.lineTo(0.215, -0.128); c.stroke(); // where the lid meets the body
+        if (burst) { c.fillStyle = figC('#1a1410'); c.beginPath(); c.moveTo(-0.2, -0.128); c.lineTo(0.2, -0.128); c.lineTo(0.18, -0.105); c.lineTo(-0.18, -0.105); c.closePath(); c.fill(); } // sprung open
         c.fillStyle = metal; c.fillRect(-0.135, -0.152, 0.04, 0.048); c.fillRect(0.095, -0.152, 0.04, 0.048); // clasps
         if (fine) {
           c.fillRect(-0.084, -0.062, 0.028, 0.02); c.fillRect(0.056, -0.062, 0.028, 0.02); // handle mounts
@@ -1002,7 +1015,7 @@ function figCarry(c, G, mode) {
       c.restore(); return;
     }
     case 'duffel': {
-      c.save(); figHang(c, G, ha, 0.47);
+      c.save(); figHold(c, G, ha, 0.47, 'duffel');
       if (!mode) { figDuffelPath(c); c.restore(); return; }
       const col = L.bagCol || '#3f4a5c', dark = figSh(col, 0.32), web = figSh(col, 0.56), yt = -0.165, yb = -0.445;
       // the far handle, behind the bag
@@ -1038,7 +1051,7 @@ function figCarry(c, G, mode) {
       c.restore(); return;
     }
     case 'shopping': {
-      c.save(); figHang(c, G, ha, 0.48);
+      c.save(); figHold(c, G, ha, 0.48, 'shopping');
       const trace = () => { c.moveTo(-0.125, -0.105); c.lineTo(0.125, -0.105); c.lineTo(0.155, -0.465); c.lineTo(-0.155, -0.465); c.closePath(); };
       if (!mode) { trace(); c.restore(); return; }
       const col = L.bagCol || '#e9e2d0', dark = figSh(col, 0.3);
@@ -1058,7 +1071,7 @@ function figCarry(c, G, mode) {
     }
     case 'cup': {
       c.save();
-      if (G.dead) { c.translate(ha[0] + G.fs * 0.06, Math.max(0.045, ha[1] - 0.02)); c.rotate(-G.fs * 1.5 * smooth(G.dT / 0.5)); }
+      if (G.dead) { if (!figHold(c, G, ha, 0, 'cup')) { c.restore(); return; } }
       else { c.translate(ha[0], ha[1]); const up = clamp((ha[1] - G.neck[1]) / 0.12, 0, 1); if (up) c.rotate(f * 0.75 * up); }
       const trace = () => { c.moveTo(-0.032, -0.03); c.lineTo(0.032, -0.03); c.lineTo(0.044, 0.105); c.lineTo(-0.044, 0.105); c.closePath(); };
       if (!mode) { trace(); c.restore(); return; }
@@ -1077,7 +1090,7 @@ function figCarry(c, G, mode) {
     }
     case 'flowers': {
       c.save();
-      if (G.dead) { c.translate(ha[0], Math.max(0.05, ha[1])); c.rotate(-G.fs * 1.45 * smooth(G.dT / 0.5)); } else { c.translate(ha[0], ha[1]); c.rotate(-f * 0.3 + G.lag * 1.2); }
+      if (G.dead) figHold(c, G, ha, 0, 'flowers'); else { c.translate(ha[0], ha[1]); c.rotate(-f * 0.3 + G.lag * 1.2); }
       if (!mode) { c.moveTo(-0.03, -0.03); c.lineTo(0.03, -0.03); c.lineTo(0.14, 0.27); c.quadraticCurveTo(0.12, 0.44, 0, 0.44); c.quadraticCurveTo(-0.12, 0.44, -0.14, 0.27); c.closePath(); c.restore(); return; }
       const col = L.bagCol || '#e85d75', green = figC('#4c9a56');
       c.strokeStyle = green; c.lineWidth = Math.max(0.014, px * 0.9); c.beginPath(); c.moveTo(0, 0); c.lineTo(-0.02, -0.1); c.moveTo(0, 0); c.lineTo(0.015, -0.11); c.moveTo(0, 0); c.lineTo(0, -0.09); c.stroke();
@@ -1096,7 +1109,10 @@ function figCarry(c, G, mode) {
       if (!mode) return;
       const col = L.bagCol || '#d8d2c4', w = Math.max(0.03, px);
       let x0 = ha[0], y0 = ha[1] + 0.035, x1 = ha[0] + f * 0.12, y1 = 0.004, hook = 1;
-      if (G.dead) { const k = smooth(G.dT / 0.55); y0 = lerp(y0, 0.03, k); x1 = lerp(x1, ha[0] + G.fs * 0.86, k); y1 = lerp(0.004, 0.022, k); hook = 1 - k * 0.6; }
+      if (G.dead) { // let go: it falls, clatters and lies on the ground (the crook at its own end)
+        const L = figLoose(G, 'cane', figLooseFrom(G, 'cane', ha[0] + G.fs * 0.06, ha[1] - 0.4, 0.6));
+        if (L) { const cx = Math.cos(L.r) * 0.43, cy = Math.sin(L.r) * 0.43; x0 = L.x - cx; y0 = L.y - cy; x1 = L.x + cx; y1 = L.y + cy; hook = 0.8; }
+      }
       c.strokeStyle = figC(col); c.lineWidth = w; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x0, y0);
       c.quadraticCurveTo(x0 - f * 0.006, y0 + 0.075 * hook, x0 - f * 0.055, y0 + 0.075 * hook); c.quadraticCurveTo(x0 - f * 0.105, y0 + 0.075 * hook, x0 - f * 0.105, y0 + 0.02 * hook); c.stroke();
       if (hi) {
@@ -1107,8 +1123,9 @@ function figCarry(c, G, mode) {
     }
     case 'umbrella': {
       let R0 = 2.16 - ha[1], hy = ha[1], tilt = clamp(-G.wind * 0.012, -0.1, 0.1) + G.lag * 0.5 - clamp(Math.atan2(lerp(ha[0], G.neck[0], 0.75) - ha[0], R0 + 0.2), -0.4, 0.4);
-      if (G.dead) { const k = smooth(G.dT / 0.65); R0 = 1.32; hy = Math.max(0.04, ha[1]); tilt = G.fs * 1.08 * k; }
-      c.save(); c.translate(ha[0], hy); c.rotate(tilt);
+      c.save();
+      if (G.dead) { R0 = 1.32; figHold(c, G, ha, 0, 'umbrella'); } // let go: the wind takes it
+      else { c.translate(ha[0], hy); c.rotate(tilt); }
       if (!mode) { figBrollyPath(c, R0); c.restore(); return; }
       const col = L.bagCol || '#c0392b', dark = figSh(col, 0.4), top = R0 + 0.41;
       if (mode === 2) { // only the crook handle, which goes in front of the body
@@ -1170,7 +1187,7 @@ function figCarry(c, G, mode) {
 function figClip(c, G, mode) {
   const L = G.L, ha = G.cL, f = G.f, px = G.px;
   c.save();
-  if (G.dead) { c.translate(ha[0], Math.max(0.03, ha[1])); c.rotate(G.fs * 1.5 * smooth(G.dT / 0.5)); } else { c.translate(ha[0], ha[1] + 0.085); c.rotate(-f * 0.12); }
+  if (G.dead) figHold(c, G, ha, 0, 'clip'); else { c.translate(ha[0], ha[1] + 0.085); c.rotate(-f * 0.12); }
   if (!mode) { figRR(c, -0.116, -0.15, 0.232, 0.315, 0.016); c.restore(); return; }
   const col = L.bagCol || '#e7e2d4';
   c.fillStyle = figSh(col, 0.26); c.beginPath(); figRR(c, -0.116, -0.15, 0.232, 0.315, 0.016); c.fill();
@@ -1188,7 +1205,11 @@ function figRifle(c, G) {
   const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead;
   const a = G.haR, b = G.haL;
   let dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), ox = a[0], oy = a[1];
-  if (G.dead) { ox = G.cR[0] - G.fs * 0.1; oy = Math.max(G.cR[1], 0.045); dx = G.fs; dy = 0.5 * (1 - smooth(G.dT / 0.45)); l = 0.34; }
+  const dp = G.dead ? figAimAs(A, A.deathPose) : '', dropped = dp === 'guard' || dp === 'aimrifle'; // (a slung rifle stays on the back)
+  if (dropped) { // dropped: it clatters down, bounces and lies flat
+    const C = FIG_LOOSE.rifle, L = figLoose(G, 'rifle', figLooseFrom(G, 'rifle', G.st.drop[0] + G.fs * C.cx, Math.max(0.2, G.st.drop[1]), 0.8));
+    ox = L ? L.x - Math.cos(L.r) * C.cx : G.cR[0]; oy = L ? L.y - Math.sin(L.r) * C.cx : Math.max(G.cR[1], 0.045); dx = L ? Math.cos(L.r) : G.fs; dy = L ? Math.sin(L.r) : 0; l = 0.34;
+  }
   else if (!held || l < 0.05) { // not in the hands: slung on the back, muzzle up
     const o = -G.fl * (G.wc + 0.03); ox = figPX(G, 0.42, o); oy = figPY(G, 0.42, o); dx = G.ux + G.nx * G.fl * 0.2; dy = G.uy + G.ny * G.fl * 0.2; l = 0.3;
   }
@@ -1618,6 +1639,38 @@ function figWound(c, G, R) {
   }
 }
 
+// What the ground throws up when a body lands on it: dust off dirt and paving, a burst of powder off
+// snow, a splash off water. Drawn in front of the body, gone in under a second.
+// back: the clouds, drawn behind the body; front: the grit and the splash, drawn in front of it.
+function figLandPuff(c, G, R, front) {
+  const s = R.s, L = s && s.land; if (!L || G.A.inVeh || (R.env && (R.env.seat || R.env.car))) return;
+  const T = G.dT - s.landT; if (T < 0 || T > 0.9) return;
+  const mat = (R.env && R.env.mat) || 'dirt', sc = G.sc, x = L[0] / sc, y = figFloorAt(G, R, x), k = clamp(Math.abs(L[3]) / 2.5, 0.35, 1), u = T / 0.9;
+  if (mat === 'water') { // a splash: a crown of drops thrown up and out, and a ring that spreads
+    if (!front) return;
+    c.fillStyle = figC('#d7e8f2'); c.globalAlpha = 0.85 * (1 - u); c.beginPath();
+    for (let i = 0; i < 9; i++) { const sx = (i - 4) / 4, vx = sx * (0.9 + 0.4 * k), vy = (1.8 - Math.abs(sx)) * 1.6 * k, px = x + vx * T, py = y + vy * T - 4.9 * T * T, r = 0.025 + 0.015 * (1 - Math.abs(sx)); if (py < y) continue; c.moveTo(px + r, py); c.arc(px, py, r, 0, TAU); }
+    c.fill();
+    c.strokeStyle = figC('#e8f2f8'); c.lineWidth = Math.max(0.02, G.px); c.globalAlpha = 0.6 * (1 - u); c.beginPath(); c.ellipse(x, y + 0.01, 0.3 + 1.1 * easeOut(u), 0.05 + 0.08 * easeOut(u), 0, 0, TAU); c.stroke();
+    c.globalAlpha = 1; return;
+  }
+  const col = mat === 'snow' ? '#f3f6f9' : mat === 'interior' ? '#cfc9bd' : mat === 'metal' ? '#b9bcc0' : mat === 'hard' ? '#c7c2b8' : '#b9a684';
+  const big = mat === 'snow' ? 1.5 : mat === 'metal' ? 0.5 : 1, a = (mat === 'snow' ? 0.6 : 0.38) * k * Math.pow(1 - u, 1.5);
+  if (a < 0.02) return;
+  if (front) { // grit thrown out, falling back
+    if (!G.hi || mat === 'metal') return;
+    c.globalAlpha = Math.min(1, a * 2); c.fillStyle = figC(mat === 'snow' ? '#ffffff' : '#8a7a60'); c.beginPath();
+    for (let i = 0; i < 6; i++) { const sx = (i - 2.5) / 2.5, px = x + sx * (0.6 + 0.4 * k) * T * 2, py = y + (1.2 - Math.abs(sx) * 0.5) * k * T * 2 - 4.9 * T * T * 1.4, r = Math.max(G.px * 0.8, 0.015); if (py < y) continue; c.moveTo(px + r, py); c.arc(px, py, r, 0, TAU); }
+    c.fill(); c.globalAlpha = 1; return;
+  }
+  // two low clouds rolling out to either side, and a little that rises in the middle
+  c.fillStyle = figC(col); c.globalAlpha = a; c.beginPath();
+  for (let i = -1; i <= 1; i += 2) { const d = (0.25 + 0.75 * easeOut(u * 1.4)) * big * (0.6 + 0.4 * k), cx = x + i * d * 0.8, r = (0.1 + 0.2 * easeOut(u)) * big; c.moveTo(cx + r * 1.6, y + r * 0.6); c.ellipse(cx, y + r * 0.6, r * 1.6, r * 0.7, 0, 0, TAU); }
+  const rm = (0.08 + 0.18 * easeOut(u)) * big; c.moveTo(x + rm * 1.3, y + 0.05 + 0.25 * u * big); c.ellipse(x, y + 0.05 + 0.25 * u * big, rm * 1.3, rm, 0, 0, TAU);
+  c.fill();
+  c.globalAlpha = 1;
+}
+
 // ---- the figure ------------------------------------------------------------
 function figMoving(a) { return a === 'walk' ? 1 : (a === 'run' || a === 'panic') ? 2 : 0; }
 const FIG_HAND_BAGS = { case: 1, duffel: 1, shopping: 1, cup: 1, flowers: 1, cane: 1, umbrella: 1, balloon: 1 };
@@ -1638,7 +1691,7 @@ function figRim(c, G, K) {
     // head and hat get a slightly enlarged pale fill behind them instead of a traced outline
     figSeg(c, G.hip, G.neck); c.stroke();
     c.fillStyle = G.rim; c.beginPath(); c.save(); c.translate(G.hdx, G.hdy); if (G.htilt) c.rotate(G.htilt);
-    const k = 1 + rw / FIG.headR; c.scale(k, k); c.moveTo(FIG.headR, 0); c.arc(0, 0, FIG.headR, 0, TAU); if (G.L.hat) figHatPath(c, G, G.L.hat);
+    const k = 1 + rw / FIG.headR; c.scale(k, k); c.moveTo(FIG.headR, 0); c.arc(0, 0, FIG.headR, 0, TAU); if (G.hat) figHatPath(c, G, G.hat);
     c.restore(); c.fill();
     return;
   }
@@ -1718,6 +1771,7 @@ function drawFigure(ctx, A, env) {
     G.dR[0] = st.drop[0] + slide; G.dR[1] = Math.max(0, st.drop[1] - fall); G.dL[0] = st.drop[2] + slide; G.dL[1] = Math.max(0, st.drop[3] - fall);
     G.cR = G.dR; G.cL = G.dL;
   }
+  G.hat = L.hat && figHatOff(G) ? null : L.hat; // a hat knocked off or shaken off lies on the ground (src/03c_loose.js)
   const K = figWear(G), bag = L.bag, anim = G.anim = an;
   const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
   const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
@@ -1728,6 +1782,7 @@ function drawFigure(ctx, A, env) {
   if (gore) { figWallBlood(c, G, A.rd); figMist(c, G, A.rd); }
   if ((light > 0.02 || !env.night) && hpx > 26) figShadow(c, G);
   if (gore) figGroundBlood(c, G, A.rd);
+  if (dead && A.rd && hpx > 24) figLandPuff(c, G, A.rd, false);
   if (G.rim) figRim(c, G, K);
 
   // far side first: the arm and leg that are further from us, a shade darker
@@ -1753,6 +1808,10 @@ function drawFigure(ctx, A, env) {
     if (hi && !dead) { const mx = (G.haL[0] + G.haR[0]) / 2, my = Math.max((G.haL[1] + G.haR[1]) / 2, 0.1), w = bag === 'box' ? 0.25 : 0.212, y = bag === 'box' ? my - 0.07 : my + 0.03; c.fillStyle = G.ink; c.beginPath(); c.arc(mx - w, y, 0.03, 0, TAU); c.moveTo(mx + w + 0.03, y); c.arc(mx + w, y, 0.03, 0, TAU); c.fill(); }
   } else if (bag === 'clip') figClip(c, G, 1);
   if (!dead) figProps(c, G);
+  else {
+    if (A.rd && hpx > 24) figLandPuff(c, G, A.rd, true);
+    if (L.hat && !G.hat && A.rd) figLooseHat(c, G);
+  }
   c.restore();
   figFlashK = 0;
 }
@@ -1801,7 +1860,7 @@ function figDrawFar(ctx, A, env, J, L) {
   if (L.scarf) { ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(lw * 1.5, minw * 1.3); ctx.beginPath(); ctx.moveTo(J.neck[0] - 0.08 * sc, J.neck[1] - 0.01 * sc); ctx.lineTo(J.neck[0] + 0.08 * sc, J.neck[1] - 0.01 * sc); ctx.moveTo(J.neck[0] - f * 0.07 * sc, J.neck[1]); ctx.lineTo(J.neck[0] - f * 0.16 * sc, J.neck[1] - 0.34 * sc); ctx.stroke(); }
   // head, hair, hat
   ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
-  const hair = L.hair, hat = L.hat;
+  const hair = L.hair, hat = figHatGone(A, dead, A.deadT || 0) ? null : L.hat; // (a hat that has fallen off is too small to see from here)
   if (hair && hat !== 'hood' && hat !== 'helmet') {
     ctx.fillStyle = D(hair === 'white' ? '#e8e8e2' : (L.hairCol || (hair === 'long' ? '#6b4a2b' : hair === 'bun' ? '#3a2a20' : hair === 'mohawk' ? '#e0413a' : '#7a5a3a')));
     ctx.beginPath();
