@@ -363,12 +363,14 @@ const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null, y0: 1e9, 
 // water can mirror things drawn after it: the quay, its lamps, the people and boats on it.
 // It is one frame old, which nobody can see.
 function kxReflSource(ctx) { return kxRefl.src && kxRefl.srcCv === ctx.canvas && kxRefl.src.width === ctx.canvas.width && kxRefl.src.height === ctx.canvas.height ? kxRefl.src : ctx.canvas; }
-function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed) {
+function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed, hMax) {
   const m = kxM(ctx); if (m.b || m.c || m.d >= 0 || a < 0.02) return;
   const cv = ctx.canvas, Wc = cv.width, Hc = cv.height, Yw = m.d * yW + m.f, Yn = Math.min(Hc, m.d * yN + m.f);
   const X0 = Math.max(0, Math.floor(m.a * xa + m.e)), X1 = Math.min(Wc, Math.ceil(m.a * xb + m.e)), w = X1 - X0;
   if (w < 4 || Yn <= Math.max(0, Yw) + 2) return;
-  const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460)); if (depth < 6) return;
+  // only what stands on or just behind this waterline reflects in this stretch (hMax metres of it):
+  // things far behind reflect in the water out near them, not here
+  const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460, (hMax || 1e9) * Math.abs(m.d))); if (depth < 6) return;
   if (!kxRefl.c || kxRefl.w < w || kxRefl.h < depth) { kxRefl.w = Math.max(kxRefl.w, w); kxRefl.h = Math.max(kxRefl.h, depth); if (!kxRefl.c) kxRefl.c = kxCanvas(kxRefl.w, kxRefl.h); else { kxRefl.c.width = kxRefl.w; kxRefl.c.height = kxRefl.h; } kxRefl.g = kxRefl.c.getContext('2d'); }
   const g = kxRefl.g; g.clearRect(0, 0, w, depth); g.drawImage(kxReflSource(ctx), X0, Yw - depth, w, depth, 0, 0, w, depth);
   kxRefl.y0 = Math.min(kxRefl.y0, Yw - depth); kxRefl.y1 = Math.max(kxRefl.y1, Yw);   // the rows to keep for next frame

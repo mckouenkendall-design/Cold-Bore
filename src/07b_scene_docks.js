@@ -167,7 +167,9 @@ K.sea = function (S, P, o) {
   if (o.sheen) col = mix(col, S.tone(o.sheen, P, true), 0.6);       // the sky lying on the water near the horizon
   const hi = mix(col, night ? '#8fa6cc' : '#ffffff', o.shine === undefined ? (night ? 0.17 : 0.26) : o.shine), lo = mix(col, '#000812', night ? 0.34 : 0.17);
   const X0 = o.x0 === undefined ? -6000 : o.x0, X1 = o.x1 === undefined ? 6000 : o.x1;
-  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z) }; S._water = true;
+  // mirror: how many metres of what stands over this water it reflects (only what stands on its
+  // own waterline: the near strips would otherwise mirror the water beyond them)
+  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z), mirror: o.mirror === undefined ? 16 : o.mirror }; S._water = true;
   dk.seas.push(me);
   if (o.ground !== false) { P.groundY = y; P.groundMat = 'water'; }
   P.add({ x0: X0, x1: X1, layer: o.layer || 0, draw(ctx, env) { dkSeaDraw(ctx, env, S, dk, me); } });
@@ -186,7 +188,7 @@ function dkSeaDraw(ctx, env, S, dk, me) {
   if ((y - ybn) * s < 6) R4(ctx, xa, yb, xb - xa, yt - yb, me.col);
   else { const g = ctx.createLinearGradient(0, y, 0, ybn); g.addColorStop(0, me.col); g.addColorStop(1, me.bot); ctx.fillStyle = g; ctx.fillRect(xa, yb, xb - xa, yt - yb); }
   // the quay, the ships, the lamps and the sky standing over this water, mirrored in it
-  kxReflect(ctx, env, y, yb, xa, xb, dk.reflA, dk.reflR + Math.abs(env.wind) * 0.12, me.sd);
+  if (me.mirror > 0) kxReflect(ctx, env, y, yb, xa, xb, dk.reflA, dk.reflR + Math.abs(env.wind) * 0.12, me.sd, me.mirror);
 
   // dark shapes: the quay wall, piles and hulls mirrored in the water, broken into bands
   const ms = dk.mirrors;
@@ -1600,7 +1602,7 @@ SCN.docks = function (o) {
 
   // ---- the basin in front: boat lane, then open water toward the shooter ----
   const PL = S.plane(z - 5, 'lane');
-  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08 });
+  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08, mirror: 4 });
   H.PL = PL; H.laneY = wy - 0.25;                 // y for a launch so that it floats at its waterline
   if (o.bell !== undefined && o.bell !== false) H.bell = K.buoy(S, PL, typeof o.bell === 'number' ? o.bell : o.bell.x, wy, { bell: typeof o.bell === 'number' ? {} : o.bell });
   if (o.barge) {
@@ -1616,7 +1618,7 @@ SCN.docks = function (o) {
   }
   if (o.skiff) H.skiff = K.skiff(S, PL, o.skiff.x, wy, o.skiff);
   const PW = S.plane(z - 42, 'basin');
-  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16 });
+  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16, mirror: 5 });
   H.PW = PW;
   if (o.ketch) K.ketch(S, PW, o.ketch.x, wy, o.ketch);
   const dolX = o.dolphinX === undefined ? -27 : o.dolphinX;
@@ -1650,7 +1652,7 @@ SCN.docks = function (o) {
   }
   // ---- nearest: a trawler's masthead in the corner, with a pennant that shows the wind ----
   const PN = S.plane(Math.round(z * 0.6), 'near');
-  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24 });
+  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24, mirror: 5 });
   H.PN = PN;
   if (o.mast !== false) {
     const mx = o.mastX === undefined ? -26.5 : o.mastX, my = o.mastY === undefined ? 6.3 : o.mastY, mc = S.tone('#2a2620', PN), mc2 = S.tone('#8a6d4c', PN), mc3 = S.tone('#a88a62', PN), steel = S.tone('#c9ced3', PN);

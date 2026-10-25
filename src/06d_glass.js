@@ -142,8 +142,8 @@ View.prototype.drawHide = function (sim, cam) {
     // each blade three times, wider and fainter each time: out of focus, without a blur filter
     for (let pass = 0; pass < 3; pass++) {
       const grow = [1, 1.6, 2.4][pass]; ctx.globalAlpha = [0.16, 0.1, 0.07][pass] * k; ctx.beginPath();
-      for (let i = 0; i < 9; i++) {
-        const bx = x0 + ((i * 131 + 40 - panX) % (W + 80) + W + 80) % (W + 80) - 40, h = H * (0.1 + kxH(i, 5) * 0.12) * (1 + (grow - 1) * 0.15), bw = (10 + kxH(i, 9) * 18) * grow, lean = (kxH(i, 2) - 0.5) * 40 + sway;
+      for (let i = 0; i < 16; i++) {
+        const bx = x0 + ((i * 83 + 40 - panX) % (W + 80) + W + 80) % (W + 80) - 40, h = H * (0.08 + kxH(i, 5) * 0.14) * (1 + (grow - 1) * 0.15), bw = (3 + kxH(i, 9) * 6) * grow, lean = (kxH(i, 2) - 0.5) * 60 + sway;
         ctx.moveTo(bx - bw, yb + 4); ctx.quadraticCurveTo(bx + lean * 0.4, yb - h * 0.5, bx + lean, yb - h); ctx.quadraticCurveTo(bx + lean * 0.5 + bw * 0.3, yb - h * 0.45, bx + bw, yb + 4); ctx.closePath();
       }
       ctx.fill();

@@ -57,7 +57,7 @@ K.shore = function (S, P, o) {
       R4(ctx, a, -1.6, b - a, 1.6, band2); R4(ctx, a, -0.55, b - a, 0.55, band);
       const cut = brCut(S, P, env);
       // the far bank, the bridge and the sky mirrored in the river
-      kxReflect(ctx, env, 0, Math.max(cut, env.y0), a, b, rain ? 0.3 : dark > 0.5 ? 0.55 : 0.48, (rain ? 2 : 1) + Math.abs(env.wind) * 0.12, P.z);
+      kxReflect(ctx, env, 0, Math.max(cut, env.y0), a, b, rain ? 0.3 : dark > 0.5 ? 0.55 : 0.48, (rain ? 2 : 1) + Math.abs(env.wind) * 0.12, P.z, o.mirror === undefined ? 90 : o.mirror);
       // ripples drifting toward us with the current; each row fades in at the far side.
       // Rows that nearer water would hide are left out.
       const step = Math.max(4, env.px * 30), flow = t * 0.05, ph = flow - Math.floor(flow);
@@ -652,7 +652,7 @@ SCN.bridge = function (o) {
   brProbe(PRf);
   drawSide(PRf, false);
   const PR = H.PR = S.plane(zb, 'bridge');
-  K.shore(S, PR, { left: -EDGE - 4, right: EDGE + 4, qy: QY, col: '#5f5d5c' });
+  K.shore(S, PR, { left: -EDGE - 4, right: EDGE + 4, qy: QY, col: '#5f5d5c', mirror: 12 });
   const bd = { c: S.tone('#3a3d44', PR), c2: S.tone('#565a62', PR), st: S.tone(steelD, PR), stone: S.tone('#77726a', PR), stoneD: S.tone('#5c5852', PR), stoneHi: S.tone('#8a857c', PR), joint: S.tone('#4f4b46', PR), mark: S.tone('#d9d2b0', PR), rail: S.tone('#9aa0a8', PR), tie: S.tone('#2a2622', PR), under: S.tone('#24272c', PR) };
   PR.add({ x0: -400, x1: 400, layer: 0, draw(ctx, env) {
     if (D + 5 < env.y0 || QY - 1 > env.y1) return;
@@ -719,7 +719,7 @@ SCN.bridge = function (o) {
 
   // ---- right bank: the records office and its row ----
   const PO = H.PO = S.plane(zb - 60, 'office row');
-  K.shore(S, PO, { left: -EDGE, right: EDGE, qy: QY, col: '#66625e', pave: true });
+  K.shore(S, PO, { left: -EDGE, right: EDGE, qy: QY, col: '#66625e', pave: true, mirror: 10 });
   if (o.office !== false) {
     const row = [
       { id: 'chand', x: 100, w: 15, floors: 3, wall: '#8a6a58', shop: { sign: 'CHANDLER', awning: '#2f6b4a' }, antenna: 0.3 },
@@ -742,7 +742,7 @@ SCN.bridge = function (o) {
   // left bank at the same depth: warehouses
   K.sheds(S, PO, -240, -EDGE - 6, { y: QY, h: 10 });
   const PSt = H.PSt = S.plane(zb - 67, 'street');
-  K.shore(S, PSt, { left: -EDGE, right: EDGE, qy: QY, col: '#6e6a66', steps: [EDGE - 0.1, 1], pave: true });
+  K.shore(S, PSt, { left: -EDGE, right: EDGE, qy: QY, col: '#6e6a66', steps: [EDGE - 0.1, 1], pave: true, mirror: 10 });
   brBoat(S, PSt, 90.5, 6.5, { y: 0.1, dir: -1, col: '#e2e2dc', band: '#2f6b4a', rope: [EDGE - 1.6, QY - 0.6] });
   H.stLamps = [];
   if (o.office !== false) [109, 131, 153, 175].forEach((x, i) => H.stLamps.push(K.lamp(S, PSt, x, 5.4, 'street', { id: 'sl' + i, y: QY, reach: 9 })));
@@ -750,7 +750,7 @@ SCN.bridge = function (o) {
 
   // ---- left bank quay: crane, jetty and the armoury boat ----
   const PJ = H.PJ = S.plane(zb - 180, 'quay');
-  K.shore(S, PJ, { left: -EDGE + 2, right: EDGE + 6, qy: QY, col: '#5f5b57', pave: true });
+  K.shore(S, PJ, { left: -EDGE + 2, right: EDGE + 6, qy: QY, col: '#5f5b57', pave: true, mirror: 10 });
   K.sheds(S, PJ, -210, -116, { y: QY, h: 8 });
   K.sheds(S, PJ, 214, 300, { y: QY, h: 9 });
   brBoat(S, PJ, 95, 7, { y: 0.1, dir: 1, col: '#2f3d4a', band: '#c9a23a', cab: '#8a8f96', mast: false });
@@ -793,7 +793,7 @@ SCN.bridge = function (o) {
   // channel markers nearer the shooter: a can and a cone, each with its top mark, a band,
   // a ring of ripples where it sits, and at night a lamp that flashes and shows in the water
   const PNr = H.PNr = S.plane(zb - 330, 'channel');
-  K.shore(S, PNr, {});
+  K.shore(S, PNr, { mirror: 6 });
   const buoyDk = S.tone('#20242b', PNr), buoyW = S.tone('#e8e4d6', PNr), rip = mix(S.tone(S.pal.water, PNr), '#ffffff', 0.25);
   [[-30, '#3f8f4f'], [34, '#c8372d']].forEach((q) => { const c = S.tone(q[1], PNr), cD = S.tone(darken(q[1], 0.3), PNr), red = q[1] === '#c8372d';
     PNr.add({ x0: q[0] - 3, x1: q[0] + 3, layer: 0, draw(ctx, env) {

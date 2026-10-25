@@ -122,10 +122,10 @@ function alpTurf(S, P, q) {
   for (let i = 0, n = Math.round(span / 22); i < n; i++) { const x = x0 + span * (i + D.f()) / n; PA.push([x, D.r(top + 1, dep * 0.9), D.r(6, 15), D.r(0.5, 1.3)]); }
   // the mission's dressing, from a stream of its own
   const DR = vlyDressOf(S), E = makeRng((q.seed || 5) * 7 + 911), XS = [], XL = [], XF = [];
-  const stripeA = S.tone(lighten(q.col, 0.12), P), stripeB = S.tone(darken(q.col, 0.06), P), rowC = S.tone(darken(q.col, 0.2), P), rime = S.tone('#e6eef6', P), leafC = ['#c4662a', '#d89a32', '#a8442a', '#e0b84a'].map((c) => S.tone(c, P)), flC2 = ['#f4f1e4', '#f1d24a', '#b48ad0', '#e86a6a'].map((c) => S.tone(c, P));
+  const stripeA = S.tone(lighten(q.col, 0.12), P), stripeB = S.tone(darken(q.col, 0.06), P), rowC = S.tone(darken(q.col, 0.2), P), rime = S.tone('#e6eef6', P), leafC = ['#c4662a', '#d89a32', '#a8442a', '#e0b84a'].map((c) => S.tone(c, P)), flC2 = ['#ece9da', '#e2cc5a', '#a890c4', '#d88a80'].map((c) => S.tone(c, P));
   if (!snowy && (DR.rime || DR.dew)) for (let i = 0, n = Math.round(span * (DR.rime ? 0.5 : 0.35)); i < n; i++) XS.push([E.r(x0, x1), E.r(top, dep), E.r(0.03, 0.07), E.r(0, TAU), E.r(0.6, 1.2)]);
   if (!snowy && DR.leaves) for (let i = 0, n = Math.round(span * 0.6); i < n; i++) XL.push([E.r(x0, x1), E.r(top, dep), E.r(0.07, 0.13), E.i(0, 3), E.r(0, TAU)]);
-  if (!snowy && DR.flowers) for (let i = 0, n = Math.round(span * 0.05 * DR.flowers); i < n; i++) XF.push([E.r(x0, x1), E.r(top + 0.5, dep * 0.9), E.r(1.2, 3.5), E.r(0.25, 0.6), E.i(0, 3)]);
+  if (!snowy && DR.flowers) for (let i = 0, n = Math.round(span * 0.12 * DR.flowers); i < n; i++) XF.push([E.r(x0, x1), E.r(top + 0.5, dep * 0.9), E.r(0.5, 1.4), E.r(0.1, 0.25), E.i(0, 3)]);
   XS.sort((a, b) => a[0] - b[0]); XL.sort((a, b) => a[0] - b[0]);
   const dress = (ctx, env) => {
     const s = env.s, vx0 = Math.max(x0, env.x0), vx1 = Math.min(x1, env.x1); if (vx1 <= vx0) return;
@@ -149,7 +149,7 @@ function alpTurf(S, P, q) {
       for (let c = 0; c < 4; c++) { ctx.fillStyle = leafC[c]; ctx.beginPath(); for (let i = vlyFrom(XL, env.x0 - 1); i < XL.length && XL[i][0] < env.x1 + 1; i++) { const l = XL[i]; if (l[3] !== c) continue; const r = Math.max(l[2], env.px), y = yAt(l[0]) - l[1]; ctx.moveTo(l[0] + r, y); ctx.ellipse(l[0], y, r, r * 0.45, l[4], 0, TAU); } ctx.fill(); }
     }
     if (XF.length && s > 1.5) { // drifts of wild flowers, a haze of colour from far off
-      for (let c = 0; c < 4; c++) { ctx.fillStyle = flC2[c]; ctx.globalAlpha = s > 9 ? 0.35 : 0.55; ctx.beginPath(); for (let i = 0; i < XF.length; i++) { const f = XF[i]; if (f[4] !== c || f[0] + f[2] < env.x0 || f[0] - f[2] > env.x1) continue; const y = yAt(f[0]) - f[1]; ctx.moveTo(f[0] + f[2], y); ctx.ellipse(f[0], y, f[2], f[3], 0, 0, TAU); } ctx.fill(); }
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = flC2[c]; ctx.globalAlpha = s > 9 ? 0.22 : 0.3; ctx.beginPath(); for (let i = 0; i < XF.length; i++) { const f = XF[i]; if (f[4] !== c || f[0] + f[2] < env.x0 || f[0] - f[2] > env.x1) continue; const y = yAt(f[0]) - f[1]; ctx.moveTo(f[0] + f[2], y); ctx.ellipse(f[0], y, f[2], f[3], 0, 0, TAU); } ctx.fill(); }
       ctx.globalAlpha = 1;
     }
   };
