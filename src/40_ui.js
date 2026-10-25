@@ -229,13 +229,14 @@ UI.sceneShot = function (M, vi, w, h) {
     const cv = document.createElement('canvas'), st = buildStats('halden');
     const sim = new Sim(M, st, vi, { flags: Save.data.flags, shotSeed: 1 });
     for (let i = 0; i < 45; i++) sim.step(1 / 30);
+    sim.S.objects.forEach((o) => { if (o.kind === 'duck') o.alive = false; }); // a picture never gives away where the rubber duck is hidden
     const V = new View(cv), dpr = Math.min(2, window.devicePixelRatio || 1);
     V.layout(w, h, dpr, 'plain');
     const b = sim.S.bounds, zr = sim.S.refZ - sim.eye0.z, spanMil = ((b.x1 - b.x0) / zr) * 1000;
     sim.sh.zoom = sim.sh.zoomT = clamp((FOV_AT_1X / (spanMil * 0.5)) * ((V.R * 2) / w), 1.5, 14);
     sim.sh.swx = sim.sh.swy = 0;
     V.draw(sim, 0.016, 0);
-    const s = { cv, label: timeLabel(sim.S), dist: Math.round(zr) };
+    const s = { cv, label: timeLabel(sim.S), dist: Math.round(zr), key };
     UI.shots[key] = s; UI.shotKeys.push(key);
     if (UI.shotKeys.length > 28) delete UI.shots[UI.shotKeys.shift()];
     return s;
@@ -327,27 +328,67 @@ UI.title = function () {
 };
 
 // ---- story cards ---------------------------------------------------------------------------
-UI.cards = function (cards, done, kicker) {
-  let i = 0;
+// Each page of the story is a moment in a film: the place it happens, seen wide and panning
+// slowly behind black bars, the words typed out at the bottom beside the portrait of whoever the
+// page is about. A tap finishes the typing; the next tap turns the page. Skip leaves at once.
+//   cards  [{ h, p }]   art  [{ m: contract id for the place, v, who, past }] (38_story.js, STORY_ART)
+UI.storyShots = {}; UI.storyKeys = [];
+UI.cards = function (cards, done, kicker, art) {
+  let i = 0, tw = null;
+  const finish = () => { tw = null; UI.storyLeave = null; done(); };
   const show = () => {
-    const c = cards[i];
-    UI.render(`<div class="scr story" data-a="next" data-quiet="1">
-      <div class="st-in ${c.p.length > 330 ? 'long' : ''}"><div class="eyebrow">${esc(kicker || '')}</div>${c.h ? '<h2>' + esc(c.h) + '</h2>' : ''}<p>${esc(c.p)}</p></div>
-      <div class="st-foot"><span>${i + 1} / ${cards.length}</span><span class="tap">Tap to continue</span></div></div>`, {
-      next() { Sfx.ui('page'); i++; if (i >= cards.length) done(); else show(); },
+    const c = cards[i], a = (art && art[i]) || null, who = a && a.who;
+    UI.render(`<div class="scr story cine ${a ? 'has-pic' : ''} ${a && a.past ? 'past' : ''}" data-a="next" data-quiet="1">
+      <div class="st-picbox"><canvas class="st-pic"></canvas></div><div class="st-grade"></div>
+      <div class="st-lb top"></div><div class="st-lb bot"></div>
+      <div class="st-in ${c.p.length > 330 ? 'long' : ''}">${who ? `<canvas class="st-face" data-portrait="${who}" data-mood="talk"></canvas>` : ''}<div class="st-txt"><div class="eyebrow">${esc(kicker || '')}</div>${c.h ? '<h2>' + esc(c.h) + '</h2>' : ''}<p>${esc(c.p)}</p></div></div>
+      <div class="st-foot"><span>${i + 1} / ${cards.length}</span><span class="tap">Tap to continue</span></div>
+      ${cards.length > 1 ? '<button class="st-skip" data-a="skip" data-snd="back">Skip</button>' : ''}</div>`, {
+      next() {
+        if (tw && !tw.done) { tw.finish(); return; } // the first tap finishes the words
+        Sfx.ui('page'); i++; if (i >= cards.length) finish(); else show();
+      },
+      skip() { finish(); },
     }, 'is-story');
+    const root = UI.root.querySelector('.story');
+    if (a) UI.storyPicture(root.querySelector('.st-pic'), a);
     // a long page on a short screen: step the type down until it fits rather than cut it off
     const box = UI.root.querySelector('.st-in'), p = box && box.querySelector('p');
-    if (p) for (let fs = parseFloat(getComputedStyle(p).fontSize), n = 0; n < 8 && box.scrollHeight > box.clientHeight + 1 && fs > 13; n++) { fs -= 1; p.style.fontSize = fs + 'px'; }
+    if (p) for (let fs = parseFloat(getComputedStyle(p).fontSize), n = 0; n < 10 && box.scrollHeight > box.clientHeight + 1 && fs > 13; n++) { fs -= 1; p.style.fontSize = fs + 'px'; }
+    const face = root.querySelector('.st-face');
+    tw = UI.typeIn(p, 62, () => { if (face && face.isConnected) { face.dataset.mood = 'calm'; UI.paintJob(face._job || UI.jobFor(face), 0); } });
   };
   show();
 };
-UI.prologue = function () { UI.cards(PROLOGUE, () => { Save.data.seen.prologue = 1; Save.write(); UI.chapter = 1; UI.chapterIntro(1, () => UI.hub()); }, 'Cold Bore'); };
+// The place behind a story page: the contract's scene seen wide, a third wider than the screen
+// so it can pan, graded once (darker, and grey and cold for the past). Kept for a few pages.
+UI.storyPicture = function (cv, a) {
+  const M = MISSION_BY_ID[a.m]; if (!M || !cv) return;
+  const box = cv.parentElement, W = box.clientWidth, H = box.clientHeight; if (!W || !H) return;
+  const w = Math.round(W * 1.3), h = Math.round(H), key = a.m + '/' + (a.v || 0) + '/' + w + 'x' + h + (a.past ? 'p' : '');
+  let s = UI.storyShots[key];
+  if (!s) {
+    const shot = UI.sceneShot(M, a.v || 0, w, h); if (!shot) return;
+    const g = document.createElement('canvas'); g.width = shot.cv.width; g.height = shot.cv.height;
+    const x = g.getContext('2d'); x.drawImage(shot.cv, 0, 0);
+    x.globalCompositeOperation = 'saturation'; x.fillStyle = 'rgba(128,128,128,' + (a.past ? 0.85 : 0.25) + ')'; x.fillRect(0, 0, g.width, g.height);
+    x.globalCompositeOperation = 'multiply'; x.fillStyle = a.past ? '#8fa0b4' : '#c9c2b4'; x.fillRect(0, 0, g.width, g.height);
+    x.globalCompositeOperation = 'source-over';
+    s = UI.storyShots[key] = g; UI.storyKeys.push(key);
+    if (UI.storyKeys.length > 4) delete UI.storyShots[UI.storyKeys.shift()];
+    delete UI.shots[shot.key]; // the plain picture is not needed again
+  }
+  cv.width = s.width; cv.height = s.height; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.getContext('2d').drawImage(s, 0, 0);
+  cv.style.setProperty('--pan', -(w - W) + 'px');
+  cv.classList.add('pan');
+};
+UI.prologue = function () { UI.cards(PROLOGUE, () => { Save.data.seen.prologue = 1; Save.write(); UI.chapter = 1; UI.chapterIntro(1, () => UI.hub()); }, 'Cold Bore', STORY_ART.prologue.map((a, i) => Object.assign({ past: i < 3 }, a))); };
 UI.chapterIntro = function (n, done) {
   const c = CHAPTER_BY_N[n];
   const cards = c.intro.map((p, i) => ({ h: i === 0 ? c.title : '', p }));
   Save.data.seen['ch' + n] = 1; Save.write();
-  UI.cards(cards, done, 'Chapter ' + ROMAN[n] + '  ·  ' + c.place);
+  UI.cards(cards, done, 'Chapter ' + ROMAN[n] + '  ·  ' + c.place, STORY_ART.intro[n]);
 };
 
 // ---- hub shell -----------------------------------------------------------------------------

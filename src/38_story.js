@@ -31,6 +31,24 @@ const CHAPTERS = [
 ];
 const CHAPTER_BY_N = {}; CHAPTERS.forEach((c) => { CHAPTER_BY_N[c.n] = c; });
 
+// What each story page shows behind its words: the place (the scene of a contract, seen wide,
+// panning slowly) and, when the page is about someone, their portrait. m is a contract id, v its
+// vantage, who a portrait (44_portraits.js).
+const STORY_ART = {
+  prologue: [{ m: 'c6m3', who: 'rook' }, { m: 'c6m6' }, { m: 'c6m1' }, { m: 'c1m3', who: 'marlow' }],
+  intro: {
+    1: [{ m: 'c1m1' }, { m: 'c1m6', who: 'marlow' }],
+    2: [{ m: 'c2m1', who: 'maeve' }, { m: 'c2m4', who: 'pip' }],
+    3: [{ m: 'c3m1', who: 'august' }, { m: 'c3m3' }],
+    4: [{ m: 'c4m1' }, { m: 'c4m3', who: 'pip' }],
+    5: [{ m: 'c5m1', who: 'aurel' }, { m: 'c5m2', who: 'varga' }],
+    6: [{ m: 'c6m1' }, { m: 'c6m6' }],
+  },
+  outro: { 1: { m: 'c1m7', who: 'marlow' }, 2: { m: 'c2m7', who: 'aurel' }, 3: { m: 'c3m7', who: 'aurel' }, 4: { m: 'c4m7', who: 'pip' }, 5: { m: 'c5m7', who: 'rook' }, 6: { m: 'c6m6' } },
+  // the epilogue: one page per person, then the verdict, then Pip, then the thanks
+  epilogue: [{ m: 'c6m6', who: 'aurel' }, { m: 'c6m2', who: 'rook' }, { m: 'c5m5', who: 'marlow' }, { m: 'c4m5', who: 'brandt' }, { m: 'c2m5', who: 'reyes' }, { m: 'c1m7', who: 'varga' }, { m: 'c1m5', who: 'pip' }, { m: 'c1m1' }],
+};
+
 const CH1_AFTER = {
   c1m1: 'Clean. The shopkeepers of Brickworks keep their Friday takings for the first time in years. One collector is not a crew, though. Follow the money.',
   c1m2: 'The bag never arrived. The Calloways will count it twice tonight and come up short both times.',

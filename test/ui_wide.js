@@ -174,7 +174,8 @@ function richSaveInPage() {
     await tapSel('[data-a="back"]'); await wait(200);
     await tapSel('[data-a="play"]'); await look('04_story', '.story', 700);
     ok(await page.locator('.story').count() === 1, 'the prologue card shows after Begin');
-    for (let i = 0; i < 14 && (await page.locator('.story').count()); i++) { await tap(P.w / 2, P.h / 2); await wait(140); }
+    // story pages type their words out: the first tap finishes the words, the next turns the page
+    for (let i = 0; i < 24 && (await page.locator('.story').count()); i++) { await tap(P.w / 2, P.h / 2); await wait(140); }
     ok(await page.locator('.mrow').count() === 7, 'contracts shows the seven missions of chapter one');
     await look('05_contracts_fresh', '.mrow[data-id="c1m1"]', 1500);
     await tapSel('.mrow[data-id="c1m1"]'); await look('06_brief', '[data-a="go"]', 900);

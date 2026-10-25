@@ -292,14 +292,16 @@ UI.unbox = function (gunId, sub, onBench) {
 UI.chapterEnd = function (n, go) {
   if (UI.chapterBoard) return UI.chapterBoard(n, go);
   const c = CHAPTER_BY_N[n];
-  if (c.outro) UI.cards([{ h: c.title, p: c.outro }], go, 'End of chapter ' + ROMAN[n]); else go();
+  if (c.outro) UI.cards([{ h: c.title, p: c.outro }], go, 'End of chapter ' + ROMAN[n], [STORY_ART.outro[n]]); else go();
 };
 
 UI.epilogue = function (done) {
   const e = epilogue(Save.data.flags);
   const cards = e.lines.map((p, i) => ({ h: i === 0 ? e.title : '', p }));
-  cards.push({ h: 'Cold Bore', p: 'Thank you for playing. There are other endings: five choices decide this one, and any of them can be made differently by playing that contract again. The rubber ducks are still out there too.' });
-  UI.cards(cards, done, 'Epilogue');
+  const found = Object.keys(Save.data.endings || {}).length;
+  cards.push({ h: 'Cold Bore', p: 'Thank you for playing. You have found ' + found + ' of the 4 endings. Five choices decide which one you get, and any of them can be made again by playing that contract: the Dossier keeps track. The rubber ducks are still out there too.' });
+  // the person each page is about, in the order epilogue() writes them (Brandt and Reyes always have a page)
+  UI.cards(cards, done, 'Epilogue', STORY_ART.epilogue);
 };
 
 // ---- the notebook (pause) ----------------------------------------------------------------------

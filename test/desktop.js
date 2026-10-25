@@ -13,7 +13,8 @@ const path = require('path');
   await page.reload(); await page.waitForTimeout(900);
   await page.screenshot({ path: path.join(__dirname, '..', 'shots', 'desk_title.png') });
   await page.click('[data-a="play"]'); await page.waitForTimeout(200);
-  for (let i = 0; i < 12 && (await page.locator('.story').count()); i++) { await page.click('.story'); await page.waitForTimeout(120); }
+  // story pages type their words out: the first click finishes the words, the next turns the page
+  for (let i = 0; i < 24 && (await page.locator('.story').count()); i++) { await page.click('.story'); await page.waitForTimeout(120); }
   ok(await page.locator('.mrow').count() === 7, 'contracts list shows');
   await page.screenshot({ path: path.join(__dirname, '..', 'shots', 'desk_hub.png') });
   await page.click('.mrow[data-id="c1m1"]'); await page.waitForTimeout(400);

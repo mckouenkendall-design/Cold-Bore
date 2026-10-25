@@ -28,7 +28,8 @@ const path = require('path');
   await shot('01_title');
   await tapSel('[data-a="play"]'); await page.waitForTimeout(300);
   ok(await page.locator('.story').count() === 1, 'prologue card shows after Begin');
-  for (let i = 0; i < 12 && (await page.locator('.story').count()); i++) { await tap(195, 500); await page.waitForTimeout(150); }
+  // story pages type their words out: the first tap finishes the words, the next turns the page
+  for (let i = 0; i < 24 && (await page.locator('.story').count()); i++) { await tap(195, 500); await page.waitForTimeout(150); }
   ok(await page.locator('.mrow').count() === 7, 'contracts list shows seven chapter one missions');
   await shot('02_contracts');
   await tapSel('.mrow[data-id="c1m1"]'); await page.waitForTimeout(500);
