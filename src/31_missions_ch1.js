@@ -74,17 +74,44 @@ mission({
   reward: { cr: 600, xp: 170 },
 });
 
+// c1m3: would a walker see the street spotter fall if he were shot in the thunder that starts at T0?
+// Nothing on the street changes until then, so this reads it straight off: every walker already out
+// in the rain, and every one due to come in, walked on at full pace looking ahead of them. The body
+// has to lie unseen until the job is over: 2.8 s after the shot with the roof spotter already down,
+// or until the thunder after this one when he is not. Returns null if no shot in this thunder is
+// safe, otherwise { by }: the latest moment a shot is still safe (by the end of the thunder, or
+// sooner when a walker will turn up soon after: then the shot has to be quick).
+function c1m3Clear(sim, T0) {
+  const t2 = sim.byId.t2; if (!t2 || t2.dead || sim.alarmT !== null) return null;
+  const after = 0.25 + (sim.alive('t1') ? 11 + 2.7 + 3.1 : 3.1), T1 = T0 + 2.7 + after, walkers = [];
+  sim.actors.forEach((a) => { if (/^u\d/.test(a.id) && !a.dead && !a.gone && a.goal !== null) walkers.push({ x: a.x, dir: sign(a.goal - a.x) || a.face, v: WALK * a.speed, t0: sim.t, goal: a.goal }); });
+  for (let m = 0; 10 + 22 * m <= T1; m++) { const ts = 10 + 22 * m, dir = m % 2 ? -1 : 1; if (ts > sim.t) walkers.push({ x: dir > 0 ? -47 : 47, dir, v: WALK * 1.5, t0: ts, goal: dir > 0 ? 47 : -47 }); }
+  const eye = { zone: t2.zone, y: t2.y, role: 'civ', state: 'calm', face: 1, x: 0 };
+  let seen = Infinity;
+  for (let tau = T0; tau <= T1 && seen === Infinity; tau += 0.05) {
+    for (let i = 0; i < walkers.length; i++) {
+      const w = walkers[i]; if (tau < w.t0) continue;
+      const x = w.x + w.dir * w.v * (tau - w.t0); if ((x - w.goal) * w.dir > 0) continue;
+      eye.x = x; eye.face = w.dir;
+      if (sim.canSee(eye, t2.x, t2.y, t2.zone)) { seen = tau; break; }
+    }
+  }
+  const by = Math.min(T0 + 2.7, seen - after);
+  return by - T0 >= 1.3 ? { by, quick: by < T0 + 2.4 } : null;
+}
+
 mission({
   id: 'c1m3', ch: 1, title: 'Thunder', range: 160,
   objective: 'Yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
   brief: 'The Calloways moved their dice game and posted two spotters to watch for trouble. One on the roof in a yellow raincoat, one at the laundry door under a red umbrella. If either hears a shot, the game scatters and we start again. There is a storm over the harbour. Thunder is loud, and it is yours to use: fire inside it and nobody hears a thing.',
-  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.'],
+  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.', 'A walker heading toward the laundry will see the street spotter fall. Marlow will call the street clear.'],
   guide: [
     'Two spotters: the YELLOW raincoat on the roof and the RED umbrella by the laundry door. People with other umbrellas are not targets.',
     'Your rifle is loud, so only fire inside thunder: lightning flashes, then NOISE COVER lights for about 2.5 seconds. It comes every 11 seconds, first about 5 seconds in.',
     'Have the crosshair on the roof spotter before the flash and shoot him the moment NOISE COVER lights.',
-    'Then the street spotter, in a thunder with no umbrella walker heading his way (one passes about every 22 seconds, and a walker coming toward him sees him fall): the thunders about 38 and 49 seconds in are clear, and so is the first if you are very quick.',
+    'Then wait for Marlow to call the street clear on the radio, the first time about 36 seconds in. A walker heading toward the laundry would see the street spotter fall, or find him soon after.',
     'Aim at the middle of the chest on both. The drop is tiny (HOLD reads about 0.5 up) and the light wind hardly moves the shot.',
+    'Shoot the street spotter in the thunder that follows his call, as soon as NOISE COVER lights.',
   ],
   wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },
   vantages: [{ name: 'Tannery roof', desc: 'Straight across. Wet, but level.', eye: [0, 18, 0] }],
@@ -104,14 +131,26 @@ mission({
       // people hurrying through the rain, one about every 22 seconds, so every other pair of thunders is clear
       { at: 10, every: 22, do(sim) { if (sim.alarmT !== null) return; const R = sim.rng, dir = n % 2 ? -1 : 1; sim.addActor(Object.assign(H.street(dir > 0 ? -47 : 47), { id: 'u' + (n++), role: 'civ', look: Object.assign(rndLook(R), { bag: 'umbrella', bagCol: R.pick([COL.blue, COL.black, COL.green, COL.purple, COL.cream]) }), routine: stroll(dir > 0 ? 47 : -47), speed: R.r(1.3, 1.5) })); } },
       hint(1.5, 'An unsuppressed shot is heard by everyone. When lightning flashes, the thunder that follows covers your shot. Fire while NOISE COVER is lit.'),
+      // Marlow watches the street for you: a moment before each flash he says whether a walker would see
+      // the street spotter fall in it (sim.c1m3Calls keeps his answers, for the test bot and the coach)
+      { at: 3.4, every: 11, do(sim) {
+        const T0 = sim.t + 1.6, k = Math.round((T0 - 5) / 11);
+        if (!sim.alive('t2') || sim.alarmT !== null) return;
+        const clear = c1m3Clear(sim, T0);
+        (sim.c1m3Calls = sim.c1m3Calls || {})[k] = clear;
+        if (sim.alive('t1')) return;
+        if (clear) sim.msg('Marlow', clear.quick ? 'Street is clear, but not for long. Take the umbrella the moment it flashes.' : 'Street is clear for this one. Take the umbrella in the thunder.', 4.5);
+        else if (!sim.c1m3Warned) { sim.c1m3Warned = true; sim.msg('Marlow', 'Not this thunder. Someone is walking his way. I will tell you when the street is clear.', 5); }
+      } },
     ];
   },
   challenge: { id: 'roll', text: 'Both spotters inside three seconds', test: (sim) => { const a = sim.kills.find((k) => k.id === 't1'), b = sim.kills.find((k) => k.id === 't2'); return !!a && !!b && Math.abs(a.t - b.t) <= 3; } },
   solve(H, st) {
-    const lead = st.action === 'charge' ? 1.9 : 1.2;
+    const lead = st.action === 'charge' ? 1.9 : 1.2, late = 0.4 + (st.action === 'charge' ? 0.85 : 0);
     const cov = (s) => st.quiet || (s.covered() && s.coverUntil - s.t > lead);
-    const clear = (s) => !s.actors.some((a) => a.role === 'civ' && !a.gone && !a.dead && Math.abs(a.x - s.byId.t2.x) < 28);
-    return [['until', cov], ['shoot', 't1', 'torso'], ['wait', 0.5], ['until', (s) => cov(s) && clear(s)], ['shoot', 't2', 'torso']];
+    // the street spotter only in a thunder Marlow has called clear, and early enough in it
+    const called = (s) => { const k = Math.round((s.t - 5) / 11), c = s.c1m3Calls && s.c1m3Calls[k]; return !!c && s.t > 5 + 11 * k - 0.2 && s.t + late <= c.by; };
+    return [['until', cov], ['shoot', 't1', 'torso'], ['wait', 0.5], ['until', (s) => cov(s) && called(s)], ['shoot', 't2', 'torso']];
   },
   reward: { cr: 750, xp: 190 },
 });
