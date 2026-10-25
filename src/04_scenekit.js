@@ -25,10 +25,17 @@ const PALS = {
     glass: '#2b4257', lit: '#ffe0a0', litChance: 0.25, star: 0, cloud: '#ffffff', ground: '#eef2f6', road: '#b9c3cc', grass: '#e4eaef', water: '#7f9db4', sun: '#ffffff', inRoom: '#34404e', dark: 0.05 },
 };
 
+// The palette entries a mission's look may change: colours only. Never dark, litChance, star or
+// fogD, which decide what can be seen and which windows are lit.
+const KX_PAL_COLOURS = ['skyTop', 'skyBot', 'fog', 'amb', 'ambT', 'glass', 'lit', 'cloud', 'ground', 'road', 'grass', 'water', 'sun', 'inRoom'];
 function makeScene(o) {
   o = o || {};
   const pal = Object.assign({}, PALS[o.time || 'day']);
+  // the look of the mission being built (07i_looks.js): its own colours for the time of day
+  const look = lkLookFor(o.time || 'day', o.weather || 'clear');
+  if (look.pal) for (let i = 0; i < KX_PAL_COLOURS.length; i++) { const k = KX_PAL_COLOURS[i]; if (look.pal[k] !== undefined) pal[k] = look.pal[k]; }
   const S = {
+    look, lampCol: look.lampCol || null,
     time: o.time || 'day', weather: o.weather || 'clear', pal, planes: [], objects: [], props: [], rooms: {}, zoneLamps: {},
     exits: o.exits || [-60, 60], rng: makeRng(o.seed || 7), refZ: o.refZ || 300, fogK: o.fog || 1, groundMat: o.groundMat || 'dirt',
     sky: { stars: [], clouds: [], sun: o.sun || [40, 60] }, darkZones: {}, litZones: {}, bounds: o.bounds || { x0: -45, x1: 45, y0: -2, y1: 32 }, decals: [], ambience: o.ambience || 'city',
@@ -1950,7 +1957,7 @@ K.fence = function (S, P, x0, x1, h, o) {
 K.lamp = function (S, P, x, h, zone, o) {
   o = o || {}; const y = o.y || 0, post = S.tone('#20242b', P);
   const arm = o.arm === undefined ? 0.9 : o.arm;
-  const postHi = S.tone('#414855', P), lc = o.col || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
+  const postHi = S.tone('#414855', P), lc = o.col || S.lampCol || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
   let kit = null;
   const ob = S.obj({ kind: 'lamp', id: o.id, plane: P, x: x + arm, y: y + h - 0.12, r: o.r || 0.3, zone, on: true, mat: 'glass', layer: 2, reach: o.reach || 9,
     draw(ctx, env) {
@@ -2037,6 +2044,8 @@ K.lamp = function (S, P, x, h, zone, o) {
   }
   if (o.style && o.style !== 'post') kit = kxLampKit(S, P, ob, o, x, y, h, arm);
   ob.baseY = y; ob.postX = x; ob.poolK = o.pool === false ? 0 : 1;
+  // a lamp of another colour (sodium, white) tints the people it lights the same colour as its pool
+  if (!o.col && S.lampCol) ob.col = S.lampCol;
   return ob;
 };
 

@@ -156,6 +156,7 @@ View.prototype.drawSky = function (sim, cam) {
   const drift = (sim.t * sign(sim.windBase || 1)) * sky.drift;
   if (sky.streaks.length) V.skyCirrus(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, sx, sy);
   if (sky.clouds.length) V.skyHeaps(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1);
+  V.skyBolt(ctx, cam, sim, X, Y);   // lightning, behind the lowest cloud
   if (sky.deckRows.length) V.skyDeck(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, S);
 };
 

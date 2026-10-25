@@ -302,21 +302,9 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     }
   }
 
-  // ---- weather in front of everything ----
-  if (S.weather === 'rain' || S.weather === 'storm') V.drawRain(sim, cam, S.weather === 'storm');
-  else if (S.weather === 'snow') {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    const n = Math.round(80 * clamp((hw * hh) / 36000, 0.7, 3));
-    for (let i = 0; i < n; i++) {
-      const sp = 40 + (i % 5) * 22;
-      const x = cx - hw + (((i * 97.3 + V.rt * (sim.wind() * 14 + Math.sin(V.rt + i) * 6)) % (hw * 2)) + hw * 2) % (hw * 2), y = cy - hh + ((i * 53.7 + V.rt * sp) % (hh * 2));
-      ctx.beginPath(); ctx.arc(x, y, 1 + (i % 3) * 0.7, 0, TAU); ctx.fill();
-    }
-  }
-  if (S.weather === 'fog') { ctx.fillStyle = rgba(pal.fog, 0.22); ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // lightning flash
-  if (sim.flashT && sim.t - sim.flashT < 0.35) { ctx.fillStyle = 'rgba(235,240,255,' + (0.55 * (1 - (sim.t - sim.flashT) / 0.35) * (Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3)) + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-
+  // ---- weather in front of everything, then the colour of the hour (06c_air.js) ----
+  V.drawWeather(sim, cam);
+  V.drawGrade(sim, cam);
 };
 
 // Rain. Three depths of streaks, every drop with its own speed, length, brightness and
@@ -343,7 +331,7 @@ View.prototype.drawRain = function (sim, cam, storm) {
       const sp = (far ? 520 : near ? 1500 : 900) * r.sp, len = (far ? 9 : near ? 34 : 18) * r.len, sl = slant + r.lean + (near ? slant * 0.25 : 0);
       const span = H2 + len + 20, tt = r.y * span + t * sp, cyc = Math.floor(tt / span), yy = (tt - cyc * span) - len - 10;
       const hsh = Math.sin(i * 91.7 + cyc * 47.3) * 43758.5453, lane = hsh - Math.floor(hsh); // a fresh place to fall every time round
-      const xx = (((lane * W2 + sl * yy) % W2) + W2) % W2;
+      const xx = (((lane * W2 + sl * yy - cam.ax * cam.ppm) % W2) + W2) % W2;   // the rain is out in the world: it pans with it
       ctx.moveTo(cx - hw + xx, cy - hh + yy); ctx.lineTo(cx - hw + xx + sl * len, cy - hh + yy + len);
     }
     ctx.stroke();
@@ -383,15 +371,19 @@ View.prototype.drawLens = function (sim, cam) {
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - hh + ((V.rt * 40) % 3); y < cy + hh; y += 3) ctx.fillRect(cx - hw, y, hw * 2, 1);
   }
   if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,244,214,' + V.flash * 0.5 + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // soft dark edge
+  // the scope's own coating, flare, rain and frost on the lens, the hide (06d_glass.js)
+  V.drawGlass(sim, cam);
+  // soft dark edge (each make of scope darkens its rim a little differently)
+  const edge = glassOf(st).edge;
   let vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,0.28)'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,' + edge.toFixed(2) + ')'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
   ctx.fillStyle = vg; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   // thin colour fringe, like real glass
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
+  V.drawFrost(sim, cam);
 
-  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
+  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticleLit(sim, cam); }
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -420,7 +412,7 @@ View.prototype.bdcMarks = function (sim) {
 View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const V = this, ctx = V.ctx, st = sim.st, R = V.RR || V.R, Rv = Math.min(R, V.hh || R), type = st.scope.ret;
   const nvc = st.scope.nv;
-  const col = nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)';
+  const col = V.retInk || (nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)');   // retInk: the lit middle after dark (06d_glass.js)
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'butt';
   const L = (x1, y1, x2, y2, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(cx + x1, cy + y1); ctx.lineTo(cx + x2, cy + y2); ctx.stroke(); };
   const thin = clamp(ppm * 0.035, 0.9, 1.6);
