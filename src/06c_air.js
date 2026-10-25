@@ -150,3 +150,25 @@ View.prototype.keepFrame = function (sim) {
   this._frameG.clearRect(0, 0, cv.width, cv.height); this._frameG.drawImage(cv, 0, y0, cv.width, y1 - y0, 0, y0, cv.width, y1 - y0);
   kxRefl.src = this._frame; kxRefl.srcCv = cv;
 };
+
+// Heat shimmer: on a hot afternoon, and over sunlit water, the air between the shooter and a
+// far target boils, and at high power the picture wavers. The finished picture is copied once
+// and laid back in thin strips, each pushed sideways a little; the waves drift with the wind.
+// Close to the crosshair it moves the picture less than a pixel, so aiming is not disturbed.
+View.prototype.drawShimmer = function (sim, cam) {
+  const V = this, S = sim.S, L = S.look || {}, z = sim.sh.zoom;
+  const heat = L.heat || (S._water && S.pal.dark < 0.3 && S.weather === 'clear' ? 0.5 : 0);
+  const k = heat * smooth((z - 7) / 9); if (k < 0.03 || V.mode === 'plain') return;
+  const ctx = V.ctx, cv = ctx.canvas, dpr = V.dpr, Wd = cv.width, Hd = cv.height;
+  if (!V._shim || V._shim.width !== Wd || V._shim.height !== Hd) { V._shim = kxCanvas(Wd, Hd); V._shimG = V._shim.getContext('2d'); }
+  V._shimG.globalCompositeOperation = 'copy'; V._shimG.drawImage(cv, 0, 0);
+  const t = V.rt, wind = sim.wind(), band = Math.max(3, Math.round(4 * dpr)), cyd = cam.cy * dpr, hhd = cam.hh * dpr;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let y = 0; y < Hd; y += band) {
+    const off = Math.abs(y + band / 2 - cyd) / hhd, amp = k * dpr * (0.35 + 1.6 * off * off);   // under half a pixel at the crosshair
+    const dx = amp * (Math.sin(y * 0.11 - t * 6.5 + wind * 0.3) * 0.7 + Math.sin(y * 0.047 + t * 2.3) * 0.3) + clamp(wind * 0.05, -0.3, 0.3) * amp;
+    if (Math.abs(dx) < 0.15) continue;
+    ctx.drawImage(V._shim, 0, y, Wd, band, dx, y, Wd, band);
+  }
+  ctx.restore();
+};

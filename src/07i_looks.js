@@ -51,7 +51,7 @@ const LOOKS = {
   c4m8: { name: 'before dawn', pal: { skyTop: '#0a0c26', skyBot: '#4a2e4a', fog: '#2e2240', amb: '#140e24' }, lampCol: '#ffd090', sky: { mid: '#1e1a40', glow: '#a05a50', stars: 0.6, moon: 0.92, heaps: 0.2, cirrus: 0.8, cloudCols: { lit: '#c08070', body: '#2e2440', under: '#3a2a3a' } }, grade: { bot: '#ff7a5a', a: 0.08 } },
   // ---- chapter 5 ----
   c5m1: { name: 'industrial sunset', pal: { skyTop: '#2a1e44', skyBot: '#f0884a', fog: '#b0705e', amb: '#3a2440' }, sky: { mid: '#9a4a5e', heaps: 0.3, cirrus: 1 }, grade: { bot: '#ff8a3a', a: 0.12, glow: 0.18 } },
-  c5m2: { name: 'golden afternoon', pal: { skyTop: '#3478c8', skyBot: '#f2e4c6', fog: '#e2d6bc', amb: '#ffd8a0', ambT: 0.08 }, sky: { heaps: 0.55, cirrus: 0.7, glow: '#fff4dc' }, grade: { warm: 0.12, a: 0.08, glow: 0.1 } },
+  c5m2: { name: 'golden afternoon', pal: { skyTop: '#3478c8', skyBot: '#f2e4c6', fog: '#e2d6bc', amb: '#ffd8a0', ambT: 0.08 }, sky: { heaps: 0.55, cirrus: 0.7, glow: '#fff4dc' }, grade: { warm: 0.12, a: 0.08, glow: 0.1 }, heat: 0.6 },
   c5m3: { name: 'moonlit river', pal: { skyTop: '#030a1c', skyBot: '#1a3060', fog: '#16284c', amb: '#0a1632', water: '#10224a' }, sky: { moon: 0.45, stars: 0.9, milky: 0.35, heaps: 0.25, cirrus: 0.5, cloudCols: { lit: '#8a9cc6' } }, grade: { top: '#3a5aaa', a: 0.1 } },
   c5m4: { name: 'grey rain', sky: { deck: 1 }, wet: 1, grade: { top: '#9aa8b8', a: 0.06 } },
   c5m5: { name: 'storm over the house', pal: { skyTop: '#04060c', skyBot: '#161c2a', fog: '#121824', amb: '#06080e' }, sky: { stars: 0 }, wet: 1, grade: { top: '#2a3a5a', a: 0.12 } },

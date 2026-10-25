@@ -115,7 +115,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, V.W, V.H);
   ctx.save();
   ctx.beginPath(); if (V.round) ctx.arc(cam.cx, cam.cy, V.R, 0, TAU); else ctx.rect(0, 0, V.W, V.H); ctx.clip();
-  V.drawWorld(sim, cam, dt, simDt);
+  V._scopeDraw = true; V.drawWorld(sim, cam, dt, simDt); V._scopeDraw = false;
   V.drawLens(sim, cam);
   ctx.restore();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -305,6 +305,7 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   // ---- weather in front of everything, then the colour of the hour (06c_air.js) ----
   V.drawWeather(sim, cam);
   V.drawGrade(sim, cam);
+  if (V._scopeDraw) V.drawShimmer(sim, cam);   // (through the scope only, not in the kill camera)
   V.keepFrame(sim);
 };
 

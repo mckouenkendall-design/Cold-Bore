@@ -1028,6 +1028,13 @@ K.mountains = function (S, z, o) {
       ctx.lineTo(x1, base - 50); ctx.closePath(); ctx.fill();
     }
     kxFadeAt(ctx, S.pal.fog, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), H * 0.45, 0.3);
+    // after dark a radio mast on a few of the summits shows a slow red warning light
+    if (S.pal.dark > 0.3 && P.haze < 0.985) for (let q = 0; q < peaks.length; q += 3) {
+      const b = pts[peaks[q].i]; if (b[0] < env.x0 - 20 || b[0] > env.x1 + 20) continue;
+      const on = Math.pow(Math.max(0, Math.sin(env.t * 1.6 + q * 1.3)), 4), r = Math.max(env.px * 1.4, 1.2);
+      if (env.s > 0.02) { ctx.strokeStyle = deep; ctx.lineWidth = Math.max(env.px, 0.6); ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + Math.max(env.px * 6, 30)); ctx.stroke(); }
+      circ(ctx, b[0], b[1] + Math.max(env.px * 6, 30), r, rgba('#ff4a3d', 0.35 + 0.65 * on)); kxGlow(ctx, '#ff4a3d', b[0], b[1] + Math.max(env.px * 6, 30), r * 6, 0.45 * on);
+    }
   } });
   return P;
 };
