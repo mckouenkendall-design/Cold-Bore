@@ -76,6 +76,21 @@ body.sub-top .h-sub .sub-tx span { font-size: 13.5px; line-height: 1.25; }
 .h-call.bad b { color: var(--red); border-color: rgba(255, 74, 61, .75); }
 .h-call.obj b { color: var(--blue); border-color: rgba(111, 182, 255, .75); }
 
+/* ---- focus, and the pulse inside HOLD BREATH ---- */
+.h-focus { background: rgba(14, 20, 30, .92); border: 1px solid rgba(111, 182, 255, .55); color: #cfe6ff; font-size: 9.5px; letter-spacing: .12em; }
+.h-focus .ring { position: absolute; inset: -1px; transform: rotate(-90deg); }
+.h-focus .ring circle { fill: none; stroke-width: 6; stroke: var(--blue); stroke-dasharray: 283; stroke-linecap: round; }
+.h-focus.on { background: rgba(111, 182, 255, .3); color: #fff; box-shadow: 0 0 20px rgba(111, 182, 255, .55); }
+.h-focus.used:not(.on) { opacity: .32; }
+.h-focus.shake { animation: shake .25s; }
+body:not(.touch) .h-focus { opacity: 0; pointer-events: none; }
+body.spotting .h-focus { visibility: hidden; }
+.h-breath .bpm { position: absolute; left: 0; right: 0; bottom: 14%; display: flex; justify-content: center; align-items: center; gap: 3px; font: 700 10px var(--mono); font-style: normal; letter-spacing: -.02em; color: #9fb3c8; }
+.h-breath .bpm i { font-style: normal; color: #ff6a5c; display: inline-block; }
+.h-breath .bpm.hi { color: #ffb0a6; }
+.h-breath span { margin-top: -8px; }
+body.focusing #hud::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px rgba(70, 150, 255, .42); }
+
 /* ---- the binoculars and tags ---- */
 .h-spot { color: var(--dim); }
 .h-spot.on { color: #071018; background: #5fe0ff; border-color: #5fe0ff; box-shadow: 0 0 16px rgba(95, 224, 255, .45); }

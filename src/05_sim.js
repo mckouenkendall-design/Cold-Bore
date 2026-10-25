@@ -200,7 +200,11 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.exhausted > 0) sh.exhausted -= dt;
   sh.holdK = approach(sh.holdK, sh.holding ? 1 : 0, dt * (sh.holding ? 3.2 : 2.2));
   sh.move *= Math.exp(-dt * (1.1 + 3.2 * st.handling));
-  sh.heart = approach(sh.heart, sim.alarmT !== null ? 1 : 0, dt * 0.4);
+  // Stress: what makes a real shooter's pulse climb. Lungs burning on a long held breath, people
+  // close to whoever is under the crosshair, a target on the move, and every round that missed
+  // (see stopBullet). It settles back slowly, and the heart follows it (or the alarm, if higher).
+  sim.stepStress(dt);
+  sh.heart = approach(sh.heart, Math.max(sim.alarmT !== null ? 1 : 0, sh.stress), dt * 0.4);
   // sway = slow breathing drift + faster muscle tremor + a pulse
   const low = sh.holding ? clamp(1 - sh.breath / (st.breath * 0.28), 0, 1) : 0; // lungs burning
   const breathAmp = lerp(1, 0.04, sh.holdK), tremAmp = lerp(1, 0.38 + low * 1.3, sh.holdK);
@@ -229,6 +233,30 @@ Sim.prototype.stepShooter = function (dt) {
   sh.offx = ox; sh.offy = oy;
   if (sh.chargeT > 0) { sh.chargeT -= dt; if (sh.chargeT <= 0) { sh.chargeT = 0; sim._shoot(); } }
 };
+
+Sim.prototype.stepStress = function (dt) {
+  const sim = this, sh = sim.sh, st = sim.st;
+  if (sh.stress === undefined) { sh.stress = 0; sh.stressT = 0; sh.watchers = 0; sh.aimMoving = false; }
+  // what is under the crosshair is looked at four times a second (it costs a line of sight)
+  sh.stressT -= dt;
+  if (sh.stressT <= 0) {
+    sh.stressT = 0.25;
+    const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), who = r && r.actor && !r.actor.dead ? r.actor : null;
+    sh.watchers = 0; sh.aimMoving = false;
+    if (who) {
+      sh.aimMoving = (who.inVeh && who.inVeh.v > 1) || (!who.inVeh && who.goal !== null);
+      for (let i = 0; i < sim.actors.length; i++) { const o = sim.actors[i]; if (o !== who && !o.dead && !o.gone && !o.hidden && (o.role === 'civ' || o.role === 'guard') && o.state === 'calm' && o.plane === who.plane && Math.abs(o.x - who.x) < 12) sh.watchers++; }
+    }
+  }
+  let want = 0;
+  if (sh.holding && sh.breath < st.breath * 0.4) want += 0.45;
+  want += Math.min(0.4, sh.watchers * 0.14);
+  if (sh.aimMoving) want += 0.25;
+  sh.stress = sh.stress < want ? Math.min(want, sh.stress + dt * 0.18) : Math.max(want, sh.stress - dt * 0.045);
+  sh.stress = clamp(sh.stress, 0, 1);
+};
+// A shot that went wrong sets the pulse going (it settles back slowly).
+Sim.prototype.jolt = function (k) { const sh = this.sh; sh.stress = clamp((sh.stress || 0) + k, 0, 1); };
 
 // ---- noise and awareness -------------------------------------------------------
 Sim.prototype.noiseAll = function (kind, dist) {
@@ -776,7 +804,13 @@ Sim.prototype.crack = function (b, x, y, P, skip) {
   if (sim.jobDone()) { sim.lateNoise(x, y, st.crack, skip); return; }
   if (sim.noise(x, y, P, 'crack', st.crack, skip)) sim.stats.heard++;
 };
-Sim.prototype.stopBullet = function (b) { b.alive = false; b.endT = this.t; };
+Sim.prototype.stopBullet = function (b) {
+  b.alive = false; b.endT = this.t;
+  // a miss, or a hit that did not put them down, sets the shooter's pulse going
+  const hits = b.hits || [];
+  if (b.vest || hits.some((h) => !h.lethal)) this.jolt(0.3);
+  else if (!hits.length && !b.obj) this.jolt(0.22);
+};
 
 Sim.prototype.hitPlane = function (P, b, bx, by) {
   const sim = this, S = sim.S, st = sim.st;

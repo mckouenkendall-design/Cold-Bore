@@ -8,6 +8,7 @@ const Game = CB.Game = {
 };
 const SIM_STEP = 1 / 120; // the world always moves in steps of this size, which is what makes a shot predictable
 const FF_RATE = 3;        // holding fast-forward runs the world this many times faster
+const FOCUS_RATE = 0.5, FOCUS_TIME = 2; // focus: once a contract, the world at half speed for two seconds
 
 Game.init = function () {
   const G = Game;
@@ -94,12 +95,14 @@ Game.buildHud = function () {
   // zoom slider: ticks at whole steps of the scope's power, and a handle that shows the zoom
   h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zticks"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
-  h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
+  h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span><em class="bpm"><i>&#9829;</i><b>70</b></em>');
+  // focus: once a contract, two seconds of the world at half speed, when you choose
+  h.focus = mk('h-ctl h-focus', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" class="fg"/></svg><span>FOCUS</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
   // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
   h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Z</b> focus &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -133,12 +136,14 @@ Game.placeHud = function () {
       P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
       P(h.mark, { left: 76, bottom: 22, width: 56, height: 56, right: 'auto', top: 'auto' });
       P(h.ammo, { left: 70, bottom: h.mark.style.display === 'none' ? 26 : 92, right: 'auto', top: 'auto' });
+      P(h.focus, { right: 140, bottom: 102, width: 46, height: 46, left: 'auto', top: 'auto' });
     } else {
       P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
       P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
       P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
+      P(h.focus, { right: 166, bottom: 124, width: 52, height: 52, left: 'auto', top: 'auto' });
     }
   } else {
     // Sideways: the picture is the whole screen. Read-outs sit along the bottom between the
@@ -150,6 +155,8 @@ Game.placeHud = function () {
     P(h.breath, { right: Rt + 16 + fire + 14, bottom: B + 12, width: br, height: br, left: 'auto', top: 'auto' });
     P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
     P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
+    const fz = small ? 46 : 52;
+    P(h.focus, { right: Rt + 16 + fire + 14 + br - fz, bottom: B + 12 + br + 12, width: fz, height: fz, left: 'auto', top: 'auto' });
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
     const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150, sb = B + (G.touch ? 8 : 30);
     P(h.strip, { left: sl, top: 'auto', bottom: sb, width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
@@ -206,6 +213,14 @@ Game.updateHud = function (dt) {
   const fg = h.breath.querySelector('.fg'), frac = clamp(sh.breath / st.breath, 0, 1);
   fg.style.strokeDashoffset = String(289 * (1 - frac));
   h.breath.classList.toggle('on', sh.holding); h.breath.classList.toggle('spent', sh.exhausted > 0 || (!sh.holding && frac < 0.2));
+  // focus: the ring empties over its two seconds; the pulse beats at the heart's rate
+  const ff2 = h.focus.querySelector('.fg'); const fu = G.focusT > 0 ? G.focusT / FOCUS_TIME : G.focusUsed ? 0 : 1;
+  if (ff2._u !== fu) { ff2._u = fu; ff2.style.strokeDashoffset = String(283 * (1 - fu)); }
+  const bpm = Math.round(64 + (sh.heart || 0) * 72 + (sh.holding ? 6 : 0)), bp = h.bpm || (h.bpm = h.breath.querySelector('.bpm'));
+  set(bp.lastChild, String(bpm));
+  G.beat = (G.beat || 0) + dt * bpm / 60; const bt = Math.pow(Math.max(0, Math.sin(G.beat * Math.PI)), 10);
+  bp.firstChild.style.transform = 'scale(' + (1 + bt * 0.35).toFixed(3) + ')';
+  bp.classList.toggle('hi', bpm >= 100);
   // fire button state
   const ready = sim.canFire();
   h.fire.classList.toggle('wait', !ready); h.fire.classList.toggle('charge', sh.chargeT > 0);
@@ -326,6 +341,7 @@ Game.start = function (missionId, opts) {
   G.zoomTicks(st);
   h.sub.innerHTML = ''; h.call.className = 'h-call'; G.callT = 0; G.seenFx = null;
   Spotter.reset(); G.tagN = 0;
+  G.focusT = 0; G.focusUsed = false; h.focus.classList.remove('used'); h.focus.classList.remove('on');
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
@@ -437,7 +453,8 @@ Game.loop = function (ts) {
     if (nud || nudY) sim.moveAim(nud * dt * 60 / sim.sh.zoom, nudY * dt * 60 / sim.sh.zoom);
     // fast-forward while it is held and nothing is happening that matters
     const ff = G.ffOn = !!(G.ffHeld && G.canFF());
-    const rate = ff ? FF_RATE : 1;
+    if (G.focusT > 0) { G.focusT -= dt; if (G.focusT <= 0) { G.focusT = 0; document.body.classList.remove('focusing'); G.hud.focus.classList.remove('on'); } }
+    const rate = G.focusT > 0 ? FOCUS_RATE : ff ? FF_RATE : 1;
     G.acc = Math.min(G.acc + dt * G.scale * rate, 0.1 * rate);
     while (G.acc >= SIM_STEP && sim.state === 'play') {
       G.simStep(); G.acc -= SIM_STEP;
@@ -448,7 +465,7 @@ Game.loop = function (ts) {
       if (ff && !G.canFF()) { G.acc = Math.min(G.acc, SIM_STEP * 0.99); G.ffOn = false; } // the alarm went up, or a round is out: back to real time at once
     }
     if (G.oracle) G.oracle.catchUp(2.5);
-    G.simRate = G.ffOn ? FF_RATE : 1;
+    G.simRate = G.focusT > 0 ? FOCUS_RATE : G.ffOn ? FF_RATE : 1;
   }
   G.pumpEvents();
   if (G.state !== 'mission' || !G.sim) return;
@@ -461,7 +478,7 @@ Game.loop = function (ts) {
   if (G.coach) G.coach.draw(G.view, G.view.rt);
   G.drawSeen(G.view);
   G.updateHud(dt);
-  Sfx.tick(sim, dt, G.scale);
+  Sfx.tick(sim, dt, G.scale * (G.focusT > 0 ? FOCUS_RATE : 1)); // (focus muffles the world, as slow motion does)
 };
 // hand what happened in the world to the picture and the sound
 Game.pumpEvents = function () {
@@ -508,6 +525,7 @@ Game.startCine = function (pr) {
   try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
   if (!ok) return false;
   b.cine = true; // (no callout under the crosshair for this round: the kill camera shows what it did)
+  if (G.focusT > 0) { G.focusT = 0; document.body.classList.remove('focusing'); G.hud.focus.classList.remove('on'); }
   G.cine = true; G.acc = 0; document.body.classList.add('cine');
   return true;
 };
@@ -549,9 +567,17 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
 // round in the air, no alarm, nothing charging, the job not yet done or lost.
 Game.canFF = function () {
   const G = Game, sim = G.sim;
-  if (!sim || G.state !== 'mission' || sim.state !== 'play' || G.paused || G.cine || G.slowT > 0) return false;
+  if (!sim || G.state !== 'mission' || sim.state !== 'play' || G.paused || G.cine || G.slowT > 0 || G.focusT > 0) return false;
   if (sim.alarmT !== null || sim.alarmPending || sim.failInfo || sim.winAt || sim.sh.chargeT > 0) return false;
   for (let i = 0; i < sim.bullets.length; i++) if (sim.bullets[i].alive) return false;
+  return true;
+};
+// Focus: once a contract, two seconds of the world at half speed (the sway, the target, the wind
+// all slow), started when the player chooses.
+Game.focus = function () {
+  const G = Game; if (!G.sim || G.state !== 'mission' || G.paused || G.cine || G.sim.state !== 'play' || G.focusUsed) { if (G.focusUsed) { G.hud.focus.classList.add('shake'); setTimeout(() => G.hud.focus.classList.remove('shake'), 300); } return false; }
+  G.focusUsed = true; G.focusT = FOCUS_TIME; G.ffHeld = false;
+  document.body.classList.add('focusing'); G.hud.focus.classList.add('on'); G.hud.focus.classList.add('used');
   return true;
 };
 Game.fire = function () { const G = Game; if (G.spotting) { Spotter.toggle(false); return; } if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
@@ -651,6 +677,7 @@ Game.bindInput = function () {
   press(h.pause, () => G.pause(true));
   press(h.ff, () => { G.ffHeld = true; }, () => { G.ffHeld = false; });
   press(h.spot, () => Spotter.toggle());
+  press(h.focus, () => G.focus());
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
@@ -676,6 +703,7 @@ Game.bindInput = function () {
     else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
     else if (e.key === 'f' || e.key === 'F') G.ffHeld = true;
     else if ((e.key === 'b' || e.key === 'B') && !e.repeat) Spotter.toggle();
+    else if ((e.key === 'z' || e.key === 'Z') && !e.repeat) G.focus();
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
