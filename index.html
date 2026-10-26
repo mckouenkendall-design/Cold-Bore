@@ -643,6 +643,139 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 .bld { margin-left: 0.8em; letter-spacing: 0.06em; text-transform: none; font-weight: 500; color: var(--dim, #8a94a6); opacity: 0.85; }
 .t-note .bld { margin-left: 0; }
 
+/* ===== style_hud.css ===== */
+/* ---------------------------------------------------------------------------
+   The in-mission display: fast-forward, the read-outs, the zoom slider, the
+   radio subtitles, hit and miss callouts, the spotting scope. Joined after
+   style.css by build.js, so these rules win where both speak.
+   --------------------------------------------------------------------------- */
+
+/* ---- fast-forward ---- */
+.h-ff { position: relative; color: var(--dim); }
+.h-ff em { position: absolute; right: 3px; bottom: 1px; font: 800 9px var(--mono); font-style: normal; letter-spacing: -.02em; color: var(--mute); }
+.h-ff.on { color: #1b0f02; background: var(--amber); border-color: var(--amber); box-shadow: 0 0 16px rgba(255, 170, 60, .5); }
+.h-ff.on em { color: #1b0f02; }
+.h-ff.off { opacity: .35; }
+.h-ff.off.down { background: rgba(20, 26, 35, .8); }
+/* while the world runs fast, a thin amber band frames the picture so it is never mistaken for real time */
+body.ffwd #hud::before { content: ""; position: absolute; inset: 0; border: 3px solid rgba(255, 170, 60, .55); pointer-events: none; }
+
+/* ---- the read-outs: solid backs (rain and lit windows must not show through), HOLD the big one ---- */
+.h-strip { align-items: stretch; }
+.h-strip .cell, body.landscape .h-strip .cell { background: rgba(9, 12, 17, .95); border-color: rgba(64, 82, 104, .75); justify-content: space-between; box-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
+body.landscape .h-strip .cell { padding: 4px 8px 5px; }
+.h-strip .cell b { font-size: 14px; }
+.h-strip .cell-hold, .h-strip.has-dial .cell-hold { flex: 2 1 0; background: rgba(26, 17, 5, .96); border-color: rgba(255, 170, 60, .6); }
+.h-strip .cell-hold i { color: var(--amber); opacity: .85; }
+.h-strip .cell-hold i em { font-style: normal; color: var(--mute); letter-spacing: .12em; margin-left: 3px; }
+.h-strip .cell-hold b { display: flex; align-items: baseline; gap: 12px; font-size: 24px; line-height: 1.02; letter-spacing: -.03em; font-weight: 700; color: var(--amber); overflow: visible; }
+.h-strip .cell-hold b .hw { font-size: 19px; color: var(--amber2); }
+.h-strip .cell-hold b .far { font-size: 15px; color: var(--red); letter-spacing: 0; }
+.h-strip.has-dial .cell.cell-range, .h-strip.has-dial .cell.cell-wind { flex: .95 1 0; }
+.h-strip.has-dial .cell.cell-hold { flex: 1.75 1 0; }
+.h-strip.has-dial .cell.cell-zero { flex: 1.9 1 0; }
+/* hints, pills, the radio box and the round count get solid backs too */
+.hintbox { background: rgba(30, 21, 8, .96); border: 1px solid rgba(255, 170, 60, .7); color: #ffd9a3; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.radio { background: rgba(10, 13, 18, .96); box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.pill-cover { background: rgba(7, 32, 17, .95); }
+.pill-alarm { background: rgba(48, 9, 6, .95); }
+.h-ammo { background: rgba(9, 12, 17, .9); border: 1px solid rgba(64, 82, 104, .6); border-radius: 9px; padding: 4px 8px 3px; }
+
+/* ---- zoom slider: ticks on the left of the track, a handle that shows the zoom ---- */
+.h-zoom { width: 56px; align-items: flex-start; }
+.h-zoom .zt { margin-left: 30px; }
+.h-zoom .zticks { position: absolute; left: 0; top: 0; bottom: 0; width: 0; pointer-events: none; }
+.h-zoom .zticks span { position: absolute; right: 14px; transform: translateY(50%); font: 700 10px var(--mono); letter-spacing: -.03em; color: #aeb9c6; background: rgba(9, 12, 17, .85); border-radius: 4px; padding: 0 3px; white-space: nowrap; }
+.h-zoom .zticks span i { position: absolute; left: 100%; top: 50%; width: 12px; height: 2px; margin-top: -1px; background: rgba(174, 185, 198, .8); }
+.h-zoom .zk { display: flex; align-items: baseline; justify-content: center; gap: 1px; width: 40px; height: 26px; margin: 0 0 -13px -20px; padding-top: 3px; border-radius: 13px; border-width: 2px; background: #10151d; }
+.h-zoom .zk::after { content: none; }
+.h-zoom .zk b { font: 800 14px var(--mono); letter-spacing: -.04em; color: var(--amber); }
+.h-zoom .zk i { font: 700 10px var(--mono); font-style: normal; color: var(--amber2); }
+.h-zoom .zl { margin-left: 14px; }
+
+/* ---- radio lines as subtitles across the lower third ---- */
+.h-sub { position: absolute; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; z-index: 2; }
+.h-sub .radio.sub { pointer-events: auto; position: relative; display: flex; align-items: center; gap: 10px; max-width: 100%; padding: 7px 28px 8px 8px; border: 1px solid rgba(64, 82, 104, .7); border-left: 3px solid var(--amber); border-radius: 12px; background: rgba(8, 11, 16, .95); }
+.h-sub .radio.sub::after { content: '\00d7'; position: absolute; top: 4px; right: 9px; font-size: 15px; line-height: 1; opacity: .5; }
+.h-sub .sub-who { flex: none; }
+.h-sub .sub-who span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; border: 2px solid; font: 800 19px var(--head); background: rgba(255, 255, 255, .05); }
+.h-sub .sub-who.pic canvas { display: block; border-radius: 10px; }
+.h-sub .sub-tx { min-width: 0; }
+.h-sub .sub-tx b { font-size: 10.5px; margin-bottom: 1px; }
+.h-sub .sub-tx span { display: block; font-size: 14.5px; line-height: 1.3; color: #f4f0e6; }
+
+/* on a narrow phone the subtitle takes the objective line's place at the top */
+body.sub-top .h-sub { align-items: flex-start; justify-content: flex-start; }
+body.sub-top.sub-on:not(.guided) .h-obj { visibility: hidden; }
+body.sub-top.sub-on .h-msg { transform: translateY(48px); transition: transform .2s; }
+body.sub-top .h-sub .radio.sub { padding: 5px 26px 6px 6px; }
+body.sub-top .h-sub .sub-who span { width: 32px; height: 32px; font-size: 16px; }
+body.sub-top .h-sub .sub-tx span { font-size: 13.5px; line-height: 1.25; }
+
+/* ---- what the last round did ---- */
+.h-call { position: absolute; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; pointer-events: none; opacity: 0; transform: translateX(6px); transition: opacity .2s, transform .2s; z-index: 2; }
+.h-call.show { opacity: 1; transform: none; }
+.h-call b { font: 800 17px var(--head); letter-spacing: .16em; padding: 3px 11px 2px; border-radius: 7px; background: rgba(8, 11, 16, .94); border: 1px solid; white-space: nowrap; }
+.h-call span { font: 600 12px var(--mono); letter-spacing: -.01em; color: #e2e8ef; background: rgba(8, 11, 16, .9); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.h-call.c-hit b { color: var(--green); border-color: rgba(95, 211, 138, .75); }
+.h-call.c-miss b { color: var(--amber); border-color: rgba(255, 170, 60, .75); }
+.h-call.c-bad b { color: var(--red); border-color: rgba(255, 74, 61, .75); }
+.h-call.c-obj b { color: var(--blue); border-color: rgba(111, 182, 255, .75); }
+
+/* ---- the second load: tap the round count to chamber it ---- */
+.h-ammo.switch { pointer-events: auto; cursor: pointer; }
+.h-ammo.switch.down { background: var(--line2); }
+.h-ammo u { text-decoration: none; font: 700 10px var(--head); letter-spacing: .12em; color: var(--dim); margin-right: 2px; }
+.h-ammo .alt { margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(64, 82, 104, .7); font: 700 11px var(--mono); color: var(--blue); text-align: right; white-space: nowrap; }
+.h-ammo .alt i { font-style: normal; }
+.h-ammo .alt.none { color: var(--mute); }
+.h-ammo.special { border-color: rgba(111, 182, 255, .8); }
+.h-ammo.special .pips i.r { background: var(--blue); }
+.h-ammo.special u { color: var(--blue); }
+.h-ammo.go { box-shadow: 0 0 0 3px var(--blue), 0 0 16px rgba(111, 182, 255, .5); animation: pulse .6s infinite alternate; }
+.h-ammo.shake { animation: shake .25s; }
+
+/* ---- focus, and the pulse inside HOLD BREATH ---- */
+.h-focus { background: rgba(14, 20, 30, .92); border: 1px solid rgba(111, 182, 255, .55); color: #cfe6ff; font-size: 9.5px; letter-spacing: .12em; }
+.h-focus .ring { position: absolute; inset: -1px; transform: rotate(-90deg); }
+.h-focus .ring circle { fill: none; stroke-width: 6; stroke: var(--blue); stroke-dasharray: 283; stroke-linecap: round; }
+.h-focus.on { background: rgba(111, 182, 255, .3); color: #fff; box-shadow: 0 0 20px rgba(111, 182, 255, .55); }
+.h-focus.used:not(.on) { opacity: .32; }
+.h-focus.shake { animation: shake .25s; }
+body:not(.touch) .h-focus { opacity: 0; pointer-events: none; }
+body.spotting .h-focus { visibility: hidden; }
+.h-breath .bpm { position: absolute; left: 0; right: 0; bottom: 14%; display: flex; justify-content: center; align-items: center; gap: 3px; font: 700 10px var(--mono); font-style: normal; letter-spacing: -.02em; color: #9fb3c8; }
+.h-breath .bpm i { font-style: normal; color: #ff6a5c; display: inline-block; }
+.h-breath .bpm.hi { color: #ffb0a6; }
+.h-breath span { margin-top: -8px; }
+body.focusing #hud::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px rgba(70, 150, 255, .42); }
+
+/* ---- the binoculars and tags ---- */
+.h-spot { color: var(--dim); }
+.h-spot.on { color: #071018; background: #5fe0ff; border-color: #5fe0ff; box-shadow: 0 0 16px rgba(95, 224, 255, .45); }
+body.spotting .h-zoom, body.spotting .h-mark, body.spotting .h-breath, body.spotting .h-reload, body.spotting .h-ammo, body.spotting .h-call { visibility: hidden; }
+body.spotting .h-fire { background: radial-gradient(circle at 50% 35%, #8fe9ff, #3cb8db 60%, #1d7b96); color: #041219; font-size: 16px; }
+body.spotting.portrait .h-strip, body.spotting .h-msg { visibility: hidden; }
+.h-tags { position: absolute; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 2; }
+.h-tags .tg, .h-tags .tg-help { background: rgba(8, 11, 16, .95); border: 1px solid rgba(64, 82, 104, .75); border-radius: 10px; padding: 6px 9px 7px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.h-tags .tg-help b { display: block; font: 700 10.5px var(--head); letter-spacing: .16em; color: #5fe0ff; }
+.h-tags .tg-help span { display: block; font-size: 12.5px; line-height: 1.3; color: #d6dde6; margin-top: 2px; }
+.h-tags .tg-hd { display: flex; align-items: center; gap: 7px; }
+.h-tags .tg-hd i { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; font: 800 11px var(--mono); font-style: normal; color: #071018; }
+.h-tags .tg-hd b { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-tags .tg-hd em { flex: none; font: 700 11px var(--mono); font-style: normal; color: var(--dim); }
+.h-tags .tg-ck { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 4px; }
+.h-tags .tg-ck span { font: 600 11.5px var(--mono); letter-spacing: -.02em; }
+.h-tags .tg-ck .y { color: var(--green); } .h-tags .tg-ck .n { color: var(--red); } .h-tags .tg-ck .q { color: var(--dim); font-family: var(--body); }
+
+/* ---- retry from just before the first shot (added to the results screen if the menus do not offer it) ---- */
+.results .retryshot { width: 100%; flex: none; min-height: 40px; margin: 0 0 8px; font-size: 12px; letter-spacing: .1em; justify-content: space-between; gap: 10px; border-color: rgba(255, 170, 60, .55); color: var(--amber2); }
+.results .retryshot span { white-space: nowrap; flex: none; }
+.results .retryshot i { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.results .coachtier { border-color: rgba(111, 182, 255, .55); color: #a9d4ff; }
+.results .coachtier i { overflow: hidden; text-overflow: ellipsis; }
+.results .retryshot i { font: 600 11.5px var(--body, inherit); font-style: normal; letter-spacing: 0; text-transform: none; color: var(--dim); white-space: nowrap; }
+
 </style>
 </head>
 <body>
@@ -656,7 +789,7 @@ body.tester:not(.in-mission)::after { content: 'TESTER MODE'; position: fixed; i
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 25, 11:06 PM";
+const BUILD = "Oct 25, 11:22 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -7626,6 +7759,11 @@ function Sim(M, st, vantageIdx, opts) {
   opts = opts || {};
   const sim = this;
   sim.M = M; sim.st = st; sim.opts = opts;
+  // Two loads: the rifle's own rounds, and a few of a second kind (armour-piercing, say) that can
+  // be chambered during the mission for the price of one pull of the bolt (see switchAmmo).
+  // sim.st is always the load in the chamber; every round in the air keeps the numbers it left with.
+  sim.stA = st; sim.stB = null;
+  if (opts.ammo2 && st.cfg && opts.ammo2 !== st.cfg.ammo && PART_BY_ID[opts.ammo2] && partFits(PART_BY_ID[opts.ammo2], st.gun)) sim.stB = buildStats(st.id, Object.assign({}, st.cfg, { ammo: opts.ammo2 }));
   sim.flags = opts.flags || {};
   const built = M.setup(K, sim.flags);
   const S = sim.S = built.S; sim.A = built;
@@ -7642,8 +7780,10 @@ function Sim(M, st, vantageIdx, opts) {
   sim.actors = []; sim.byId = {}; sim.vehicles = []; sim.bullets = []; sim.kills = []; sim.steam = []; sim.timers = [];
   sim.emitted = {}; sim.msgs = [];
   sim.alarmT = null; sim.coverUntil = -1; sim.coverName = '';
-  sim.stats = { shots: 0, hits: 0, heads: 0, misses: 0, panics: 0, breathUsed: false, longest: 0, accident: 0, wounded: 0, glass: 0, objects: 0, duck: false, collateral: 0, firstShotT: null, maxLead: 0 };
+  // heard: how many times anybody heard one of your shots (a bang, or a crack before the job was done)
+  sim.stats = { shots: 0, hits: 0, heads: 0, misses: 0, panics: 0, breathUsed: false, longest: 0, accident: 0, wounded: 0, glass: 0, objects: 0, duck: false, collateral: 0, firstShotT: null, maxLead: 0, heard: 0, heardLate: 0 };
   sim.failInfo = null; sim.winAt = null; sim.endAt = null;
+  sim.seenBy = null; // the first person (or camera) who gave the game away: see Sim.giveaway
 
   // camera limits for this position, worked out from the scene size
   const b = S.bounds, zr = S.refZ - sim.eye0.z;
@@ -7657,6 +7797,8 @@ function Sim(M, st, vantageIdx, opts) {
     breath: st.breath, holding: false, holdK: 0, exhausted: 0,
     ammo: st.mag, reserve: (M.rules && M.rules.reserve !== undefined) ? M.rules.reserve : st.mag * 3 + (st.mag === 1 ? 9 : 0), cycleT: 0, cycleLen: 0, reloadT: 0, reloadLen: 0, chargeT: 0,
     zeroR: st.zero, zeroAng: st.zeroAng, heart: 0, lastFire: -99, sx: 0, sy: 0, pvx: 0, pvy: 0,
+    // the load in the chamber (0 the rifle's own rounds, 1 the second kind) and the other one's count
+    load: 0, altAmmo: sim.stB ? Math.min(3, Math.max(2, Math.floor(st.mag / 3))) : 0, altReserve: 0,
   };
   if (st.scope.turret && M.range && !opts.noAutoZero) { /* player dials it themselves */ }
 
@@ -7763,8 +7905,29 @@ Sim.prototype.reload = function () {
   sh.reloadT = sh.reloadLen = st.reload; this.ev.push({ k: 'reload', dur: st.reload, action: st.action });
   return true;
 };
+// Chamber the other kind of round. It costs one pull of the bolt (a moment for any rifle). The
+// last round of the second kind put through, the rifle goes back to its own by itself.
+Sim.prototype.switchAmmo = function () {
+  const sim = this, sh = sim.sh;
+  if (!sim.stB || sim.state !== 'play' || sh.reloadT > 0 || sh.chargeT > 0) return false;
+  if (sh.altAmmo + sh.altReserve <= 0) { sim.ev.push({ k: 'dry' }); return false; }
+  sim.swapLoad();
+  sh.cycleT = sh.cycleLen = Math.max(0.4, sim.st.cycle);
+  sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, cycle: sh.cycleLen, action: sim.st.action });
+  return true;
+};
+Sim.prototype.swapLoad = function () {
+  const sim = this, sh = sim.sh, a = sh.ammo, r = sh.reserve;
+  sh.ammo = sh.altAmmo; sh.reserve = sh.altReserve; sh.altAmmo = a; sh.altReserve = r;
+  sh.load = sh.load ? 0 : 1; sim.useLoad();
+  sh.zeroAng = Bal.zeroAngle(sim.st, sh.zeroR); // the same zero distance, for this load
+};
+// sim.st follows the load in the chamber (a copy of the mission that is handed the shooter's state,
+// as the shot oracle is, picks the change up here)
+Sim.prototype.useLoad = function () { const want = this.sh.load && this.stB ? this.stB : this.stA; if (this.st !== want) this.st = want; };
 Sim.prototype.canFire = function () { const sh = this.sh; return this.state === 'play' && sh.cycleT <= 0 && sh.reloadT <= 0 && sh.ammo > 0 && sh.chargeT <= 0; };
 Sim.prototype.fire = function () {
+  this.useLoad();
   const sim = this, sh = sim.sh, st = sim.st;
   if (sim.state !== 'play') return false;
   if (sh.reloadT > 0 || sh.cycleT > 0 || sh.chargeT > 0) return false;
@@ -7780,7 +7943,7 @@ Sim.prototype._shoot = function () {
   const ax = aim.x + R.gauss() * st.disp * 0.5 + Math.cos(ja) * jm, ay = aim.y + sh.zeroAng + R.gauss() * st.disp * 0.5 + Math.sin(ja) * jm;
   const b = Bal.launch(st.v0, ax, ay);
   b.x += eye.x; b.y += eye.y; b.z += eye.z;
-  b.alive = true; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
+  b.alive = true; b.st = st; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
   sim.bullets.push(b);
   if (sim.stats.firstShotT === null) sim.stats.firstShotT = sim.t;
   sh.ammo--; sh.lastFire = sim.t;
@@ -7814,7 +7977,11 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.exhausted > 0) sh.exhausted -= dt;
   sh.holdK = approach(sh.holdK, sh.holding ? 1 : 0, dt * (sh.holding ? 3.2 : 2.2));
   sh.move *= Math.exp(-dt * (1.1 + 3.2 * st.handling));
-  sh.heart = approach(sh.heart, sim.alarmT !== null ? 1 : 0, dt * 0.4);
+  // Stress: what makes a real shooter's pulse climb. Lungs burning on a long held breath, people
+  // close to whoever is under the crosshair, a target on the move, and every round that missed
+  // (see stopBullet). It settles back slowly, and the heart follows it (or the alarm, if higher).
+  sim.stepStress(dt);
+  sh.heart = approach(sh.heart, Math.max(sim.alarmT !== null ? 1 : 0, sh.stress), dt * 0.4);
   // sway = slow breathing drift + faster muscle tremor + a pulse
   const low = sh.holding ? clamp(1 - sh.breath / (st.breath * 0.28), 0, 1) : 0; // lungs burning
   const breathAmp = lerp(1, 0.04, sh.holdK), tremAmp = lerp(1, 0.38 + low * 1.3, sh.holdK);
@@ -7833,6 +8000,7 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.cycleT > 0) {
     sh.cycleT -= dt;
     if (st.action === 'bolt') { const u = 1 - clamp(sh.cycleT / sh.cycleLen, 0, 1); const e = Math.sin(clamp((u - 0.18) / 0.72, 0, 1) * Math.PI); ox = e * 1.6 * Math.sin(u * 9); oy = e * (2.2 + st.recoil * 0.08); }
+    if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve <= 0 && sh.load === 1 && sh.altAmmo + sh.altReserve > 0) { sim.swapLoad(); sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, auto: true }); }
     if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0) sim.reload();
   }
   if (sh.reloadT > 0) {
@@ -7844,6 +8012,31 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.chargeT > 0) { sh.chargeT -= dt; if (sh.chargeT <= 0) { sh.chargeT = 0; sim._shoot(); } }
 };
 
+Sim.prototype.stepStress = function (dt) {
+  const sim = this, sh = sim.sh, st = sim.st;
+  if (sh.stress === undefined) { sh.stress = 0; sh.stressT = 0; sh.watchers = 0; sh.aimMoving = false; }
+  if (sim.M.practice) { sh.stress = 0; return; } // the Range is for learning the rifle: the pulse stays steady
+  // what is under the crosshair is looked at four times a second (it costs a line of sight)
+  sh.stressT -= dt;
+  if (sh.stressT <= 0) {
+    sh.stressT = 0.25;
+    const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), who = r && r.actor && !r.actor.dead ? r.actor : null;
+    sh.watchers = 0; sh.aimMoving = false;
+    if (who) {
+      sh.aimMoving = (who.inVeh && who.inVeh.v > 1) || (!who.inVeh && who.goal !== null);
+      for (let i = 0; i < sim.actors.length; i++) { const o = sim.actors[i]; if (o !== who && !o.dead && !o.gone && !o.hidden && (o.role === 'civ' || o.role === 'guard') && o.state === 'calm' && o.plane === who.plane && Math.abs(o.x - who.x) < 12) sh.watchers++; }
+    }
+  }
+  let want = 0;
+  if (sh.holding && sh.breath < st.breath * 0.4) want += 0.45;
+  want += Math.min(0.4, sh.watchers * 0.14);
+  if (sh.aimMoving) want += 0.25;
+  sh.stress = sh.stress < want ? Math.min(want, sh.stress + dt * 0.18) : Math.max(want, sh.stress - dt * 0.045);
+  sh.stress = clamp(sh.stress, 0, 1);
+};
+// A shot that went wrong sets the pulse going (it settles back slowly).
+Sim.prototype.jolt = function (k) { const sh = this.sh; if (this.M.practice) return; sh.stress = clamp((sh.stress || 0) + k, 0, 1); };
+
 // ---- noise and awareness -------------------------------------------------------
 Sim.prototype.noiseAll = function (kind, dist) {
   // an unsuppressed shot heard across the whole scene
@@ -7853,36 +8046,120 @@ Sim.prototype.noiseAll = function (kind, dist) {
   const alarmR = st.noise, suspR = st.noise * 1.7;
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
+    sim.stats.heard++;
     if (sim.winAt) { // the job is already done by the time the bang arrives: people scatter, but it no longer matters
       // Anyone who actually SAW it happen still counts as a witness; only people who merely heard the bang are let off.
       sim.heardAfter = true; const p0 = sim.stats.panics;
+      sim._late = true;
       sim.actors.forEach((a) => { if (a.dead || a.gone || a.sawKill || (a.state !== 'calm' && a.state !== 'susp')) return; sim.startle(a, 'shot'); a.react = 99; });
+      sim._late = false;
       sim.stats.panics = p0; return;
     }
     sim.actors.forEach((a) => { if (a.dead || a.gone) return; sim.startle(a, 'shot'); });
     sim.raiseAlarm('shot', 0.4);
   } else if (dist <= suspR) {
+    sim.stats.heard++;
     sim.actors.forEach((a) => { if (!a.dead && !a.gone) sim.suspect(a, 3.5); });
   }
 };
+// A noise heard after the job is done: heads come up and that is all. Nobody goes looking.
+Sim.prototype.lateNoise = function (x, y, radius, srcActor) {
+  const sim = this;
+  sim.stats.heardLate++;
+  sim.actors.forEach((a) => {
+    if (a.dead || a.gone || a.hidden || a === srcActor || a.inVeh || (a.state !== 'calm' && a.state !== 'susp')) return;
+    if (Math.hypot(a.x - x, (a.y - y) * 0.7) <= radius) sim.bubble(a, '?', 1.6);
+  });
+};
+// Returns how many people were close enough to notice.
 Sim.prototype.noise = function (x, y, plane, kind, radius, srcActor) {
   const sim = this;
+  let n = 0;
   sim.actors.forEach((a) => {
     if (a.dead || a.gone || a === srcActor || a.inVeh) return;
     let r = radius; if (a.room && sim.S.rooms[a.room] && kind !== 'boom' && kind !== 'npcshot') r *= 0.6;
     const d = Math.hypot(a.x - x, (a.y - y) * 0.7);
     if (d > r) return;
+    n++; a.heardWhat = kind; a.heardT = sim.t;
     if (kind === 'scream' || kind === 'boom' || kind === 'npcshot') sim.startle(a, kind);
     else if (kind === 'impact') { if (d < 3.2) sim.startle(a, 'impact'); else sim.suspect(a, 3); }
     else if (kind === 'lure') sim.investigate(a, x);
     else if (kind === 'crash') { if (a.role === 'guard' || a.role === 'civ') sim.investigate(a, x, 6); else sim.suspect(a, 4); }
     else sim.suspect(a, kind === 'crack' ? 3.5 : 2.5);
   });
+  return n;
 };
 Sim.prototype.bubble = function (a, s, dur) { a.bubble = s; a.bubbleT = this.t + (dur || 1.8); };
+
+// ---- who gave it away ------------------------------------------------------------------
+// The first person (or camera) whose reaction cost the clean rating or failed the job: who they
+// were, what they noticed, where they stood and when. The results and fail screens show it, and
+// the scope points them out the moment it happens (see Game.seenFx). Reactions to a shot heard
+// after the job was done never count, so they are never recorded either.
+const SEEN_WHAT = {
+  body: 'found the body', saw: 'saw it happen', shot: 'heard the shot', impact: 'saw a round strike beside them',
+  susp: 'was spooked one time too many', hit: 'was hit, but not killed', scream: 'heard someone scream', boom: 'heard the blast',
+  npcshot: 'heard a pistol shot', camera: 'caught the body on camera', vehicle: 'heard the round hit the car', explosion: 'heard the blast',
+  witness: 'saw it happen', target: 'saw trouble and called it in', guard: 'raised the alarm',
+};
+// what someone had just heard before they looked round and found a body
+const HEARD_WHAT = { crack: 'the bullet crack past', impact: 'the round strike', glass: 'glass break', pop: 'a lamp pop', lure: 'a noise', crash: 'a crash', scream: 'a scream' };
+Sim.prototype.giveaway = function (a, why, o) {
+  const sim = this;
+  if (sim.seenBy || sim._late || sim.M.practice) return;
+  o = o || {};
+  let what = o.what || SEEN_WHAT[why] || 'raised the alarm';
+  if (a && why === 'body' && a.heardWhat && sim.t - a.heardT < 6 && HEARD_WHAT[a.heardWhat]) what = 'heard ' + HEARD_WHAT[a.heardWhat] + ', looked round and found the body';
+  const at = a ? { x: a.x, y: a.y, z: a.plane ? a.plane.z : sim.S.refZ, zone: a.zone } : o.at || null;
+  const body = o.body ? sim.byId[o.body] : null;
+  if (at) {
+    const ref = body || sim.byId[sim.rules.kill[0]];
+    if (ref && ref !== a && ref.plane) { const dx = at.x - ref.x; at.text = Math.abs(dx) < 2 ? 'right beside ' + (body ? 'the body' : 'the target') : Math.round(Math.abs(dx)) + ' m ' + (dx < 0 ? 'left' : 'right') + ' of ' + (body ? 'the body' : 'the target'); }
+  }
+  sim.seenBy = { id: a ? a.id : null, role: a ? a.role : null, who: o.who || (a ? personName(a, sim) : SEEN_NOBODY[why] || 'Somebody'), look: a ? Object.assign({}, a.look) : null, what, why, body: o.body || null, where: at, t: sim.t };
+  sim.ev.push({ k: 'giveaway', id: sim.seenBy.id, who: sim.seenBy.who, what });
+};
+Sim.prototype.giveawayOf = function (a) { const w = a.alertBy || {}; this.giveaway(a, w.why || (a.role === 'guard' ? 'guard' : 'target'), { body: w.body }); };
+const SEEN_NOBODY = { shot: 'Everyone in earshot', explosion: 'Everyone in earshot', camera: 'A security camera', vehicle: 'The people in the car', target: 'The target', guard: 'A guard', witness: 'A witness' };
+
+// Plain words for a person, for the screens that say who saw what: "a passer-by with a blue umbrella".
+const COLOUR_NAMES = [['red', '#c8372d'], ['blue', '#2f6db5'], ['green', '#3f8f4f'], ['yellow', '#e2b33c'], ['white', '#ece8dc'], ['grey', '#7a8088'], ['orange', '#e07b2a'], ['purple', '#7d4fa0'], ['pink', '#e07a9a'],
+  ['brown', '#7b5a36'], ['black', '#16181c'], ['dark', '#2c2f36'], ['teal', '#2a9d8f'], ['navy', '#27365a'], ['cream', '#e8dcc0'], ['tan', '#b89a6a'], ['olive', '#5d6b3a'], ['wine', '#7a2438'], ['pale', '#c9c4b4']];
+function colourName(hex) {
+  if (typeof hex !== 'string' || hex[0] !== '#') return 'dark';
+  const h = hex.length === 4 ? '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3] : hex;
+  const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+  let best = 'dark', bd = 1e9;
+  COLOUR_NAMES.forEach((c) => { const q = c[1], d = Math.pow(r - parseInt(q.slice(1, 3), 16), 2) * 0.9 + Math.pow(g - parseInt(q.slice(3, 5), 16), 2) * 1.2 + Math.pow(b - parseInt(q.slice(5, 7), 16), 2) * 0.8; if (d < bd) { bd = d; best = c[0]; } });
+  return best;
+}
+const HAT_NAME = { fedora: 'hat', cap: 'cap', beanie: 'beanie', hardhat: 'hard hat', tophat: 'top hat', hood: 'hood', sun: 'straw hat', peaked: 'peaked cap', helmet: 'helmet', beret: 'beret' };
+function aOrAn(w) { return /^[aeiou]/.test(w) ? 'an ' + w : 'a ' + w; }
+function lookPhrase(L) {
+  L = L || {};
+  if (L.bag === 'umbrella') return 'with ' + aOrAn(colourName(L.bagCol || '#16181c') + ' umbrella');
+  if (L.hat && HAT_NAME[L.hat]) return 'in ' + aOrAn(colourName(L.hatCol || '#2c2f36') + ' ' + HAT_NAME[L.hat]);
+  if (L.coat) return 'in ' + aOrAn(colourName(L.coat) + (L.long ? ' long coat' : ' coat'));
+  if (L.dress) return 'in ' + aOrAn(colourName(L.dress) + ' dress');
+  if (L.vest) return 'in ' + aOrAn(colourName(L.vest) + ' vest');
+  if (L.hair === 'white') return 'with white hair';
+  return '';
+}
+function personName(a, sim) {
+  if (!a) return 'Somebody';
+  if (a.name) return a.name;
+  const kill = sim && sim.rules.kill.indexOf(a.id) >= 0;
+  const role = { guard: 'a guard', target: kill ? 'the target' : 'a target', hostile: 'a gunman', vip: 'a protected person', hostage: 'the hostage' }[a.role] || (/^(pb|u)\d/.test(a.id) ? 'a passer-by' : 'a bystander');
+  const ph = lookPhrase(a.look);
+  const s = role + (ph ? ' ' + ph : '');
+  return s[0].toUpperCase() + s.slice(1);
+}
 Sim.prototype.suspect = function (a, dur) {
   if (a.dead || a.gone || a.state === 'panic' || a.state === 'alarm' || a.state === 'flee' || a.state === 'alert' || a.deaf) return;
-  a.suspN++;
+  // One round can make several noises at once (through a shutter, the crack, the wall behind):
+  // that is one scare, not three.
+  if (this.t - (a.suspAt === undefined ? -9 : a.suspAt) > 0.6) a.suspN++;
+  a.suspAt = this.t;
   if (a.role === 'guard' && a.suspN >= 3) { this.startle(a, 'susp'); return; }
   a.state = 'susp'; a.susp = Math.max(a.susp, dur); this.bubble(a, '?', dur);
 };
@@ -7895,17 +8172,22 @@ Sim.prototype.investigate = function (a, x, wait) {
   a.pc = 0; a.wait = 0; a.goal = null; a.state = 'calm'; this.bubble(a, '?', 2);
   this.ev.push({ k: 'lured', id: a.id });
 };
-// Something frightening happened right in front of this person.
-Sim.prototype.startle = function (a, why) {
+// Something frightening happened right in front of this person. `body` is the id of the body they
+// found or the killing they saw, when that is why.
+Sim.prototype.startle = function (a, why, body) {
   const sim = this;
   if (a.dead || a.gone || a.state === 'panic' || a.state === 'alarm' || a.state === 'flee' || a.state === 'alert') return;
   if (a.role === 'hostage') { a.anim = 'cower'; return; }
+  // what set them off, in case it is them who gives the game away (see Sim.giveaway): a bystander
+  // costs the clean rating the moment they panic; a guard or a target only once they call it in
+  a.alertBy = { why, body };
   a.goal = null; a.wait = 0; a.stack = []; a.waitFor = null;
   sim.bubble(a, '!', 2.5);
   if (a.role === 'guard') {
     a.state = 'alarm'; a.react = a.reactT || (sim.radioDown ? 5.5 : 1.7); a.anim = 'aimrifle';
     sim.ev.push({ k: 'spotted', id: a.id, role: a.role });
   } else if (a.role === 'civ' || a.role === 'vip') {
+    sim.giveaway(a, why, { body });
     a.state = 'panic'; a.react = 0.9; sim.stats.panics++;
     sim.ev.push({ k: 'scream', id: a.id });
     sim.after(0.5, () => { if (!a.dead) sim.noise(a.x, a.y, a.plane, 'scream', 16, a); });
@@ -7937,6 +8219,7 @@ Sim.prototype.raiseAlarm = function (by, delay) {
   sim.after(delay || 0, () => {
     if (sim.alarmT !== null) return;
     if (sim.winAt && (by === 'explosion' || by === 'shot' || by === 'vehicle')) { sim.alarmPending = false; sim.lateAlarm = by; return; }
+    sim.giveaway(null, by);
     sim.alarmT = sim.t; sim.alarmBy = by;
     sim.ev.push({ k: 'alarm', by });
     sim.emit('alarm');
@@ -7977,7 +8260,7 @@ Sim.prototype.perceive = function () {
       (o.seen = o.seen || {})[bd.id] = true;
       bd.found = true;
       if (bd.accident) { sim.ev.push({ k: 'gawk', id: o.id }); if (o.role === 'civ' || o.role === 'guard') sim.investigate(o, bd.x, 7); else sim.suspect(o, 4); }
-      else { sim.ev.push({ k: 'bodyfound', id: o.id, body: bd.id }); sim.startle(o, 'body'); }
+      else { sim.ev.push({ k: 'bodyfound', id: o.id, body: bd.id }); sim.startle(o, 'body', bd.id); }
       return;
     }
   });
@@ -7987,7 +8270,9 @@ Sim.prototype.perceive = function () {
     for (let i = 0; i < bodies.length; i++) {
       const bd = bodies[i];
       if (bd.accident || bd.zone !== c.zone || Math.abs(bd.x - c.x) > (c.range || 14)) continue;
-      c.tripped = true; sim.ev.push({ k: 'camera', id: c.id }); sim.raiseAlarm('camera', c.delay || 2.2);
+      c.tripped = true; sim.ev.push({ k: 'camera', id: c.id });
+      sim.giveaway(null, 'camera', { body: bd.id, who: 'A security camera', at: { x: c.x, y: c.y, z: c.plane ? c.plane.z : sim.S.refZ, zone: c.zone } });
+      sim.raiseAlarm('camera', c.delay || 2.2);
     }
   });
 };
@@ -8107,7 +8392,8 @@ Sim.prototype.stepActorCore = function (a, dt) {
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
-  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  // (a passenger faces the way the vehicle goes, unless a mission has turned them round: vehFace)
+  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = a.vehFace || v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
   if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
@@ -8118,10 +8404,10 @@ Sim.prototype.stepActorCore = function (a, dt) {
   if (a.state === 'alarm') { // guard reaching for the radio
     a.react -= dt; a.face = Math.sin(a.t * 5) > 0 ? 1 : -1;
     if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * RUN * FIG_GAIT.run.k; } else a.react = Math.min(a.react, 0.2); }
-    if (a.react <= 0) { sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
+    if (a.react <= 0) { sim.giveawayOf(a); sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
     return;
   }
-  if ((a.state === 'panic' || a.state === 'flee') && a.react > 0) { a.react -= dt; if (a.react <= 0) sim.raiseAlarm(a.role === 'civ' ? 'witness' : 'target'); }
+  if ((a.state === 'panic' || a.state === 'flee') && a.react > 0) { a.react -= dt; if (a.react <= 0) { sim.giveawayOf(a); sim.raiseAlarm(a.role === 'civ' ? 'witness' : 'target'); } }
   if (a.threat) {
     a.threat.t -= dt; a.anim = 'aim';
     const v = sim.byId[a.threat.id]; if (v) a.face = sign(v.x - a.x) || 1;
@@ -8193,7 +8479,8 @@ Sim.prototype.killActor = function (a, part, how, bullet, src) {
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
   const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
-  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
+  // round: which of the player's rounds did it (for a falling load or a blast, the last one fired)
+  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident, round: bullet ? bullet.id : sim.stats.shots,
     moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
   // for the picture only: how the body falls, the wounds, the blood (see src/13_ragdoll.js)
   rdNote(sim, a, part, how, bullet, src);
@@ -8222,7 +8509,7 @@ Sim.prototype.killActor = function (a, part, how, bullet, src) {
     if (!sim.canSee(o, a.x, a.y, a.zone)) return;
     (o.seen = o.seen || {})[a.id] = true; a.found = true;
     if (a.accident) { if (o.role === 'civ' || o.role === 'guard') sim.investigate(o, a.x, 7); else sim.suspect(o, 4); sim.ev.push({ k: 'gawk', id: o.id }); }
-    else { o.sawKill = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw'); }); }
+    else { o.sawKill = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw', a.id); }); }
   });
 };
 Sim.prototype.woundActor = function (a, part, bullet) {
@@ -8280,18 +8567,33 @@ Sim.prototype.impact = function (b, x, y, P, mat, o) {
   o = o || {};
   sim.ev.push({ k: 'impact', x, y, z: P ? P.z : b.z, plane: P, mat, tof: sim.t - b.t0, dist: (P ? P.z : b.z) - b.oz, small: o.small });
   if (P && o.decal !== false && mat !== 'water' && mat !== 'dirt') { sim.S.decals.push({ x, y, plane: P, mat }); if (sim.S.decals.length > 60) sim.S.decals.shift(); }
-  if (!o.quiet) sim.noise(x, y, P, 'impact', mat === 'glass' ? 12 : 8);
+  // (the strike of a round that has already finished the job, going on through into a wall, only turns heads)
+  if (!o.quiet) { if (sim.jobDone()) sim.lateNoise(x, y, mat === 'glass' ? 12 : 8); else sim.noise(x, y, P, 'impact', mat === 'glass' ? 12 : 8); }
   sim.crack(b, x, y, P);
 };
+// A suppressed round still faster than sound cracks past the people near where it lands. Two rules
+// make that fair next to a loud rifle:
+// - noise cover (thunder, a train, a horn) drowns the crack just as it drowns a bang;
+// - the crack of the round that finishes the job no longer matters, the same as a bang that
+//   arrives after the job is done: heads come up, but nobody goes looking.
 Sim.prototype.crack = function (b, x, y, P, skip) {
-  const st = this.st;
+  const sim = this, st = b.st || sim.st;
   const v = Math.hypot(b.vx, b.vy, b.vz);
-  if (st.quiet && st.crack > 0 && v > SOUND) this.noise(x, y, P, 'crack', st.crack, skip);
+  if (!(st.quiet && st.crack > 0 && v > SOUND)) return;
+  if (sim.covered()) return;
+  if (sim.jobDone()) { sim.lateNoise(x, y, st.crack, skip); return; }
+  if (sim.noise(x, y, P, 'crack', st.crack, skip)) sim.stats.heard++;
 };
-Sim.prototype.stopBullet = function (b) { b.alive = false; b.endT = this.t; };
+Sim.prototype.stopBullet = function (b) {
+  b.alive = false; b.endT = this.t;
+  // a miss, or a hit that did not put them down, sets the shooter's pulse going
+  const hits = b.hits || [];
+  if (b.vest || hits.some((h) => !h.lethal)) this.jolt(0.3);
+  else if (!hits.length && !b.obj) this.jolt(0.22);
+};
 
 Sim.prototype.hitPlane = function (P, b, bx, by) {
-  const sim = this, S = sim.S, st = sim.st;
+  const sim = this, S = sim.S, st = b.st || sim.st;
   // 1. shootable objects
   for (let i = 0; i < S.objects.length; i++) {
     const ob = S.objects[i];
@@ -8341,7 +8643,7 @@ Sim.prototype.hitPlane = function (P, b, bx, by) {
     for (let s = 0; s < v.seats.length; s++) {
       const a = sim.byId[v.seats[s]]; if (!a || a.dead || a.inVeh !== v) continue;
       const part = figHit(actorJoints(a), bx + ox - a.x, by + oy - a.y);
-      if (part === 'head' || part === 'torso' || part === 'arm') { sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
+      if (part === 'head' || part === 'torso' || part === 'arm') { (b.hits = b.hits || []).push({ id: a.id, part: part === 'arm' ? 'torso' : part, lethal: true, role: a.role, d: P.z - b.oz }); sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
     }
     sim.scareVehicle(v);
     if (got) { if (st.pen < 1.2) { sim.stopBullet(b); return true; } sim.stats.collateral++; }
@@ -8377,7 +8679,7 @@ Sim.prototype.hitPlane = function (P, b, bx, by) {
     if (op.through) return false;
     sim.impact(b, bx + ox, by + oy, P, 'interior', { decal: false, quiet: !S.rooms[op.room], small: true });
     // people in the room notice a round coming through
-    sim.actors.forEach((a) => { if (!a.dead && !a.gone && a.room === op.room && a.behind) { if (Math.abs(a.x - bx) < 2.5) sim.startle(a, 'impact'); else sim.suspect(a, 3); } });
+    if (!sim.jobDone()) sim.actors.forEach((a) => { if (!a.dead && !a.gone && a.room === op.room && a.behind) { if (Math.abs(a.x - bx) < 2.5) sim.startle(a, 'impact'); else sim.suspect(a, 3); } });
     sim.stopBullet(b); return true;
   }
   // 6. walls and cover
@@ -8402,13 +8704,16 @@ Sim.prototype.scareVehicle = function (v) {
     let any = false; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) any = true; });
     if (!any) return;
     const drv = sim.byId[v.seats[0]];
+    if (drv && !drv.dead) sim.giveaway(drv, 'vehicle');
     if (drv && !drv.dead && !v.flatTire) { v.routine = [['drive', v.dir > 0 ? 500 : -500, 18], ['gone']]; v.pc = 0; v.goal = null; v.wait = 0; v.waitFor = null; }
     sim.raiseAlarm('vehicle', 0.6);
   });
 };
 Sim.prototype.hitActor = function (a, part, b, bx, by) {
-  const sim = this, st = sim.st;
-  if (a.vest && part === 'torso' && st.pen < 0.5) { sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  const sim = this, st = b.st || sim.st;
+  // (what each round did is noted on it, for the hit and miss callout: see Game.watchRounds)
+  if (a.vest && part === 'torso' && st.pen < 0.5) { b.vest = true; sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  (b.hits = b.hits || []).push({ id: a.id, part, lethal: part === 'head' || part === 'torso', role: a.role, d: a.plane.z - b.oz });
   if (part === 'head' || part === 'torso') sim.killActor(a, part, 'shot', b);
   else sim.woundActor(a, part, b);
   sim.ev.push({ k: 'hit', x: bx, y: by, plane: a.plane, part, tof: sim.t - b.t0, dist: a.plane.z - b.oz, lethal: part === 'head' || part === 'torso' });
@@ -8420,6 +8725,7 @@ Sim.prototype.hitObject = function (ob, b, bx, by) {
   const sim = this, S = sim.S, P = ob.plane;
   sim.stats.objects++;
   const k = ob.kind;
+  if (!b.obj) b.obj = ob;
   sim.ev.push({ k: 'objhit', kind: k, id: ob.id, x: bx, y: by, plane: P, tof: sim.t - b.t0, dist: P.z - b.oz });
   sim.crack(b, bx, by, P);
   if (k === 'lamp' || k === 'bulb') {
@@ -8468,7 +8774,7 @@ Sim.prototype.explode = function (ob) {
 };
 
 Sim.prototype.stepBullet = function (b, dt) {
-  const sim = this, S = sim.S, st = sim.st, planes = S.planes;
+  const sim = this, S = sim.S, st = b.st || sim.st, planes = S.planes;
   let left = dt;
   const farZ = planes.length ? planes[0].z + 60 : 3000;
   while (left > 0 && b.alive) {
@@ -8492,8 +8798,8 @@ Sim.prototype.stepBullet = function (b, dt) {
       b.x = lerp(x0, b.x, f); b.z = lerp(z0, b.z, f); b.y = g.y;
       let P = null, bz = 1e12; planes.forEach((p) => { if (p.z >= b.z - 0.5 && p.z < bz) { bz = p.z; P = p; } });
       sim.ev.push({ k: 'impact', x: b.x, y: b.y, z: b.z, plane: null, mat: g.mat === 'water' ? 'water' : (g.mat || 'dirt'), tof: sim.t - b.t0, dist: b.z - b.oz, ground: true });
-      // a round kicking up dirt near someone gets noticed
-      sim.actors.forEach((a) => { if (a.dead || a.gone || a.inVeh || a.room) return; if (Math.abs(a.plane.z - b.z) > 14) return; const d = Math.abs(a.x - b.x); if (d < 3) sim.startle(a, 'impact'); else if (d < 9) sim.suspect(a, 3); });
+      // a round kicking up dirt near someone gets noticed (unless it already did the job on its way)
+      if (!sim.jobDone()) sim.actors.forEach((a) => { if (a.dead || a.gone || a.inVeh || a.room) return; if (Math.abs(a.plane.z - b.z) > 14) return; const d = Math.abs(a.x - b.x); if (d < 3) sim.startle(a, 'impact'); else if (d < 9) sim.suspect(a, 3); });
       sim.stopBullet(b); sim.stats.misses++;
       break;
     }
@@ -8526,6 +8832,7 @@ Sim.prototype.stepProps = function (dt) {
 Sim.prototype.step = function (dt) {
   const sim = this;
   if (sim.state !== 'play') return;
+  sim.useLoad();
   sim.t += dt;
   for (let i = sim.timers.length - 1; i >= 0; i--) if (sim.timers[i].t <= sim.t) { const fn = sim.timers[i].fn; sim.timers.splice(i, 1); fn(); }
   sim.stepShooter(dt);
@@ -8559,11 +8866,13 @@ Sim.prototype.objectivesDone = function () {
   if (R.done && !R.done(sim, sim.A)) return false;
   return true;
 };
+// The job is done (or is done as of this very step, before judge has had its say).
+Sim.prototype.jobDone = function () { return !!this.winAt || (!this.failInfo && this.objectivesDone()); };
 Sim.prototype.judge = function () {
   const sim = this, R = sim.rules, sh = sim.sh;
   if (R.time && sim.t >= R.time && !sim.winAt && !sim.failInfo) sim.fail('time', R.timeText || 'Out of time. The window closed.', 0.6);
   if (!sim.winAt && !sim.failInfo && sim.objectivesDone()) { sim.winAt = sim.t + (R.aftermath === undefined ? 2.8 : R.aftermath); sim.ev.push({ k: 'winning' }); }
-  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
+  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && sh.altAmmo + sh.altReserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
     sim.fail('ammo', 'Out of ammunition.', 0.5);
   }
   if (sim.failInfo && sim.t >= sim.endAt) { sim.state = 'lost'; sim.result = sim.summarise(false); sim.ev.push({ k: 'end', win: false }); return; }
@@ -8575,10 +8884,43 @@ Sim.prototype.summarise = function (win) {
   const par = (typeof M.par === 'function' ? M.par(sim.flags) : M.par) || Math.max(1, sim.rules.kill.length + sim.rules.destroy.length);
   const precise = sim.stats.shots <= par;
   const res = { win, fail: sim.failInfo, clean, precise, par, shots: sim.stats.shots, time: sim.t, stats: sim.stats, kills: sim.kills, stars: win ? 1 + (clean ? 1 : 0) + (precise ? 1 : 0) : 0, vantage: sim.vi, alarmBy: sim.alarmBy };
+  // ghost: nobody heard a shot (a covered bang, or a crack after the job was done, does not count)
+  res.ghost = !!win && sim.stats.shots > 0 && sim.stats.heard === 0;
+  // who gave it away, when that cost a star or the job
+  res.seenBy = sim.seenBy && (!clean || !win) ? sim.seenBy : null;
+  res.firstShotT = sim.stats.firstShotT;
   res.challenge = !!(win && M.challenge && M.challenge.test(sim, res));
   res.outcome = null;
   if (win && M.outcomes) for (let i = 0; i < M.outcomes.length; i++) if (M.outcomes[i].when(sim, res)) { res.outcome = M.outcomes[i]; break; }
+  res.score = sim.score(res);
   return res;
+};
+// Points for how the job was done, for the results screen and a best per contract. Only a win scores.
+// { total, parts: [{ label, pts }] } in the order they should be listed.
+Sim.prototype.score = function (res) {
+  const sim = this, st = sim.stats, parts = [], add = (label, pts) => { pts = Math.round(pts); if (pts) parts.push({ label, pts }); };
+  if (!res.win) return { total: 0, parts };
+  add('Contract', 1000);
+  if (res.clean) add('Clean', 500);
+  if (res.precise) add('Precise', 500);
+  if (res.ghost) add('Nobody heard a shot', 300);
+  // the kills that were the point: not bystanders, not other people's doing
+  const ks = sim.kills.filter((k) => k.how !== 'npc' && k.role !== 'civ' && k.role !== 'vip' && k.role !== 'hostage');
+  const heads = ks.filter((k) => k.how === 'shot' && k.part === 'head').length;
+  if (heads) add(heads === 1 ? 'Headshot' : heads + ' headshots', 150 * heads);
+  const far = ks.reduce((s, k) => s + (k.how === 'shot' ? k.range : 0), 0);
+  if (far) add('Distance ' + Math.round(sim.stats.longest) + ' m', far * 0.4);
+  const acc = ks.filter((k) => k.accident).length;
+  if (acc) add(acc === 1 ? 'An accident' : acc + ' accidents', 300 * acc);
+  const byRound = {}; ks.forEach((k) => { byRound[k.round] = (byRound[k.round] || 0) + 1; });
+  let extra = 0; for (const r in byRound) extra += byRound[r] - 1;
+  if (extra) add(extra === 1 ? 'Two with one round' : (extra + 1) + ' with one round', 400 * extra);
+  if (!st.breathUsed && st.shots > 0) add('No breath held', 200);
+  if (res.challenge) add('Challenge', 500);
+  add('Time ' + fmtTime(res.time), 300 * clamp(1 - (res.time - 15) / 90, 0, 1));
+  const sub = parts.reduce((s, p) => s + p.pts, 0);
+  if (sim.opts.assist === 'veteran') add('Veteran (no help)', sub * 0.25);
+  return { total: parts.reduce((s, p) => s + p.pts, 0), parts };
 };
 
 // ---- helpers for the scope read-outs and for the test bot -----------------------
@@ -28512,6 +28854,8 @@ const Game = CB.Game = {
   acc: 0, cine: false, slowT: 0, oracle: null, safe: { l: 0, r: 0, t: 0, b: 0 },
 };
 const SIM_STEP = 1 / 120; // the world always moves in steps of this size, which is what makes a shot predictable
+const FF_RATE = 3;        // holding fast-forward runs the world this many times faster
+const FOCUS_RATE = 0.5, FOCUS_TIME = 2; // focus: once a contract, the world at half speed for two seconds
 
 Game.init = function () {
   const G = Game;
@@ -28525,7 +28869,39 @@ Game.init = function () {
   window.addEventListener('orientationchange', () => setTimeout(G.resize, 250));
   G.resize();
   G.bindInput();
+  G.hookResults();
   requestAnimationFrame(G.loop);
+};
+
+// The results and fail screens belong to the menus. They are told where a retry would pick up
+// (res.retryAt) and can offer it themselves with a button carrying data-a="retryShot" that calls
+// Game.retryShot(last, res). If they do not, a button is added here, above their two.
+Game.hookResults = function () {
+  if (typeof UI === 'undefined' || !UI.results || UI.results._hooked) return;
+  const r0 = UI.results;
+  UI.results = function (M, res, last) { r0.apply(this, arguments); try { Game.offerCoach(M, res, last); Game.offerRetry(M, res, last); } catch (e) { if (window.console) console.error(e); } };
+  UI.results._hooked = true;
+};
+// On a fail, the next level of help (unless the menus offer it themselves: data-a="coachTier").
+Game.offerCoach = function (M, res, last) {
+  const root = UI.root, off = res && !res.win && last && Game.coachOffer(M);
+  if (!root || !off) return;
+  if (root.querySelector('[data-a="coachTier"]')) { if (!UI.handlers.coachTier) UI.handlers.coachTier = () => Game.startCoached(last, off.tier); return; }
+  const cta = root.querySelector('.results .cta'); if (!cta) return;
+  const c = el('button', 'btn ghost retryshot coachtier', '<span>' + esc(off.label) + '</span><i>' + esc(off.desc) + '</i>');
+  c.dataset.a = 'coachTier'; cta.parentNode.insertBefore(c, cta);
+  UI.handlers.coachTier = () => Game.startCoached(last, off.tier);
+};
+Game.offerRetry = function (M, res, last) {
+  if (M.practice || !last || !last.log || res.retryAt === null || res.retryAt === undefined) return;
+  const root = UI.root, go = () => Game.retryShot(last, res);
+  if (!root) return;
+  if (root.querySelector('[data-a="retryShot"]')) { if (!UI.handlers.retryShot) UI.handlers.retryShot = go; return; }
+  const cta = root.querySelector('.results .cta'); if (!cta) return;
+  const b = el('button', 'btn ghost retryshot', '<span>Retry from ' + fmtTime(res.retryAt) + '</span><i>just before your first shot</i>');
+  b.dataset.a = 'retryShot'; b.dataset.snd = 'go';
+  cta.parentNode.insertBefore(b, cta);
+  UI.handlers.retryShot = go;
 };
 
 Game.resize = function () {
@@ -28552,24 +28928,38 @@ Game.buildHud = function () {
   h.pause = mk('h-btn h-pause', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 4h14v2H5zM5 9h14v2H5zM5 14h9v2H5zM5 19h12v2H5z" fill="currentColor"/></svg>', h.top);
   h.obj = mk('h-obj', '', h.top);
   h.timer = mk('h-timer', '', h.top);
+  // the binoculars: a wide view for finding and tagging people (see src/24_spotter.js)
+  h.spot = mk('h-btn h-spot', '<svg viewBox="0 0 24 24" width="24" height="24"><path d="M7.2 6.5h2.6l1 5.2M16.8 6.5h-2.6l-1 5.2M10.4 12.6h3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.6" cy="15.2" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="17.4" cy="15.2" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/></svg>', h.top);
+  // hold to fast-forward (two arrowheads; "3x" lights while it runs)
+  h.ff = mk('h-btn h-ff', '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 5.5l8.5 6.5L3 18.5zM12 5.5l8.5 6.5-8.5 6.5z" fill="currentColor"/></svg><em>3x</em>', h.top);
   h.pills = mk('h-pills');
   h.cover = mk('pill pill-cover', 'NOISE COVER', h.pills);
   h.alarm = mk('pill pill-alarm', 'ALARM', h.pills);
+  // The read-outs. HOLD is the number the player acts on, so it is the big one. ZERO only shows for
+  // a scope with a dial (anything else is fixed at 100 m and needs no box). The zoom is on the slider.
   h.strip = mk('h-strip');
   h.sRange = mk('cell cell-range', '<i>RANGE</i><b>--</b>', h.strip);
-  h.sWind = mk('cell', '<i>WIND M/S</i><b>--</b>', h.strip);
-  h.sHold = mk('cell cell-hold', '<i>HOLD (MILS)</i><b>--</b>', h.strip);
+  h.sWind = mk('cell cell-wind', '<i>WIND M/S</i><b>--</b>', h.strip);
+  h.sHold = mk('cell cell-hold', '<i>HOLD <em>MILS</em></i><b>--</b>', h.strip);
   h.sZero = mk('cell cell-zero', '<i>ZERO</i><div class="zrow"><span class="zbtn zminus">&minus;</span><b>100</b><span class="zbtn zplus">+</span></div>', h.strip);
-  h.sZoom = mk('cell', '<i>ZOOM</i><b>3.0x</b>', h.strip);
   h.msg = mk('h-msg');
-  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zk"></div></div><span class="zl">ZOOM</span>');
+  // radio lines from the people in the story, as a subtitle across the lower third (sideways only)
+  h.sub = mk('h-sub');
+  // what the last round did, when the kill camera does not show it: "HEADSHOT 412 m", "MISS 0.6 mil high"
+  h.call = mk('h-call', '<b></b><span></span>');
+  // the tagged people's checklist, in the binoculars
+  h.tags = mk('h-tags');
+  // zoom slider: ticks at whole steps of the scope's power, and a handle that shows the zoom
+  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zticks"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
-  h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span>');
+  h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span><em class="bpm"><i>&#9829;</i><b>70</b></em>');
+  // focus: once a contract, two seconds of the world at half speed, when you choose
+  h.focus = mk('h-ctl h-focus', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" class="fg"/></svg><span>FOCUS</span>');
   h.reload = mk('h-ctl h-reload', '<span>RELOAD</span>');
   // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
   h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Z</b> focus &nbsp; <span class="k-ammo"><b>X</b> other rounds &nbsp; </span><b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -28580,6 +28970,7 @@ Game.placeHud = function () {
   if (!h.top) return;
   const P = (e, o) => { for (const k in o) e.style[k] = typeof o[k] === 'number' ? o[k] + 'px' : o[k]; };
   if (G.mode === 'portrait') {
+    document.body.classList.remove('sub-top');
     const sb = V.cy + V.R; // bottom of the scope
     const small = Hh < 720;
     P(h.strip, { left: 8, right: 8, top: sb + 14, width: 'auto', bottom: 'auto' });
@@ -28588,7 +28979,8 @@ Game.placeHud = function () {
     const top = small && G.coach;
     P(h.pills, { left: 0, right: 0, top: top ? G.safe.t + 96 : V.cy - V.R + 10, width: 'auto' });
     P(h.coach, top ? { left: 58, right: 8, top: G.safe.t + 6, width: 'auto', bottom: 'auto' } : { left: 12, right: 12, top: sb + 62, width: 'auto', bottom: 'auto' });
-    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 64), width: 'auto', bottom: 'auto' });
+    P(h.msg, { left: 12, right: 12, top: sb + (G.coach && !top ? 150 : 24 + (h.strip.offsetHeight || 40)), width: 'auto', bottom: 'auto' });
+    P(h.tags, { left: 12, right: 12, top: sb + 10, width: 'auto', bottom: 'auto' });
     document.body.classList.toggle('coach-top', !!top);
     const zt = Math.max(sb + 172, Hh - 226);
     P(h.zoom, { left: 14, top: zt, height: Math.max(120, Hh - zt - 22), bottom: 'auto', right: 'auto' });
@@ -28601,12 +28993,16 @@ Game.placeHud = function () {
       P(h.reload, { right: 26, bottom: 134, width: 54, height: 54, left: 'auto', top: 'auto' });
       P(h.mark, { left: 76, bottom: 22, width: 56, height: 56, right: 'auto', top: 'auto' });
       P(h.ammo, { left: 70, bottom: h.mark.style.display === 'none' ? 26 : 92, right: 'auto', top: 'auto' });
+      P(h.focus, { right: 140, bottom: 102, width: 46, height: 46, left: 'auto', top: 'auto' });
     } else {
       P(h.fire, { right: 20, bottom: 34, width: 118, height: 118, left: 'auto', top: 'auto' });
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
       P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
-      P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
+      // the rounds sit over RELOAD in the right-hand column, clear of the open ground under the
+      // read-outs where a thumb starts a drag (tapping them changes the load)
+      P(h.ammo, { right: 24, bottom: 246, left: 'auto', top: 'auto' });
+      P(h.focus, { right: 166, bottom: 124, width: 52, height: 52, left: 'auto', top: 'auto' });
     }
   } else {
     // Sideways: the picture is the whole screen. Read-outs sit along the bottom between the
@@ -28618,6 +29014,8 @@ Game.placeHud = function () {
     P(h.breath, { right: Rt + 16 + fire + 14, bottom: B + 12, width: br, height: br, left: 'auto', top: 'auto' });
     P(h.reload, { right: Rt + 22, bottom: B + 16 + fire + 12, width: rl, height: rl, left: 'auto', top: 'auto' });
     P(h.ammo, { right: Rt + 22 + rl + 12, bottom: B + 16 + fire + 18, left: 'auto', top: 'auto' });
+    const fz = small ? 46 : 52;
+    P(h.focus, { right: Rt + 16 + fire + 14 + br - fz - 12, bottom: B + 12 + br + 10, width: fz, height: fz, left: 'auto', top: 'auto' });
     P(h.zoom, { left: L + 12, top: 62, height: Math.max(110, Hh - 62 - B - 16), bottom: 'auto', right: 'auto' });
     const sl = L + 74, sr = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150, sb = B + (G.touch ? 8 : 30);
     P(h.strip, { left: sl, top: 'auto', bottom: sb, width: Math.max(250, Math.min(470, W - sl - sr)), right: 'auto' });
@@ -28631,7 +29029,21 @@ Game.placeHud = function () {
     P(h.pills, { left: V.cx - 150, width: 300, right: 'auto', top: pt });
     V.lrfY = pt + 36; // the rangefinder's number in the glass goes just under the pills, clear of the objective and the coach
     P(h.msg, { right: Rt + 10, top: 54, width: Math.min(270, W * 0.3), left: 'auto', bottom: 'auto' });
+    // The subtitle sits in the lower third, between whatever is on the left (MARK, or the zoom
+    // slider) and the HOLD BREATH button, just above the read-outs.
+    // On a narrow phone there is not room enough down there for two lines, so the subtitle takes the
+    // objective line's place at the top instead (body.sub-top hides the objective while one shows).
+    const stripTop = Hh - sb - (h.strip.offsetHeight || 46);
+    const subL = (h.mark.style.display === 'none' || !G.touch ? sl : sl + rl) + 12, subR = G.touch ? Rt + 16 + fire + 14 + br + 12 : Rt + 150;
+    G.subTop = W - subL - subR < 320;
+    if (G.subTop) P(h.sub, { left: L + 62, right: Rt + 66, top: sf.t + (G.coach ? 130 : 4), bottom: 'auto', width: 'auto' });
+    else P(h.sub, { left: subL, right: subR, bottom: Hh - stripTop + 10, width: 'auto', top: 'auto' });
+    document.body.classList.toggle('sub-top', G.subTop);
+    P(h.tags, { left: L + 12, top: 58, width: Math.min(270, W * 0.34), right: 'auto', bottom: 'auto' });
   }
+  // the callout for a round sits just left of the crosshair and a little above: off the target, off
+  // the drop marks below, and clear of the round count and RELOAD on the right
+  P(h.call, { right: W - (V.cx - 58), top: V.cy - 56, left: 'auto', width: 'auto', bottom: 'auto' });
 };
 
 Game.updateHud = function (dt) {
@@ -28643,49 +29055,70 @@ Game.updateHud = function (dt) {
   h.mark.classList.toggle('on', !!mark); set(h.mark.lastChild, mark ? Math.round(mark.d) + ' m' : '');
   const w = sim.wind(), aw = Math.abs(w);
   set(h.sWind.lastChild, A === 'veteran' && !st.scope.smart ? 'read it' : (aw < 0.25 ? 'calm' : '<span class="warr">' + (w > 0 ? '&rarr;' : '&larr;') + '</span> ' + fmt(aw, 1)));
-  let hold = '--';
+  let hold = '<span class="hu">--</span>';
   if ((A !== 'veteran' || st.scope.smart) && V.hold && V.hold.ok && r && r.d) {
     const up = V.hold.up, rt = V.hold.right;
     const us = Math.abs(up) < 0.15 ? 'dead on' : (up > 0 ? '&uarr;' : '&darr;') + fmt(Math.abs(up), 1);
-    const ws = Math.abs(rt) < 0.15 ? '' : ' ' + (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
-    hold = us + ws;
-  } else if (V.hold && !V.hold.ok) hold = 'out of reach';
+    const ws = Math.abs(rt) < 0.15 ? '' : (rt > 0 ? '&rarr;' : '&larr;') + fmt(Math.abs(rt), 1);
+    hold = '<span class="hu">' + us + '</span>' + (ws ? '<span class="hw">' + ws + '</span>' : '');
+  } else if (V.hold && !V.hold.ok) hold = '<span class="hu far">out of reach</span>';
   set(h.sHold.lastChild, hold);
   set(h.sZero.querySelector('b'), st.scope.turret ? String(sh.zeroR) : sh.zeroR + ' m');
-  set(h.sZoom.lastChild, fmt(sh.zoom, 1) + 'x');
-  // zoom slider
+  // zoom slider: the handle carries the zoom it is set to
   const zu = st.zoomMax > st.zoomMin ? (Math.log(sh.zoomT / st.zoomMin) / Math.log(st.zoomMax / st.zoomMin)) : 0;
-  h.zoom.querySelector('.zk').style.bottom = (zu * 100) + '%'; h.zoom.querySelector('.zf').style.height = (zu * 100) + '%';
+  const zk = h.zk || (h.zk = h.zoom.querySelector('.zk')), zf = h.zf || (h.zf = h.zoom.querySelector('.zf'));
+  const zs = (zu * 100).toFixed(2) + '%'; if (zk._b !== zs) { zk._b = zs; zk.style.bottom = zs; zf.style.height = zs; }
+  set(zk.firstChild, Math.abs(sh.zoomT - Math.round(sh.zoomT)) < 0.05 ? String(Math.round(sh.zoomT)) : fmt(sh.zoomT, 1));
   // breath ring
   const fg = h.breath.querySelector('.fg'), frac = clamp(sh.breath / st.breath, 0, 1);
   fg.style.strokeDashoffset = String(289 * (1 - frac));
   h.breath.classList.toggle('on', sh.holding); h.breath.classList.toggle('spent', sh.exhausted > 0 || (!sh.holding && frac < 0.2));
+  // focus: the ring empties over its two seconds; the pulse beats at the heart's rate
+  const ff2 = h.focus.querySelector('.fg'); const fu = G.focusT > 0 ? G.focusT / FOCUS_TIME : G.focusUsed ? 0 : 1;
+  if (ff2._u !== fu) { ff2._u = fu; ff2.style.strokeDashoffset = String(283 * (1 - fu)); }
+  const bpm = Math.round(64 + (sh.heart || 0) * 72 + (sh.holding ? 6 : 0)), bp = h.bpm || (h.bpm = h.breath.querySelector('.bpm'));
+  set(bp.lastChild, String(bpm));
+  G.beat = (G.beat || 0) + dt * bpm / 60; const bt = Math.pow(Math.max(0, Math.sin(G.beat * Math.PI)), 10);
+  bp.firstChild.style.transform = 'scale(' + (1 + bt * 0.35).toFixed(3) + ')';
+  bp.classList.toggle('hi', bpm >= 100);
   // fire button state
   const ready = sim.canFire();
   h.fire.classList.toggle('wait', !ready); h.fire.classList.toggle('charge', sh.chargeT > 0);
   const cyc = sh.reloadT > 0 ? 1 - sh.reloadT / sh.reloadLen : sh.cycleT > 0 ? 1 - sh.cycleT / sh.cycleLen : 1;
   h.fire.style.setProperty('--p', String(clamp(cyc, 0, 1)));
-  set(h.fire.firstChild, sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
+  h.spot.classList.toggle('on', !!G.spotting);
+  set(h.fire.firstChild, G.spotting ? 'RIFLE' : sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
   h.reload.classList.toggle('need', sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0);
   h.reload.classList.toggle('off', sh.ammo >= st.mag || sh.reserve <= 0);
-  // ammo pips
-  const key = sh.ammo + '/' + st.mag + '/' + sh.reserve;
-  if (h.ammo._k !== key) { h.ammo._k = key; let s = ''; const n = Math.min(st.mag, 12); for (let i = 0; i < n; i++) s += '<i class="' + (i < Math.round((sh.ammo / st.mag) * n) ? 'r' : 'e') + '"></i>'; h.ammo.innerHTML = '<div class="pips">' + s + '</div><span>' + sh.ammo + ' <em>+' + sh.reserve + '</em></span>'; }
+  // ammo pips, and the other load (tap to chamber it)
+  const key = sh.ammo + '/' + st.mag + '/' + sh.reserve + '/' + sh.load + '/' + sh.altAmmo + '/' + sh.altReserve;
+  if (h.ammo._k !== key) {
+    h.ammo._k = key; let s = ''; const n = Math.min(st.mag, 12);
+    for (let i = 0; i < n; i++) s += '<i class="' + (i < Math.round((sh.ammo / st.mag) * n) ? 'r' : 'e') + '"></i>';
+    const cur = AMMO_SHORT[st.cfg.ammo] || 'STD', alt = sim.stB ? (sh.load ? sim.stA : sim.stB) : null;
+    h.ammo.innerHTML = '<div class="pips">' + s + '</div><span>' + (sim.stB ? '<u>' + cur + '</u> ' : '') + sh.ammo + (sh.load ? '' : ' <em>+' + sh.reserve + '</em>') + '</span>' +
+      (alt ? '<div class="alt' + (sh.altAmmo + sh.altReserve > 0 ? '' : ' none') + '"><i>&#8644;</i> ' + (AMMO_SHORT[alt.cfg.ammo] || 'STD') + ' <b>' + (sh.altAmmo + sh.altReserve) + '</b></div>' : '');
+    h.ammo.classList.toggle('switch', !!sim.stB); h.ammo.classList.toggle('special', !!sh.load);
+  }
   // pills, timer
   h.cover.classList.toggle('show', sim.covered()); if (sim.covered()) set(h.cover, 'NOISE COVER: ' + String(sim.coverName).toUpperCase());
   h.alarm.classList.toggle('show', sim.alarmT !== null);
+  h.ff.classList.toggle('on', !!G.ffOn); h.ff.classList.toggle('off', !G.canFF());
+  document.body.classList.toggle('ffwd', !!G.ffOn);
+  const subOn = h.sub.children.length > 0; if (G._subOn !== subOn) { G._subOn = subOn; document.body.classList.toggle('sub-on', subOn); }
   const R = sim.rules;
   if (R.time) { const left = R.time - sim.t; set(h.timer, fmtTime(left)); h.timer.classList.toggle('low', left < 15); h.timer.style.display = ''; } else if (sim.clock) { set(h.timer, sim.clock(sim)); h.timer.style.display = ''; } else h.timer.style.display = 'none';
   // radio messages fade out
   const now = sim.t;
-  for (let i = h.msg.children.length - 1; i >= 0; i--) { const c = h.msg.children[i]; if (now > c._until) c.classList.add('out'); if (now > c._until + 0.6) h.msg.removeChild(c); }
+  [h.msg, h.sub].forEach((box) => { for (let i = box.children.length - 1; i >= 0; i--) { const c = box.children[i]; if (now > c._until) c.classList.add('out'); if (now > c._until + 0.6) box.removeChild(c); } });
   if (G.coach) G.coachHud(set);
 };
 // The coach's card, and a glow on whichever button it is asking for.
 Game.coachHud = function (set) {
   const h = Game.hud, o = Game.coach.out; if (!o) return;
   const k = o.kind;
-  set(h.coach.children[0], 'Guided run  &middot;  shot ' + Math.min(o.shot, o.shots) + ' of ' + o.shots);
+  const tl = Game.coach.tier === 1 ? 'What to watch' : Game.coach.tier === 2 ? 'When to shoot' : 'Guided run';
+  set(h.coach.children[0], tl + '  &middot;  shot ' + Math.min(o.shot, o.shots) + ' of ' + o.shots);
   set(h.coach.children[1], esc(o.head) + (o.count !== null ? ' <em>' + Math.ceil(o.count) + '</em>' : ''));
   set(h.coach.children[2], esc(o.text || ''));
   const cls = 'h-coach k-' + k + (o.fire ? ' fire' : '') + (o.text ? '' : ' notext');
@@ -28693,16 +29126,44 @@ Game.coachHud = function (set) {
   h.fire.classList.toggle('go', !!o.fire);
   h.breath.classList.toggle('go', k === 'hold');
   h.reload.classList.toggle('go', k === 'reload');
+  h.ammo.classList.toggle('go', k === 'ammo');
   h.sZero.classList.toggle('go', k === 'dial');
 };
 Game.pushMsg = function (who, text, dur) {
   const G = Game, h = G.hud;
   const hintMsg = who === 'hint';
   if (hintMsg) { for (let i = h.msg.children.length - 1; i >= 0; i--) if (h.msg.children[i].classList.contains('hintbox')) h.msg.removeChild(h.msg.children[i]); const c = el('div', 'hintbox', text); c._until = G.sim.t + (dur || 9); h.msg.insertBefore(c, h.msg.firstChild); while (h.msg.children.length > 2) h.msg.removeChild(h.msg.lastChild); return; }
+  // Sideways, a line from somebody in the story is a subtitle across the lower third, with their
+  // face (if the menus can draw one, CB.portrait) or a badge with their initial. One at a time:
+  // a new line takes the old one's place. Upright, it goes in the message box as before.
+  if (G.mode !== 'portrait') {
+    for (let i = h.sub.children.length - 1; i >= 0; i--) h.sub.removeChild(h.sub.children[i]);
+    const c = el('div', 'radio sub', '<div class="sub-who"></div><div class="sub-tx"><b>' + esc(who) + '</b><span>' + text + '</span></div>');
+    G.speaker(c.firstChild, who);
+    c._until = G.sim.t + Math.max(dur || 5, 2.2 + text.length * 0.055);
+    h.sub.appendChild(c);
+    return;
+  }
   const c = el('div', 'radio', '<b>' + esc(who) + '</b><span>' + text + '</span>');
   c._until = G.sim.t + (dur || 5);
   h.msg.appendChild(c);
   while (h.msg.children.length > 2) h.msg.removeChild(h.msg.firstChild);
+};
+// The face beside a subtitle: the menus' portrait if there is one, otherwise a round badge with the
+// speaker's initial in their own colour.
+const SPEAKER_COL = { Marlow: '#ffaa3c', Pip: '#5fd38a', Varga: '#6fb6ff', Rook: '#ff4a3d', Brandt: '#c58bff', Reyes: '#e2b33c' };
+Game.speaker = function (box, who) {
+  if (CB.portrait) {
+    try {
+      const S = 44, dpr = Math.min(3, window.devicePixelRatio || 1), cv = document.createElement('canvas');
+      cv.width = cv.height = Math.round(S * dpr); cv.style.width = cv.style.height = S + 'px';
+      const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+      CB.portrait(ctx, who, 0, 0, S, 'radio');
+      box.appendChild(cv); box.classList.add('pic'); return;
+    } catch (e) { box.innerHTML = ''; }
+  }
+  const col = SPEAKER_COL[who] || '#a9b4c0';
+  box.innerHTML = '<span style="border-color:' + col + ';color:' + col + '">' + esc(String(who).charAt(0)) + '</span>';
 };
 Game.banner = function (text, cls) { const b = Game.hud.banner; b.className = 'h-banner show ' + (cls || ''); b.innerHTML = text; clearTimeout(b._t); b._t = setTimeout(() => { b.className = 'h-banner'; }, 1700); };
 
@@ -28713,15 +29174,25 @@ Game.start = function (missionId, opts) {
   const gunId = opts.gun || Save.data.equipped;
   const cfg = opts.cfg || (Save.data.guns[gunId] && Save.data.guns[gunId].cfg) || defaultConfig(gunId);
   const st = buildStats(gunId, cfg);
+  const resume = opts.resume || null; delete opts.resume;
   G.mission = M; G.lastStart = { missionId, opts: Object.assign({}, opts, { gun: gunId, cfg }) };
-  const simOpts = { flags: Save.data.flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed };
+  // (a retry runs with the story choices the first attempt had, so the world it replays is the same one)
+  const flags = resume && resume.flags ? resume.flags : Save.data.flags;
+  // the second kind of round (opts.ammo2 from the loadout screen, otherwise the contract's own choice; null for none)
+  const ammo2 = opts.ammo2 !== undefined ? opts.ammo2 : ammo2For(M);
+  const simOpts = { flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed, assist: Save.data.settings.assist, guided: !!opts.guided, ammo2 };
   G.sim = new Sim(M, st, opts.vantage || 0, simOpts);
+  G.lastStart.flags = Object.assign({}, flags);
+  // Everything the player did to the scope, one entry per world step: where it pointed, the zoom and
+  // the zero dial. With it a retry can run the same contract again, off screen, to any moment before
+  // the first shot and come out in exactly the same world (see Game.replay).
+  G.ilog = [];
   // a shadow copy of the mission that can be run ahead to see where a shot will land
   G.oracle = null;
-  if (Save.data.settings.killcam && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
+  if (G.killcamWhen() !== 'off' && CB.KillCam) { try { G.oracle = new Oracle(M, st, opts.vantage || 0, simOpts).attach(G.sim); } catch (e) { G.oracle = null; } }
   // a guided run: the coach reads the mission's own three-star script and shows each step
   G.coach = null;
-  if (opts.guided) { try { G.coach = new Coach(G.sim); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
+  if (opts.guided) { try { G.coach = new Coach(G.sim, opts.guided === true ? 3 : opts.guided); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
   document.body.classList.toggle('guided', !!G.coach);
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
   G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
@@ -28730,13 +29201,19 @@ Game.start = function (missionId, opts) {
   G.view.mark = null; clearTimeout(G.markT);
   const canMark = G.view.canMark(G.sim);
   G.hud.mark.style.display = canMark ? '' : 'none'; G.hud.keys.querySelector('.k-mark').style.display = canMark ? '' : 'none';
+  G.hud.keys.querySelector('.k-ammo').style.display = G.sim.stB ? '' : 'none'; G.hud.ammo._k = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
   h.obj.innerHTML = '<b>' + esc(M.title) + '</b><span>' + esc(typeof M.objective === 'function' ? M.objective(Save.data.flags) : M.objective) + '</span>';
   h.msg.innerHTML = ''; h.fade.className = 'h-fade in';
   h.sZero.classList.toggle('dial', !!st.scope.turret); h.strip.classList.toggle('has-dial', !!st.scope.turret);
+  h.sZero.style.display = st.scope.turret ? '' : 'none';
   h.zoom.style.display = st.zoomMax > st.zoomMin ? '' : 'none';
+  G.zoomTicks(st);
+  h.sub.innerHTML = ''; h.call.className = 'h-call'; G.callT = 0; G.seenFx = null;
+  Spotter.reset(); G.tagN = 0;
+  G.focusT = 0; G.focusUsed = false; h.focus.classList.remove('used'); h.focus.classList.remove('on');
   h.sHold.style.display = Save.data.settings.assist === 'veteran' && !st.scope.smart ? 'none' : '';
   setTimeout(() => { h.fade.className = 'h-fade'; }, 60);
   Sfx.missionStart(G.sim);
@@ -28744,7 +29221,48 @@ Game.start = function (missionId, opts) {
   if (G.resK < 1) { G.resK = Math.min(1, Math.max(0.8, G.resK * 1.25)); G.resize(); } // every contract starts sharp again
   // keep the screen awake while a mission is running, where the browser allows it
   if (navigator.wakeLock && !G.wake) { try { navigator.wakeLock.request('screen').then((w) => { G.wake = w; w.addEventListener('release', () => { G.wake = null; }); }, () => {}); } catch (e) { /* fine */ } }
+  G.ffHeld = false; G.ffOn = false;
+  if (resume) G.replay(resume);
   G.resize();
+};
+// One step of the world, noted in the input log first.
+Game.simStep = function () {
+  const G = Game, sim = G.sim, sh = sim.sh;
+  if (G.ilog) G.ilog.push(sh.ax, sh.ay, sh.zoom, sh.zeroR);
+  sim.step(SIM_STEP);
+};
+// Run the contract on, off screen, to `resume.t` seconds, pointing the scope (and setting the zoom
+// and the zero dial) exactly as the earlier attempt did on every step. The world steps in fixed
+// slices and draws no random number from the player, so it arrives in the same state, to the
+// last raindrop. Only the time before the first shot can be replayed this way. Radio lines still
+// on the air and noise cover still running are put back on screen afterwards.
+Game.replay = function (resume) {
+  const G = Game, sim = G.sim, sh = sim.sh, log = resume.log || [], coach = G.coach;
+  const n = Math.min(Math.floor(log.length / 4), Math.max(0, Math.round(resume.t / SIM_STEP)));
+  for (let i = 0; i < n && sim.state === 'play'; i++) {
+    const j = i * 4;
+    sh.ax = log[j]; sh.ay = log[j + 1]; sh.zoom = sh.zoomT = log[j + 2];
+    if (log[j + 3] !== sh.zeroR) { sh.zeroR = log[j + 3]; sh.zeroAng = Bal.zeroAngle(sim.st, sh.zeroR); }
+    G.simStep(); sim.ev.length = 0;
+    if (coach && (i & 1)) coach.update();
+  }
+  if (G.oracle) G.oracle.catchUp(1e6);
+  sh.zoomT = sh.zoom; sh.breath = sim.st.breath; sh.holding = false; sh.holdK = 0; sh.move = 0; sh.exhausted = 0;
+  sim.msgs.forEach((m) => { if (m.t + m.dur > sim.t + 0.5) G.pushMsg(m.who, m.text, m.t + m.dur - sim.t); });
+  if (sim.covered()) sim.ev.push({ k: 'cover', name: sim.coverName, dur: sim.coverUntil - sim.t });
+  G.view.pax = undefined;
+  G.banner('BACK TO ' + fmtTime(sim.t), 'good');
+};
+// Where "Retry from just before your first shot" picks up: five seconds before it. Null when the
+// first shot came so early that starting over is the same thing.
+Game.retryPoint = function (res) { const t = res && res.firstShotT; return t !== null && t !== undefined && t > 6 ? Math.floor((t - 5) * 10) / 10 : null; };
+// Start the same contract again from just before the first shot of the attempt that just ended.
+// `last` is what UI.results was given; `res` the result. Returns false if there is no such point.
+Game.retryShot = function (last, res) {
+  const t = Game.retryPoint(res);
+  if (t === null || !last || !last.log) return false;
+  UI.launch(last.missionId, Object.assign({}, last.opts, { resume: { log: last.log, t, flags: last.flags } }));
+  return true;
 };
 Game.stop = function () {
   const G = Game;
@@ -28788,7 +29306,7 @@ Game.loop = function (ts) {
   // ---- the kill camera has the picture: it sets the pace, the world follows ----
   if (G.cine && KC && KC.active) {
     const until = KC.advance(dt); let guard = 0;
-    while (sim.state === 'play' && sim.t + SIM_STEP <= until + 1e-9 && guard++ < 60) sim.step(SIM_STEP);
+    while (sim.state === 'play' && sim.t + SIM_STEP <= until + 1e-9 && guard++ < 60) G.simStep();
     G.pumpEvents();
     if (G.state !== 'mission' || !G.sim) return;
     KC.draw(dt);
@@ -28805,25 +29323,34 @@ Game.loop = function (ts) {
     // keyboard nudging for fine aim on a computer
     const k = G.keys, nud = (k.ArrowRight ? 1 : 0) - (k.ArrowLeft ? 1 : 0), nudY = (k.ArrowUp ? 1 : 0) - (k.ArrowDown ? 1 : 0);
     if (nud || nudY) sim.moveAim(nud * dt * 60 / sim.sh.zoom, nudY * dt * 60 / sim.sh.zoom);
-    G.acc = Math.min(G.acc + dt * G.scale, 0.1);
+    // fast-forward while it is held and nothing is happening that matters
+    const ff = G.ffOn = !!(G.ffHeld && G.canFF());
+    if (G.focusT > 0) { G.focusT -= dt; if (G.focusT <= 0) { G.focusT = 0; document.body.classList.remove('focusing'); G.hud.focus.classList.remove('on'); } }
+    const rate = G.focusT > 0 ? FOCUS_RATE : ff ? FF_RATE : 1;
+    G.acc = Math.min(G.acc + dt * G.scale * rate, 0.1 * rate);
     while (G.acc >= SIM_STEP && sim.state === 'play') {
-      sim.step(SIM_STEP); G.acc -= SIM_STEP;
+      G.simStep(); G.acc -= SIM_STEP;
       if (G.oracle && G.oracle.last) { // a round has just left the barrel and we know how it ends
         const pr = G.oracle.last; G.oracle.last = null;
         if (G.startCine(pr)) break;
       }
+      if (ff && !G.canFF()) { G.acc = Math.min(G.acc, SIM_STEP * 0.99); G.ffOn = false; } // the alarm went up, or a round is out: back to real time at once
     }
     if (G.oracle) G.oracle.catchUp(2.5);
+    G.simRate = G.focusT > 0 ? FOCUS_RATE : G.ffOn ? FF_RATE : 1;
   }
   G.pumpEvents();
   if (G.state !== 'mission' || !G.sim) return;
   if (G.cine) { KC.draw(0); return; }
   G.view.updateReadout(sim, dt);
   if (G.coach) G.coach.update(); // after the world has moved on, before the picture is drawn
-  G.view.draw(sim, dt, dt * G.scale);
+  G.watchRounds();
+  G.view.draw(sim, dt, dt * G.scale * (G.simRate || 1));
+  Spotter.draw(G.view);
   if (G.coach) G.coach.draw(G.view, G.view.rt);
+  G.drawSeen(G.view);
   G.updateHud(dt);
-  Sfx.tick(sim, dt, G.scale);
+  Sfx.tick(sim, dt, G.scale * (G.focusT > 0 ? FOCUS_RATE : 1)); // (focus muffles the world, as slow motion does)
 };
 // hand what happened in the world to the picture and the sound
 Game.pumpEvents = function () {
@@ -28837,20 +29364,43 @@ Game.pumpEvents = function () {
     if (e.k === 'msg') G.pushMsg(e.who, e.text, e.dur);
     else if (e.k === 'winning' && !G.cine && sim.kills.length && sim.kills[sim.kills.length - 1].how === 'shot' && sim.t - sim.kills[sim.kills.length - 1].t < 0.1) G.slowT = 0.75;
     else if (e.k === 'alarm') G.banner('ALARM RAISED', 'bad');
+    else if (e.k === 'giveaway') G.noteGiveaway(sim);
     else if (e.k === 'duck') G.banner('RUBBER DUCK FOUND', 'good');
     else if (e.k === 'nobreath') G.hud.breath.classList.add('shake'), setTimeout(() => G.hud.breath.classList.remove('shake'), 300);
     else if (e.k === 'end') G.finish();
   }
 };
+// When the kill camera runs: Save.data.settings.killcamWhen is 'always' (the default, as it always
+// was), 'notable' or 'off'. The older on/off switch (settings.killcam) still turns it off.
+(function () { const f0 = Save.fresh; Save.fresh = function () { const d = f0.apply(this, arguments); d.settings.killcamWhen = 'always'; return d; }; })();
+Game.killcamWhen = function () { const s = Save.data.settings; if (s.killcam === false) return 'off'; return s.killcamWhen === 'notable' || s.killcamWhen === 'off' ? s.killcamWhen : 'always'; };
+// A shot worth the camera on 'notable': a headshot, two at once, a long one (500 m or more, or half as
+// far again as the contract's own range), a moving target, a round through glass or cover, or the
+// last contract of a chapter.
+Game.notable = function (pr) {
+  const sim = Game.sim, M = sim.M, k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], d = k.z - pr.path[0][3];
+  if (pr.kills.length >= 2 || pr.kills.some((q) => q.part === 'head')) return true;
+  if (d >= 500 || (M.range && d >= M.range * 1.5)) return true;
+  if (a && ((a.inVeh && a.inVeh.v > 2) || (!a.inVeh && a.goal !== null))) return true;
+  if (pr.kills.some((q) => q.cover && q.cover.length)) return true;
+  const chap = MISSIONS.filter((m) => m.ch === M.ch);
+  return chap.length > 0 && chap[chap.length - 1] === M;
+};
 // Start the kill camera for a shot the oracle says will finish the contract with a hit on a person.
 Game.startCine = function (pr) {
   const G = Game, sim = G.sim, KC = CB.KillCam, set = Save.data.settings;
-  if (!pr || !KC || !set.killcam || !pr.win || !pr.kills.length || G.cine) return false;
+  if (!pr || !KC || !pr.win || !pr.kills.length || G.cine) return false;
+  const when = G.killcamWhen(); if (when === 'off' || (when === 'notable' && !G.notable(pr))) return false;
   const k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], b = sim.bullets[pr.i];
   if (!a || !b) return false;
   let ok = false;
-  try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
+  // The full film the first time a contract is won and for any notable shot; after that the short cut
+  // (about five seconds), so a replayed contract does not make you sit through the same film again.
+  const rec = Save.data.missions && Save.data.missions[sim.M.id], cut = rec && rec.done && !G.notable(pr) && !sim.M.practice ? 'short' : 'full';
+  try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP, cut }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
   if (!ok) return false;
+  b.cine = true; // (no callout under the crosshair for this round: the kill camera shows what it did)
+  if (G.focusT > 0) { G.focusT = 0; document.body.classList.remove('focusing'); G.hud.focus.classList.remove('on'); }
   G.cine = true; G.acc = 0; document.body.classList.add('cine');
   return true;
 };
@@ -28860,7 +29410,50 @@ Game.finish = function () {
   if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
   G.hud.fade.className = 'h-fade out';
   Sfx.result(sim.result.win);
-  setTimeout(() => { const res = sim.result, M = G.mission, last = G.lastStart; G.stop(); UI.results(M, res, last); }, 1100);
+  const last = G.lastStart; last.log = G.ilog; G.ilog = null;
+  sim.result.retryAt = G.retryPoint(sim.result);
+  G.noteBest(G.mission, sim.result, !!last.opts.guided);
+  G.noteTry(G.mission, sim.result, !!last.opts.guided);
+  setTimeout(() => { const res = sim.result, M = G.mission; G.stop(); UI.results(M, res, last); }, 1100);
+};
+
+// The best score for each contract is kept with its record (bestScore). The result carries the
+// previous best (res.best, null the first time) and res.newBest when this run beat it. A guided run
+// shows its score but never sets a best.
+Game.noteBest = function (M, res, guided) {
+  if (!M || M.practice || !res || !res.score) return;
+  try {
+    const rec = Progress.rec(M.id), prev = rec.bestScore || null;
+    res.best = prev;
+    res.newBest = !!(res.win && !guided && res.score.total > (prev || 0));
+    if (res.newBest) rec.bestScore = res.score.total;
+  } catch (e) { /* no save to read */ }
+};
+
+// ---- help after a fail -------------------------------------------------------------------------
+// Each contract's record counts the runs lost since it was last won (failsSinceWin; guided runs
+// do not count). The fail screen can offer the next level of help with Game.coachOffer(M), which
+// returns { tier, label, desc } (null when the contract has no guided run): after one failure
+// "what to watch", after two "when", after three the full guided run. Game.startCoached(last, tier)
+// starts it, with `last` as UI.results was given it. Coached runs are guided runs: no caches.
+Game.noteTry = function (M, res, guided) {
+  if (!M || M.practice || !res || guided) return;
+  try { const rec = Progress.rec(M.id); rec.failsSinceWin = res.win ? 0 : (rec.failsSinceWin || 0) + 1; } catch (e) { /* no save */ }
+};
+const COACH_TIERS = [null,
+  { label: 'Show me what to watch', desc: 'Who and what matters next, and nothing about when.' },
+  { label: 'Show me when', desc: 'What to watch and when to shoot. The aiming is yours.' },
+  { label: 'Guide me through it', desc: 'Every step, with a mark for the crosshair.' }];
+Game.coachOffer = function (M) {
+  if (!M || M.practice || !M.solve) return null;
+  let n = 1; try { n = Save.data.missions[M.id] && Save.data.missions[M.id].failsSinceWin || 1; } catch (e) { n = 1; }
+  const tier = clamp(n, 1, 3);
+  return Object.assign({ tier }, COACH_TIERS[tier]);
+};
+Game.startCoached = function (last, tier) {
+  if (!last) return false;
+  UI.launch(last.missionId, Object.assign({}, last.opts, { guided: clamp(tier || 3, 1, 3) }));
+  return true;
 };
 
 // ---- controls ---------------------------------------------------------------------------
@@ -28872,7 +29465,33 @@ Game.aimDelta = function (dxPx, dyPx, speed) {
   const inv = Save.data.settings.invert ? -1 : 1;
   sim.moveAim(-(dxPx / ppm) * sens * acc * inv, (dyPx / ppm) * sens * acc * inv);
 };
-Game.fire = function () { const G = Game; if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
+// Fast-forward is allowed while nothing is happening that the player must see in real time: no
+// round in the air, no alarm, nothing charging, the job not yet done or lost.
+Game.canFF = function () {
+  const G = Game, sim = G.sim;
+  if (!sim || G.state !== 'mission' || sim.state !== 'play' || G.paused || G.cine || G.slowT > 0 || G.focusT > 0) return false;
+  if (sim.alarmT !== null || sim.alarmPending || sim.failInfo || sim.winAt || sim.sh.chargeT > 0) return false;
+  for (let i = 0; i < sim.bullets.length; i++) if (sim.bullets[i].alive) return false;
+  return true;
+};
+// Focus: once a contract, two seconds of the world at half speed (the sway, the target, the wind
+// all slow), started when the player chooses.
+Game.focus = function () {
+  const G = Game; if (!G.sim || G.state !== 'mission' || G.paused || G.cine || G.sim.state !== 'play' || G.focusUsed) { if (G.focusUsed) { G.hud.focus.classList.add('shake'); setTimeout(() => G.hud.focus.classList.remove('shake'), 300); } return false; }
+  G.focusUsed = true; G.focusT = FOCUS_TIME; G.ffHeld = false;
+  document.body.classList.add('focusing'); G.hud.focus.classList.add('on'); G.hud.focus.classList.add('used');
+  return true;
+};
+// Chamber the other kind of round (it costs one pull of the bolt).
+const AMMO_SHORT = { am_ball: 'STD', am_match: 'MATCH', am_sub: 'SUB', am_ap: 'AP', am_heavy: 'HEAVY', am_tracer: 'TRACER', am_hmatch: 'MATCH', am_77: 'HEAVY', am_7n1: 'STEEL', am_22hv: 'FAST', am_300sup: 'SUPER', am_300red: 'LIGHT', am_slap: 'SABOT', am_sp: 'SOFT', am_sg_hollow: 'HOLLOW' };
+Game.switchAmmo = function () {
+  const G = Game, sim = G.sim; if (!sim || G.state !== 'mission' || G.paused || G.cine || G.spotting || !sim.stB) return false;
+  const ok = sim.switchAmmo();
+  if (ok) { const nm = PART_BY_ID[sim.st.cfg.ammo]; G.callout('LOADED: ' + (AMMO_SHORT[sim.st.cfg.ammo] || 'STD'), nm ? nm.name : '', 'c-obj'); }
+  else { G.hud.ammo.classList.add('shake'); setTimeout(() => G.hud.ammo.classList.remove('shake'), 300); }
+  return ok;
+};
+Game.fire = function () { const G = Game; if (G.spotting) { Spotter.toggle(false); return; } if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 // MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
 // sky it clears the mark instead. Holding the button (or the M key) down clears it too.
 Game.markTarget = function () {
@@ -28886,8 +29505,22 @@ Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.s
 const MARK_HOLD = 0.6; // seconds held down that clear the mark
 Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
 Game.markUp = function () { clearTimeout(Game.markT); };
-Game.zoomBy = function (f) { const s = Game.sim; if (s) s.setZoom(s.sh.zoomT * f); };
-Game.zoomTo = function (u) { const s = Game.sim; if (s) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
+// The zoom slider's ticks: the scope's lowest power and whole multiples of it up to the highest
+// (3x 6x 9x on the plain scope, 4x 8x 12x on the mil-dot, 5x 10x 15x 20x on the tactical one).
+Game.zoomStops = function (st) {
+  const a = st.zoomMin, b = st.zoomMax, out = [];
+  if (!(b > a)) return out;
+  let step = a; while ((b - a) / step > 4.01) step *= 2;
+  for (let z = a; z <= b + 1e-6; z += step) out.push(z);
+  if (b - out[out.length - 1] > step * 0.35) out.push(b); else out[out.length - 1] = b;
+  return out;
+};
+Game.zoomTicks = function (st) {
+  const box = Game.hud.zoom.querySelector('.zticks'), a = st.zoomMin, b = st.zoomMax;
+  box.innerHTML = Game.zoomStops(st).map((z) => '<span style="bottom:' + ((Math.log(z / a) / Math.log(b / a)) * 100).toFixed(2) + '%"><i></i>' + (Math.abs(z - Math.round(z)) < 0.05 ? Math.round(z) : fmt(z, 1)) + 'x</span>').join('');
+};
+Game.zoomBy = function (f) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.sh.zoomT * f); };
+Game.zoomTo = function (u) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
 Game.bindInput = function () {
   const G = Game, h = G.hud, stage = G.stage;
@@ -28900,11 +29533,12 @@ Game.bindInput = function () {
     if (G.cine) { if (CB.KillCam && CB.KillCam.skip) CB.KillCam.skip(); e.preventDefault(); return; }
     if (onCtl(e.target)) return;
     if (e.pointerType === 'mouse') {
+      if (e.button === 0 && G.spotting) { if (!Spotter.tapAt(G.locked ? G.view.cx : e.clientX, G.locked ? G.view.cy : e.clientY) && !G.locked && stage.requestPointerLock && !G.touch) { try { stage.requestPointerLock(); } catch (er) { /* fine */ } G.mouseAim = true; } return; }
       if (e.button === 0) { if (!G.locked && stage.requestPointerLock && !G.touch) { try { stage.requestPointerLock(); } catch (er) { /* fine */ } G.mouseAim = true; if (G.clickArms) { G.clickArms = false; return; } } G.fire(); }
       else if (e.button === 2) G.sim.holdBreath(!G.sim.sh.holding);
       return;
     }
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp });
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp, x0: e.clientX, y0: e.clientY, t0: e.timeStamp });
     if (ptrs.size === 2) { const a = [...ptrs.values()]; G.pinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), z: G.sim.sh.zoomT }; }
     e.preventDefault();
   });
@@ -28917,18 +29551,25 @@ Game.bindInput = function () {
     const p = ptrs.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y, dtm = Math.max(1, e.timeStamp - p.t);
     p.x = e.clientX; p.y = e.clientY; p.t = e.timeStamp;
-    if (ptrs.size >= 2 && G.pinch) { const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); G.sim.setZoom(G.pinch.z * Math.pow(d / Math.max(20, G.pinch.d), 1.3)); return; }
+    if (ptrs.size >= 2 && G.pinch) { if (G.spotting) return; const a = [...ptrs.values()]; const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); G.sim.setZoom(G.pinch.z * Math.pow(d / Math.max(20, G.pinch.d), 1.3)); return; }
     G.aimDelta(dx, dy, (Math.hypot(dx, dy) / dtm) * 1000);
     e.preventDefault();
   });
-  const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null; };
+  // a quick tap in the binoculars (no drag) tags whoever is under the finger
+  const up = (e) => {
+    const p = ptrs.get(e.pointerId);
+    if (p && G.spotting && e.type === 'pointerup' && ptrs.size === 1 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10 && e.timeStamp - p.t0 < 450) Spotter.tapAt(e.clientX, e.clientY);
+    ptrs.delete(e.pointerId); if (ptrs.size < 2) G.pinch = null;
+  };
   // a quick tap on a radio message or a hint closes it early (a drag that starts there still aims)
   let tap = null;
-  h.msg.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
-  h.msg.addEventListener('pointerup', (e) => {
-    const T = tap; tap = null;
-    if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
-    if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+  [h.msg, h.sub].forEach((area) => {
+    area.addEventListener('pointerdown', (e) => { const box = e.target.closest && e.target.closest('.radio,.hintbox'); tap = box ? { box, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; });
+    area.addEventListener('pointerup', (e) => {
+      const T = tap; tap = null;
+      if (!T || !G.sim || Math.hypot(e.clientX - T.x, e.clientY - T.y) > 12 || e.timeStamp - T.t > 450) return;
+      if (T.box._until > G.sim.t) T.box._until = G.sim.t; // fades out over half a second, then goes
+    });
   });
   stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
   document.addEventListener('pointerlockchange', () => { G.locked = document.pointerLockElement === stage; if (!G.locked && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && G.wasLocked) G.pause(true); G.wasLocked = G.locked; });
@@ -28941,15 +29582,24 @@ Game.bindInput = function () {
     elm.addEventListener('pointerup', r); elm.addEventListener('pointercancel', r); elm.addEventListener('pointerleave', r);
   };
   press(h.fire, () => G.fire());
-  press(h.breath, () => { if (G.sim) G.sim.holdBreath(!G.sim.sh.holding); });
+  press(h.breath, () => { if (G.sim && !G.spotting) G.sim.holdBreath(!G.sim.sh.holding); });
   press(h.reload, () => { if (G.sim) G.sim.reload(); });
   press(h.mark, () => G.markDown(), () => G.markUp());
   press(h.pause, () => G.pause(true));
+  press(h.ff, () => { G.ffHeld = true; }, () => { G.ffHeld = false; });
+  press(h.spot, () => Spotter.toggle());
+  press(h.focus, () => G.focus());
+  press(h.ammo, () => G.switchAmmo());
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
   const zt = h.zoom;
-  const zset = (e) => { const r = zt.querySelector('.zt').getBoundingClientRect(); G.zoomTo(1 - (e.clientY - r.top) / r.height); };
+  // (the ticks pull the handle onto them when it comes close, so 6x is easy to hit exactly)
+  const zset = (e) => {
+    const r = zt.querySelector('.zt').getBoundingClientRect(), s = G.sim; let u = clamp(1 - (e.clientY - r.top) / r.height, 0, 1);
+    if (s && s.st.zoomMax > s.st.zoomMin) G.zoomStops(s.st).forEach((z) => { const us = Math.log(z / s.st.zoomMin) / Math.log(s.st.zoomMax / s.st.zoomMin); if (Math.abs(u - us) < 0.035) u = us; });
+    G.zoomTo(u);
+  };
   zt.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zt.setPointerCapture(e.pointerId); zt._d = true; zset(e); });
   zt.addEventListener('pointermove', (e) => { if (zt._d) zset(e); });
   const zr = () => { zt._d = false; }; zt.addEventListener('pointerup', zr); zt.addEventListener('pointercancel', zr);
@@ -28963,14 +29613,18 @@ Game.bindInput = function () {
     if (e.key === 'Shift') { if (!e.repeat) G.sim.holdBreath(true); }
     else if (e.key === 'r' || e.key === 'R') G.sim.reload();
     else if (e.key === 'm' || e.key === 'M') { if (!e.repeat) G.markDown(); }
+    else if (e.key === 'f' || e.key === 'F') G.ffHeld = true;
+    else if ((e.key === 'b' || e.key === 'B') && !e.repeat) Spotter.toggle();
+    else if ((e.key === 'z' || e.key === 'Z') && !e.repeat) G.focus();
+    else if ((e.key === 'x' || e.key === 'X') && !e.repeat) G.switchAmmo();
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
     else if (e.key === '=' || e.key === '+') G.zoomBy(1.15);
     else if (e.key === '-' || e.key === '_') G.zoomBy(1 / 1.15);
   });
-  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); });
-  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
+  window.addEventListener('keyup', (e) => { G.keys[e.key] = false; if (e.key === 'Shift' && G.sim && G.state === 'mission') G.sim.holdBreath(false); if (e.key === 'm' || e.key === 'M') G.markUp(); if (e.key === 'f' || e.key === 'F') G.ffHeld = false; });
+  window.addEventListener('blur', () => { G.keys = {}; G.markUp(); G.ffHeld = false; if (G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'mission' && !G.paused && G.sim && G.sim.state === 'play' && !Game.noAutoPause) G.pause(true); });
 };
 
@@ -32410,9 +33064,16 @@ const COACH_OBJ = { lamp: 'the lamp', bulb: 'the light', hook: 'the hook', rope:
 const COACH_WAITW = /\b(wait|waits|until|when|once|watch|let|after|before)\b/i;
 const COACH_SHOOTW = /\b(shoot|fire|aim|hit|drop him|drop her|squeeze|put a round|put the cross)\b/i;
 
-function Coach(sim) {
+// Three levels of help, offered one after another as a player keeps failing a contract (see
+// Game.coachOffer):
+//   1 "what to watch"  brackets on who or what matters next, with the walkthrough's words about it;
+//                      no timing, no aim
+//   2 "when"           also the waits, with their countdowns, and NOW when the moment comes;
+//                      the aiming is still the player's
+//   3 the full guided run: everything, including the mark for the crosshair and FIRE NOW
+function Coach(sim, tier) {
   const C = this, M = sim.M;
-  C.sim = sim; C.M = M;
+  C.sim = sim; C.M = M; C.tier = tier === 1 || tier === 2 ? tier : 3;
   // the script, built the way the test bot builds it
   const script = typeof M.solve === 'function' ? M.solve(sim.A, sim.st, sim.flags, sim) : M.solve;
   C.script = (script || []).map((c) => c.slice());
@@ -32457,6 +33118,7 @@ Coach.prototype.guideLine = function (seg, kind) {
   const chunk = G.slice(a, Math.min(b, G.length));
   if (!chunk.length) return null;
   if (kind === 'shoot') { for (let i = chunk.length - 1; i >= 0; i--) if (COACH_SHOOTW.test(chunk[i])) return chunk[i]; return null; }
+  if (kind === 'who') return chunk[0];
   for (let i = 0; i < chunk.length; i++) if (COACH_WAITW.test(chunk[i])) return chunk[i];
   return chunk[0];
 };
@@ -32579,6 +33241,12 @@ Coach.prototype.update = function () {
       o.kind = 'reload'; o.head = 'RELOAD NOW'; o.text = 'Top the rifle up while nothing is happening.';
       C.ahead(o); break;
     }
+    if (k === 'ammo') { // chamber the second load
+      if (sim.st.cfg.ammo === c[1] || (c[2] && sim.st.pen >= c[2]) || !sim.stB || sim.stB.cfg.ammo !== c[1] || el > 20) { C.next(); continue; }
+      const nm = PART_BY_ID[c[1]] ? PART_BY_ID[c[1]].name.toUpperCase() : 'THE OTHER ROUNDS';
+      o.kind = 'ammo'; o.head = 'LOAD ' + nm; o.text = Game.touch ? 'Tap the round count beside RELOAD to chamber them. It costs one pull of the bolt.' : 'Press X to chamber them. It costs one pull of the bolt.';
+      C.ahead(o); break;
+    }
     if (k === 'dial') {
       if (!st.scope.turret) { C.next(); continue; }
       if (S.dialTo === undefined) S.dialTo = clamp(sh.zeroR + Math.round((c[1] - sh.zeroR) / 25) * 25, 50, 2200);
@@ -32590,7 +33258,29 @@ Coach.prototype.update = function () {
     if (COACH_SHOT[k]) { if (C.shotStep(o, S, el)) continue; break; }
     C.next(); // a step this coach does not know: skip it, as the bot would
   }
+  if (C.tier < 3) C.thin(o);
   return o;
+};
+// Less help: take away what the lower levels do not show.
+Coach.prototype.thin = function (o) {
+  const C = this, seg = o.shot - 1;
+  o.aim = null; o.early = false; o.onMark = false;
+  if (o.kind === 'done' || o.kind === 'flight') { o.fire = false; return; }
+  if (C.tier === 1) {
+    // what to watch: who or what, never when
+    const line = C.guideLine(seg, 'who');
+    o.fire = false; o.count = null;
+    o.head = o.target && o.target.kind === 'person' ? 'WATCH THIS ONE' : o.target ? 'WATCH THIS' : 'WATCH';
+    o.text = line || (o.target && o.target.name ? 'Keep an eye on ' + o.target.name + '.' : 'Keep an eye on the marked target.');
+    o.kind = 'watch';
+    return;
+  }
+  // when: the waits and their countdowns stay; a shot is NOW once the rifle is ready
+  if (o.kind === 'shoot') {
+    o.fire = o.ready && !o.charging;
+    o.head = o.charging ? 'KEEP STILL' : o.fire ? 'NOW' : 'GET READY';
+    o.text = C.guideLine(seg, 'shoot') || 'Aim for yourself: allow for the drop and the wind.';
+  }
 };
 
 // The wait card: the walkthrough's own words when they can be matched, a plain line otherwise.
@@ -32710,7 +33400,7 @@ Coach.prototype.draw = function (V, rt) {
       const u = (rt * 1.8) % 1;
       ctx.globalAlpha = 1 - u; ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(mx, my, 10 + u * 16, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
     }
-    const lab = go ? 'FIRE NOW' : o.charging ? 'KEEP STILL' : '';
+    const lab = go ? 'FIRE NOW' : o.charging ? 'KEEP STILL' : '';  // (only with the mark: the full guided run)
     if (lab) { const ly = Math.max(my + 30, low + 16); this.label(ctx, lab, mx, ly < V.H - 60 ? ly : my + 30, col, 16); }
     ctx.globalAlpha = 1;
   }
@@ -32784,7 +33474,7 @@ Coach.play = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed });
+  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) });
   const coach = new Coach(sim), dt = o.dt || 1 / 60, maxT = o.maxT || 400;
   sim.setZoom(st.zoomMax);
   const aimAt = (p) => { // put the crosshair on a world point, as a player would with a finger
@@ -32805,6 +33495,7 @@ Coach.play = function (missionId, gunId, o) {
       if (c.kind === 'hold' && !sim.sh.holding) { sim.holdBreath(true); acted = true; }
       else if (c.kind === 'dial' && sim.sh.zeroR !== c.dial) { if (sim.dial(sign(c.dial - sim.sh.zeroR))) acted = true; }
       else if (c.kind === 'reload') { if (sim.reload()) acted = true; }
+      else if (c.kind === 'ammo') { if (sim.switchAmmo()) acted = true; }
       if (c.aim) { aimAt(c.aim); c = coach.update(); if (c.aim) { aimAt(c.aim); c = coach.update(); } }
       if (c.fire) { if (sim.fire()) { fires++; acted = true; } }
       if (!acted) break;
@@ -32816,6 +33507,485 @@ Coach.play = function (missionId, gunId, o) {
 };
 
 CB.Coach = Coach;
+
+
+// ===== 24_spotter.js =====
+// ---------------------------------------------------------------------------
+// The spotting scope: a wide binocular view for finding people and working
+// out who is who, without the rifle. Tap a person to TAG them (up to four).
+// A tagged person keeps an outline in their own colour in the rifle scope too,
+// a sight cone showing where they can see (red when they could see whoever is
+// under your crosshair fall, where they stand now), and, in the binoculars, a checklist of
+// the brief's description against what they are wearing: "red hat band: yes,
+// case: no".
+// All of it is drawn over the picture from here, and none of it changes the
+// mission: it only reads the simulation (Sim.canSee answers the cone).
+// ---------------------------------------------------------------------------
+const SPOT_ZOOM = 1.7;
+const TAG_COLS = ['#5fe0ff', '#ff6fd8', '#b6f25a', '#ffd84a'];
+const BAG_NAME = { case: 'case', duffel: 'duffel bag', clip: 'clipboard', umbrella: 'umbrella', cane: 'cane', backpack: 'backpack', shopping: 'shopping bag', cup: 'cup', box: 'box', paper: 'paper bag', flowers: 'flowers', guitar: 'guitar case' };
+
+const Spotter = CB.Spotter = {};
+
+// ---- what the brief says the target looks like ----------------------------------------------
+// The features of a target's look that the briefing, objective or intel actually mention, each
+// with a test another person can be checked against. Colours are compared by their plain name
+// ("red", "grey"), the way the brief puts them.
+Spotter.clues = function (M, a, flags) {
+  const L = a.look || {}, txt = (['objective', 'brief', 'intel'].map((k) => { const v = M[k]; const s = typeof v === 'function' ? v(flags || {}) : v; return Array.isArray(s) ? s.join(' ') : s || ''; }).join(' ')).toLowerCase();
+  const has = (...w) => w.some((x) => txt.indexOf(x) >= 0);
+  const cn = (c) => colourName(c || '#2c2f36'), out = [];
+  const add = (label, test) => out.push({ label, test });
+  if (L.hat && HAT_NAME[L.hat]) {
+    const noun = HAT_NAME[L.hat], words = { hat: ['hat'], cap: ['cap'], beanie: ['beanie', 'hat'], 'hard hat': ['hard hat', 'hardhat', 'helmet'], 'top hat': ['top hat', 'white hat', 'hat'], hood: ['hood', 'raincoat'], 'straw hat': ['straw', 'hat'], 'peaked cap': ['cap', 'police'], helmet: ['helmet'], beret: ['beret'] }[noun] || [noun];
+    if (has(...words)) add(cn(L.hatCol) + ' ' + noun, (q) => q.hat === L.hat && cn(q.hatCol) === cn(L.hatCol));
+  }
+  if (L.hatBand && has('band')) add(cn(L.hatBand) + ' hat band', (q) => !!q.hatBand && cn(q.hatBand) === cn(L.hatBand));
+  if (L.coat && has('coat', 'jacket', 'raincoat', 'suit', 'oilskin')) add(cn(L.coat) + (L.long ? ' long coat' : ' coat'), (q) => !!q.coat && cn(q.coat) === cn(L.coat) && !!q.long === !!L.long);
+  if (L.dress && has('dress', 'skirt')) add(cn(L.dress) + ' dress', (q) => !!q.dress && cn(q.dress) === cn(L.dress));
+  if (L.bag && BAG_NAME[L.bag] && has(BAG_NAME[L.bag].split(' ')[0])) add((L.bag === 'umbrella' || L.bag === 'duffel' ? cn(L.bagCol) + ' ' : '') + BAG_NAME[L.bag], (q) => q.bag === L.bag && (L.bag !== 'umbrella' && L.bag !== 'duffel' || cn(q.bagCol) === cn(L.bagCol)));
+  if (L.glasses && has('glasses', 'shades')) add(L.glasses === 'shades' ? 'dark glasses' : 'glasses', (q) => !!q.glasses && (q.glasses === 'shades') === (L.glasses === 'shades'));
+  if (L.hair === 'white' && has('white hair')) add('white hair', (q) => q.hair === 'white');
+  if (L.beard && has('beard')) add('beard', (q) => !!q.beard);
+  if (L.scarf && has('scarf')) add(cn(L.scarf) + ' scarf', (q) => !!q.scarf && cn(q.scarf) === cn(L.scarf));
+  if (L.tie && has('tie')) add(cn(L.tie) + ' tie', (q) => !!q.tie && cn(q.tie) === cn(L.tie));
+  if (L.vest && has('vest')) add(cn(L.vest) + ' vest', (q) => !!q.vest && cn(q.vest) === cn(L.vest));
+  if (L.build === 'big' && has('big', 'heavy')) add('big build', (q) => q.build === 'big');
+  if (L.phones && has('ear defender', 'headphone')) add('ear defenders', (q) => !!q.phones);
+  return out;
+};
+// How a tagged person measures up: against whichever target they match best.
+Spotter.check = function (sim, a) {
+  const ids = sim.rules.kill || [], L = a.look || {};
+  let best = null;
+  ids.forEach((id) => {
+    const t = sim.byId[id]; if (!t) return;
+    const cl = Spotter.clues(sim.M, t, sim.flags); if (!cl.length) return;
+    const rows = cl.map((c) => ({ label: c.label, ok: !!c.test(L) })), n = rows.filter((r) => r.ok).length;
+    if (!best || n / rows.length > best.n / best.rows.length) best = { rows, n, of: id };
+  });
+  return best;
+};
+
+// A tagged person in plain words, without giving away who they are: "Dark hat, grey long coat".
+Spotter.desc = function (a) {
+  const L = (a && a.look) || {}, cn = (c) => colourName(c || '#2c2f36'), p = [];
+  if (L.hat && HAT_NAME[L.hat]) p.push(cn(L.hatCol) + ' ' + HAT_NAME[L.hat]); else if (L.hair === 'white') p.push('white hair');
+  if (L.coat) p.push(cn(L.coat) + (L.long ? ' long coat' : ' coat')); else if (L.dress) p.push(cn(L.dress) + ' dress'); else if (L.vest) p.push(cn(L.vest) + ' vest');
+  if (p.length < 2 && L.bag && BAG_NAME[L.bag]) p.push(BAG_NAME[L.bag]);
+  const s = p.length ? p.join(', ') : 'No hat, plain clothes';
+  return s[0].toUpperCase() + s.slice(1);
+};
+// Whoever is under the crosshair (or the middle of the binoculars) right now, if anyone: the
+// person a tagged watcher's cone is checked against.
+Spotter.aimed = function (sim) {
+  const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y);
+  if (!r) return null;
+  if (r.actor && !r.actor.dead) return r.actor;
+  let best = null, bd = 2;
+  sim.actors.forEach((q) => { if (q.dead || q.gone || q.hidden || q.plane !== r.P) return; const d = Math.abs(q.x - r.x) + (r.y < q.y - 0.3 || r.y > q.y + 2.2 ? 9 : 0); if (d < bd) { bd = d; best = q; } });
+  return best;
+};
+
+// ---- the binoculars -------------------------------------------------------------------------
+Spotter.reset = function () { Game.tags = []; Game.spotting = false; Game.view.noReticle = false; document.body.classList.remove('spotting'); Spotter.panelKey = ''; };
+Spotter.toggle = function (on) {
+  const G = Game, sim = G.sim; if (!sim || G.state !== 'mission' || G.cine || G.paused) return;
+  if (on === undefined) on = !G.spotting;
+  if (on === G.spotting) return;
+  const sh = sim.sh;
+  if (on) { G.spotZoom = sh.zoomT; if (sh.holding) sim.holdBreath(false); sh.zoom = sh.zoomT = SPOT_ZOOM; }
+  else { sh.zoomT = G.spotZoom || sim.st.zoomMin; }
+  G.spotting = on; G.view.noReticle = on;
+  document.body.classList.toggle('spotting', on);
+  Sfx.ui && Sfx.ui(on ? 'tap' : 'back');
+  Spotter.panelKey = '';
+};
+// A tap in the binoculars: tag (or untag) whoever is under the finger. Returns true if it hit someone.
+Spotter.tapAt = function (px, py) {
+  const G = Game, sim = G.sim, V = G.view; if (!sim) return false;
+  let best = null, bd = 1e9;
+  sim.actors.forEach((a) => {
+    if (a.gone || a.hidden || a.dead || !a.plane) return;
+    const f = V.project(sim, a.x, a.y, a.plane.z), s = f[2], top = 1.9 * ((a.look && a.look.h) || 1);
+    const hx = Math.max(12, 0.45 * s), cy = f[1] - (top / 2) * s, hy = Math.max(16, (top / 2) * s + 6);
+    const dx = Math.abs(px - f[0]), dy = Math.abs(py - cy);
+    if (dx > hx || dy > hy) return;
+    const d = dx / hx + dy / hy; if (d < bd) { bd = d; best = a; }
+  });
+  if (!best) return false;
+  const T = G.tags || (G.tags = []), i = T.findIndex((t) => t.id === best.id);
+  if (i >= 0) T.splice(i, 1);
+  else {
+    if (T.length >= TAG_COLS.length) T.shift();
+    const used = T.map((t) => t.col), col = TAG_COLS.find((c) => used.indexOf(c) < 0);
+    T.push({ id: best.id, col, n: (G.tagN = (G.tagN || 0) + 1) });
+  }
+  Sfx.ui && Sfx.ui(i >= 0 ? 'back' : 'tap');
+  Spotter.panelKey = '';
+  return true;
+};
+
+// ---- drawing ------------------------------------------------------------------------------
+Spotter.draw = function (V) {
+  const G = Game, sim = G.sim; if (!sim) return;
+  const ctx = V.ctx;
+  ctx.save(); ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
+  if (V.round) { ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, TAU); ctx.clip(); }
+  const T = (G.tags || []).filter((t) => { const a = sim.byId[t.id]; return a && !a.gone; });
+  G.tags = T;
+  Spotter.aimedNow = T.length ? Spotter.aimed(sim) : null;
+  T.forEach((t) => Spotter.drawCone(ctx, V, sim, t));
+  T.forEach((t) => Spotter.drawOutline(ctx, V, sim, t));
+  if (G.spotting) Spotter.drawGlass(ctx, V);
+  ctx.restore();
+  Spotter.panel(sim);
+};
+// Two round eyepieces side by side: everything outside them dark, a faint rim and a centre dot.
+// (the dark surround is made once per screen size on a canvas of its own: dark everywhere, with the
+// two lenses cut out of it, soft at their edges)
+Spotter.drawGlass = function (ctx, V) {
+  const W = V.W, H = V.H, dpr = V.dpr, key = W + 'x' + H + '@' + dpr;
+  const r = Math.min(H * 0.6, W * 0.3), cy = V.cy, dx = Math.min(W * 0.21, r * 0.78), c1 = V.cx - dx, c2 = V.cx + dx;
+  if (Spotter.maskKey !== key) {
+    const m = Spotter.mask || (Spotter.mask = document.createElement('canvas'));
+    m.width = Math.round(W * dpr); m.height = Math.round(H * dpr);
+    const o = m.getContext('2d'); o.setTransform(dpr, 0, 0, dpr, 0, 0);
+    o.fillStyle = 'rgba(2,3,5,0.94)'; o.fillRect(0, 0, W, H);
+    o.globalCompositeOperation = 'destination-out';
+    [c1, c2].forEach((cx) => { const g = o.createRadialGradient(cx, cy, r * 0.9, cx, cy, r); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); o.fillStyle = g; o.beginPath(); o.arc(cx, cy, r, 0, TAU); o.fill(); });
+    o.globalCompositeOperation = 'source-over';
+    // a gentle darkening toward the rim of each lens
+    o.globalCompositeOperation = 'source-atop';
+    [c1, c2].forEach((cx) => { const g = o.createRadialGradient(cx, cy, r * 0.55, cx, cy, r); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.35)'); o.fillStyle = g; o.fillRect(0, 0, W, H); });
+    o.globalCompositeOperation = 'source-over';
+    Spotter.maskKey = key;
+  }
+  ctx.drawImage(Spotter.mask, 0, 0, W, H);
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(150,170,190,0.3)';
+  ctx.beginPath(); ctx.arc(c1, cy, r - 2, Math.PI * 0.62, Math.PI * 1.38); ctx.stroke();
+  ctx.beginPath(); ctx.arc(c2, cy, r - 2, -Math.PI * 0.38, Math.PI * 0.38); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(V.cx, cy, 1.6, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(V.cx, cy, 9, 0, TAU); ctx.stroke();
+};
+// An outline that hugs the person: a band in the tag's colour drawn around their limbs, made on a
+// small canvas of its own and laid over the picture, so the figure itself is never painted over.
+Spotter.drawOutline = function (ctx, V, sim, t) {
+  const a = sim.byId[t.id]; if (!a || !a.plane) return;
+  const J = actorJoints(a), sc = J.scale || 1, P = (k) => V.project(sim, a.x + J[k][0], a.y + J[k][1], a.plane.z);
+  const h = P('head'), s = h[2];
+  if (s < 0.6) return;
+  const pts = {}; ['head', 'neck', 'hip', 'knL', 'ftL', 'knR', 'ftR', 'sh', 'elL', 'haL', 'elR', 'haR'].forEach((k) => { if (J[k]) pts[k] = P(k); });
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const k in pts) { x0 = Math.min(x0, pts[k][0]); x1 = Math.max(x1, pts[k][0]); y0 = Math.min(y0, pts[k][1]); y1 = Math.max(y1, pts[k][1]); }
+  const hr = FIG.headR * sc * s, limb = Math.max(2.5, 0.13 * sc * s), body = Math.max(4, 0.32 * sc * s), gap = 3, ring = 2;
+  const pad = hr + gap + ring + 4;
+  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  if (x1 < 0 || x0 > V.W || y1 < 0 || y0 > V.H || x1 - x0 > 1400 || y1 - y0 > 1400) return;
+  const dpr = V.dpr, w = Math.ceil((x1 - x0) * dpr), hh = Math.ceil((y1 - y0) * dpr);
+  const c = Spotter.cv || (Spotter.cv = document.createElement('canvas'));
+  if (c.width < w) c.width = w; if (c.height < hh) c.height = hh;
+  const o = c.getContext('2d');
+  o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, w + 2, hh + 2);
+  o.setTransform(dpr, 0, 0, dpr, -x0 * dpr, -y0 * dpr);
+  const shape = (grow) => {
+    o.lineCap = 'round'; o.lineJoin = 'round';
+    const seg = (a1, b1, wd) => { if (!pts[a1] || !pts[b1]) return; o.lineWidth = wd + grow * 2; o.beginPath(); o.moveTo(pts[a1][0], pts[a1][1]); o.lineTo(pts[b1][0], pts[b1][1]); o.stroke(); };
+    seg('hip', 'neck', body); seg('hip', 'knL', limb); seg('knL', 'ftL', limb); seg('hip', 'knR', limb); seg('knR', 'ftR', limb);
+    seg('sh', 'elL', limb); seg('elL', 'haL', limb); seg('sh', 'elR', limb); seg('elR', 'haR', limb); seg('neck', 'head', limb);
+    o.beginPath(); o.arc(pts.head[0], pts.head[1], hr + grow, 0, TAU); o.fill();
+  };
+  o.globalCompositeOperation = 'source-over'; o.strokeStyle = o.fillStyle = 'rgba(0,0,0,0.65)'; shape(gap + ring + 1.5);
+  o.strokeStyle = o.fillStyle = a.dead ? '#8e9aa8' : t.col; shape(gap + ring);
+  o.globalCompositeOperation = 'destination-out'; o.strokeStyle = o.fillStyle = '#000'; shape(gap);
+  o.globalCompositeOperation = 'source-over';
+  ctx.drawImage(c, 0, 0, w, hh, x0, y0, w / dpr, hh / dpr);
+  // the tag's number above the head
+  const lx = h[0], ly = h[1] - hr - gap - 14;
+  ctx.font = '800 11px ' + 'ui-monospace,"SF Mono",Menlo,Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const lab = String(t.n) + (a.dead ? ' X' : '');
+  const tw = ctx.measureText(lab).width + 10;
+  ctx.fillStyle = 'rgba(8,10,14,0.85)'; ctx.fillRect(lx - tw / 2, ly - 8, tw, 16);
+  ctx.fillStyle = a.dead ? '#8e9aa8' : t.col; ctx.fillText(lab, lx, ly + 0.5);
+};
+// Where a tagged person can see: a wedge from their eyes in the way they face, as far as they would
+// notice a body (further in the light, a few metres in the dark), red when whoever is under your
+// crosshair is standing where they would see him fall.
+Spotter.drawCone = function (ctx, V, sim, t) {
+  const a = sim.byId[t.id], S = sim.S; if (!a || a.dead || a.hidden || !a.plane || a.blind) return;
+  const z = a.plane.z, eyeY = a.y + 1.6 * ((a.look && a.look.h) || 1), face = a.state === 'susp' ? (Math.sin(sim.t * 3) > 0 ? 1 : -1) : a.face || 1;
+  const far = (a.role === 'guard' || a.state === 'susp' ? 32 : 24) * (a.eyes || 1) * (S.seeMul || 1);
+  const zone = a.room && S.rooms[a.room] ? a.room : a.zone;
+  // would this person see whoever you are aiming at fall, where they stand now?
+  const T = Spotter.aimedNow, sees = !!(T && T !== a && T.zone && sim.canSee(a, T.x, T.y, T.zone));
+  const col = sees ? '#ff4a3d' : t.col;
+  // walk out along their line of sight a metre at a time; a dark stretch is only seen close up
+  const step = 1, quads = [];
+  for (let d = 0; d < far; d += step) {
+    const x = a.x + face * d, lit = S.isLit(zone, x + face * step * 0.5);
+    if (!lit && d > 4) continue;
+    quads.push(d);
+  }
+  if (!quads.length) return;
+  const spread = (d) => 0.5 + Math.min(3.5, d * 0.16);
+  ctx.save();
+  ctx.globalAlpha = sees ? 0.3 : 0.12;
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  quads.forEach((d) => {
+    const xa = a.x + face * d, xb = a.x + face * Math.min(far, d + step);
+    const A1 = V.project(sim, xa, eyeY + spread(d), z), A2 = V.project(sim, xb, eyeY + spread(d + step), z), B2 = V.project(sim, xb, eyeY - spread(d + step), z), B1 = V.project(sim, xa, eyeY - spread(d), z);
+    ctx.moveTo(A1[0], A1[1]); ctx.lineTo(A2[0], A2[1]); ctx.lineTo(B2[0], B2[1]); ctx.lineTo(B1[0], B1[1]); ctx.closePath();
+  });
+  ctx.fill();
+  ctx.globalAlpha = sees ? 0.9 : 0.5; ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+  const e0 = V.project(sim, a.x, eyeY, z), last = quads[quads.length - 1] + step, e1 = V.project(sim, a.x + face * last, eyeY + spread(last), z), e2 = V.project(sim, a.x + face * last, eyeY - spread(last), z);
+  ctx.beginPath(); ctx.moveTo(e1[0], e1[1]); ctx.lineTo(e0[0], e0[1]); ctx.lineTo(e2[0], e2[1]); ctx.stroke();
+  ctx.restore();
+};
+
+// ---- the checklist, in the binoculars ------------------------------------------------------------
+Spotter.panel = function (sim) {
+  const G = Game, box = G.hud.tags; if (!box) return;
+  const T = G.tags || [];
+  const key = (G.spotting ? 1 : 0) + '|' + T.map((t) => t.id + (sim.byId[t.id] && sim.byId[t.id].dead ? 'd' : '')).join(',');
+  if (key === Spotter.panelKey) return;
+  Spotter.panelKey = key;
+  if (!G.spotting) { box.innerHTML = ''; return; }
+  if (!T.length) { box.innerHTML = '<div class="tg-help"><b>BINOCULARS</b><span>Tap a person to tag them. A tagged person keeps an outline and a sight cone in your scope, and is checked against the brief here.</span></div>'; return; }
+  box.innerHTML = T.map((t) => {
+    const a = sim.byId[t.id], ck = a && Spotter.check(sim, a);
+    const head = '<div class="tg-hd"><i style="background:' + t.col + '">' + t.n + '</i><b>' + esc(Spotter.desc(a)) + '</b>' + (a && a.dead ? '<em>down</em>' : ck ? '<em>' + ck.n + ' of ' + ck.rows.length + '</em>' : '') + '</div>';
+    const rows = ck ? '<div class="tg-ck">' + ck.rows.map((r) => '<span class="' + (r.ok ? 'y' : 'n') + '">' + (r.ok ? '&#10003; ' : '&#10007; ') + esc(r.label) + '</span>').join('') + '</div>' : '<div class="tg-ck"><span class="q">The brief describes nobody to check against.</span></div>';
+    return '<div class="tg">' + head + rows + '</div>';
+  }).join('');
+};
+
+
+// ===== 25_hudfx.js =====
+// ---------------------------------------------------------------------------
+// What the scope tells you about your own shots and about being seen, drawn
+// over the picture after the scene (never inside it):
+// - the callout under the crosshair for a round the kill camera did not follow:
+//   "HEADSHOT 412 m", "MISS 0.6 mil high, 0.3 left", "STOPPED BY BODY ARMOUR";
+// - the moment somebody gives the game away, a red ring on them (or an arrow
+//   at the edge of the picture pointing to them) with what they noticed.
+// Display only: none of this changes the mission.
+// ---------------------------------------------------------------------------
+const CALL_OBJ = { lamp: 'LAMP OUT', bulb: 'LIGHT OUT', hook: 'HOOK SNAPPED', rope: 'ROPE CUT', barrel: 'DRUM HIT', tank: 'TANK HIT', fuse: 'FUSE BOX OUT', bell: 'BELL RUNG', horn: 'HORN', bottle: 'BOTTLE BROKEN', can: 'CAN HIT', pot: 'POT BROKEN', cctv: 'CAMERA OUT', valve: 'VALVE OPEN', radio: 'RADIO OUT', dish: 'DISH OUT', lock: 'LOCK SHOT OFF', flare: 'FLARE LIT', glint: 'SCOPE BROKEN', armour: 'GLASS HELD', junction: 'CABLE DOWN' };
+
+// Show the callout for every round that has come to rest since the last frame.
+Game.watchRounds = function () {
+  const G = Game, sim = G.sim; if (!sim) return;
+  for (let i = sim.bullets.length - 1; i >= 0; i--) {
+    const b = sim.bullets[i];
+    if (b.alive || b._told) continue;
+    b._told = true;
+    if (b.cine || sim.t - b.endT > 0.5) continue; // the kill camera showed this one (or it is old news)
+    const c = G.roundOutcome(sim, b);
+    if (c) G.callout(c.head, c.sub, c.kind);
+  }
+};
+// What one round did, in a few words.
+Game.roundOutcome = function (sim, b) {
+  const hits = b.hits || [];
+  const fmtD = (d) => Math.round(d) + ' m';
+  if (hits.length) {
+    const lethal = hits.filter((h) => h.lethal), first = lethal[0] || hits[0];
+    if (lethal.length >= 2) return { head: lethal.length === 2 ? 'TWO WITH ONE ROUND' : lethal.length + ' WITH ONE ROUND', sub: fmtD(first.d), kind: 'c-hit' };
+    if (!first.lethal) return { head: 'HIT, NOT DOWN', sub: 'a ' + (first.part === 'leg' ? 'leg' : 'arm') + ': they felt that', kind: 'c-bad' };
+    const bad = first.role === 'civ' || first.role === 'vip' || first.role === 'hostage';
+    return { head: bad ? 'WRONG PERSON' : first.part === 'head' ? 'HEADSHOT' : 'HIT', sub: fmtD(first.d), kind: bad ? 'bad' : 'hit' };
+  }
+  if (b.vest) return { head: 'STOPPED BY BODY ARMOUR', sub: 'the vest took it', kind: 'c-bad' };
+  if (b.obj && b.obj.kind !== 'duck') return { head: CALL_OBJ[b.obj.kind] || 'HIT', sub: fmtD(b.obj.plane.z - b.oz), kind: 'c-obj' };
+  if (b.obj) return null; // the duck has its own banner
+  return Game.missBy(sim, b);
+};
+// Where a round that hit nobody went, against the person (or thing) it passed closest to, in the
+// player's own terms: mils high or low, left or right, at that person's distance.
+Game.missBy = function (sim, b) {
+  const tr = b.trail; if (!tr || tr.length < 2) return { head: 'MISS', sub: '', kind: 'c-miss' };
+  const at = (z) => { // where the round was at depth z (straight on past its end, if it stopped short)
+    for (let i = 1; i < tr.length; i++) if (tr[i][2] >= z) { const p = tr[i - 1], q = tr[i], f = clamp((z - p[2]) / Math.max(1e-6, q[2] - p[2]), 0, 1); return { x: lerp(p[0], q[0], f), y: lerp(p[1], q[1], f), short: false }; }
+    const p = tr[Math.max(0, tr.length - 2)], q = tr[tr.length - 1], f = (z - q[2]) / Math.max(1e-6, q[2] - p[2]);
+    return { x: q[0] + (q[0] - p[0]) * f, y: q[1] + (q[1] - p[1]) * f, short: true };
+  };
+  let best = null;
+  const consider = (x, y, z, isPerson, label) => {
+    const p = at(z), d = Math.hypot(p.x - x, p.y - y);
+    if (d < (isPerson ? 3 : 1.5) && (!best || d - (isPerson ? 0.4 : 0) < best.score)) best = { x, y, z, p, d, score: d - (isPerson ? 0.4 : 0), label };
+  };
+  sim.actors.forEach((a) => {
+    if (a.gone || a.hidden || (a.dead && sim.t - a.deathAtT > 1.5) || !a.plane) return;
+    const h = sim.partPoint(a, 'head'), t = sim.partPoint(a, 'torso'), p = at(t.z);
+    const near = Math.hypot(p.x - h.x, p.y - h.y) < Math.hypot(p.x - t.x, p.y - t.y) ? h : t;
+    consider(near.x, near.y, near.z, true);
+  });
+  sim.S.objects.forEach((o) => { if (o.alive !== false && o.plane && o.r > 0 && o.kind !== 'duck' && CALL_OBJ[o.kind]) consider(o.x, o.y, o.plane.z, false); });
+  if (!best) return { head: 'MISS', sub: 'nowhere near anyone', kind: 'c-miss' };
+  const e = { x: b.ox, y: b.oy, z: b.oz }, d = best.z - e.z;
+  if (best.p.short && tr[tr.length - 1][2] < best.z - 1) return { head: 'BLOCKED', sub: 'something stopped it short of ' + (best.label || 'them') + ' at ' + Math.round(tr[tr.length - 1][2] - b.oz) + ' m', kind: 'c-miss' };
+  const up = ((best.p.y - best.y) / d) * 1000, rt = ((best.p.x - best.x) / d) * 1000;
+  const parts = [];
+  if (Math.abs(up) >= 0.1) parts.push(fmt(Math.abs(up), 1) + ' mil ' + (up > 0 ? 'high' : 'low'));
+  if (Math.abs(rt) >= 0.1) parts.push(fmt(Math.abs(rt), 1) + ' ' + (parts.length ? '' : 'mil ') + (rt > 0 ? 'right' : 'left'));
+  return { head: 'MISS', sub: parts.length ? parts.join(', ') : 'a hair off', kind: 'c-miss' };
+};
+Game.callout = function (head, sub, kind) {
+  const c = Game.hud.call;
+  c.className = 'h-call ' + (kind || '') ; void c.offsetWidth; c.className = 'h-call show ' + (kind || '');
+  c.firstChild.textContent = head; c.lastChild.textContent = sub || '';
+  c.lastChild.style.display = sub ? '' : 'none';
+  clearTimeout(c._t); c._t = setTimeout(() => { c.classList.remove('show'); }, kind === 'c-miss' ? 2600 : 2000);
+};
+
+// ---- being seen ------------------------------------------------------------------------------
+// The first person who gives the game away is ringed in red for a few seconds, with what they
+// noticed. Off the picture, an arrow at the edge points to them. (sim.seenBy has the rest.)
+Game.seenFx = null;
+Game.noteGiveaway = function (sim) {
+  const s = sim.seenBy; if (!s) return;
+  const a = s.id ? sim.byId[s.id] : null;
+  Game.seenFx = { a, at: s.where, what: s.what, until: Game.view.rt + 3.4, t0: Game.view.rt };
+};
+Game.drawSeen = function (V) {
+  const F = Game.seenFx, sim = Game.sim; if (!F || !sim) return;
+  if (V.rt > F.until) { Game.seenFx = null; return; }
+  const ctx = V.ctx, a = F.a, u = (V.rt - F.t0);
+  let x, y, z;
+  if (a && !a.gone && a.plane) { x = a.x; y = a.y + 1.0; z = a.plane.z; } else if (F.at) { x = F.at.x; y = F.at.y + 1; z = F.at.z; } else return;
+  const p = V.project(sim, x, y, z), s = Math.max(14, p[2] * 1.15);
+  const fade = clamp((F.until - V.rt) / 0.6, 0, 1);
+  ctx.save(); ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
+  ctx.globalAlpha = fade;
+  const col = '#ff4a3d';
+  const sf0 = Game.safe || { l: 0, r: 0 };
+  const inside = V.round ? Math.hypot(p[0] - V.cx, p[1] - V.cy) < V.R - 24 : p[0] > sf0.l + 120 && p[0] < V.W - sf0.r - 160 && p[1] > 60 && p[1] < V.H - 70;
+  if (inside) {
+    const r = s + 6 + Math.sin(u * 9) * 3;
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 2.6; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU); ctx.stroke();
+    Game.label(ctx, 'SEEN: ' + F.what.toUpperCase(), p[0], p[1] - r - 12, col, 12);
+  } else {
+    // an arrow on the edge of the clear part of the picture (not under the zoom slider or the
+    // buttons), on the line from the middle to them
+    const cx = V.cx, cy = V.cy, dx = p[0] - cx, dy = p[1] - cy, ang = Math.atan2(dy, dx), sf = Game.safe || { l: 0, r: 0 };
+    const ex = V.round ? V.R - 34 : (dx < 0 ? cx - (sf.l + 150) : V.W - sf.r - 190 - cx), ey = V.round ? V.R - 34 : (dy < 0 ? cy - 80 : V.H - 110 - cy);
+    const k = Math.min(Math.abs(ex / (dx || 1e-6)), Math.abs(ey / (dy || 1e-6)));
+    const ax = cx + dx * k, ay = cy + dy * k;
+    ctx.save(); ctx.translate(ax, ay); ctx.rotate(ang);
+    ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-9, -13); ctx.lineTo(-3, 0); ctx.lineTo(-9, 13); ctx.closePath();
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.stroke(); ctx.fillStyle = col; ctx.fill();
+    ctx.restore();
+    Game.label(ctx, 'SEEN', ax - Math.cos(ang) * 34, ay - Math.sin(ang) * 26, col, 12);
+  }
+  ctx.restore();
+};
+// Lettering over the picture: dark edge, bright fill, readable on snow and on night water.
+Game.label = function (ctx, s, x, y, col, size) {
+  ctx.font = '800 ' + size + 'px "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(s).width;
+  ctx.fillStyle = 'rgba(8,10,14,0.82)'; ctx.fillRect(x - w / 2 - 6, y - size * 0.75, w + 12, size * 1.5);
+  ctx.fillStyle = col; ctx.fillText(s, x, y + 0.5);
+};
+
+
+// ===== 26_envkills.js =====
+// ---------------------------------------------------------------------------
+// Things in a scene that kill by accident, beyond the hooks and loads in the
+// scene kit. Each one is a shootable object with its own drawing; what it does
+// runs on the simulation's clock (sim.after), so a replay or the shot oracle
+// sees exactly the same thing happen at exactly the same moment.
+// ---------------------------------------------------------------------------
+
+// A live cable in a puddle. A junction box hangs under a shop awning and feeds
+// the sign above it, and the pavement under it is wet. Shoot the box and the
+// cable tears loose, swings down into the water, and whoever is standing in the
+// puddle is electrocuted: an accident, which people gawk at rather than run
+// from. The breaker trips a moment later and the cable goes dead.
+//   o.x, o.y   the box        o.top   where the cable comes down from (the sign)
+//   o.px, o.pr the puddle's middle and half width       o.floor  the ground
+const CABLE_FALL = 0.62, CABLE_LIVE = 0.75;
+K.liveCable = function (S, P, o) {
+  const bx = o.x, by = o.y, top = o.top, floor = o.floor || 0, px = o.px === undefined ? bx + 0.5 : o.px, pr = o.pr || 0.8;
+  const lx = bx + (o.lie === undefined ? 0.3 : o.lie);             // where the torn end comes to rest
+  const cab = S.tone('#101215', P), box = S.tone('#6b737c', P), boxD = S.tone('#3c4249', P), yel = S.tone('#e2b33c', P, true);
+  const C = { id: o.id || 'junction', x: bx, y: by, px, pr, floor, lx, plane: P };
+  // the puddle, under everyone's feet: dark water with the light lying on it, and rings from the rain
+  P.add({ x0: px - pr - 1, x1: px + pr + 1, layer: 0, draw(ctx, env) {
+    const s = env.s, y = floor + 0.015, ry = Math.max(0.05, pr * 0.085);
+    ctx.fillStyle = 'rgba(8,10,14,0.55)'; ctx.beginPath(); ctx.ellipse(px, y, pr, ry, 0, 0, TAU); ctx.fill();
+    if (s > 5) { ctx.fillStyle = 'rgba(170,190,210,0.2)'; ctx.beginPath(); ctx.ellipse(px - pr * 0.15, y + ry * 0.2, pr * 0.62, ry * 0.32, 0, 0, TAU); ctx.fill(); }
+    if (s > 9) {
+      ctx.strokeStyle = 'rgba(200,215,230,0.35)'; ctx.lineWidth = Math.max(0.012, env.px * 0.6); ctx.beginPath();
+      for (let i = 0; i < 4; i++) { const u = (env.t * 0.9 + i * 0.27 + kxH(i, px)) % 1, cx = px + (kxH(i * 3 + Math.floor(env.t * 0.9 + i * 0.27), 9) - 0.5) * pr * 1.3, r = 0.04 + u * 0.22; ctx.moveTo(cx + r, y); ctx.ellipse(cx, y, r, r * 0.18, 0, 0, TAU); }
+      ctx.stroke();
+    }
+    // while the cable is live the water flickers blue-white
+    const u = C.hitT === undefined ? -1 : env.t - C.hitT - CABLE_FALL;
+    if (u >= 0 && u < CABLE_LIVE + 0.2) {
+      const f = (0.55 + 0.45 * Math.sin(env.t * 71)) * (1 - u / (CABLE_LIVE + 0.2));
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(lx, y, 0.02, lx, y, pr * 1.4); g.addColorStop(0, 'rgba(190,225,255,' + (0.85 * f).toFixed(3) + ')'); g.addColorStop(1, 'rgba(120,170,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(px, y, pr * 1.2, ry * 3.5, 0, 0, TAU); ctx.fill(); ctx.restore();
+    }
+  } });
+  // where the end of the cable is: on the box, falling, or lying in the water
+  const endAt = (t) => {
+    if (C.hitT === undefined || t < C.hitT) return [bx, by - 0.22, 0];
+    const u = Math.min(1, (t - C.hitT) / CABLE_FALL), e = u * u;
+    return [bx + (lx - bx) * e + Math.sin(u * Math.PI) * 0.35, by - 0.22 + (floor + 0.04 - by + 0.22) * e, u];
+  };
+  const ob = S.obj({ kind: 'junction', id: C.id, plane: P, x: bx, y: by, r: 0.26, mat: 'metal', breakable: true, layer: 2, cable: C,
+    draw(ctx, env) {
+      const s = env.s, [ex, ey, u] = endAt(env.t);
+      // the cable from the sign: taut down to the box, then slack once it has torn loose
+      ctx.strokeStyle = cab; ctx.lineWidth = Math.max(0.045, env.px * 1.1); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(bx, top);
+      if (C.hitT === undefined) ctx.lineTo(bx, by + 0.22);
+      else if (u < 1) ctx.quadraticCurveTo(bx + (ex - bx) * 0.2, (top + ey) * 0.5 - 0.3 * u, ex, ey);
+      else { ctx.quadraticCurveTo(bx - 0.05, floor + 0.6, bx + (lx - bx) * 0.5, floor + 0.05); ctx.lineTo(lx, floor + 0.04); }
+      ctx.stroke(); ctx.lineCap = 'butt';
+      if (C.hitT === undefined) {
+        // the box: grey steel with a lid seam, a yellow warning label and a gland at the bottom
+        R4(ctx, bx - 0.18, by - 0.22, 0.36, 0.44, box); R4(ctx, bx - 0.18, by + 0.17, 0.36, 0.05, boxD);
+        if (s > 6) { R4(ctx, bx - 0.09, by - 0.04, 0.18, 0.13, yel); R4(ctx, bx - 0.04, by - 0.3, 0.08, 0.08, boxD); }
+        if (s > 14) { ctx.fillStyle = cab; ctx.beginPath(); ctx.moveTo(bx, by + 0.07); ctx.lineTo(bx - 0.035, by - 0.005); ctx.lineTo(bx + 0.005, by - 0.005); ctx.lineTo(bx - 0.02, by - 0.06); ctx.lineTo(bx + 0.035, by + 0.02); ctx.lineTo(bx - 0.005, by + 0.02); ctx.closePath(); ctx.fill(); }
+        return;
+      }
+      // torn loose: the broken box rides the end down, spitting sparks while the line is live
+      ctx.save(); ctx.translate(ex, ey); ctx.rotate(u * 2.2); R4(ctx, -0.13, -0.06, 0.26, 0.2, boxD); if (s > 6) R4(ctx, -0.07, 0, 0.12, 0.08, yel); ctx.restore();
+      const live = env.t - C.hitT < CABLE_FALL + CABLE_LIVE;
+      if (live && s > 2) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(205,232,255,0.95)'; ctx.lineWidth = Math.max(0.02, env.px * 0.9); ctx.beginPath();
+        const k = Math.floor(env.t * 30);
+        for (let i = 0; i < 4; i++) { let x = ex, y = ey; ctx.moveTo(x, y); for (let j = 0; j < 3; j++) { x += (kxH(k + i * 7, j) - 0.5) * 0.5; y += (kxH(k + i * 5, j + 3) - 0.3) * 0.28; ctx.lineTo(x, Math.max(floor, y)); } }
+        ctx.stroke();
+        const g = ctx.createRadialGradient(ex, ey, 0.01, ex, ey, 0.6); g.addColorStop(0, 'rgba(220,240,255,0.9)'); g.addColorStop(1, 'rgba(140,190,255,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, 0.6, 0, TAU); ctx.fill(); ctx.restore();
+      }
+    },
+    onHit(sim, ob) {
+      if (C.hitT !== undefined) return;
+      C.hitT = sim.t;
+      sim.after(CABLE_FALL, () => {
+        // the end hits the water: everyone standing in it, now and while the breaker holds
+        const zap = () => {
+          sim.ev.push({ k: 'zap', x: lx, y: floor + 0.1, plane: P });
+          sim.actors.forEach((a) => {
+            if (a.dead || a.gone || a.hidden || a.inVeh || a.room || a.behind || !a.plane) return;
+            if (Math.abs(a.plane.z - P.z) > 1.5 || Math.abs(a.x - px) > pr + 0.25 || Math.abs(a.y - floor) > 0.4) return;
+            sim.killActor(a, 'torso', 'accident', null);
+          });
+        };
+        zap(); sim.noise(lx, floor + 0.5, P, 'pop', 7); sim.emit('zap:' + C.id);
+        for (let i = 1; i <= 3; i++) sim.after((i * CABLE_LIVE) / 3, zap);
+      });
+    } });
+  C.ob = ob;
+  return C;
+};
 
 
 // ===== 30_missions_core.js =====
@@ -32898,6 +34068,12 @@ function apReaches(st, pen) {
   return st.pen - nowAdd + ap.mod.penAdd >= pen;
 }
 
+// The second kind of round a contract hands out with the rifle's own (a few rounds, chambered during
+// the mission at the cost of one pull of the bolt). A mission can name its own with `ammo2`; the
+// default is armour-piercing, which is what the cover, glass and car-door contracts want. The
+// loadout screen may let the player choose another and pass it to UI.launch as opts.ammo2.
+function ammo2For(M) { return M && M.ammo2 !== undefined ? M.ammo2 : 'am_ap'; }
+
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
   if (M.range && st.eff < M.range) return 'Not enough reach: this job is at ' + M.range + ' m.';
@@ -32907,11 +34083,12 @@ function gunAllowed(M, st) {
   if (need.glass && st.pen < 0.3) return 'Too weak to shoot through window glass.';
   if (need.rof && st.cycle > need.rof) return 'Too slow between shots for this job.';
   if (need.mag && st.mag < need.mag) return 'Not enough rounds in the magazine for this job.';
-  if (need.pen && st.pen < need.pen) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
+  // (armour-piercing rounds come along as the second load, so any rifle that can fire them will do)
+  if (need.pen && st.pen < need.pen && !(ammo2For(M) === 'am_ap' && apReaches(st, need.pen))) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
   if (M.allow) { const r = M.allow(st); if (r) return r; }
   return null;
 }
-CB.MISSIONS = MISSIONS;
+CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For;
 
 
 // ===== 31_missions_ch1.js =====
@@ -32991,22 +34168,55 @@ mission({
   reward: { cr: 600, xp: 170 },
 });
 
+// c1m3: would a walker see the street spotter fall if he were shot in the thunder that starts at T0?
+// Nothing on the street changes until then, so this reads it straight off: every walker already out
+// in the rain, and every one due to come in, walked on at full pace looking ahead of them. The body
+// has to lie unseen until the job is over: 2.8 s after the shot with the roof spotter already down,
+// or until the thunder after this one when he is not. Returns null if no shot in this thunder is
+// safe, otherwise { by }: the latest moment a shot is still safe (by the end of the thunder, or
+// sooner when a walker will turn up soon after: then the shot has to be quick).
+function c1m3Clear(sim, T0) {
+  const t2 = sim.byId.t2; if (!t2 || t2.dead || sim.alarmT !== null) return null;
+  const after = 0.25 + (sim.alive('t1') ? 11 + 2.7 + 3.1 : 3.1), T1 = T0 + 2.7 + after, walkers = [];
+  sim.actors.forEach((a) => { if (/^u\d/.test(a.id) && !a.dead && !a.gone && a.goal !== null) walkers.push({ x: a.x, dir: sign(a.goal - a.x) || a.face, v: WALK * a.speed, t0: sim.t, goal: a.goal }); });
+  for (let m = 0; 10 + 22 * m <= T1; m++) { const ts = 10 + 22 * m, dir = m % 2 ? -1 : 1; if (ts > sim.t) walkers.push({ x: dir > 0 ? -47 : 47, dir, v: WALK * 1.5, t0: ts, goal: dir > 0 ? 47 : -47 }); }
+  const eye = { zone: t2.zone, y: t2.y, role: 'civ', state: 'calm', face: 1, x: 0 };
+  let seen = Infinity;
+  for (let tau = T0; tau <= T1 && seen === Infinity; tau += 0.05) {
+    for (let i = 0; i < walkers.length; i++) {
+      const w = walkers[i]; if (tau < w.t0) continue;
+      const x = w.x + w.dir * w.v * (tau - w.t0); if ((x - w.goal) * w.dir > 0) continue;
+      eye.x = x; eye.face = w.dir;
+      if (sim.canSee(eye, t2.x, t2.y, t2.zone)) { seen = tau; break; }
+    }
+  }
+  const by = Math.min(T0 + 2.7, seen - after);
+  return by - T0 >= 1.3 ? { by, quick: by < T0 + 2.4 } : null;
+}
+
 mission({
   id: 'c1m3', ch: 1, title: 'Thunder', range: 160,
   objective: 'Yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
   brief: 'The Calloways moved their dice game and posted two spotters to watch for trouble. One on the roof in a yellow raincoat, one at the laundry door under a red umbrella. If either hears a shot, the game scatters and we start again. There is a storm over the harbour. Thunder is loud, and it is yours to use: fire inside it and nobody hears a thing.',
-  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.'],
+  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.', 'A walker heading toward the laundry will see the street spotter fall. Marlow will call the street clear.', 'The laundry sign is fed from a grey box under the awning, just left of the red umbrella. He is standing in a puddle.'],
   guide: [
     'Two spotters: the YELLOW raincoat on the roof and the RED umbrella by the laundry door. People with other umbrellas are not targets.',
     'Your rifle is loud, so only fire inside thunder: lightning flashes, then NOISE COVER lights for about 2.5 seconds. It comes every 11 seconds, first about 5 seconds in.',
     'Have the crosshair on the roof spotter before the flash and shoot him the moment NOISE COVER lights.',
-    'Then the street spotter, in a thunder with no umbrella walker heading his way (one passes about every 22 seconds, and a walker coming toward him sees him fall): the thunders about 38 and 49 seconds in are clear, and so is the first if you are very quick.',
+    'Then wait for Marlow to call the street clear on the radio, the first time about 36 seconds in. A walker heading toward the laundry would see the street spotter fall, or find him soon after.',
     'Aim at the middle of the chest on both. The drop is tiny (HOLD reads about 0.5 up) and the light wind hardly moves the shot.',
+    'Shoot the street spotter in the thunder that follows his call, as soon as NOISE COVER lights.',
   ],
   wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },
   vantages: [{ name: 'Tannery roof', desc: 'Straight across. Wet, but level.', eye: [0, 18, 0] }],
   look: [-10, 8],
-  setup() { const H = SCN.street({ z: 150, time: 'night', weather: 'rain', seed: 8 }); K.thing(H.S, H.PB, 'duck', H.b5.winX(2), H.b5.floorY(4) + 1.15, { }); return H; },
+  setup() {
+    const H = SCN.street({ z: 150, time: 'night', weather: 'rain', seed: 8 }); K.thing(H.S, H.PB, 'duck', H.b5.winX(2), H.b5.floorY(4) + 1.15, { });
+    // the laundry sign's feed comes down to a box under the awning, and the street spotter stands in a puddle
+    const at = H.street(-16);
+    H.cable = K.liveCable(H.S, at.plane, { id: 'junction', x: -16.9, y: 2.55, top: 3.85, floor: at.y, px: -16.35, pr: 0.8 });
+    return H;
+  },
   cast(H) {
     return [
       Object.assign(H.onRoof(H.b3, -3), { id: 't1', role: 'target', look: { coat: '#d8b52a', long: true, hat: 'hood', hatCol: '#d8b52a' }, anim: 'look',
@@ -33021,14 +34231,26 @@ mission({
       // people hurrying through the rain, one about every 22 seconds, so every other pair of thunders is clear
       { at: 10, every: 22, do(sim) { if (sim.alarmT !== null) return; const R = sim.rng, dir = n % 2 ? -1 : 1; sim.addActor(Object.assign(H.street(dir > 0 ? -47 : 47), { id: 'u' + (n++), role: 'civ', look: Object.assign(rndLook(R), { bag: 'umbrella', bagCol: R.pick([COL.blue, COL.black, COL.green, COL.purple, COL.cream]) }), routine: stroll(dir > 0 ? 47 : -47), speed: R.r(1.3, 1.5) })); } },
       hint(1.5, 'An unsuppressed shot is heard by everyone. When lightning flashes, the thunder that follows covers your shot. Fire while NOISE COVER is lit.'),
+      // Marlow watches the street for you: a moment before each flash he says whether a walker would see
+      // the street spotter fall in it (sim.c1m3Calls keeps his answers, for the test bot and the coach)
+      { at: 3.4, every: 11, do(sim) {
+        const T0 = sim.t + 1.6, k = Math.round((T0 - 5) / 11);
+        if (!sim.alive('t2') || sim.alarmT !== null) return;
+        const clear = c1m3Clear(sim, T0);
+        (sim.c1m3Calls = sim.c1m3Calls || {})[k] = clear;
+        if (sim.alive('t1')) return;
+        if (clear) sim.msg('Marlow', clear.quick ? 'Street is clear, but not for long. Take the umbrella the moment it flashes.' : 'Street is clear for this one. Take the umbrella in the thunder.', 4.5);
+        else if (!sim.c1m3Warned) { sim.c1m3Warned = true; sim.msg('Marlow', 'Not this thunder. Someone is walking his way. I will tell you when the street is clear.', 5); }
+      } },
     ];
   },
   challenge: { id: 'roll', text: 'Both spotters inside three seconds', test: (sim) => { const a = sim.kills.find((k) => k.id === 't1'), b = sim.kills.find((k) => k.id === 't2'); return !!a && !!b && Math.abs(a.t - b.t) <= 3; } },
   solve(H, st) {
-    const lead = st.action === 'charge' ? 1.9 : 1.2;
+    const lead = st.action === 'charge' ? 1.9 : 1.2, late = 0.4 + (st.action === 'charge' ? 0.85 : 0);
     const cov = (s) => st.quiet || (s.covered() && s.coverUntil - s.t > lead);
-    const clear = (s) => !s.actors.some((a) => a.role === 'civ' && !a.gone && !a.dead && Math.abs(a.x - s.byId.t2.x) < 28);
-    return [['until', cov], ['shoot', 't1', 'torso'], ['wait', 0.5], ['until', (s) => cov(s) && clear(s)], ['shoot', 't2', 'torso']];
+    // the street spotter only in a thunder Marlow has called clear, and early enough in it
+    const called = (s) => { const k = Math.round((s.t - 5) / 11), c = s.c1m3Calls && s.c1m3Calls[k]; return !!c && s.t > 5 + 11 * k - 0.2 && s.t + late <= c.by; };
+    return [['until', cov], ['shoot', 't1', 'torso'], ['wait', 0.5], ['until', (s) => cov(s) && called(s)], ['shoot', 't2', 'torso']];
   },
   reward: { cr: 750, xp: 190 },
 });
@@ -33325,10 +34547,10 @@ mission({
   intel: ['Clerk: WHITE hard hat, clipboard, dark blue coat, glasses.', 'The foreman also wears a white hat. The tally man also carries a clipboard. Neither is him.', 'He ends his round alone on the pier, on the telephone.', 'Range about 260 m. Wind 4 m/s, blowing left to right.'],
   guide: [
     'Find the clerk: WHITE hard hat AND a clipboard, plus glasses and a dark blue coat. The foreman has a white hat but no clipboard, and the tally man has a clipboard but a yellow hat.',
-    'Do not shoot him on the quay, where the dockers will see him fall. Just follow him as he works his way to the right.',
-    'Marlow says at about 45 seconds that he makes his call from the pier. Wait until he stops at the far end of the pier and lifts the phone (about 53 seconds in); he stays there alone for about 12 seconds.',
+    'He starts beside the tally man. Do not shoot him on the quay, where the dockers will see him fall: follow him as he walks right, out onto the pier.',
+    'Wait until he stops at the far end of the pier and lifts the phone, about 20 seconds in. He stays there alone for about 12 seconds.',
     'Aim high for the drop: put the crosshair on the middle of his face, not his chest (HOLD reads about 1.5 up).',
-    'Aim left for the wind, which blows left to right: move the crosshair about half a head-width to his left (HOLD reads about 0.6 left). Aim straight at his chest and the wind pushes the shot off his right side.',
+    'Aim left for the wind, which blows left to right: move the crosshair about half a head-width to his left (HOLD reads about 0.5 left). Aim straight at his chest and the wind pushes the shot off his right side.',
     'Hold your breath and fire once. A hit lands before the bang and earns all three stars; a miss is heard and raises the alarm.',
   ],
   wind: { v: 4, gust: 0.7 }, par: 1, rules: { kill: ['t'] },
@@ -33338,8 +34560,9 @@ mission({
   cast(H) {
     const vest = { vest: '#e07b2a', vestStripe: '#f1ede2' };
     return [
-      Object.assign(H.quay(-30.5), { id: 't', role: 'target', face: 1, look: { hat: 'hardhat', hatCol: '#ece8dc', coat: COL.navy, bag: 'clip', glasses: true }, speed: 1.3,
-        routine: [['wait', 4, 'stand', 1], ['walk', -15.6], ['wait', 5, 'talk', 1], ['walk', 2.2], ['wait', 5, 'work', 1], ['walk', 34], ['wait', 12, 'phone', 1], ['walk', 12], ['wait', 4, 'work', -1], ['walk', -68], ['gone']],
+      // (the wind lesson lands within about 20 seconds: he starts beside the tally man and goes straight out to the pier)
+      Object.assign(H.quay(2.2), { id: 't', role: 'target', face: 1, anim: 'work', look: { hat: 'hardhat', hatCol: '#ece8dc', coat: COL.navy, bag: 'clip', glasses: true }, speed: 1.5,
+        routine: [['wait', 3, 'work', 1], ['walk', 34], ['wait', 12, 'phone', 1], ['walk', 12], ['wait', 4, 'work', -1], ['walk', -68], ['gone']],
         escapeText: 'He finished his round and went home with the schedule in his pocket. Maeve has it by now.' }),
       Object.assign(H.quay(-14), { id: 'c1', role: 'civ', face: -1, look: Object.assign({ hat: 'hardhat', hatCol: '#ece8dc', build: 'big' }, vest), routine: [['wait', 999, 'point', -1]], failText: 'That was the foreman. A white hat, but no clipboard. The contract is void.' }),
       Object.assign(H.quay(-18.5), { id: 'c2', role: 'civ', face: 1, look: Object.assign({ hat: 'hardhat', hatCol: '#e2b33c' }, vest), routine: [['wait', 999, 'work', 1]] }),
@@ -33350,10 +34573,10 @@ mission({
     ];
   },
   triggers() { return [
-    hint(1.5, 'Across open water the wind pushes a bullet sideways. Tonight it blows from left to right: the WIND box, the red pennant and the wind sock on the pier all show it.', 11),
-    hint(14, 'Now read the HOLD box. The up arrow is how far the bullet drops. The side arrow is how far to move your aim to beat the wind. It points left, so aim that far to the LEFT of him: into the wind.', 13),
-    hint(29, 'A hold of 0.5 is small: about half the width of his head. Put the crosshair just off his left side, the side the wind comes from, and let the wind carry the bullet onto him.', 13),
-    say(44, 'Marlow', 'He makes his call from the pier, well away from the others. Nobody out there to see him fall.'),
+    hint(1.5, 'Across open water the wind pushes a bullet sideways. Tonight it blows from left to right: the WIND box, the red pennant and the wind sock on the pier all show it.', 7),
+    say(6, 'Marlow', 'He makes his call from the end of the pier, well away from the others. Nobody out there to see him fall.'),
+    hint(9, 'Now read the HOLD box. The up arrow is how far the bullet drops. The side arrow is how far to move your aim to beat the wind. It points left, so aim that far to the LEFT of him: into the wind.', 9.5),
+    hint(19, 'A hold of 0.5 is small: about half the width of his head. Put the crosshair just off his left side, the side the wind comes from, and let the wind carry the bullet onto him.', 11),
   ].concat(dkEyes(['t'])); },
   challenge: { id: 'head', text: 'A headshot through the crosswind', test: (sim) => sim.kills.some((k) => k.id === 't' && k.part === 'head') },
   after: 'The schedule stops reaching Maeve tonight, and she will know why by morning. That was clean shooting across a wind. You will need more of it.',
@@ -33810,11 +35033,11 @@ function c3Out(sim, H, id, routine) {
 mission({
   id: 'c3m1', ch: 3, title: 'Thin Air', range: 400,
   objective: 'Quartermaster on the upper deck: red cap, clipboard. Aim high. The bullet falls.',
-  brief: 'August Calloway has gone to ground at his hunting lodge in the Ashlocks, and the family\'s money and guns went with him. We take the lodge apart from the outside in. First, his quartermaster: the man who keeps it fed and armed. Red cap, clipboard, up on the long deck counting crates. Nobody else can see that deck. This is four hundred metres, Kestrel, more than twice anything you did in the city. Up here a bullet falls a long way before it arrives. Aim where he is and you will hit the boards at his feet.',
-  intel: ['RED cap and a clipboard, on the upper deck. The porter down in the yard is hired help.', 'Range 400 m. No wind today.', 'At this range a .308 lands more than a metre below the crosshair. The HOLD read-out says how far to aim high.', 'He stands still at the table and at the rail. Shoot then, not while he walks.'],
+  brief: 'August Calloway has gone to ground at his hunting lodge in the Ashlocks, and the family\'s money and guns went with him. We take the lodge apart from the outside in. First, his quartermaster: the man who keeps it fed and armed. Red cap, clipboard, up on the long deck counting crates. Nobody can see that deck from below, but his tally boy runs up and down the stair to him, and the boy is no part of this. This is four hundred metres, Kestrel, more than twice anything you did in the city. Up here a bullet falls a long way before it arrives. Aim where he is and you will hit the boards at his feet.',
+  intel: ['RED cap and a clipboard, on the upper deck. The porter down in the yard is hired help.', 'His tally boy (grey cap, tan coat) comes up the stair to count with him. Shoot while the boy has his back turned, or is down in the yard.', 'Range 400 m. No wind today.', 'At this range a .308 lands more than a metre below the crosshair. The HOLD read-out says how far to aim high.', 'He stands still at the table and at the rail. Shoot then, not while he walks.'],
   guide: [
     'The quartermaster wears a RED cap and holds a clipboard, up on the long deck. The porter down in the yard is innocent.',
-    'He stands still at the crate table right from the start, for about 16 seconds, and nobody else can see the deck. Shoot straight away.',
+    'He stands still at the crate table for the first 16 seconds. His tally boy talks with him until about 9 seconds in, then walks off down the deck: shoot once the boy has turned his back.',
     'At 400 m the bullet falls a long way: HOLD reads about 3.1 up, about 1.2 m above his chest.',
     'On the plain Fenwick scope at full zoom (9x), the thin part of the line below the centre is about 4 HOLD units long. Put his chest three quarters of the way down that thin line.',
     'There is almost no wind. Hold your breath and fire once.',
@@ -33835,6 +35058,13 @@ mission({
       Object.assign(H.deck(-10), { id: 't', role: 'target', face: 1, anim: 'work', look: { hat: 'cap', hatCol: COL.red, coat: '#3b4a5c', bag: 'clip' },
         routine: [['wait', 16, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 13, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 12, 'work', 1], ['walk', B.winX(4)], ['gone']],
         escapeText: 'He finished the count and went in for his lunch. The lodge is fed and armed for another week.' }),
+      // the tally boy: with the quartermaster at the table, then off down the deck stair to the yard and back
+      // (on the stair he walks its slope; he changes between the deck and the yard at its top and its foot)
+      Object.assign(H.deck(-8.6), { id: 'boy', role: 'civ', face: -1, anim: 'talk', look: { hat: 'cap', hatCol: '#8d949c', coat: COL.tan, bag: 'paper', h: 0.94 },
+        failText: 'That was the tally boy. He counts boxes for a living. The contract is void.',
+        routine: [['wait', 9, 'talk', -1], ['walk', H.stairTop], ['call', (sim, a) => { a.yFn = H.stairY; }], ['speed', 0.7], ['walk', H.stairFoot], ['speed', 1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.yard(a.x)); }],
+          ['walk', 18.4], ['wait', 10, 'work', 1], ['walk', H.stairFoot], ['call', (sim, a) => { sim.place(a, H.deck(a.x)); a.yFn = H.stairY; a.y = H.stairY(a.x); }], ['speed', 0.7], ['walk', H.stairTop], ['speed', 1],
+          ['call', (sim, a) => { a.yFn = null; sim.place(a, H.deck(a.x)); }], ['walk', -8.6], ['loop']] }),
       Object.assign(H.yard(17), { id: 'c1', role: 'civ', face: -1, look: { hat: 'beanie', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
         // (he picks the next box up at the end of his three seconds bent over the pile, not the moment he arrives)
         routine: [['wait', 3, 'work', -1], ['look', { bag: 'box' }], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['loop']] }),
@@ -33852,7 +35082,7 @@ mission({
   },
   challenge: { id: 'cold', text: 'A headshot with the very first round you fire', test: (sim) => sim.stats.shots === 1 && sim.kills.some((k) => k.id === 't' && k.part === 'head') },
   after: 'Four hundred metres and one round. Remember how far that bullet fell, because everything else on this mountain is further away.',
-  solve: [['until', (s) => s.byId.t.goal === null && s.byId.t.wait > 3], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],   // the second shot is only taken if the first misses
+  solve: [['until', (s) => s.byId.t.goal === null && s.byId.t.wait > 3 && !dkSeen(s, 't')], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],   // the second shot is only taken if the first misses
   reward: { cr: 1800, xp: 420 },
 });
 
@@ -33861,15 +35091,17 @@ mission({
   id: 'c3m2', ch: 3, title: 'Crosswind', range: 450,
   objective: 'The lookout in the hunting tower. Hold into the wind. Do not hit the cook.',
   brief: 'Calloway keeps a lookout in the hunting tower at the edge of the trees, with binoculars and a radio. While he is up there nothing moves on this side of the valley without the lodge knowing. Four hundred and fifty metres, and today there is a wind: five metres a second, steady, left to right. It will carry your bullet half a metre off line before it gets there. The lodge cook climbs up with his soup and stands right beside him. The cook has done nothing to anybody. Read the flag, hold into the wind, and do not make me explain a dead cook to the client.',
-  intel: ['Lookout: olive jacket and binoculars, up in the hunting tower on the left.', 'Range 450 m. Wind 5 m/s, steady, blowing left to right.', 'The cook in white visits and stands on his right: downwind, where a careless shot will drift.', 'The flag beside the tower and the smoke from the chimney show the wind.'],
+  intel: ['Lookout: olive jacket and binoculars, up in the hunting tower on the left.', 'Range 450 m. Wind 5 m/s, steady, blowing left to right.', 'The cook in white visits and stands on his right: downwind, where a careless shot will drift. Walking back to the tower, he can see up into it.', 'The flag beside the tower and the smoke from the chimney show the wind.'],
   guide: [
     'The lookout is in the hunting tower on the left: olive jacket, binoculars. The cook in white with a top hat brings him soup and stands beside him.',
-    'Wait for the cook to climb down from the tower and walk off toward the lodge, from about 20 seconds in. After that, shoot when you are ready.',
+    'Wait for the cook to climb down from the tower and walk off toward the lodge, from about 22 seconds in. Shoot before he walks back with more soup, about a minute in: coming back he faces the tower and would see.',
     'Aim high for the drop: HOLD reads about 3.8 up, about 1.7 m above his chest. On the plain scope at full zoom, his chest sits right at the tip of the thick post below the centre.',
     'Aim left for the wind, which blows hard left to right: HOLD reads about 1.2 left, about half a metre (two body-widths) to his left.',
     'The flag beside the tower shows the wind. Hold your breath and fire once.',
   ],
   wind: { v: 5, gust: 0.5 }, par: 1, rules: { kill: ['t'] },
+  // the cook can see up into the hide from the yard when he is walking toward the tower
+  sight: { yard: ['hide'] },
   vantages: [{ name: 'Scree shelf', desc: '450 m, a little above the tower. Open to the wind.', eye: [0, 46, 0] }],
   look: [-57, 8],
   setup() {
@@ -33908,7 +35140,7 @@ mission({
   },
   challenge: { id: 'thread', text: 'Take the lookout while the cook is standing beside him', test: (sim) => !!sim.A.withCook },
   after: 'The tower is empty and the cook is back at his stove, none the wiser. Drop and wind together: up here, that is the whole trade.',
-  solve(H) { const T = H.tower; return [['until', (s) => { const c = s.byId.cook; return c.room !== 'hide' && !c.hidden && c.x > T.stairFoot + 5; }], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']]; },
+  solve(H) { const T = H.tower; return [['until', (s) => { const c = s.byId.cook; return c.room !== 'hide' && !c.hidden && c.x > T.stairFoot + 5 && c.face > 0 && !dkSeen(s, 't'); }], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']]; },
   reward: { cr: 2000, xp: 440 },
 });
 
@@ -33917,11 +35149,11 @@ mission({
   id: 'c3m3', ch: 3, title: 'The Gondola', range: 500, needs: { glass: true },
   objective: 'White hat, tan coat, riding up in the red cable car. It stops once, at the middle pylon.',
   brief: 'Lars Venn carries the Calloway payroll. Every week he rides the old cable car up to the lodge with the cash and one bodyguard, and he never sets foot on the road. So we take him in the air. Venn wears a white hat and a tan coat. The bodyguard is the big one in black. The car climbs slowly, and it stops at the middle pylon for a few seconds while the winding gear changes over. Five hundred metres: your bullet needs most of a second to arrive, and there is glass in the way. The staff ride down in the other car. Leave them out of it.',
-  intel: ['Venn: WHITE hat, TAN coat, in the RED car going up. His bodyguard is the big man in black.', 'Range 500 m. Wind 2 m/s from the left.', 'The red car stops at the middle pylon for about seven seconds.', 'Cabin glass knocks a bullet a few centimetres off line. Aim for the middle of his chest.', 'The yellow car coming down carries lodge staff. The cook wears a white hat too.'],
+  intel: ['Venn: WHITE hat, TAN coat, in the RED car going up. His bodyguard is the big man in black.', 'Range 500 m. Wind 2 m/s from the left.', 'The red car stops at the middle pylon for about seven seconds.', 'Cabin glass knocks a bullet a few centimetres off line. Aim for the middle of his chest.', 'His bodyguard turns round to talk to him now and then. While he faces Venn he will see it happen.', 'The yellow car coming down carries lodge staff. The cook wears a white hat too.'],
   guide: [
     'You need a rifle that shoots through glass (the Fenwick 77 can). Venn wears a WHITE hat and a TAN coat in the RED cable car going up, and the big man in black is his bodyguard.',
     'The yellow car coming down carries staff, including a cook in a white hat. Never shoot at it.',
-    'Wait for the red car to stop at the middle pylon, about 45 seconds in. It stays about 7 seconds.',
+    'Wait for the red car to stop at the middle pylon, about 45 seconds in, for about 7 seconds. His bodyguard turns round to talk to him for the first 3 of them: wait until he turns away again.',
     'Aim for the middle of his chest, because the glass nudges the bullet. HOLD reads about 4.4 up and 0.7 left.',
     'That is about 2.2 m above his chest (just onto the thick post below the centre at full zoom) and about a body-width to his left, into the wind.',
     'Hold your breath and fire once while the car is still.',
@@ -33954,18 +35186,29 @@ mission({
   },
   // people in a cable car stand up
   start(sim) { ['bg', 't', 'maid', 'cook'].forEach((id) => { const a = sim.byId[id]; a.anim = a.idle = 'stand'; }); },
+  // The bodyguard stands behind Venn watching back down the line, and turns round to talk to him for
+  // four seconds in every ten, and for the first three seconds at the pylon. While he faces him, he
+  // sees whatever happens to him.
+  tick(sim) {
+    const bg = sim.byId.bg; if (!bg || bg.dead || !bg.inVeh || bg.state !== 'calm') return;
+    const st = sim.emitted.stopped1, at = st !== undefined && !sim.did('going');
+    const look = at ? sim.t - st < 3 : ((sim.t + 8) % 10) < 4, f = look ? bg.inVeh.dir : -bg.inVeh.dir;
+    if (bg.vehFace !== f) { bg.vehFace = f; bg.anim = bg.idle = look ? 'talk' : 'stand'; }
+  },
   onAlarm(sim) { sim.after(1.0, () => { const t = sim.byId.t; if (t && !t.dead && !sim.winAt) { t.hidden = true; t.escapeText = 'Venn dropped to the floor of the car and stayed there all the way to the top.'; sim.leave(t); } }); },
   triggers() {
     return [
       hint(1.5, 'The red cable car is climbing from the lower left with two men in it. You want the one in the WHITE hat and tan coat, not the big man in black.', 10),
       hint(13, 'The car is moving and your bullet takes most of a second to get there. Either aim ahead of him by about a window and a half, or wait: the car stops at the middle pylon.', 12),
-      onEv('stopped1', (sim) => sim.msg('Marlow', 'Stopped at the pylon. Seven seconds. Glass will nudge the round, so put it in the middle of his chest.')),
+      onEv('stopped1', (sim) => sim.msg('Marlow', 'Stopped at the pylon. Seven seconds. Wait for his man to stop talking to him, and mind the glass: the middle of his chest.')),
+      // the bodyguard, turned round to him, sees it happen and gets on his radio
+      onEv('dead:t', (sim) => { const bg = sim.byId.bg; if (bg && !bg.dead && bg.inVeh && bg.vehFace === bg.inVeh.dir && bg.state === 'calm') { bg.state = 'alarm'; sim.giveaway(bg, 'saw', { body: 't' }); sim.bubble(bg, '!', 2.5); sim.raiseAlarm('guard', 1.6); } }),
       onEv('going', (sim) => { if (sim.alive('t')) sim.msg('Marlow', 'Moving again, and the staff car is about to pass behind it. Mind what is behind your target.'); }),
     ];
   },
   challenge: { id: 'moving', text: 'Hit him while the car is moving', test: (sim) => sim.kills.some((k) => k.id === 't' && k.moving) },
   after: 'The car reached the top station with a case of cash and nobody to sign for it. August will have to pay his men in promises now.',
-  solve: [['until', (s) => s.did('stopped1')], ['wait', 0.9], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],
+  solve: [['until', (s) => { const bg = s.byId.bg; return s.did('stopped1') && !!bg.inVeh && bg.vehFace !== bg.inVeh.dir; }], ['wait', 0.3], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],
   reward: { cr: 2200, xp: 470 },
 });
 
@@ -34345,9 +35588,9 @@ mission({
   id: 'c3m8', ch: 3, title: 'Boarded Up', range: 470, follows: 'c3m2', needs: { pen: 1.4 },
   objective: 'The new lookout behind the boards on the hunting tower. Shoot through the planks.',
   brief: 'They learned from the tower. There is a new lookout up there, and they have nailed old fence boards across the front of it, so now he watches the valley through the cracks like a hen in a coop. Nobody comes up this side of the mountain without him seeing. An ordinary round stops in the first plank. Pip has sent up a box of armour-piercing: a hardened core that goes through boards, and through him. You will not see much of him. It is a cold morning, and a man has to breathe. The cook still brings the soup up. Leave him be.',
-  intel: ['Fit ARMOUR-PIERCING rounds in the Ammunition slot. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
+  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
     'Breath and binoculars mark his face. His chest is half a metre lower. When he sits down at the radio, all of him drops half a metre.', 'The cook in white brings soup up the stair. His tall hat shows in the slot under the eaves. Wait until he has gone back down.', 'Range 470 m. Wind about 3 m/s from the right.'],
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
     'Watch for puffs of breath and the glint of binoculars between the boards. That is his head.', 'Wait until he stands still, hold for drop and wind, and put the aim half a metre below his head. One round.'],
   wind: { v: -3, gust: 1 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Larch stump', desc: '470 m across the valley, a little above the top of the tower.', eye: [0, 38, 0] }],
@@ -34390,7 +35633,7 @@ mission({
   solve(H) {
     const T = H.tower;
     const clear = (s) => { const c = s.byId.cook, t = s.byId.t; return c.zone !== 'boards' && (c.hidden || Math.abs(c.x - T.stairFoot) > 8) && t.goal === null && t.wait > 1.6 && t.state === 'calm'; };
-    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2100, xp: 460 },
 });
@@ -34978,9 +36221,9 @@ mission({
   id: 'c4m8', ch: 4, title: 'Wrong Way Round', range: 330, follows: 'c4m3', needs: { pen: 1.4 },
   objective: 'Councillor Rusk, in the back of the long black car. Not the glass. The door.',
   brief: 'Councillor Edwin Rusk chairs the harbour board. The client says he signed every Calloway import licence for ten years. The board also votes on the Aurel bid for the port next week, which I am told is a coincidence. Rusk has had threats, so he had his car armoured, and the man who did it worked the wrong way round: glass that would stop a train, and doors you could open with a tin opener. Tonight he has come to the Aurel building to say no in person, and he will not get out. They have to come down to him. Not through the window, Kestrel. Through the door.',
-  intel: ['Fit ARMOUR-PIERCING rounds. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
+  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
     'Rusk sits in the BACK, behind his driver: white hair, glasses, reading under a little lamp. His chest is just below the window, behind the door.', 'A man from Aurel comes down to talk at the car. He stands at the kerb, close enough to see it happen. Wait until he goes back in.', 'Range 330 m. Wind about 2 m/s from the left.'],
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
     'Do not shoot the glass. Aim at the rear door, a hand below the window and straight under his head.', 'Fire one round while the car stands still. He leaves in under a minute.'],
   wind: { v: 2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
   sight: { kerb: ['veh:car'] },
@@ -35028,7 +36271,7 @@ mission({
   challenge: { id: 'rolling', text: 'Take him before the car has stopped at the kerb', test: (sim) => sim.kills.some((k) => k.id === 't' && k.how === 'shot' && k.moving) },
   after: 'A councillor dead in his own armoured car. The papers will call it a Calloway grudge, and the harbour board will vote on the Aurel bid without him. The flowers from Aurel reached his house before the police did. I am told that is efficiency.',
   solve() {
-    return [['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2900, xp: 650 },
 });
@@ -35063,7 +36306,7 @@ mission({
   guide: [
     'The fixer wears a PALE long raincoat and a grey flat cap and arrives by car from the right. The clerk (brown coat, glasses) must not see him fall.',
     'Let them talk and swap the case. The clerk then walks left round the lamp hut, and Pip tells you when he is past it (about 37 seconds in).',
-    'The fixer stands on the phone meanwhile. Your rifle is loud, so wait for the train on the FAR line: its rumble starts about 43 seconds in.',
+    'The fixer stands on the phone meanwhile. Wait for the train on the FAR line, about 43 seconds in: its rumble hides a loud shot, and the crack of a suppressed one that his minder would hear.',
     'Shoot the fixer in the chest then, before he walks back to his car at about 50 seconds. If a constable walks the far siding, keep clear of him.',
     'HOLD reads about 3.7 up (about 1.7 m) and 0.6 left (about 25 cm). The wind blows left to right; on the plain scope at full zoom, his chest sits at the tip of the thick post below the centre.',
   ],
@@ -35138,7 +36381,8 @@ mission({
   solve(H, st) {
     const need = st.action === 'charge' ? 2.3 : 1.3, L = CARS.freight.len / 2 + 4;
     const hidden = (s, x) => ['n1', 'n2'].some((id) => Math.abs(s.byId[id].x - x) < L);
-    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.quiet || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
+    // (a suppressed round still cracks past the minder by the car: only a subsonic one needs no train)
+    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.silent || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
   },
   reward: { cr: 3600, xp: 800 },
 });
@@ -35748,11 +36992,11 @@ mission({
   objective: 'The listener in the tin lock-up. Find his legs under the shutter, then shoot through it.',
   brief: 'Somebody told Aurel the armoury boat was going down before it touched the bottom, and I have found out who. A listener: a man with a bench full of radio sets in a tin lock-up in Calder Yard. He hears every police call, every taxi, and until tonight every word I said to you. He works with the shutter half up, because those old valve sets cook a room, so all you will see of him is his legs. That shutter is tin. Armour-piercing goes through it like a letter through a door. His minder is in there with him, and the tea lady comes round. Read the feet, Kestrel.',
   intel(f) {
-    return ['Fit ARMOUR-PIERCING rounds. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
+    return ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
       'His minder wears a short black jacket and steps outside now and then to smoke. The tea lady wears a wine-red skirt. She must not be hit.', 'A standing man\'s chest is about a metre and a quarter straight above his shoes. Anyone in there with him will see him fall.',
       vargaHelps(f) ? 'Range 420 m, wind 3 m/s from the left. Varga is keeping the police band quiet tonight, so he will hear nothing useful.' : 'Range 420 m, wind 3 m/s from the left. A train on the far line covers a loud shot.'];
   },
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
     'Wait until the tea lady has gone and the minder has stepped outside to smoke.', 'Aim a metre and a quarter straight above the listener\'s shoes, hold for drop and wind, and fire once while he stands still.'],
   wind: { v: 3, gust: 1.2 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Grain elevator', desc: 'High over the yard, 420 m out, looking straight at the strip.', eye: [0, 30, 0] }],
@@ -35800,7 +37044,7 @@ mission({
   solve(H) {
     const L = H.lock;
     const clear = (s) => { const m = s.byId.mind, tea = s.byId.tea, a = s.byId.t; return m.zone !== 'lockup' && m.goal === null && tea.zone !== 'lockup' && (tea.hidden || tea.x < L.s0 - 3) && a.goal === null && a.wait > 1.6 && a.state === 'calm'; };
-    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 4100, xp: 880 },
 });
@@ -36178,6 +37422,7 @@ mission({
 // The fourth choice. Every path is a win: the outcome decides sparedRook.
 mission({
   id: 'c6m5', ch: 6, title: 'Rook', range: 1300,
+  cine: 'take', // a man with his hands up: the kill camera shows it as one unbroken real-time shot, no X-ray
   objective: 'Rook is standing up with his hands raised. Nobody is giving the order this time.',
   speaker: 'Pip',
   brief: 'His glass is gone and he knows who broke it. He has been on the open channel for a minute, asking for you by name. He says he is going to stand up. Kestrel, I was not here three years ago. I only know what it cost you: a man with his hands in the air, an order, and a round you put wide on purpose. This is the same ridge. Shoot him, or do not. Nobody is giving orders today, least of all me. If you only want him harmless, he will have to put that rifle down some time.',
@@ -38416,7 +39661,8 @@ Test.cfgFor = function (M, gunId, base) {
   const g = GUN_BY_ID[gunId], cfg = Object.assign(defaultConfig(gunId), base || {}), need = M.needs || {};
   if ((need.quiet || need.silent) && g.supp === true && cfg.muzzle === 'mz_none') cfg.muzzle = 'mz_supl';
   if (need.silent && g.supp === true && partFits(PART_BY_ID.am_sub, g)) cfg.ammo = 'am_sub';
-  if (need.pen && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
+  // (armour-piercing rounds normally come along as the second load and are chambered by the script)
+  if (need.pen && ammo2For(M) !== 'am_ap' && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
   return cfg;
 };
 
@@ -38428,7 +39674,7 @@ Test.run = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed };
+  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) };
   const sim = new Sim(M, st, o.vantage || 0, simOpts);
   const log = [];
   // optional: run the shot oracle alongside and check that what it foretold is what happened
@@ -38459,6 +39705,15 @@ Test.run = function (missionId, gunId, o) {
       if (k === 'cover') { if (st.quiet || sim.covered()) { cur = null; continue; } if (sim.t - c._t0 > (c[1] || 90)) { log.push('no cover came'); cur = null; continue; } break; }
       if (k === 'fn') { c[1](sim, sim.A); cur = null; continue; }
       if (k === 'hold') { sim.holdBreath(true); cur = null; continue; }
+      // ['ammo', partId, pen?]: chamber the second load (unless the rounds in the rifle already are
+      // that kind, or already have punch enough for `pen`)
+      if (k === 'ammo') {
+        if (sim.st.cfg.ammo === c[1] || (c[2] && sim.st.pen >= c[2])) { cur = null; continue; }
+        if (!sim.stB || sim.stB.cfg.ammo !== c[1]) { log.push('no ' + c[1] + ' rounds to load'); cur = null; continue; }
+        if (sim.switchAmmo()) { cur = null; continue; }
+        if (sim.t - c._t0 > 20) { log.push('could not load ' + c[1]); cur = null; continue; }
+        break;
+      }
       if (k === 'dial') { const steps = Math.round((c[1] - sim.sh.zeroR) / 25); for (let i = 0; i < Math.abs(steps); i++) sim.dial(sign(steps)); cur = null; continue; }
       if (k === 'shoot' || k === 'shootObj' || k === 'shootAt' || k === 'shootPt') {
         if (c._fired) { // wait for the round to land (unless told not to)
