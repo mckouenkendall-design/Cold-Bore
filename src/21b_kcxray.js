@@ -612,18 +612,22 @@ function kcXBurst(ctx, K, c, fig, al, age, s) {
   }
   const t = age * 0.22; // the pieces fly in the spray's own slowed time
   kcLoc(hd, kcSkC[0] * sc, kcSkC[1] * sc, kcSkC[2] * sc, kcXL);
-  const cx = kcXL[0], cy = kcXL[1], cz = kcXL[2];
+  const cx = kcXL[0], cy = kcXL[1], cz = kcXL[2], Hs = (K.o && K.o.view && K.o.view.H) || 400;
   for (let i = 0; i < K.plates.length; i++) {
     const q = K.plates[i], ox = q.vx * t * sc, oy = (q.vy * t - 4.9 * t * t) * sc, oz = q.vz * t * sc, rot = q.vr * t;
+    let ok = true, x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     ctx.beginPath();
     for (let k = 0; k < 7; k++) {
       const n0 = q.pts[k * 3], n1 = q.pts[k * 3 + 1], n2 = q.pts[k * 3 + 2], ca = Math.cos(rot), sa = Math.sin(rot);
       const m0 = n0 * ca - n1 * sa * 0.4, m1 = n1 * ca + n0 * sa * 0.4;
       const wx = cx + (hd.S[0] * kcSkR[0] * m0 + hd.U[0] * kcSkR[1] * m1 + hd.F[0] * kcSkR[2] * n2) * sc + ox, wy = cy + (hd.S[1] * kcSkR[0] * m0 + hd.U[1] * kcSkR[1] * m1 + hd.F[1] * kcSkR[2] * n2) * sc + oy, wz = cz + (hd.S[2] * kcSkR[0] * m0 + hd.U[2] * kcSkR[1] * m1 + hd.F[2] * kcSkR[2] * n2) * sc + oz;
-      if (!kcProj(c, wx, wy, wz, kcXQ)) break;
+      if (!kcProj(c, wx, wy, wz, kcXQ)) { ok = false; break; }
       if (k) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]);
+      x0 = Math.min(x0, kcXQ[0]); x1 = Math.max(x1, kcXQ[0]); y0 = Math.min(y0, kcXQ[1]); y1 = Math.max(y1, kcXQ[1]);
     }
-    ctx.closePath(); kcXPlate(ctx, 0.005 * s, al, 0.55, false);
+    // a piece flying past the lens fades rather than sweeping a great flat shape across the picture
+    const big = Math.max(x1 - x0, y1 - y0) / Hs, fa = 1 - smooth((big - 0.2) / 0.25);
+    if (ok && fa > 0.01) { ctx.closePath(); kcXPlate(ctx, 0.005 * s, al * fa, 0.55, false); }
   }
 }
 

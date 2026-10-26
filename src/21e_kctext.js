@@ -33,13 +33,15 @@ function kcTextInit(K, o) {
   // the stamps, most important first
   const st = [], pl = K.part, key = '';
   if (pl === 'head') st.push('HEADSHOT');
-  let longest = 0; try { longest = (Save.data && Save.data.stats && Save.data.stats.longest) || 0; } catch (e) { longest = 0; }
-  if (range > 60 && range > longest + 1) st.push('LONGEST');
+  // a new record: further than the player's longest kill so far (in the save, or earlier in this
+  // mission). The very first kill of all beats nothing, so it is not called one.
+  let longest = 0; try { longest = Math.max((Save.data && Save.data.stats && Save.data.stats.longest) || 0, (sim.stats && sim.stats.longest) || 0); } catch (e) { longest = 0; }
+  if (range > 60 && longest > 0 && range > longest + 1) st.push('LONGEST');
   const cv = K.covers || [];
   if (cv.some((c) => c.mat === 'glass')) st.push('THROUGH GLASS'); else if (cv.length) st.push('THROUGH COVER');
   const a = o.actor; if (a && (a.anim === 'walk' || a.anim === 'run' || a.anim === 'panic' || (a.inVeh && Math.abs(a.inVeh.v || 0) > 0.5))) st.push('MOVING TARGET');
   if (o.kills && o.kills.length > 1) st.push('TWO WITH ONE');
-  K.stamps = st; void key;
+  K.stamps = st; K.stampT0 = undefined; void key;
 }
 // Letters set a little apart (by the canvas itself where it can); returns the width.
 function kcSpaced(ctx, text, x, y, gap, draw) {
@@ -77,14 +79,23 @@ function kcCaption(ctx, K, c, V) {
   const tx = kcCapText[cp.ref] || [cp.text || '', ''], fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
   kcLoc(fr, cp.s * K.fig.fs, pl.part === 'head' ? pl.u0 : pl.b0, pl.c0, kcL0);
   if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
-  const W = V.W, H = V.H, a = smooth(age / 0.12) * (1 - smooth((age - life + 0.3) / 0.3)), x = kcQ[0], y = kcQ[1];
+  // (gone by the time the X-ray has faded back into the real scene for the fall)
+  const W = V.W, H = V.H, a = smooth(age / 0.12) * (1 - smooth((age - life + 0.3) / 0.3)) * (1 - smooth((K.fallK || 0) / 0.6)), x = kcQ[0], y = kcQ[1];
+  if (a < 0.01) return;
   const fs = W < 500 ? 21 : W < 700 ? 23 : 26, up = -Math.min(H * 0.2, 80), run = Math.min(W * 0.06, 34) * easeOut(age / 0.2);
   ctx.font = '800 ' + fs + 'px ' + kcFont; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   const w1 = kcSpaced(ctx, tx[0] + (tx[1] ? ':' : ''), 0, 0, 2, false), w2 = tx[1] ? kcSpaced(ctx, tx[1], 0, 0, 2, false) : 0, tw = w1 + (w2 ? 9 + w2 : 0);
   // toward the emptier side, unless that runs it off the screen
-  let dirX = x < W / 2 ? 1 : -1; const reach = Math.abs(up) * 0.55 + run + tw + 20;
-  if (x + dirX * reach > W - 8 || x + dirX * reach < 8) dirX = -dirX;
-  const x1 = x + dirX * Math.abs(up) * 0.55, y1 = clamp(y + up, kcBars(W, H) + fs + 10, H), x2 = x1 + dirX * run;
+  // (chosen once: the camera moves while it is up, and a label that hops from side to side is hard to read)
+  let dirX = cp.dir;
+  if (dirX === undefined) {
+    dirX = x < W / 2 ? 1 : -1; const reach = Math.abs(up) * 0.55 + run + tw + 20;
+    if (x + dirX * reach > W - 8 || x + dirX * reach < 8) dirX = -dirX;
+    cp.dir = dirX;
+  }
+  const x1 = x + dirX * Math.abs(up) * 0.55, y1 = clamp(y + up, kcBars(W, H) + fs + 10, H);
+  // kept on the screen: the elbow of the line gives way first
+  const x2 = clamp(x1 + dirX * run, dirX > 0 ? 14 : tw + 14, dirX > 0 ? W - tw - 14 : W - 14);
   ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x1, y1); ctx.lineTo(x2, y1); ctx.stroke();
   ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 3, 0, TAU); ctx.fill();
   const tx0 = dirX > 0 ? x2 + 6 : x2 - 6 - tw;
@@ -96,7 +107,13 @@ function kcCaption(ctx, K, c, V) {
 // As the body falls: the stamp for what the shot was, knocked onto the picture, and up to two more below it.
 function kcStampDraw(ctx, K, V) {
   const st = K.stamps; if (!st || !st.length || K.holdT0 === null || K.take) return;
-  const t0 = Math.max(K.holdT0 + 0.75, K.landT !== undefined ? K.landT + 0.05 : 0), age = K.T - t0; if (age < 0) return;
+  // it lands as the body does (but not in the first moment of the fall), or a little later if the
+  // body never quite goes down; once it is there it stays put
+  if (K.stampT0 === undefined) {
+    const a0 = K.holdT0 + 0.75;
+    if (K.landT !== undefined ? K.T >= Math.max(a0, K.landT + 0.05) : K.T >= K.holdT0 + 1.6) K.stampT0 = K.T; else return;
+  }
+  const age = K.T - K.stampT0;
   const W = V.W, H = V.H, G = CB.Game || {}, sf = G.safe || {}, lb = kcBars(W, H);
   const fs = W < 500 ? 30 : W < 700 ? 34 : 40, k = 1 + 0.5 * Math.pow(1 - smooth(age / 0.14), 2), a = smooth(age / 0.08);
   const cx = W - 26 - (sf.r || 0), cy = lb + 22 + fs;

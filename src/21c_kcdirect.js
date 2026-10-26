@@ -140,10 +140,21 @@ function kcShotPose(K, V, P) {
     const u = (T - K.shotT0) / K.shotWhip;
     kcBlendOrbit(kcO2, kcO1, K.rec.whip > 0.4 ? smooth(u) : kcWhipK(u), kcO3);
     K.whipping = Math.sin(u * Math.PI) * (K.rec.whip > 0.4 ? 0.35 : 1);
+    K.orbNow = kcO3;
     return kcPoseFromOrbit(K, kcO3, P);
   }
-  K.whipping = 0;
+  K.whipping = 0; K.orbNow = kcO1;
   return kcPoseFromOrbit(K, kcO1, P);
+}
+// A pose as orbit settings round the point it looks at (the inverse of kcPoseFromOrbit).
+const kcO4 = kcNewOrbit(), kcO5 = kcNewOrbit();
+function kcOrbitOf(K, P, o) {
+  const sw = K.sw, B = sw.B, N = sw.N, U = sw.U, vx = P.x - P.fx, vy = P.y - P.fy, vz = P.z - P.fz, R = Math.max(1e-3, Math.hypot(vx, vy, vz));
+  o.fx = P.fx; o.fy = P.fy; o.fz = P.fz; o.R = R;
+  o.phi = Math.atan2(vx * N[0] + vy * N[1] + vz * N[2], vx * B[0] + vy * B[1] + vz * B[2]);
+  o.el = Math.asin(clamp((vx * U[0] + vy * U[1] + vz * U[2]) / R, -1, 1));
+  o.f = P.f; o.ax = P.ax; o.ay = P.ay;
+  return o;
 }
 // Change shot (from the advance, so it happens on the film's own timing).
 function kcCut(K, name, whip) {
@@ -164,12 +175,27 @@ function kcFallPose(K, V, P) {
 function kcDirect(K, V) {
   const c = K.cam, W = V.W, H = V.H, T = K.T;
   let P;
+  K.orbNow = null;
   if (T < K.Tc && !K.take) P = kcSwingPose(K, V, kcP1);
   else P = kcShotPose(K, V, kcP1);
   K.fallK = 0;
   if (K.holdT0 !== null || K.take) {
     const w = K.take ? 1 : smooth((T - K.holdT0) / K.tn.fallIn);
-    if (w > 0) { kcFallPose(K, V, kcP2); P = kcBlendPose(P, kcP2, w, kcP3); }
+    if (w > 0) {
+      kcFallPose(K, V, kcP2);
+      if (w >= 1 || !K.orbNow) P = kcBlendPose(P, kcP2, w, kcP3);
+      else {
+        // round the body to the three-quarter view, not through it (a straight line from a close
+        // side view to the fall's view can pass within a hand span of the chest), then square up to
+        // look straight down range
+        const a = K.orbNow, b = kcOrbitOf(K, kcP2, kcO4);
+        b.phi = a.phi + kcWrap(b.phi - a.phi);
+        kcBlendOrbit(a, b, w, kcO5); kcPoseFromOrbit(K, kcO5, kcP3);
+        const wy = smooth((w - 0.3) / 0.7);
+        kcP3.yaw += kcWrap(-kcP3.yaw) * wy; kcP3.pitch *= 1 - wy;
+        P = kcP3;
+      }
+    }
     K.fallK = w;
   }
   kcApplyPose(c, P, W, H);
@@ -203,7 +229,9 @@ function kcWorld(K, V, ctx, c, Wd, Hd, dpr, dt, simDt, hide, near) {
   // it belongs on the wall where the round would reach it, so that correction is left off here)
   const rd = a && a.rd, keepEye = rd ? rd.eye : null;
   const held = [], fxAll = V.fx || [];
-  if (fxAll.length) { const show = [], ax = a ? a.x : 0, az = O[2]; for (let i = 0; i < fxAll.length; i++) { const f = fxAll[i]; ((f.k === 'star' || (f.k === 'puff' && Math.abs(f.x - ax) < 4 && Math.abs(f.z - az) < 8)) ? held : show).push(f); } V.fx = show; }
+  // (puffs and glass shards near the target are sized to be seen through the scope from far off; close
+  // up they would be great blots and slabs, and the film throws its own, true to size)
+  if (fxAll.length) { const show = [], ax = a ? a.x : 0, az = O[2]; for (let i = 0; i < fxAll.length; i++) { const f = fxAll[i]; ((f.k === 'star' || ((f.k === 'puff' || f.k === 'shard') && Math.abs(f.x - ax) < 4 && Math.abs(f.z - az) < 8)) ? held : show).push(f); } V.fx = show; }
   try {
     V.ctx = ctx; V.dpr = dpr; if (rd) rd.eye = null;
     if (hide && a) { a.hidden = true; if (a.inVeh) sim.byId[id] = null; } // (a passenger is drawn through the car's window by id)

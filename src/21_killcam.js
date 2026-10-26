@@ -738,7 +738,8 @@ function kcCoverBurst(K, cv, at, world) {
   if (!cv || cv.done) return;
   cv.done = true; cv.t0 = K.T; cv.hx = at[0]; cv.hy = at[1];
   const L = world ? K.wparts : K.parts, m = cv.mat, sp = (kind, n, way, spread, s0, s1, r0, r1, life) => kcSpray(K, kind, n, at, way, spread, s0, s1, r0, r1, life, L);
-  if (m === 'glass') { sp(5, 28, 1, 0.55, 0.8, 4.5, 0.01, 0.035, 2.2); sp(5, 9, -1, 0.7, 0.3, 1.6, 0.008, 0.02, 1.6); sp(4, 6, 1, 0.8, 0.2, 0.8, 0.01, 0.02, 0.5); }
+  if (m === 'glass' && K.o.actor && K.o.actor.inVeh) { sp(5, 46, 1, 0.55, 0.8, 4.5, 0.004, 0.011, 2.2); sp(5, 14, -1, 0.7, 0.3, 1.6, 0.004, 0.009, 1.6); sp(4, 6, 1, 0.8, 0.2, 0.8, 0.01, 0.02, 0.5); } // a car's window crumbles into little cubes
+  else if (m === 'glass') { sp(5, 28, 1, 0.55, 0.8, 4.5, 0.01, 0.035, 2.2); sp(5, 9, -1, 0.7, 0.3, 1.6, 0.008, 0.02, 1.6); sp(4, 6, 1, 0.8, 0.2, 0.8, 0.01, 0.02, 0.5); }
   else if (m === 'wood') { sp(6, 20, 1, 0.5, 0.8, 4, 0.012, 0.04, 2.2); sp(6, 7, -1, 0.6, 0.4, 1.5, 0.01, 0.03, 1.8); sp(4, 10, 1, 0.8, 0.2, 1.0, 0.012, 0.03, 0.6); }
   else if (m === 'metal') { sp(7, 24, 1, 0.7, 2, 7, 0.004, 0.008, 0.5); sp(7, 10, -1, 0.8, 1, 4, 0.004, 0.008, 0.4); sp(4, 5, 1, 0.8, 0.2, 0.6, 0.01, 0.02, 0.5); }
   else { sp(4, 22, 1, 0.8, 0.3, 1.6, 0.015, 0.04, 0.9); sp(8, 16, 1, 0.6, 0.8, 3.5, 0.008, 0.025, 2); sp(4, 10, -1, 0.8, 0.3, 1.4, 0.015, 0.04, 0.8); }
@@ -1460,7 +1461,7 @@ function kcDrawParts(ctx, K, c, list, al) {
       }
       ctx.closePath();
     }
-    ctx.globalAlpha = al * pass ? 0.55 : 0.95; ctx.fill();
+    ctx.globalAlpha = al * (pass ? 0.55 : 0.95); ctx.fill();
   }
   // splinters (of bone, of wood) and chips of brick: short sticks, turning
   for (let pass = 0; pass < 3; pass++) {

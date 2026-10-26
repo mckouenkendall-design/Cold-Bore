@@ -128,7 +128,11 @@ function kcDrawBeat(K, V, ctx) {
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   if (Rf.bg) {
     const B = Rf.bg, k = 1 + 0.06 * e, w = B.Wb * k, h = B.Hb * k;
-    ctx.globalAlpha = 0.92; ctx.drawImage(B.cv, W * 0.5 - w * 0.5 - flip * W * 0.04 * e - flip * W * 0.9 * wh * wh, H * (Rf.shot === 'low' ? 0.5 : 0.36) - h * 0.5 - H * 0.03 * e, w, h); ctx.globalAlpha = 1;
+    // as the camera whips away the place slides off, smeared out sideways so that its far edge never
+    // comes into the picture
+    let x0 = W * 0.5 - w * 0.5 - flip * W * 0.04 * e - flip * W * 0.9 * wh * wh, x1 = x0 + w;
+    if (flip > 0) x1 = Math.max(x1, W * 1.02); else x0 = Math.min(x0, -W * 0.02);
+    ctx.globalAlpha = 0.92; ctx.drawImage(B.cv, x0, H * (Rf.shot === 'low' ? 0.5 : 0.36) - h * 0.5 - H * 0.03 * e, x1 - x0, h); ctx.globalAlpha = 1;
   }
   // the light falls off toward the bottom (the rifle and the ledge are in the shooter's shade)
   const sg = ctx.createLinearGradient(0, H * 0.35, 0, H);
