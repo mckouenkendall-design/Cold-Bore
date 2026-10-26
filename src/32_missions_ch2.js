@@ -28,10 +28,10 @@ mission({
   intel: ['Clerk: WHITE hard hat, clipboard, dark blue coat, glasses.', 'The foreman also wears a white hat. The tally man also carries a clipboard. Neither is him.', 'He ends his round alone on the pier, on the telephone.', 'Range about 260 m. Wind 4 m/s, blowing left to right.'],
   guide: [
     'Find the clerk: WHITE hard hat AND a clipboard, plus glasses and a dark blue coat. The foreman has a white hat but no clipboard, and the tally man has a clipboard but a yellow hat.',
-    'Do not shoot him on the quay, where the dockers will see him fall. Just follow him as he works his way to the right.',
-    'Marlow says at about 45 seconds that he makes his call from the pier. Wait until he stops at the far end of the pier and lifts the phone (about 53 seconds in); he stays there alone for about 12 seconds.',
+    'He starts beside the tally man. Do not shoot him on the quay, where the dockers will see him fall: follow him as he walks right, out onto the pier.',
+    'Wait until he stops at the far end of the pier and lifts the phone, about 20 seconds in. He stays there alone for about 12 seconds.',
     'Aim high for the drop: put the crosshair on the middle of his face, not his chest (HOLD reads about 1.5 up).',
-    'Aim left for the wind, which blows left to right: move the crosshair about half a head-width to his left (HOLD reads about 0.6 left). Aim straight at his chest and the wind pushes the shot off his right side.',
+    'Aim left for the wind, which blows left to right: move the crosshair about half a head-width to his left (HOLD reads about 0.5 left). Aim straight at his chest and the wind pushes the shot off his right side.',
     'Hold your breath and fire once. A hit lands before the bang and earns all three stars; a miss is heard and raises the alarm.',
   ],
   wind: { v: 4, gust: 0.7 }, par: 1, rules: { kill: ['t'] },
@@ -41,8 +41,9 @@ mission({
   cast(H) {
     const vest = { vest: '#e07b2a', vestStripe: '#f1ede2' };
     return [
-      Object.assign(H.quay(-30.5), { id: 't', role: 'target', face: 1, look: { hat: 'hardhat', hatCol: '#ece8dc', coat: COL.navy, bag: 'clip', glasses: true }, speed: 1.3,
-        routine: [['wait', 4, 'stand', 1], ['walk', -15.6], ['wait', 5, 'talk', 1], ['walk', 2.2], ['wait', 5, 'work', 1], ['walk', 34], ['wait', 12, 'phone', 1], ['walk', 12], ['wait', 4, 'work', -1], ['walk', -68], ['gone']],
+      // (the wind lesson lands within about 20 seconds: he starts beside the tally man and goes straight out to the pier)
+      Object.assign(H.quay(2.2), { id: 't', role: 'target', face: 1, anim: 'work', look: { hat: 'hardhat', hatCol: '#ece8dc', coat: COL.navy, bag: 'clip', glasses: true }, speed: 1.5,
+        routine: [['wait', 3, 'work', 1], ['walk', 34], ['wait', 12, 'phone', 1], ['walk', 12], ['wait', 4, 'work', -1], ['walk', -68], ['gone']],
         escapeText: 'He finished his round and went home with the schedule in his pocket. Maeve has it by now.' }),
       Object.assign(H.quay(-14), { id: 'c1', role: 'civ', face: -1, look: Object.assign({ hat: 'hardhat', hatCol: '#ece8dc', build: 'big' }, vest), routine: [['wait', 999, 'point', -1]], failText: 'That was the foreman. A white hat, but no clipboard. The contract is void.' }),
       Object.assign(H.quay(-18.5), { id: 'c2', role: 'civ', face: 1, look: Object.assign({ hat: 'hardhat', hatCol: '#e2b33c' }, vest), routine: [['wait', 999, 'work', 1]] }),
@@ -53,10 +54,10 @@ mission({
     ];
   },
   triggers() { return [
-    hint(1.5, 'Across open water the wind pushes a bullet sideways. Tonight it blows from left to right: the WIND box, the red pennant and the wind sock on the pier all show it.', 11),
-    hint(14, 'Now read the HOLD box. The up arrow is how far the bullet drops. The side arrow is how far to move your aim to beat the wind. It points left, so aim that far to the LEFT of him: into the wind.', 13),
-    hint(29, 'A hold of 0.5 is small: about half the width of his head. Put the crosshair just off his left side, the side the wind comes from, and let the wind carry the bullet onto him.', 13),
-    say(44, 'Marlow', 'He makes his call from the pier, well away from the others. Nobody out there to see him fall.'),
+    hint(1.5, 'Across open water the wind pushes a bullet sideways. Tonight it blows from left to right: the WIND box, the red pennant and the wind sock on the pier all show it.', 7),
+    say(6, 'Marlow', 'He makes his call from the end of the pier, well away from the others. Nobody out there to see him fall.'),
+    hint(9, 'Now read the HOLD box. The up arrow is how far the bullet drops. The side arrow is how far to move your aim to beat the wind. It points left, so aim that far to the LEFT of him: into the wind.', 9.5),
+    hint(19, 'A hold of 0.5 is small: about half the width of his head. Put the crosshair just off his left side, the side the wind comes from, and let the wind carry the bullet onto him.', 11),
   ].concat(dkEyes(['t'])); },
   challenge: { id: 'head', text: 'A headshot through the crosswind', test: (sim) => sim.kills.some((k) => k.id === 't' && k.part === 'head') },
   after: 'The schedule stops reaching Maeve tonight, and she will know why by morning. That was clean shooting across a wind. You will need more of it.',

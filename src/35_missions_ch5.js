@@ -26,7 +26,7 @@ mission({
   guide: [
     'The fixer wears a PALE long raincoat and a grey flat cap and arrives by car from the right. The clerk (brown coat, glasses) must not see him fall.',
     'Let them talk and swap the case. The clerk then walks left round the lamp hut, and Pip tells you when he is past it (about 37 seconds in).',
-    'The fixer stands on the phone meanwhile. Your rifle is loud, so wait for the train on the FAR line: its rumble starts about 43 seconds in.',
+    'The fixer stands on the phone meanwhile. Wait for the train on the FAR line, about 43 seconds in: its rumble hides a loud shot, and the crack of a suppressed one that his minder would hear.',
     'Shoot the fixer in the chest then, before he walks back to his car at about 50 seconds. If a constable walks the far siding, keep clear of him.',
     'HOLD reads about 3.7 up (about 1.7 m) and 0.6 left (about 25 cm). The wind blows left to right; on the plain scope at full zoom, his chest sits at the tip of the thick post below the centre.',
   ],
@@ -101,7 +101,8 @@ mission({
   solve(H, st) {
     const need = st.action === 'charge' ? 2.3 : 1.3, L = CARS.freight.len / 2 + 4;
     const hidden = (s, x) => ['n1', 'n2'].some((id) => Math.abs(s.byId[id].x - x) < L);
-    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.quiet || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
+    // (a suppressed round still cracks past the minder by the car: only a subsonic one needs no train)
+    return [['until', (s) => { const a = s.byId.fixer, c = s.byId.clerk; return a.anim === 'phone' && a.goal === null && c.zone === 'west' && !hidden(s, a.x) && (st.silent || (s.covered() && s.coverUntil - s.t > need)); }, 90], ['wait', 0.3], ['hold'], ['shoot', 'fixer', 'torso']];
   },
   reward: { cr: 3600, xp: 800 },
 });
@@ -711,11 +712,11 @@ mission({
   objective: 'The listener in the tin lock-up. Find his legs under the shutter, then shoot through it.',
   brief: 'Somebody told Aurel the armoury boat was going down before it touched the bottom, and I have found out who. A listener: a man with a bench full of radio sets in a tin lock-up in Calder Yard. He hears every police call, every taxi, and until tonight every word I said to you. He works with the shutter half up, because those old valve sets cook a room, so all you will see of him is his legs. That shutter is tin. Armour-piercing goes through it like a letter through a door. His minder is in there with him, and the tea lady comes round. Read the feet, Kestrel.',
   intel(f) {
-    return ['Fit ARMOUR-PIERCING rounds. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
+    return ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
       'His minder wears a short black jacket and steps outside now and then to smoke. The tea lady wears a wine-red skirt. She must not be hit.', 'A standing man\'s chest is about a metre and a quarter straight above his shoes. Anyone in there with him will see him fall.',
       vargaHelps(f) ? 'Range 420 m, wind 3 m/s from the left. Varga is keeping the police band quiet tonight, so he will hear nothing useful.' : 'Range 420 m, wind 3 m/s from the left. A train on the far line covers a loud shot.'];
   },
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
     'Wait until the tea lady has gone and the minder has stepped outside to smoke.', 'Aim a metre and a quarter straight above the listener\'s shoes, hold for drop and wind, and fire once while he stands still.'],
   wind: { v: 3, gust: 1.2 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Grain elevator', desc: 'High over the yard, 420 m out, looking straight at the strip.', eye: [0, 30, 0] }],
@@ -763,7 +764,7 @@ mission({
   solve(H) {
     const L = H.lock;
     const clear = (s) => { const m = s.byId.mind, tea = s.byId.tea, a = s.byId.t; return m.zone !== 'lockup' && m.goal === null && tea.zone !== 'lockup' && (tea.hidden || tea.x < L.s0 - 3) && a.goal === null && a.wait > 1.6 && a.state === 'calm'; };
-    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 4100, xp: 880 },
 });

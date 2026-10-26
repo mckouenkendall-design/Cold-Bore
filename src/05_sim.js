@@ -10,6 +10,11 @@ function Sim(M, st, vantageIdx, opts) {
   opts = opts || {};
   const sim = this;
   sim.M = M; sim.st = st; sim.opts = opts;
+  // Two loads: the rifle's own rounds, and a few of a second kind (armour-piercing, say) that can
+  // be chambered during the mission for the price of one pull of the bolt (see switchAmmo).
+  // sim.st is always the load in the chamber; every round in the air keeps the numbers it left with.
+  sim.stA = st; sim.stB = null;
+  if (opts.ammo2 && st.cfg && opts.ammo2 !== st.cfg.ammo && PART_BY_ID[opts.ammo2] && partFits(PART_BY_ID[opts.ammo2], st.gun)) sim.stB = buildStats(st.id, Object.assign({}, st.cfg, { ammo: opts.ammo2 }));
   sim.flags = opts.flags || {};
   const built = M.setup(K, sim.flags);
   const S = sim.S = built.S; sim.A = built;
@@ -26,8 +31,10 @@ function Sim(M, st, vantageIdx, opts) {
   sim.actors = []; sim.byId = {}; sim.vehicles = []; sim.bullets = []; sim.kills = []; sim.steam = []; sim.timers = [];
   sim.emitted = {}; sim.msgs = [];
   sim.alarmT = null; sim.coverUntil = -1; sim.coverName = '';
-  sim.stats = { shots: 0, hits: 0, heads: 0, misses: 0, panics: 0, breathUsed: false, longest: 0, accident: 0, wounded: 0, glass: 0, objects: 0, duck: false, collateral: 0, firstShotT: null, maxLead: 0 };
+  // heard: how many times anybody heard one of your shots (a bang, or a crack before the job was done)
+  sim.stats = { shots: 0, hits: 0, heads: 0, misses: 0, panics: 0, breathUsed: false, longest: 0, accident: 0, wounded: 0, glass: 0, objects: 0, duck: false, collateral: 0, firstShotT: null, maxLead: 0, heard: 0, heardLate: 0 };
   sim.failInfo = null; sim.winAt = null; sim.endAt = null;
+  sim.seenBy = null; // the first person (or camera) who gave the game away: see Sim.giveaway
 
   // camera limits for this position, worked out from the scene size
   const b = S.bounds, zr = S.refZ - sim.eye0.z;
@@ -41,6 +48,8 @@ function Sim(M, st, vantageIdx, opts) {
     breath: st.breath, holding: false, holdK: 0, exhausted: 0,
     ammo: st.mag, reserve: (M.rules && M.rules.reserve !== undefined) ? M.rules.reserve : st.mag * 3 + (st.mag === 1 ? 9 : 0), cycleT: 0, cycleLen: 0, reloadT: 0, reloadLen: 0, chargeT: 0,
     zeroR: st.zero, zeroAng: st.zeroAng, heart: 0, lastFire: -99, sx: 0, sy: 0, pvx: 0, pvy: 0,
+    // the load in the chamber (0 the rifle's own rounds, 1 the second kind) and the other one's count
+    load: 0, altAmmo: sim.stB ? Math.min(3, Math.max(2, Math.floor(st.mag / 3))) : 0, altReserve: 0,
   };
   if (st.scope.turret && M.range && !opts.noAutoZero) { /* player dials it themselves */ }
 
@@ -147,8 +156,29 @@ Sim.prototype.reload = function () {
   sh.reloadT = sh.reloadLen = st.reload; this.ev.push({ k: 'reload', dur: st.reload, action: st.action });
   return true;
 };
+// Chamber the other kind of round. It costs one pull of the bolt (a moment for any rifle). The
+// last round of the second kind put through, the rifle goes back to its own by itself.
+Sim.prototype.switchAmmo = function () {
+  const sim = this, sh = sim.sh;
+  if (!sim.stB || sim.state !== 'play' || sh.reloadT > 0 || sh.chargeT > 0) return false;
+  if (sh.altAmmo + sh.altReserve <= 0) { sim.ev.push({ k: 'dry' }); return false; }
+  sim.swapLoad();
+  sh.cycleT = sh.cycleLen = Math.max(0.4, sim.st.cycle);
+  sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, cycle: sh.cycleLen, action: sim.st.action });
+  return true;
+};
+Sim.prototype.swapLoad = function () {
+  const sim = this, sh = sim.sh, a = sh.ammo, r = sh.reserve;
+  sh.ammo = sh.altAmmo; sh.reserve = sh.altReserve; sh.altAmmo = a; sh.altReserve = r;
+  sh.load = sh.load ? 0 : 1; sim.useLoad();
+  sh.zeroAng = Bal.zeroAngle(sim.st, sh.zeroR); // the same zero distance, for this load
+};
+// sim.st follows the load in the chamber (a copy of the mission that is handed the shooter's state,
+// as the shot oracle is, picks the change up here)
+Sim.prototype.useLoad = function () { const want = this.sh.load && this.stB ? this.stB : this.stA; if (this.st !== want) this.st = want; };
 Sim.prototype.canFire = function () { const sh = this.sh; return this.state === 'play' && sh.cycleT <= 0 && sh.reloadT <= 0 && sh.ammo > 0 && sh.chargeT <= 0; };
 Sim.prototype.fire = function () {
+  this.useLoad();
   const sim = this, sh = sim.sh, st = sim.st;
   if (sim.state !== 'play') return false;
   if (sh.reloadT > 0 || sh.cycleT > 0 || sh.chargeT > 0) return false;
@@ -164,7 +194,7 @@ Sim.prototype._shoot = function () {
   const ax = aim.x + R.gauss() * st.disp * 0.5 + Math.cos(ja) * jm, ay = aim.y + sh.zeroAng + R.gauss() * st.disp * 0.5 + Math.sin(ja) * jm;
   const b = Bal.launch(st.v0, ax, ay);
   b.x += eye.x; b.y += eye.y; b.z += eye.z;
-  b.alive = true; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
+  b.alive = true; b.st = st; b.t0 = sim.t; b.trail = [[b.x, b.y, b.z]]; b.id = ++sim.stats.shots; b.walls = 0; b.aim = { x: aim.x, y: aim.y }; b.ox = eye.x; b.oy = eye.y; b.oz = eye.z;
   sim.bullets.push(b);
   if (sim.stats.firstShotT === null) sim.stats.firstShotT = sim.t;
   sh.ammo--; sh.lastFire = sim.t;
@@ -198,7 +228,11 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.exhausted > 0) sh.exhausted -= dt;
   sh.holdK = approach(sh.holdK, sh.holding ? 1 : 0, dt * (sh.holding ? 3.2 : 2.2));
   sh.move *= Math.exp(-dt * (1.1 + 3.2 * st.handling));
-  sh.heart = approach(sh.heart, sim.alarmT !== null ? 1 : 0, dt * 0.4);
+  // Stress: what makes a real shooter's pulse climb. Lungs burning on a long held breath, people
+  // close to whoever is under the crosshair, a target on the move, and every round that missed
+  // (see stopBullet). It settles back slowly, and the heart follows it (or the alarm, if higher).
+  sim.stepStress(dt);
+  sh.heart = approach(sh.heart, Math.max(sim.alarmT !== null ? 1 : 0, sh.stress), dt * 0.4);
   // sway = slow breathing drift + faster muscle tremor + a pulse
   const low = sh.holding ? clamp(1 - sh.breath / (st.breath * 0.28), 0, 1) : 0; // lungs burning
   const breathAmp = lerp(1, 0.04, sh.holdK), tremAmp = lerp(1, 0.38 + low * 1.3, sh.holdK);
@@ -217,6 +251,7 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.cycleT > 0) {
     sh.cycleT -= dt;
     if (st.action === 'bolt') { const u = 1 - clamp(sh.cycleT / sh.cycleLen, 0, 1); const e = Math.sin(clamp((u - 0.18) / 0.72, 0, 1) * Math.PI); ox = e * 1.6 * Math.sin(u * 9); oy = e * (2.2 + st.recoil * 0.08); }
+    if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve <= 0 && sh.load === 1 && sh.altAmmo + sh.altReserve > 0) { sim.swapLoad(); sim.ev.push({ k: 'ammo', load: sh.load, ammo: sim.st.cfg.ammo, auto: true }); }
     if (sh.cycleT <= 0 && sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0) sim.reload();
   }
   if (sh.reloadT > 0) {
@@ -228,6 +263,31 @@ Sim.prototype.stepShooter = function (dt) {
   if (sh.chargeT > 0) { sh.chargeT -= dt; if (sh.chargeT <= 0) { sh.chargeT = 0; sim._shoot(); } }
 };
 
+Sim.prototype.stepStress = function (dt) {
+  const sim = this, sh = sim.sh, st = sim.st;
+  if (sh.stress === undefined) { sh.stress = 0; sh.stressT = 0; sh.watchers = 0; sh.aimMoving = false; }
+  if (sim.M.practice) { sh.stress = 0; return; } // the Range is for learning the rifle: the pulse stays steady
+  // what is under the crosshair is looked at four times a second (it costs a line of sight)
+  sh.stressT -= dt;
+  if (sh.stressT <= 0) {
+    sh.stressT = 0.25;
+    const a = sim.aimNow(), r = sim.rangeAt(a.x, a.y), who = r && r.actor && !r.actor.dead ? r.actor : null;
+    sh.watchers = 0; sh.aimMoving = false;
+    if (who) {
+      sh.aimMoving = (who.inVeh && who.inVeh.v > 1) || (!who.inVeh && who.goal !== null);
+      for (let i = 0; i < sim.actors.length; i++) { const o = sim.actors[i]; if (o !== who && !o.dead && !o.gone && !o.hidden && (o.role === 'civ' || o.role === 'guard') && o.state === 'calm' && o.plane === who.plane && Math.abs(o.x - who.x) < 12) sh.watchers++; }
+    }
+  }
+  let want = 0;
+  if (sh.holding && sh.breath < st.breath * 0.4) want += 0.45;
+  want += Math.min(0.4, sh.watchers * 0.14);
+  if (sh.aimMoving) want += 0.25;
+  sh.stress = sh.stress < want ? Math.min(want, sh.stress + dt * 0.18) : Math.max(want, sh.stress - dt * 0.045);
+  sh.stress = clamp(sh.stress, 0, 1);
+};
+// A shot that went wrong sets the pulse going (it settles back slowly).
+Sim.prototype.jolt = function (k) { const sh = this.sh; if (this.M.practice) return; sh.stress = clamp((sh.stress || 0) + k, 0, 1); };
+
 // ---- noise and awareness -------------------------------------------------------
 Sim.prototype.noiseAll = function (kind, dist) {
   // an unsuppressed shot heard across the whole scene
@@ -237,36 +297,120 @@ Sim.prototype.noiseAll = function (kind, dist) {
   const alarmR = st.noise, suspR = st.noise * 1.7;
   if (dist <= alarmR) {
     sim.ev.push({ k: 'heard', loud: true });
+    sim.stats.heard++;
     if (sim.winAt) { // the job is already done by the time the bang arrives: people scatter, but it no longer matters
       // Anyone who actually SAW it happen still counts as a witness; only people who merely heard the bang are let off.
       sim.heardAfter = true; const p0 = sim.stats.panics;
+      sim._late = true;
       sim.actors.forEach((a) => { if (a.dead || a.gone || a.sawKill || (a.state !== 'calm' && a.state !== 'susp')) return; sim.startle(a, 'shot'); a.react = 99; });
+      sim._late = false;
       sim.stats.panics = p0; return;
     }
     sim.actors.forEach((a) => { if (a.dead || a.gone) return; sim.startle(a, 'shot'); });
     sim.raiseAlarm('shot', 0.4);
   } else if (dist <= suspR) {
+    sim.stats.heard++;
     sim.actors.forEach((a) => { if (!a.dead && !a.gone) sim.suspect(a, 3.5); });
   }
 };
+// A noise heard after the job is done: heads come up and that is all. Nobody goes looking.
+Sim.prototype.lateNoise = function (x, y, radius, srcActor) {
+  const sim = this;
+  sim.stats.heardLate++;
+  sim.actors.forEach((a) => {
+    if (a.dead || a.gone || a.hidden || a === srcActor || a.inVeh || (a.state !== 'calm' && a.state !== 'susp')) return;
+    if (Math.hypot(a.x - x, (a.y - y) * 0.7) <= radius) sim.bubble(a, '?', 1.6);
+  });
+};
+// Returns how many people were close enough to notice.
 Sim.prototype.noise = function (x, y, plane, kind, radius, srcActor) {
   const sim = this;
+  let n = 0;
   sim.actors.forEach((a) => {
     if (a.dead || a.gone || a === srcActor || a.inVeh) return;
     let r = radius; if (a.room && sim.S.rooms[a.room] && kind !== 'boom' && kind !== 'npcshot') r *= 0.6;
     const d = Math.hypot(a.x - x, (a.y - y) * 0.7);
     if (d > r) return;
+    n++; a.heardWhat = kind; a.heardT = sim.t;
     if (kind === 'scream' || kind === 'boom' || kind === 'npcshot') sim.startle(a, kind);
     else if (kind === 'impact') { if (d < 3.2) sim.startle(a, 'impact'); else sim.suspect(a, 3); }
     else if (kind === 'lure') sim.investigate(a, x);
     else if (kind === 'crash') { if (a.role === 'guard' || a.role === 'civ') sim.investigate(a, x, 6); else sim.suspect(a, 4); }
     else sim.suspect(a, kind === 'crack' ? 3.5 : 2.5);
   });
+  return n;
 };
 Sim.prototype.bubble = function (a, s, dur) { a.bubble = s; a.bubbleT = this.t + (dur || 1.8); };
+
+// ---- who gave it away ------------------------------------------------------------------
+// The first person (or camera) whose reaction cost the clean rating or failed the job: who they
+// were, what they noticed, where they stood and when. The results and fail screens show it, and
+// the scope points them out the moment it happens (see Game.seenFx). Reactions to a shot heard
+// after the job was done never count, so they are never recorded either.
+const SEEN_WHAT = {
+  body: 'found the body', saw: 'saw it happen', shot: 'heard the shot', impact: 'saw a round strike beside them',
+  susp: 'was spooked one time too many', hit: 'was hit, but not killed', scream: 'heard someone scream', boom: 'heard the blast',
+  npcshot: 'heard a pistol shot', camera: 'caught the body on camera', vehicle: 'heard the round hit the car', explosion: 'heard the blast',
+  witness: 'saw it happen', target: 'saw trouble and called it in', guard: 'raised the alarm',
+};
+// what someone had just heard before they looked round and found a body
+const HEARD_WHAT = { crack: 'the bullet crack past', impact: 'the round strike', glass: 'glass break', pop: 'a lamp pop', lure: 'a noise', crash: 'a crash', scream: 'a scream' };
+Sim.prototype.giveaway = function (a, why, o) {
+  const sim = this;
+  if (sim.seenBy || sim._late || sim.M.practice) return;
+  o = o || {};
+  let what = o.what || SEEN_WHAT[why] || 'raised the alarm';
+  if (a && why === 'body' && a.heardWhat && sim.t - a.heardT < 6 && HEARD_WHAT[a.heardWhat]) what = 'heard ' + HEARD_WHAT[a.heardWhat] + ', looked round and found the body';
+  const at = a ? { x: a.x, y: a.y, z: a.plane ? a.plane.z : sim.S.refZ, zone: a.zone } : o.at || null;
+  const body = o.body ? sim.byId[o.body] : null;
+  if (at) {
+    const ref = body || sim.byId[sim.rules.kill[0]];
+    if (ref && ref !== a && ref.plane) { const dx = at.x - ref.x; at.text = Math.abs(dx) < 2 ? 'right beside ' + (body ? 'the body' : 'the target') : Math.round(Math.abs(dx)) + ' m ' + (dx < 0 ? 'left' : 'right') + ' of ' + (body ? 'the body' : 'the target'); }
+  }
+  sim.seenBy = { id: a ? a.id : null, role: a ? a.role : null, who: o.who || (a ? personName(a, sim) : SEEN_NOBODY[why] || 'Somebody'), look: a ? Object.assign({}, a.look) : null, what, why, body: o.body || null, where: at, t: sim.t };
+  sim.ev.push({ k: 'giveaway', id: sim.seenBy.id, who: sim.seenBy.who, what });
+};
+Sim.prototype.giveawayOf = function (a) { const w = a.alertBy || {}; this.giveaway(a, w.why || (a.role === 'guard' ? 'guard' : 'target'), { body: w.body }); };
+const SEEN_NOBODY = { shot: 'Everyone in earshot', explosion: 'Everyone in earshot', camera: 'A security camera', vehicle: 'The people in the car', target: 'The target', guard: 'A guard', witness: 'A witness' };
+
+// Plain words for a person, for the screens that say who saw what: "a passer-by with a blue umbrella".
+const COLOUR_NAMES = [['red', '#c8372d'], ['blue', '#2f6db5'], ['green', '#3f8f4f'], ['yellow', '#e2b33c'], ['white', '#ece8dc'], ['grey', '#7a8088'], ['orange', '#e07b2a'], ['purple', '#7d4fa0'], ['pink', '#e07a9a'],
+  ['brown', '#7b5a36'], ['black', '#16181c'], ['dark', '#2c2f36'], ['teal', '#2a9d8f'], ['navy', '#27365a'], ['cream', '#e8dcc0'], ['tan', '#b89a6a'], ['olive', '#5d6b3a'], ['wine', '#7a2438'], ['pale', '#c9c4b4']];
+function colourName(hex) {
+  if (typeof hex !== 'string' || hex[0] !== '#') return 'dark';
+  const h = hex.length === 4 ? '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3] : hex;
+  const r = parseInt(h.slice(1, 3), 16), g = parseInt(h.slice(3, 5), 16), b = parseInt(h.slice(5, 7), 16);
+  let best = 'dark', bd = 1e9;
+  COLOUR_NAMES.forEach((c) => { const q = c[1], d = Math.pow(r - parseInt(q.slice(1, 3), 16), 2) * 0.9 + Math.pow(g - parseInt(q.slice(3, 5), 16), 2) * 1.2 + Math.pow(b - parseInt(q.slice(5, 7), 16), 2) * 0.8; if (d < bd) { bd = d; best = c[0]; } });
+  return best;
+}
+const HAT_NAME = { fedora: 'hat', cap: 'cap', beanie: 'beanie', hardhat: 'hard hat', tophat: 'top hat', hood: 'hood', sun: 'straw hat', peaked: 'peaked cap', helmet: 'helmet', beret: 'beret' };
+function aOrAn(w) { return /^[aeiou]/.test(w) ? 'an ' + w : 'a ' + w; }
+function lookPhrase(L) {
+  L = L || {};
+  if (L.bag === 'umbrella') return 'with ' + aOrAn(colourName(L.bagCol || '#16181c') + ' umbrella');
+  if (L.hat && HAT_NAME[L.hat]) return 'in ' + aOrAn(colourName(L.hatCol || '#2c2f36') + ' ' + HAT_NAME[L.hat]);
+  if (L.coat) return 'in ' + aOrAn(colourName(L.coat) + (L.long ? ' long coat' : ' coat'));
+  if (L.dress) return 'in ' + aOrAn(colourName(L.dress) + ' dress');
+  if (L.vest) return 'in ' + aOrAn(colourName(L.vest) + ' vest');
+  if (L.hair === 'white') return 'with white hair';
+  return '';
+}
+function personName(a, sim) {
+  if (!a) return 'Somebody';
+  if (a.name) return a.name;
+  const kill = sim && sim.rules.kill.indexOf(a.id) >= 0;
+  const role = { guard: 'a guard', target: kill ? 'the target' : 'a target', hostile: 'a gunman', vip: 'a protected person', hostage: 'the hostage' }[a.role] || (/^(pb|u)\d/.test(a.id) ? 'a passer-by' : 'a bystander');
+  const ph = lookPhrase(a.look);
+  const s = role + (ph ? ' ' + ph : '');
+  return s[0].toUpperCase() + s.slice(1);
+}
 Sim.prototype.suspect = function (a, dur) {
   if (a.dead || a.gone || a.state === 'panic' || a.state === 'alarm' || a.state === 'flee' || a.state === 'alert' || a.deaf) return;
-  a.suspN++;
+  // One round can make several noises at once (through a shutter, the crack, the wall behind):
+  // that is one scare, not three.
+  if (this.t - (a.suspAt === undefined ? -9 : a.suspAt) > 0.6) a.suspN++;
+  a.suspAt = this.t;
   if (a.role === 'guard' && a.suspN >= 3) { this.startle(a, 'susp'); return; }
   a.state = 'susp'; a.susp = Math.max(a.susp, dur); this.bubble(a, '?', dur);
 };
@@ -279,17 +423,22 @@ Sim.prototype.investigate = function (a, x, wait) {
   a.pc = 0; a.wait = 0; a.goal = null; a.state = 'calm'; this.bubble(a, '?', 2);
   this.ev.push({ k: 'lured', id: a.id });
 };
-// Something frightening happened right in front of this person.
-Sim.prototype.startle = function (a, why) {
+// Something frightening happened right in front of this person. `body` is the id of the body they
+// found or the killing they saw, when that is why.
+Sim.prototype.startle = function (a, why, body) {
   const sim = this;
   if (a.dead || a.gone || a.state === 'panic' || a.state === 'alarm' || a.state === 'flee' || a.state === 'alert') return;
   if (a.role === 'hostage') { a.anim = 'cower'; return; }
+  // what set them off, in case it is them who gives the game away (see Sim.giveaway): a bystander
+  // costs the clean rating the moment they panic; a guard or a target only once they call it in
+  a.alertBy = { why, body };
   a.goal = null; a.wait = 0; a.stack = []; a.waitFor = null;
   sim.bubble(a, '!', 2.5);
   if (a.role === 'guard') {
     a.state = 'alarm'; a.react = a.reactT || (sim.radioDown ? 5.5 : 1.7); a.anim = 'aimrifle';
     sim.ev.push({ k: 'spotted', id: a.id, role: a.role });
   } else if (a.role === 'civ' || a.role === 'vip') {
+    sim.giveaway(a, why, { body });
     a.state = 'panic'; a.react = 0.9; sim.stats.panics++;
     sim.ev.push({ k: 'scream', id: a.id });
     sim.after(0.5, () => { if (!a.dead) sim.noise(a.x, a.y, a.plane, 'scream', 16, a); });
@@ -321,6 +470,7 @@ Sim.prototype.raiseAlarm = function (by, delay) {
   sim.after(delay || 0, () => {
     if (sim.alarmT !== null) return;
     if (sim.winAt && (by === 'explosion' || by === 'shot' || by === 'vehicle')) { sim.alarmPending = false; sim.lateAlarm = by; return; }
+    sim.giveaway(null, by);
     sim.alarmT = sim.t; sim.alarmBy = by;
     sim.ev.push({ k: 'alarm', by });
     sim.emit('alarm');
@@ -361,7 +511,7 @@ Sim.prototype.perceive = function () {
       (o.seen = o.seen || {})[bd.id] = true;
       bd.found = true;
       if (bd.accident) { sim.ev.push({ k: 'gawk', id: o.id }); if (o.role === 'civ' || o.role === 'guard') sim.investigate(o, bd.x, 7); else sim.suspect(o, 4); }
-      else { sim.ev.push({ k: 'bodyfound', id: o.id, body: bd.id }); sim.startle(o, 'body'); }
+      else { sim.ev.push({ k: 'bodyfound', id: o.id, body: bd.id }); sim.startle(o, 'body', bd.id); }
       return;
     }
   });
@@ -371,7 +521,9 @@ Sim.prototype.perceive = function () {
     for (let i = 0; i < bodies.length; i++) {
       const bd = bodies[i];
       if (bd.accident || bd.zone !== c.zone || Math.abs(bd.x - c.x) > (c.range || 14)) continue;
-      c.tripped = true; sim.ev.push({ k: 'camera', id: c.id }); sim.raiseAlarm('camera', c.delay || 2.2);
+      c.tripped = true; sim.ev.push({ k: 'camera', id: c.id });
+      sim.giveaway(null, 'camera', { body: bd.id, who: 'A security camera', at: { x: c.x, y: c.y, z: c.plane ? c.plane.z : sim.S.refZ, zone: c.zone } });
+      sim.raiseAlarm('camera', c.delay || 2.2);
     }
   });
 };
@@ -491,7 +643,8 @@ Sim.prototype.stepActorCore = function (a, dt) {
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
-  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  // (a passenger faces the way the vehicle goes, unless a mission has turned them round: vehFace)
+  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = a.vehFace || v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
   if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
@@ -502,10 +655,10 @@ Sim.prototype.stepActorCore = function (a, dt) {
   if (a.state === 'alarm') { // guard reaching for the radio
     a.react -= dt; a.face = Math.sin(a.t * 5) > 0 ? 1 : -1;
     if (sim.radioDown && sim.M.alarmX !== undefined && !a.room) { const dx = sim.M.alarmX - a.x; if (Math.abs(dx) > 0.6) { a.anim = 'run'; a.face = sign(dx); a.x += sign(dx) * RUN * dt; a.ph += dt * RUN * FIG_GAIT.run.k; } else a.react = Math.min(a.react, 0.2); }
-    if (a.react <= 0) { sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
+    if (a.react <= 0) { sim.giveawayOf(a); sim.raiseAlarm('guard'); a.state = 'alert'; a.routine = [['wait', 999, 'aimrifle']]; a.pc = 0; }
     return;
   }
-  if ((a.state === 'panic' || a.state === 'flee') && a.react > 0) { a.react -= dt; if (a.react <= 0) sim.raiseAlarm(a.role === 'civ' ? 'witness' : 'target'); }
+  if ((a.state === 'panic' || a.state === 'flee') && a.react > 0) { a.react -= dt; if (a.react <= 0) { sim.giveawayOf(a); sim.raiseAlarm(a.role === 'civ' ? 'witness' : 'target'); } }
   if (a.threat) {
     a.threat.t -= dt; a.anim = 'aim';
     const v = sim.byId[a.threat.id]; if (v) a.face = sign(v.x - a.x) || 1;
@@ -577,7 +730,8 @@ Sim.prototype.killActor = function (a, part, how, bullet, src) {
   a.deathKind = seated ? 'slump' : (sim.rng.chance(0.5) ? 'back' : 'front');
   a.accident = how === 'accident' || (how === 'blast' && sim.rules.blastAccident);
   const wasMoving = a.goal !== null; a.threat = null; a.state = 'dead';
-  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident,
+  // round: which of the player's rounds did it (for a falling load or a blast, the last one fired)
+  const k = { id: a.id, role: a.role, part, how, t: sim.t, range: bullet ? Math.hypot(a.x - bullet.ox, a.plane.z - bullet.oz) : 0, zone: a.zone, accident: a.accident, round: bullet ? bullet.id : sim.stats.shots,
     moving: !!(a.inVeh && a.inVeh.v > 2) || (!a.inVeh && wasMoving), lit: sim.S.isLit(a.room && sim.S.rooms[a.room] ? a.room : a.zone, a.x) };
   // for the picture only: how the body falls, the wounds, the blood (see src/13_ragdoll.js)
   rdNote(sim, a, part, how, bullet, src);
@@ -606,7 +760,7 @@ Sim.prototype.killActor = function (a, part, how, bullet, src) {
     if (!sim.canSee(o, a.x, a.y, a.zone)) return;
     (o.seen = o.seen || {})[a.id] = true; a.found = true;
     if (a.accident) { if (o.role === 'civ' || o.role === 'guard') sim.investigate(o, a.x, 7); else sim.suspect(o, 4); sim.ev.push({ k: 'gawk', id: o.id }); }
-    else { o.sawKill = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw'); }); }
+    else { o.sawKill = true; sim.after(0.3 + sim.rng.r(0, 0.3), () => { sim.ev.push({ k: 'bodyfound', id: o.id, body: a.id }); sim.startle(o, 'saw', a.id); }); }
   });
 };
 Sim.prototype.woundActor = function (a, part, bullet) {
@@ -664,18 +818,33 @@ Sim.prototype.impact = function (b, x, y, P, mat, o) {
   o = o || {};
   sim.ev.push({ k: 'impact', x, y, z: P ? P.z : b.z, plane: P, mat, tof: sim.t - b.t0, dist: (P ? P.z : b.z) - b.oz, small: o.small });
   if (P && o.decal !== false && mat !== 'water' && mat !== 'dirt') { sim.S.decals.push({ x, y, plane: P, mat }); if (sim.S.decals.length > 60) sim.S.decals.shift(); }
-  if (!o.quiet) sim.noise(x, y, P, 'impact', mat === 'glass' ? 12 : 8);
+  // (the strike of a round that has already finished the job, going on through into a wall, only turns heads)
+  if (!o.quiet) { if (sim.jobDone()) sim.lateNoise(x, y, mat === 'glass' ? 12 : 8); else sim.noise(x, y, P, 'impact', mat === 'glass' ? 12 : 8); }
   sim.crack(b, x, y, P);
 };
+// A suppressed round still faster than sound cracks past the people near where it lands. Two rules
+// make that fair next to a loud rifle:
+// - noise cover (thunder, a train, a horn) drowns the crack just as it drowns a bang;
+// - the crack of the round that finishes the job no longer matters, the same as a bang that
+//   arrives after the job is done: heads come up, but nobody goes looking.
 Sim.prototype.crack = function (b, x, y, P, skip) {
-  const st = this.st;
+  const sim = this, st = b.st || sim.st;
   const v = Math.hypot(b.vx, b.vy, b.vz);
-  if (st.quiet && st.crack > 0 && v > SOUND) this.noise(x, y, P, 'crack', st.crack, skip);
+  if (!(st.quiet && st.crack > 0 && v > SOUND)) return;
+  if (sim.covered()) return;
+  if (sim.jobDone()) { sim.lateNoise(x, y, st.crack, skip); return; }
+  if (sim.noise(x, y, P, 'crack', st.crack, skip)) sim.stats.heard++;
 };
-Sim.prototype.stopBullet = function (b) { b.alive = false; b.endT = this.t; };
+Sim.prototype.stopBullet = function (b) {
+  b.alive = false; b.endT = this.t;
+  // a miss, or a hit that did not put them down, sets the shooter's pulse going
+  const hits = b.hits || [];
+  if (b.vest || hits.some((h) => !h.lethal)) this.jolt(0.3);
+  else if (!hits.length && !b.obj) this.jolt(0.22);
+};
 
 Sim.prototype.hitPlane = function (P, b, bx, by) {
-  const sim = this, S = sim.S, st = sim.st;
+  const sim = this, S = sim.S, st = b.st || sim.st;
   // 1. shootable objects
   for (let i = 0; i < S.objects.length; i++) {
     const ob = S.objects[i];
@@ -725,7 +894,7 @@ Sim.prototype.hitPlane = function (P, b, bx, by) {
     for (let s = 0; s < v.seats.length; s++) {
       const a = sim.byId[v.seats[s]]; if (!a || a.dead || a.inVeh !== v) continue;
       const part = figHit(actorJoints(a), bx + ox - a.x, by + oy - a.y);
-      if (part === 'head' || part === 'torso' || part === 'arm') { sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
+      if (part === 'head' || part === 'torso' || part === 'arm') { (b.hits = b.hits || []).push({ id: a.id, part: part === 'arm' ? 'torso' : part, lethal: true, role: a.role, d: P.z - b.oz }); sim.killActor(a, part === 'arm' ? 'torso' : part, 'shot', b); sim.crack(b, bx, by, P, a); got = true; break; }
     }
     sim.scareVehicle(v);
     if (got) { if (st.pen < 1.2) { sim.stopBullet(b); return true; } sim.stats.collateral++; }
@@ -761,7 +930,7 @@ Sim.prototype.hitPlane = function (P, b, bx, by) {
     if (op.through) return false;
     sim.impact(b, bx + ox, by + oy, P, 'interior', { decal: false, quiet: !S.rooms[op.room], small: true });
     // people in the room notice a round coming through
-    sim.actors.forEach((a) => { if (!a.dead && !a.gone && a.room === op.room && a.behind) { if (Math.abs(a.x - bx) < 2.5) sim.startle(a, 'impact'); else sim.suspect(a, 3); } });
+    if (!sim.jobDone()) sim.actors.forEach((a) => { if (!a.dead && !a.gone && a.room === op.room && a.behind) { if (Math.abs(a.x - bx) < 2.5) sim.startle(a, 'impact'); else sim.suspect(a, 3); } });
     sim.stopBullet(b); return true;
   }
   // 6. walls and cover
@@ -786,13 +955,16 @@ Sim.prototype.scareVehicle = function (v) {
     let any = false; v.seats.forEach((id) => { const a = sim.byId[id]; if (a && !a.dead && a.inVeh === v) any = true; });
     if (!any) return;
     const drv = sim.byId[v.seats[0]];
+    if (drv && !drv.dead) sim.giveaway(drv, 'vehicle');
     if (drv && !drv.dead && !v.flatTire) { v.routine = [['drive', v.dir > 0 ? 500 : -500, 18], ['gone']]; v.pc = 0; v.goal = null; v.wait = 0; v.waitFor = null; }
     sim.raiseAlarm('vehicle', 0.6);
   });
 };
 Sim.prototype.hitActor = function (a, part, b, bx, by) {
-  const sim = this, st = sim.st;
-  if (a.vest && part === 'torso' && st.pen < 0.5) { sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  const sim = this, st = b.st || sim.st;
+  // (what each round did is noted on it, for the hit and miss callout: see Game.watchRounds)
+  if (a.vest && part === 'torso' && st.pen < 0.5) { b.vest = true; sim.ev.push({ k: 'vest', x: bx, y: by, plane: a.plane }); sim.woundActor(a, part, b); sim.stopBullet(b); return true; }
+  (b.hits = b.hits || []).push({ id: a.id, part, lethal: part === 'head' || part === 'torso', role: a.role, d: a.plane.z - b.oz });
   if (part === 'head' || part === 'torso') sim.killActor(a, part, 'shot', b);
   else sim.woundActor(a, part, b);
   sim.ev.push({ k: 'hit', x: bx, y: by, plane: a.plane, part, tof: sim.t - b.t0, dist: a.plane.z - b.oz, lethal: part === 'head' || part === 'torso' });
@@ -804,6 +976,7 @@ Sim.prototype.hitObject = function (ob, b, bx, by) {
   const sim = this, S = sim.S, P = ob.plane;
   sim.stats.objects++;
   const k = ob.kind;
+  if (!b.obj) b.obj = ob;
   sim.ev.push({ k: 'objhit', kind: k, id: ob.id, x: bx, y: by, plane: P, tof: sim.t - b.t0, dist: P.z - b.oz });
   sim.crack(b, bx, by, P);
   if (k === 'lamp' || k === 'bulb') {
@@ -852,7 +1025,7 @@ Sim.prototype.explode = function (ob) {
 };
 
 Sim.prototype.stepBullet = function (b, dt) {
-  const sim = this, S = sim.S, st = sim.st, planes = S.planes;
+  const sim = this, S = sim.S, st = b.st || sim.st, planes = S.planes;
   let left = dt;
   const farZ = planes.length ? planes[0].z + 60 : 3000;
   while (left > 0 && b.alive) {
@@ -876,8 +1049,8 @@ Sim.prototype.stepBullet = function (b, dt) {
       b.x = lerp(x0, b.x, f); b.z = lerp(z0, b.z, f); b.y = g.y;
       let P = null, bz = 1e12; planes.forEach((p) => { if (p.z >= b.z - 0.5 && p.z < bz) { bz = p.z; P = p; } });
       sim.ev.push({ k: 'impact', x: b.x, y: b.y, z: b.z, plane: null, mat: g.mat === 'water' ? 'water' : (g.mat || 'dirt'), tof: sim.t - b.t0, dist: b.z - b.oz, ground: true });
-      // a round kicking up dirt near someone gets noticed
-      sim.actors.forEach((a) => { if (a.dead || a.gone || a.inVeh || a.room) return; if (Math.abs(a.plane.z - b.z) > 14) return; const d = Math.abs(a.x - b.x); if (d < 3) sim.startle(a, 'impact'); else if (d < 9) sim.suspect(a, 3); });
+      // a round kicking up dirt near someone gets noticed (unless it already did the job on its way)
+      if (!sim.jobDone()) sim.actors.forEach((a) => { if (a.dead || a.gone || a.inVeh || a.room) return; if (Math.abs(a.plane.z - b.z) > 14) return; const d = Math.abs(a.x - b.x); if (d < 3) sim.startle(a, 'impact'); else if (d < 9) sim.suspect(a, 3); });
       sim.stopBullet(b); sim.stats.misses++;
       break;
     }
@@ -910,6 +1083,7 @@ Sim.prototype.stepProps = function (dt) {
 Sim.prototype.step = function (dt) {
   const sim = this;
   if (sim.state !== 'play') return;
+  sim.useLoad();
   sim.t += dt;
   for (let i = sim.timers.length - 1; i >= 0; i--) if (sim.timers[i].t <= sim.t) { const fn = sim.timers[i].fn; sim.timers.splice(i, 1); fn(); }
   sim.stepShooter(dt);
@@ -943,11 +1117,13 @@ Sim.prototype.objectivesDone = function () {
   if (R.done && !R.done(sim, sim.A)) return false;
   return true;
 };
+// The job is done (or is done as of this very step, before judge has had its say).
+Sim.prototype.jobDone = function () { return !!this.winAt || (!this.failInfo && this.objectivesDone()); };
 Sim.prototype.judge = function () {
   const sim = this, R = sim.rules, sh = sim.sh;
   if (R.time && sim.t >= R.time && !sim.winAt && !sim.failInfo) sim.fail('time', R.timeText || 'Out of time. The window closed.', 0.6);
   if (!sim.winAt && !sim.failInfo && sim.objectivesDone()) { sim.winAt = sim.t + (R.aftermath === undefined ? 2.8 : R.aftermath); sim.ev.push({ k: 'winning' }); }
-  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
+  if (!sim.winAt && !sim.failInfo && sh.ammo <= 0 && sh.reserve <= 0 && sh.altAmmo + sh.altReserve <= 0 && !sim.bullets.some((b) => b.alive) && sim.t - sh.lastFire > 2.5 && !R.until) {
     sim.fail('ammo', 'Out of ammunition.', 0.5);
   }
   if (sim.failInfo && sim.t >= sim.endAt) { sim.state = 'lost'; sim.result = sim.summarise(false); sim.ev.push({ k: 'end', win: false }); return; }
@@ -959,10 +1135,43 @@ Sim.prototype.summarise = function (win) {
   const par = (typeof M.par === 'function' ? M.par(sim.flags) : M.par) || Math.max(1, sim.rules.kill.length + sim.rules.destroy.length);
   const precise = sim.stats.shots <= par;
   const res = { win, fail: sim.failInfo, clean, precise, par, shots: sim.stats.shots, time: sim.t, stats: sim.stats, kills: sim.kills, stars: win ? 1 + (clean ? 1 : 0) + (precise ? 1 : 0) : 0, vantage: sim.vi, alarmBy: sim.alarmBy };
+  // ghost: nobody heard a shot (a covered bang, or a crack after the job was done, does not count)
+  res.ghost = !!win && sim.stats.shots > 0 && sim.stats.heard === 0;
+  // who gave it away, when that cost a star or the job
+  res.seenBy = sim.seenBy && (!clean || !win) ? sim.seenBy : null;
+  res.firstShotT = sim.stats.firstShotT;
   res.challenge = !!(win && M.challenge && M.challenge.test(sim, res));
   res.outcome = null;
   if (win && M.outcomes) for (let i = 0; i < M.outcomes.length; i++) if (M.outcomes[i].when(sim, res)) { res.outcome = M.outcomes[i]; break; }
+  res.score = sim.score(res);
   return res;
+};
+// Points for how the job was done, for the results screen and a best per contract. Only a win scores.
+// { total, parts: [{ label, pts }] } in the order they should be listed.
+Sim.prototype.score = function (res) {
+  const sim = this, st = sim.stats, parts = [], add = (label, pts) => { pts = Math.round(pts); if (pts) parts.push({ label, pts }); };
+  if (!res.win) return { total: 0, parts };
+  add('Contract', 1000);
+  if (res.clean) add('Clean', 500);
+  if (res.precise) add('Precise', 500);
+  if (res.ghost) add('Nobody heard a shot', 300);
+  // the kills that were the point: not bystanders, not other people's doing
+  const ks = sim.kills.filter((k) => k.how !== 'npc' && k.role !== 'civ' && k.role !== 'vip' && k.role !== 'hostage');
+  const heads = ks.filter((k) => k.how === 'shot' && k.part === 'head').length;
+  if (heads) add(heads === 1 ? 'Headshot' : heads + ' headshots', 150 * heads);
+  const far = ks.reduce((s, k) => s + (k.how === 'shot' ? k.range : 0), 0);
+  if (far) add('Distance ' + Math.round(sim.stats.longest) + ' m', far * 0.4);
+  const acc = ks.filter((k) => k.accident).length;
+  if (acc) add(acc === 1 ? 'An accident' : acc + ' accidents', 300 * acc);
+  const byRound = {}; ks.forEach((k) => { byRound[k.round] = (byRound[k.round] || 0) + 1; });
+  let extra = 0; for (const r in byRound) extra += byRound[r] - 1;
+  if (extra) add(extra === 1 ? 'Two with one round' : (extra + 1) + ' with one round', 400 * extra);
+  if (!st.breathUsed && st.shots > 0) add('No breath held', 200);
+  if (res.challenge) add('Challenge', 500);
+  add('Time ' + fmtTime(res.time), 300 * clamp(1 - (res.time - 15) / 90, 0, 1));
+  const sub = parts.reduce((s, p) => s + p.pts, 0);
+  if (sim.opts.assist === 'veteran') add('Veteran (no help)', sub * 0.25);
+  return { total: parts.reduce((s, p) => s + p.pts, 0), parts };
 };
 
 // ---- helpers for the scope read-outs and for the test bot -----------------------

@@ -21,7 +21,7 @@ const path = require('path');
   // a hint and a radio message, then tap each
   await page.evaluate(() => { CB.Game.pushMsg('hint', 'A test hint that should close when tapped.', 30); CB.Game.pushMsg('Marlow', 'A test radio line.', 30); });
   await page.waitForTimeout(300);
-  for (const sel of ['.h-msg .hintbox', '.h-msg .radio']) {
+  for (const sel of ['.h-msg .hintbox', '.h-sub .radio']) {
     const b = await page.locator(sel).first().boundingBox();
     ok(!!b, sel + ' is on screen');
     if (!b) continue;

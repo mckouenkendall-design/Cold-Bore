@@ -71,11 +71,11 @@ function c3Out(sim, H, id, routine) {
 mission({
   id: 'c3m1', ch: 3, title: 'Thin Air', range: 400,
   objective: 'Quartermaster on the upper deck: red cap, clipboard. Aim high. The bullet falls.',
-  brief: 'August Calloway has gone to ground at his hunting lodge in the Ashlocks, and the family\'s money and guns went with him. We take the lodge apart from the outside in. First, his quartermaster: the man who keeps it fed and armed. Red cap, clipboard, up on the long deck counting crates. Nobody else can see that deck. This is four hundred metres, Kestrel, more than twice anything you did in the city. Up here a bullet falls a long way before it arrives. Aim where he is and you will hit the boards at his feet.',
-  intel: ['RED cap and a clipboard, on the upper deck. The porter down in the yard is hired help.', 'Range 400 m. No wind today.', 'At this range a .308 lands more than a metre below the crosshair. The HOLD read-out says how far to aim high.', 'He stands still at the table and at the rail. Shoot then, not while he walks.'],
+  brief: 'August Calloway has gone to ground at his hunting lodge in the Ashlocks, and the family\'s money and guns went with him. We take the lodge apart from the outside in. First, his quartermaster: the man who keeps it fed and armed. Red cap, clipboard, up on the long deck counting crates. Nobody can see that deck from below, but his tally boy runs up and down the stair to him, and the boy is no part of this. This is four hundred metres, Kestrel, more than twice anything you did in the city. Up here a bullet falls a long way before it arrives. Aim where he is and you will hit the boards at his feet.',
+  intel: ['RED cap and a clipboard, on the upper deck. The porter down in the yard is hired help.', 'His tally boy (grey cap, tan coat) comes up the stair to count with him. Shoot while the boy has his back turned, or is down in the yard.', 'Range 400 m. No wind today.', 'At this range a .308 lands more than a metre below the crosshair. The HOLD read-out says how far to aim high.', 'He stands still at the table and at the rail. Shoot then, not while he walks.'],
   guide: [
     'The quartermaster wears a RED cap and holds a clipboard, up on the long deck. The porter down in the yard is innocent.',
-    'He stands still at the crate table right from the start, for about 16 seconds, and nobody else can see the deck. Shoot straight away.',
+    'He stands still at the crate table for the first 16 seconds. His tally boy talks with him until about 9 seconds in, then walks off down the deck: shoot once the boy has turned his back.',
     'At 400 m the bullet falls a long way: HOLD reads about 3.1 up, about 1.2 m above his chest.',
     'On the plain Fenwick scope at full zoom (9x), the thin part of the line below the centre is about 4 HOLD units long. Put his chest three quarters of the way down that thin line.',
     'There is almost no wind. Hold your breath and fire once.',
@@ -96,6 +96,13 @@ mission({
       Object.assign(H.deck(-10), { id: 't', role: 'target', face: 1, anim: 'work', look: { hat: 'cap', hatCol: COL.red, coat: '#3b4a5c', bag: 'clip' },
         routine: [['wait', 16, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 13, 'work', 1], ['walk', -22.1], ['wait', 11, 'stand', -1], ['walk', -10], ['wait', 12, 'work', 1], ['walk', B.winX(4)], ['gone']],
         escapeText: 'He finished the count and went in for his lunch. The lodge is fed and armed for another week.' }),
+      // the tally boy: with the quartermaster at the table, then off down the deck stair to the yard and back
+      // (on the stair he walks its slope; he changes between the deck and the yard at its top and its foot)
+      Object.assign(H.deck(-8.6), { id: 'boy', role: 'civ', face: -1, anim: 'talk', look: { hat: 'cap', hatCol: '#8d949c', coat: COL.tan, bag: 'paper', h: 0.94 },
+        failText: 'That was the tally boy. He counts boxes for a living. The contract is void.',
+        routine: [['wait', 9, 'talk', -1], ['walk', H.stairTop], ['call', (sim, a) => { a.yFn = H.stairY; }], ['speed', 0.7], ['walk', H.stairFoot], ['speed', 1], ['call', (sim, a) => { a.yFn = null; sim.place(a, H.yard(a.x)); }],
+          ['walk', 18.4], ['wait', 10, 'work', 1], ['walk', H.stairFoot], ['call', (sim, a) => { sim.place(a, H.deck(a.x)); a.yFn = H.stairY; a.y = H.stairY(a.x); }], ['speed', 0.7], ['walk', H.stairTop], ['speed', 1],
+          ['call', (sim, a) => { a.yFn = null; sim.place(a, H.deck(a.x)); }], ['walk', -8.6], ['loop']] }),
       Object.assign(H.yard(17), { id: 'c1', role: 'civ', face: -1, look: { hat: 'beanie', hatCol: '#5a4634', coat: COL.olive, bag: 'box' },
         // (he picks the next box up at the end of his three seconds bent over the pile, not the moment he arrives)
         routine: [['wait', 3, 'work', -1], ['look', { bag: 'box' }], ['walk', door], ['hide'], ['look', { bag: null }], ['wait', 5], ['show'], ['walk', 17], ['loop']] }),
@@ -113,7 +120,7 @@ mission({
   },
   challenge: { id: 'cold', text: 'A headshot with the very first round you fire', test: (sim) => sim.stats.shots === 1 && sim.kills.some((k) => k.id === 't' && k.part === 'head') },
   after: 'Four hundred metres and one round. Remember how far that bullet fell, because everything else on this mountain is further away.',
-  solve: [['until', (s) => s.byId.t.goal === null && s.byId.t.wait > 3], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],   // the second shot is only taken if the first misses
+  solve: [['until', (s) => s.byId.t.goal === null && s.byId.t.wait > 3 && !dkSeen(s, 't')], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],   // the second shot is only taken if the first misses
   reward: { cr: 1800, xp: 420 },
 });
 
@@ -122,15 +129,17 @@ mission({
   id: 'c3m2', ch: 3, title: 'Crosswind', range: 450,
   objective: 'The lookout in the hunting tower. Hold into the wind. Do not hit the cook.',
   brief: 'Calloway keeps a lookout in the hunting tower at the edge of the trees, with binoculars and a radio. While he is up there nothing moves on this side of the valley without the lodge knowing. Four hundred and fifty metres, and today there is a wind: five metres a second, steady, left to right. It will carry your bullet half a metre off line before it gets there. The lodge cook climbs up with his soup and stands right beside him. The cook has done nothing to anybody. Read the flag, hold into the wind, and do not make me explain a dead cook to the client.',
-  intel: ['Lookout: olive jacket and binoculars, up in the hunting tower on the left.', 'Range 450 m. Wind 5 m/s, steady, blowing left to right.', 'The cook in white visits and stands on his right: downwind, where a careless shot will drift.', 'The flag beside the tower and the smoke from the chimney show the wind.'],
+  intel: ['Lookout: olive jacket and binoculars, up in the hunting tower on the left.', 'Range 450 m. Wind 5 m/s, steady, blowing left to right.', 'The cook in white visits and stands on his right: downwind, where a careless shot will drift. Walking back to the tower, he can see up into it.', 'The flag beside the tower and the smoke from the chimney show the wind.'],
   guide: [
     'The lookout is in the hunting tower on the left: olive jacket, binoculars. The cook in white with a top hat brings him soup and stands beside him.',
-    'Wait for the cook to climb down from the tower and walk off toward the lodge, from about 20 seconds in. After that, shoot when you are ready.',
+    'Wait for the cook to climb down from the tower and walk off toward the lodge, from about 22 seconds in. Shoot before he walks back with more soup, about a minute in: coming back he faces the tower and would see.',
     'Aim high for the drop: HOLD reads about 3.8 up, about 1.7 m above his chest. On the plain scope at full zoom, his chest sits right at the tip of the thick post below the centre.',
     'Aim left for the wind, which blows hard left to right: HOLD reads about 1.2 left, about half a metre (two body-widths) to his left.',
     'The flag beside the tower shows the wind. Hold your breath and fire once.',
   ],
   wind: { v: 5, gust: 0.5 }, par: 1, rules: { kill: ['t'] },
+  // the cook can see up into the hide from the yard when he is walking toward the tower
+  sight: { yard: ['hide'] },
   vantages: [{ name: 'Scree shelf', desc: '450 m, a little above the tower. Open to the wind.', eye: [0, 46, 0] }],
   look: [-57, 8],
   setup() {
@@ -169,7 +178,7 @@ mission({
   },
   challenge: { id: 'thread', text: 'Take the lookout while the cook is standing beside him', test: (sim) => !!sim.A.withCook },
   after: 'The tower is empty and the cook is back at his stove, none the wiser. Drop and wind together: up here, that is the whole trade.',
-  solve(H) { const T = H.tower; return [['until', (s) => { const c = s.byId.cook; return c.room !== 'hide' && !c.hidden && c.x > T.stairFoot + 5; }], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']]; },
+  solve(H) { const T = H.tower; return [['until', (s) => { const c = s.byId.cook; return c.room !== 'hide' && !c.hidden && c.x > T.stairFoot + 5 && c.face > 0 && !dkSeen(s, 't'); }], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']]; },
   reward: { cr: 2000, xp: 440 },
 });
 
@@ -178,11 +187,11 @@ mission({
   id: 'c3m3', ch: 3, title: 'The Gondola', range: 500, needs: { glass: true },
   objective: 'White hat, tan coat, riding up in the red cable car. It stops once, at the middle pylon.',
   brief: 'Lars Venn carries the Calloway payroll. Every week he rides the old cable car up to the lodge with the cash and one bodyguard, and he never sets foot on the road. So we take him in the air. Venn wears a white hat and a tan coat. The bodyguard is the big one in black. The car climbs slowly, and it stops at the middle pylon for a few seconds while the winding gear changes over. Five hundred metres: your bullet needs most of a second to arrive, and there is glass in the way. The staff ride down in the other car. Leave them out of it.',
-  intel: ['Venn: WHITE hat, TAN coat, in the RED car going up. His bodyguard is the big man in black.', 'Range 500 m. Wind 2 m/s from the left.', 'The red car stops at the middle pylon for about seven seconds.', 'Cabin glass knocks a bullet a few centimetres off line. Aim for the middle of his chest.', 'The yellow car coming down carries lodge staff. The cook wears a white hat too.'],
+  intel: ['Venn: WHITE hat, TAN coat, in the RED car going up. His bodyguard is the big man in black.', 'Range 500 m. Wind 2 m/s from the left.', 'The red car stops at the middle pylon for about seven seconds.', 'Cabin glass knocks a bullet a few centimetres off line. Aim for the middle of his chest.', 'His bodyguard turns round to talk to him now and then. While he faces Venn he will see it happen.', 'The yellow car coming down carries lodge staff. The cook wears a white hat too.'],
   guide: [
     'You need a rifle that shoots through glass (the Fenwick 77 can). Venn wears a WHITE hat and a TAN coat in the RED cable car going up, and the big man in black is his bodyguard.',
     'The yellow car coming down carries staff, including a cook in a white hat. Never shoot at it.',
-    'Wait for the red car to stop at the middle pylon, about 45 seconds in. It stays about 7 seconds.',
+    'Wait for the red car to stop at the middle pylon, about 45 seconds in, for about 7 seconds. His bodyguard turns round to talk to him for the first 3 of them: wait until he turns away again.',
     'Aim for the middle of his chest, because the glass nudges the bullet. HOLD reads about 4.4 up and 0.7 left.',
     'That is about 2.2 m above his chest (just onto the thick post below the centre at full zoom) and about a body-width to his left, into the wind.',
     'Hold your breath and fire once while the car is still.',
@@ -215,18 +224,29 @@ mission({
   },
   // people in a cable car stand up
   start(sim) { ['bg', 't', 'maid', 'cook'].forEach((id) => { const a = sim.byId[id]; a.anim = a.idle = 'stand'; }); },
+  // The bodyguard stands behind Venn watching back down the line, and turns round to talk to him for
+  // four seconds in every ten, and for the first three seconds at the pylon. While he faces him, he
+  // sees whatever happens to him.
+  tick(sim) {
+    const bg = sim.byId.bg; if (!bg || bg.dead || !bg.inVeh || bg.state !== 'calm') return;
+    const st = sim.emitted.stopped1, at = st !== undefined && !sim.did('going');
+    const look = at ? sim.t - st < 3 : ((sim.t + 8) % 10) < 4, f = look ? bg.inVeh.dir : -bg.inVeh.dir;
+    if (bg.vehFace !== f) { bg.vehFace = f; bg.anim = bg.idle = look ? 'talk' : 'stand'; }
+  },
   onAlarm(sim) { sim.after(1.0, () => { const t = sim.byId.t; if (t && !t.dead && !sim.winAt) { t.hidden = true; t.escapeText = 'Venn dropped to the floor of the car and stayed there all the way to the top.'; sim.leave(t); } }); },
   triggers() {
     return [
       hint(1.5, 'The red cable car is climbing from the lower left with two men in it. You want the one in the WHITE hat and tan coat, not the big man in black.', 10),
       hint(13, 'The car is moving and your bullet takes most of a second to get there. Either aim ahead of him by about a window and a half, or wait: the car stops at the middle pylon.', 12),
-      onEv('stopped1', (sim) => sim.msg('Marlow', 'Stopped at the pylon. Seven seconds. Glass will nudge the round, so put it in the middle of his chest.')),
+      onEv('stopped1', (sim) => sim.msg('Marlow', 'Stopped at the pylon. Seven seconds. Wait for his man to stop talking to him, and mind the glass: the middle of his chest.')),
+      // the bodyguard, turned round to him, sees it happen and gets on his radio
+      onEv('dead:t', (sim) => { const bg = sim.byId.bg; if (bg && !bg.dead && bg.inVeh && bg.vehFace === bg.inVeh.dir && bg.state === 'calm') { bg.state = 'alarm'; sim.giveaway(bg, 'saw', { body: 't' }); sim.bubble(bg, '!', 2.5); sim.raiseAlarm('guard', 1.6); } }),
       onEv('going', (sim) => { if (sim.alive('t')) sim.msg('Marlow', 'Moving again, and the staff car is about to pass behind it. Mind what is behind your target.'); }),
     ];
   },
   challenge: { id: 'moving', text: 'Hit him while the car is moving', test: (sim) => sim.kills.some((k) => k.id === 't' && k.moving) },
   after: 'The car reached the top station with a case of cash and nobody to sign for it. August will have to pay his men in promises now.',
-  solve: [['until', (s) => s.did('stopped1')], ['wait', 0.9], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],
+  solve: [['until', (s) => { const bg = s.byId.bg; return s.did('stopped1') && !!bg.inVeh && bg.vehFace !== bg.inVeh.dir; }], ['wait', 0.3], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']],
   reward: { cr: 2200, xp: 470 },
 });
 
@@ -606,9 +626,9 @@ mission({
   id: 'c3m8', ch: 3, title: 'Boarded Up', range: 470, follows: 'c3m2', needs: { pen: 1.4 },
   objective: 'The new lookout behind the boards on the hunting tower. Shoot through the planks.',
   brief: 'They learned from the tower. There is a new lookout up there, and they have nailed old fence boards across the front of it, so now he watches the valley through the cracks like a hen in a coop. Nobody comes up this side of the mountain without him seeing. An ordinary round stops in the first plank. Pip has sent up a box of armour-piercing: a hardened core that goes through boards, and through him. You will not see much of him. It is a cold morning, and a man has to breathe. The cook still brings the soup up. Leave him be.',
-  intel: ['Fit ARMOUR-PIERCING rounds in the Ammunition slot. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
+  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
     'Breath and binoculars mark his face. His chest is half a metre lower. When he sits down at the radio, all of him drops half a metre.', 'The cook in white brings soup up the stair. His tall hat shows in the slot under the eaves. Wait until he has gone back down.', 'Range 470 m. Wind about 3 m/s from the right.'],
-  guide: ['Fit armour-piercing rounds in the Ammunition slot before you start.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
+  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
     'Watch for puffs of breath and the glint of binoculars between the boards. That is his head.', 'Wait until he stands still, hold for drop and wind, and put the aim half a metre below his head. One round.'],
   wind: { v: -3, gust: 1 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Larch stump', desc: '470 m across the valley, a little above the top of the tower.', eye: [0, 38, 0] }],
@@ -651,7 +671,7 @@ mission({
   solve(H) {
     const T = H.tower;
     const clear = (s) => { const c = s.byId.cook, t = s.byId.t; return c.zone !== 'boards' && (c.hidden || Math.abs(c.x - T.stairFoot) > 8) && t.goal === null && t.wait > 1.6 && t.state === 'calm'; };
-    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2100, xp: 460 },
 });

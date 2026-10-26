@@ -20,9 +20,16 @@ const COACH_OBJ = { lamp: 'the lamp', bulb: 'the light', hook: 'the hook', rope:
 const COACH_WAITW = /\b(wait|waits|until|when|once|watch|let|after|before)\b/i;
 const COACH_SHOOTW = /\b(shoot|fire|aim|hit|drop him|drop her|squeeze|put a round|put the cross)\b/i;
 
-function Coach(sim) {
+// Three levels of help, offered one after another as a player keeps failing a contract (see
+// Game.coachOffer):
+//   1 "what to watch"  brackets on who or what matters next, with the walkthrough's words about it;
+//                      no timing, no aim
+//   2 "when"           also the waits, with their countdowns, and NOW when the moment comes;
+//                      the aiming is still the player's
+//   3 the full guided run: everything, including the mark for the crosshair and FIRE NOW
+function Coach(sim, tier) {
   const C = this, M = sim.M;
-  C.sim = sim; C.M = M;
+  C.sim = sim; C.M = M; C.tier = tier === 1 || tier === 2 ? tier : 3;
   // the script, built the way the test bot builds it
   const script = typeof M.solve === 'function' ? M.solve(sim.A, sim.st, sim.flags, sim) : M.solve;
   C.script = (script || []).map((c) => c.slice());
@@ -67,6 +74,7 @@ Coach.prototype.guideLine = function (seg, kind) {
   const chunk = G.slice(a, Math.min(b, G.length));
   if (!chunk.length) return null;
   if (kind === 'shoot') { for (let i = chunk.length - 1; i >= 0; i--) if (COACH_SHOOTW.test(chunk[i])) return chunk[i]; return null; }
+  if (kind === 'who') return chunk[0];
   for (let i = 0; i < chunk.length; i++) if (COACH_WAITW.test(chunk[i])) return chunk[i];
   return chunk[0];
 };
@@ -189,6 +197,12 @@ Coach.prototype.update = function () {
       o.kind = 'reload'; o.head = 'RELOAD NOW'; o.text = 'Top the rifle up while nothing is happening.';
       C.ahead(o); break;
     }
+    if (k === 'ammo') { // chamber the second load
+      if (sim.st.cfg.ammo === c[1] || (c[2] && sim.st.pen >= c[2]) || !sim.stB || sim.stB.cfg.ammo !== c[1] || el > 20) { C.next(); continue; }
+      const nm = PART_BY_ID[c[1]] ? PART_BY_ID[c[1]].name.toUpperCase() : 'THE OTHER ROUNDS';
+      o.kind = 'ammo'; o.head = 'LOAD ' + nm; o.text = Game.touch ? 'Tap the round count beside RELOAD to chamber them. It costs one pull of the bolt.' : 'Press X to chamber them. It costs one pull of the bolt.';
+      C.ahead(o); break;
+    }
     if (k === 'dial') {
       if (!st.scope.turret) { C.next(); continue; }
       if (S.dialTo === undefined) S.dialTo = clamp(sh.zeroR + Math.round((c[1] - sh.zeroR) / 25) * 25, 50, 2200);
@@ -200,7 +214,29 @@ Coach.prototype.update = function () {
     if (COACH_SHOT[k]) { if (C.shotStep(o, S, el)) continue; break; }
     C.next(); // a step this coach does not know: skip it, as the bot would
   }
+  if (C.tier < 3) C.thin(o);
   return o;
+};
+// Less help: take away what the lower levels do not show.
+Coach.prototype.thin = function (o) {
+  const C = this, seg = o.shot - 1;
+  o.aim = null; o.early = false; o.onMark = false;
+  if (o.kind === 'done' || o.kind === 'flight') { o.fire = false; return; }
+  if (C.tier === 1) {
+    // what to watch: who or what, never when
+    const line = C.guideLine(seg, 'who');
+    o.fire = false; o.count = null;
+    o.head = o.target && o.target.kind === 'person' ? 'WATCH THIS ONE' : o.target ? 'WATCH THIS' : 'WATCH';
+    o.text = line || (o.target && o.target.name ? 'Keep an eye on ' + o.target.name + '.' : 'Keep an eye on the marked target.');
+    o.kind = 'watch';
+    return;
+  }
+  // when: the waits and their countdowns stay; a shot is NOW once the rifle is ready
+  if (o.kind === 'shoot') {
+    o.fire = o.ready && !o.charging;
+    o.head = o.charging ? 'KEEP STILL' : o.fire ? 'NOW' : 'GET READY';
+    o.text = C.guideLine(seg, 'shoot') || 'Aim for yourself: allow for the drop and the wind.';
+  }
 };
 
 // The wait card: the walkthrough's own words when they can be matched, a plain line otherwise.
@@ -320,7 +356,7 @@ Coach.prototype.draw = function (V, rt) {
       const u = (rt * 1.8) % 1;
       ctx.globalAlpha = 1 - u; ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(mx, my, 10 + u * 16, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
     }
-    const lab = go ? 'FIRE NOW' : o.charging ? 'KEEP STILL' : '';
+    const lab = go ? 'FIRE NOW' : o.charging ? 'KEEP STILL' : '';  // (only with the mark: the full guided run)
     if (lab) { const ly = Math.max(my + 30, low + 16); this.label(ctx, lab, mx, ly < V.H - 60 ? ly : my + 30, col, 16); }
     ctx.globalAlpha = 1;
   }
@@ -394,7 +430,7 @@ Coach.play = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed });
+  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) });
   const coach = new Coach(sim), dt = o.dt || 1 / 60, maxT = o.maxT || 400;
   sim.setZoom(st.zoomMax);
   const aimAt = (p) => { // put the crosshair on a world point, as a player would with a finger
@@ -415,6 +451,7 @@ Coach.play = function (missionId, gunId, o) {
       if (c.kind === 'hold' && !sim.sh.holding) { sim.holdBreath(true); acted = true; }
       else if (c.kind === 'dial' && sim.sh.zeroR !== c.dial) { if (sim.dial(sign(c.dial - sim.sh.zeroR))) acted = true; }
       else if (c.kind === 'reload') { if (sim.reload()) acted = true; }
+      else if (c.kind === 'ammo') { if (sim.switchAmmo()) acted = true; }
       if (c.aim) { aimAt(c.aim); c = coach.update(); if (c.aim) { aimAt(c.aim); c = coach.update(); } }
       if (c.fire) { if (sim.fire()) { fires++; acted = true; } }
       if (!acted) break;
