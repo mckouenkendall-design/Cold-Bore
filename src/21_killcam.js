@@ -65,7 +65,7 @@ const kcTune = {
   beat: 0.95,        // seconds spent at the rifle after the shot breaks
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
-  swing: 1.3,        // seconds for the camera to come round
+  swing: 0.55,       // seconds from the end of the chase to the X-ray view (it cuts there and the X-ray comes in)
   angle: 75,         // degrees off the line of fire the swing ends at (90 would be square across it)
   angleX: 80,        // and drifts toward during the X-ray
   lensX: 0.62,       // the X-ray's lens, as a share of the flight's (wider, from closer in)
@@ -313,7 +313,7 @@ KillCam.start = function (o) {
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
-  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null;
+  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null; K.follow0 = null; K.face0 = null; K.faceS = 0; K.yaw0 = null;
   K.covers = kcCoverList(K, o, h, a0); K.wallB = kcWallList(K, o, h, a0);
   // the director (src/21c_kcdirect.js): the recipe, the shot now and the one before, the backdrop
   K.rec = null; K.shot = null; K.shotPrev = null; K.shotT0 = 0; K.shotPrevT0 = 0; K.shotWhip = 0; K.whipping = 0; K.fallK = 0;
@@ -446,6 +446,7 @@ function kcAdvance(K, o, dt) {
       if (K.hitT !== null && !K.snd.fall && a && a.dead && isFinite(a.deathAtT)) { const L = rdLanded(a, K.ret - a.deathAtT); if (L) { K.snd.fall = 1; K.landT = T; kcSay(K, 'fall', { mat: L.mat, speed: L.v }); } }
       // The hold: the world speeds up toward real time so the fall is seen, and the film ends a
       // moment after the body is down (or after a few seconds at most).
+      if (K.holdT0 !== null && K.outT0 === null && K.rec && K.rec.steady && T - K.holdT0 > 0.4) K.outT0 = T; // the steady film ends on the X-ray; the scope shows the fall
       if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > K.tn.hold) || ht > K.tn.holdMax) K.outT0 = T; }
       if (K.outT0 !== null && T - K.outT0 > K.tn.out) { K.done = true; kcSayEnd(K); try { o.view.blackout = Math.max(o.view.blackout || 0, 0.8); } catch (e) { /* the scope picture is not ours to break */ } }
       wr = K.holdT0 === null ? (frozen ? 0 : K.tn.creep) : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
@@ -1066,12 +1067,12 @@ function kcDrawXray(K, V, ctx, dt) {
   const o = K.o, W = V.W, H = V.H, T = K.T, pl = K.plan, pal = kcPal(o), d = K.dir;
   const fig = kcBuildFig(K);
   // the middle of the body, for the fall's camera to follow (a little below, so the floor shows)
-  { const P = fig.P, fx = (P.hip[0] + P.neck[0]) / 2, fy = Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = (P.hip[2] + P.neck[2]) / 2; if (!K.follow) K.follow = [fx, fy, fz]; else { const k = Math.min(1, (dt || 0) * 5); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
+  { const P = fig.P, hd = K.plan && K.plan.part === 'head' && P.head, fx = hd ? P.head[0] : (P.hip[0] + P.neck[0]) / 2, fy = hd ? Math.max(0.3, P.head[1]) : Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = hd ? P.head[2] : (P.hip[2] + P.neck[2]) / 2; /* a head shot follows the head */ if (!K.follow) { K.follow = [fx, fy, fz]; K.follow0 = [fx, fy, fz]; } else { const k = Math.min(1, (dt || 0) * (K.rec && K.rec.steady ? 10 : 3)); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
   const c = kcDirect(K, V);
   const u = clamp((T - K.Tb) / K.tn.swing, 0, 1), figA = smooth((u - 0.01) / 0.11);
   if (!K.bg && u >= 0.5) kcBgRender(K, V); // the backdrop, drawn once
   // how far the real scene has come back as the body falls
-  const back = K.holdT0 !== null ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
+  const back = K.holdT0 !== null && !(K.rec && K.rec.steady) ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
   const bgA = (K.bg ? smooth((u - 0.5) / 0.45) : 0) * (1 - back), xa = 1 - back;
   if (bgA < 0.999) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -1150,6 +1151,15 @@ function kcBuildFig(K) {
       shL: [sh[0], sh[1], fs * ws], shR: [sh[0], sh[1], -fs * ws], tsL: [sh[0], sh[1], fs * wt], tsR: [sh[0], sh[1], -fs * wt], elL: [J.elL[0], J.elL[1], fs * za], haL: [J.haL[0], J.haL[1], fs * za], elR: [J.elR[0], J.elR[1], -fs * za], haR: [J.haR[0], J.haR[1], -fs * za],
       hpL: [J.hip[0], J.hip[1], fs * wh], hpR: [J.hip[0], J.hip[1], -fs * wh], knL: [J.knL[0], J.knL[1], fs * wh * 0.95], ftL: [J.ftL[0], J.ftL[1], fs * wh * 0.9], knR: [J.knR[0], J.knR[1], -fs * wh * 0.95], ftR: [J.ftR[0], J.ftR[1], -fs * wh * 0.9],
     };
+  }
+  // The steady film: the hit can spin the body round on the spot, which reads as the camera jumping
+  // about. Take that turn out (the body still jerks, folds and falls; it just keeps facing one way).
+  if (K.rec && K.rec.steady && P.shL && P.shR) {
+    const yaw = Math.atan2(P.shR[2] - P.shL[2], P.shR[0] - P.shL[0]);
+    if (K.yaw0 === null || K.yaw0 === undefined) K.yaw0 = yaw;
+    let dy = yaw - K.yaw0; while (dy > Math.PI) dy -= TAU; while (dy < -Math.PI) dy += TAU;
+    const c = Math.cos(-dy), s = Math.sin(-dy), hx = P.hip[0], hz = P.hip[2], seen = new Set();
+    for (const k in P) { const q = P[k]; if (!q || seen.has(q)) continue; seen.add(q); const x = q[0] - hx, z = q[2] - hz; q[0] = hx + x * c - z * s; q[2] = hz + x * s + z * c; }
   }
   // the trunk's own axes (U up the spine, S toward the person's left, F out of the chest) and the head's
   const tor = { o: P.hip, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0], L: 0.56 * sc }, hd = { o: P.head, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0] };

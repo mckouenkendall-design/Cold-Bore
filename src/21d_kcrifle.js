@@ -36,7 +36,7 @@ const kcBolt = { classic: { root: [4.5, -3.8], knob: [2.2, 0.7], r: 1.15 }, chas
 const kcRifleShots = {
   side: [1.0, 1.12, 0.62, 0.52, 0, false],
   muzzle: [2.3, 2.6, 0.93, 0.5, -0.03, false],
-  action: [2.0, 2.15, 0.36, 0.56, 0.02, false],
+  action: [3.1, 3.4, 0.33, 0.5, 0.02, false],
   low: [1.12, 1.3, 0.66, 0.6, -0.085, false],
   mirror: [1.05, 1.2, 0.6, 0.53, 0, true],
 };
@@ -431,34 +431,27 @@ function kcHand(ctx, K, Rf, T, squeeze) {
     if (u < 0.4) { ctx.fillStyle = 'rgba(220,215,205,' + (0.25 * (1 - u / 0.4)).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px, -4.5, 1.5 + 3 * u, 0, TAU); ctx.fill(); } // a wisp of smoke from the open breech
   }
   // where the hand is: on the grip, or travelling to the bolt knob
-  const gx = (gp.gt[0] + gp.gb[0]) / 2, gy = (gp.gt[1] + gp.gb[1]) / 2;
+  // the fist sits on the grip just behind the trigger, so the finger only has a short way to reach
+  const gx = gp.tr[0] - 3.6, gy = gp.tr[1] + 0.5;
   let hx = gx, hy = gy;
   if (B) { const kx = B.root[0] + Math.cos(Math.atan2(B.knob[1] - B.root[1], B.knob[0] - B.root[0]) - lift * 1.25) * 3 - back * 5, ky = B.root[1] + Math.sin(Math.atan2(B.knob[1] - B.root[1], B.knob[0] - B.root[0]) - lift * 1.25) * 3; hx = lerp(gx, kx, reach); hy = lerp(gy, ky + 1.2, reach); }
-  // the sleeve, from off the bottom edge to the wrist
-  const wx = hx - 5.5, wy = hy + 4.5;
-  ctx.fillStyle = sleeve; ctx.beginPath(); ctx.moveTo(wx - 3, wy - 2.6); ctx.lineTo(wx - 40, wy + 34); ctx.lineTo(wx - 25, wy + 44); ctx.lineTo(wx + 3, wy + 3.2); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(wx - 1, wy); ctx.lineTo(wx - 30, wy + 37); ctx.stroke();
-  ctx.fillStyle = '#23281f'; ctx.beginPath(); ctx.moveTo(wx - 3.4, wy - 2.2); ctx.lineTo(wx + 3.2, wy + 3.4); ctx.lineTo(wx + 1.6, wy + 5.2); ctx.lineTo(wx - 5, wy - 0.4); ctx.closePath(); ctx.fill(); // the cuff
-  // the back of the hand
-  ctx.fillStyle = glove; ctx.beginPath(); ctx.ellipse(hx - 2.8, hy + 1.4, 4.4, 3.1, -0.7, 0, TAU); ctx.fill();
-  // the fingers wrapped round the grip (or the knob), each a rounded roll with a seam between
-  ctx.lineCap = 'round';
-  const ax = gp.gb[0] - gp.gt[0], ay = gp.gb[1] - gp.gt[1], al = Math.hypot(ax, ay) || 1, ux = reach > 0.5 ? 0.3 : ax / al, uy = reach > 0.5 ? 0.95 : ay / al, nx = uy, ny = -ux;
-  for (let i = 0; i < 3; i++) {
-    const t = 0.15 + i * 0.27, x0 = hx - 2.5 + ux * (t * al * 0.55 - 1.5), y0 = hy + uy * (t * al * 0.55 - 1.5);
-    ctx.strokeStyle = glove; ctx.lineWidth = 2.1; ctx.beginPath(); ctx.moveTo(x0 - nx * 1.5, y0 - ny * 1.5); ctx.lineTo(x0 + nx * 3.6, y0 + ny * 3.6); ctx.stroke();
-    ctx.strokeStyle = glove2; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x0 + nx * 0.4 - ux * 0.6, y0 + ny * 0.4 - uy * 0.6); ctx.lineTo(x0 + nx * 3.4 - ux * 0.6, y0 + ny * 3.4 - uy * 0.6); ctx.stroke(); // the light on each knuckle
-  }
-  // the index finger along to the trigger (while the hand is on the grip)
+  // a stick figure's hand, like everyone else in the game: a stick forearm coming in from below, a
+  // round fist on the grip, and one short stick finger on the trigger that draws it back as the
+  // shot is taken (or the fist goes to the bolt knob and works it)
+  const ink = '#15171b', fist = 2.1;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(hx - 34, hy + 40); ctx.lineTo(hx - 0.8, hy + 0.9); ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx, hy, fist, 0, TAU); ctx.fill();
   if (reach < 0.5) {
-    // the finger curls back as it takes up the trigger, slowly, until the shot breaks
-    const sq = smooth(squeeze === undefined ? 1 : squeeze), tx = gp.tr[0] + 0.9 - sq * 1.6, ty = gp.tr[1] + 0.2 * sq, fx0 = hx + 0.5, fy0 = hy - 2.2;
-    ctx.strokeStyle = glove; ctx.lineWidth = 1.7; ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0 - 0.6, tx, ty); ctx.stroke();
-    ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(fx0 + 1, fy0 + 0.5); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0, tx - 0.4, ty + 0.4); ctx.stroke();
+    // the finger: from the fist to its knuckle, then down onto the trigger; the tip comes back as it squeezes
+    // the trigger blade itself swings back with the finger
+    const sq = smooth(squeeze === undefined ? 1 : squeeze), tr = gp.tr, bx = tr[0] + 0.35 - sq * 0.9, by = tr[1] + 0.7;
+    ctx.strokeStyle = '#0c0d10'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(tr[0] + 0.5, tr[1] - 1.7); ctx.quadraticCurveTo(tr[0] + 0.9 - sq * 0.4, tr[1] - 0.3, bx, by); ctx.stroke();
+    // the finger: a short hooked stick from the fist, its tip on the blade
+    const tx = bx - 0.15, ty = by - 0.5, kx = tr[0] - 0.9 - sq * 0.3, ky = tr[1] - 1.25;
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.0; ctx.beginPath(); ctx.moveTo(hx + fist * 0.7, hy - fist * 0.45); ctx.lineTo(kx, ky); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.beginPath(); ctx.arc(tx, ty, 0.5, 0, TAU); ctx.fill();
   }
-  // the thumb, along the top of the stock
-  ctx.strokeStyle = glove; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(hx - 4.5, hy - 1); ctx.lineTo(hx - 1, hy - 3.6 - (reach > 0.5 ? 0.5 : 0)); ctx.stroke();
-  ctx.strokeStyle = glove2; ctx.lineWidth = 0.45; ctx.beginPath(); ctx.moveTo(hx - 4.2, hy - 1.6); ctx.lineTo(hx - 1.2, hy - 4.1); ctx.stroke();
-  // seams on the back of the glove
-  ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(hx - 5.5, hy + 2.2); ctx.quadraticCurveTo(hx - 3, hy + 0.5, hx - 0.8, hy + 1.6); ctx.stroke();
+  // the thumb, a short stick over the top of the grip
+  ctx.lineWidth = 1.0; ctx.beginPath(); ctx.moveTo(hx - fist * 0.5, hy - fist * 0.8); ctx.lineTo(hx + 1.6, hy - fist * 1.9); ctx.stroke();
 }

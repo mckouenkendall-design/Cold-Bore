@@ -1362,7 +1362,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 11:41 AM";
+const BUILD = "Oct 26, 12:22 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -30908,7 +30908,7 @@ const kcTune = {
   beat: 0.95,        // seconds spent at the rifle after the shot breaks
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
-  swing: 1.3,        // seconds for the camera to come round
+  swing: 0.55,       // seconds from the end of the chase to the X-ray view (it cuts there and the X-ray comes in)
   angle: 75,         // degrees off the line of fire the swing ends at (90 would be square across it)
   angleX: 80,        // and drifts toward during the X-ray
   lensX: 0.62,       // the X-ray's lens, as a share of the flight's (wider, from closer in)
@@ -31156,7 +31156,7 @@ KillCam.start = function (o) {
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
-  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null;
+  K.wparts = []; K.landT = undefined; K.spentT = undefined; K.exitT = undefined; K.stopT = undefined; K.follow = null; K.follow0 = null; K.face0 = null; K.faceS = 0; K.yaw0 = null;
   K.covers = kcCoverList(K, o, h, a0); K.wallB = kcWallList(K, o, h, a0);
   // the director (src/21c_kcdirect.js): the recipe, the shot now and the one before, the backdrop
   K.rec = null; K.shot = null; K.shotPrev = null; K.shotT0 = 0; K.shotPrevT0 = 0; K.shotWhip = 0; K.whipping = 0; K.fallK = 0;
@@ -31289,6 +31289,7 @@ function kcAdvance(K, o, dt) {
       if (K.hitT !== null && !K.snd.fall && a && a.dead && isFinite(a.deathAtT)) { const L = rdLanded(a, K.ret - a.deathAtT); if (L) { K.snd.fall = 1; K.landT = T; kcSay(K, 'fall', { mat: L.mat, speed: L.v }); } }
       // The hold: the world speeds up toward real time so the fall is seen, and the film ends a
       // moment after the body is down (or after a few seconds at most).
+      if (K.holdT0 !== null && K.outT0 === null && K.rec && K.rec.steady && T - K.holdT0 > 0.4) K.outT0 = T; // the steady film ends on the X-ray; the scope shows the fall
       if (K.holdT0 !== null && K.outT0 === null) { const ht = T - K.holdT0; if ((K.landT !== undefined && T - K.landT > 0.5 && ht > K.tn.hold) || ht > K.tn.holdMax) K.outT0 = T; }
       if (K.outT0 !== null && T - K.outT0 > K.tn.out) { K.done = true; kcSayEnd(K); try { o.view.blackout = Math.max(o.view.blackout || 0, 0.8); } catch (e) { /* the scope picture is not ours to break */ } }
       wr = K.holdT0 === null ? (frozen ? 0 : K.tn.creep) : lerp(0.06, 0.55, smooth((T - K.holdT0 - 0.1) / 0.9));
@@ -31909,12 +31910,12 @@ function kcDrawXray(K, V, ctx, dt) {
   const o = K.o, W = V.W, H = V.H, T = K.T, pl = K.plan, pal = kcPal(o), d = K.dir;
   const fig = kcBuildFig(K);
   // the middle of the body, for the fall's camera to follow (a little below, so the floor shows)
-  { const P = fig.P, fx = (P.hip[0] + P.neck[0]) / 2, fy = Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = (P.hip[2] + P.neck[2]) / 2; if (!K.follow) K.follow = [fx, fy, fz]; else { const k = Math.min(1, (dt || 0) * 5); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
+  { const P = fig.P, hd = K.plan && K.plan.part === 'head' && P.head, fx = hd ? P.head[0] : (P.hip[0] + P.neck[0]) / 2, fy = hd ? Math.max(0.3, P.head[1]) : Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = hd ? P.head[2] : (P.hip[2] + P.neck[2]) / 2; /* a head shot follows the head */ if (!K.follow) { K.follow = [fx, fy, fz]; K.follow0 = [fx, fy, fz]; } else { const k = Math.min(1, (dt || 0) * (K.rec && K.rec.steady ? 10 : 3)); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
   const c = kcDirect(K, V);
   const u = clamp((T - K.Tb) / K.tn.swing, 0, 1), figA = smooth((u - 0.01) / 0.11);
   if (!K.bg && u >= 0.5) kcBgRender(K, V); // the backdrop, drawn once
   // how far the real scene has come back as the body falls
-  const back = K.holdT0 !== null ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
+  const back = K.holdT0 !== null && !(K.rec && K.rec.steady) ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
   const bgA = (K.bg ? smooth((u - 0.5) / 0.45) : 0) * (1 - back), xa = 1 - back;
   if (bgA < 0.999) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -31993,6 +31994,15 @@ function kcBuildFig(K) {
       shL: [sh[0], sh[1], fs * ws], shR: [sh[0], sh[1], -fs * ws], tsL: [sh[0], sh[1], fs * wt], tsR: [sh[0], sh[1], -fs * wt], elL: [J.elL[0], J.elL[1], fs * za], haL: [J.haL[0], J.haL[1], fs * za], elR: [J.elR[0], J.elR[1], -fs * za], haR: [J.haR[0], J.haR[1], -fs * za],
       hpL: [J.hip[0], J.hip[1], fs * wh], hpR: [J.hip[0], J.hip[1], -fs * wh], knL: [J.knL[0], J.knL[1], fs * wh * 0.95], ftL: [J.ftL[0], J.ftL[1], fs * wh * 0.9], knR: [J.knR[0], J.knR[1], -fs * wh * 0.95], ftR: [J.ftR[0], J.ftR[1], -fs * wh * 0.9],
     };
+  }
+  // The steady film: the hit can spin the body round on the spot, which reads as the camera jumping
+  // about. Take that turn out (the body still jerks, folds and falls; it just keeps facing one way).
+  if (K.rec && K.rec.steady && P.shL && P.shR) {
+    const yaw = Math.atan2(P.shR[2] - P.shL[2], P.shR[0] - P.shL[0]);
+    if (K.yaw0 === null || K.yaw0 === undefined) K.yaw0 = yaw;
+    let dy = yaw - K.yaw0; while (dy > Math.PI) dy -= TAU; while (dy < -Math.PI) dy += TAU;
+    const c = Math.cos(-dy), s = Math.sin(-dy), hx = P.hip[0], hz = P.hip[2], seen = new Set();
+    for (const k in P) { const q = P[k]; if (!q || seen.has(q)) continue; seen.add(q); const x = q[0] - hx, z = q[2] - hz; q[0] = hx + x * c - z * s; q[2] = hz + x * s + z * c; }
   }
   // the trunk's own axes (U up the spine, S toward the person's left, F out of the chest) and the head's
   const tor = { o: P.hip, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0], L: 0.56 * sc }, hd = { o: P.head, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0] };
@@ -33331,7 +33341,7 @@ const kcRecipes = [
   // steady: the one the game uses. One calm view square across the round's line from the side the
   // target faces, framing the whole body, looking at its middle (so it does not pan about), with only
   // a slow drift; the way out pulls back a little to hold the spray. (The other four are kept for tests.)
-  { id: 'steady', steady: true, entry: [84, 9, 0.36, 1, 2.2], macro: [86, 9, 0.34, 1, 2.2], exit: [90, 8, 0.46, 1, 2.2], whip: 0.9 },
+  { id: 'steady', steady: true, entry: [86, 8, 0.6, 1, 0], macro: [86, 8, 0.6, 1, 0], exit: [86, 8, 0.6, 1, 0], whip: 0.9 },
   { id: 'cut', entry: [40, 12, 0.2, 1, 7], macro: [92, 16, 0.15, 1.5, 4], exit: [112, 8, 0.46, 0.9, 6], whip: 0.22 },
   { id: 'ride', entry: [17, 7, 0.24, 1.1, -4], macro: [70, 28, 0.155, 1.5, -5], exit: [96, -5, 0.5, 0.85, 5], whip: 0.2 },
   { id: 'orbit', entry: [52, 18, 0.22, 1, 14], macro: [100, 20, 0.17, 1.3, 14], exit: [140, 14, 0.5, 0.9, 14], whip: 0.5 },
@@ -33352,7 +33362,7 @@ function kcPickRecipe(K) {
   const rec = { id: r.id, steady: !!r.steady, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
   rec.entrySide = 1;
   const key = K.plan && K.plan.key;
-  rec.macroSide = key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1;
+  rec.macroSide = !rec.steady && key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1; // (the steady film never changes side)
   rec.exitSide = 1;
   K.rec = rec;
 }
@@ -33375,9 +33385,22 @@ function kcShotOrbit(K, V, name, t, o) {
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
     if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
   }
-  if (rec.steady) s = name === 'exit' ? pl.sOut * 0.3 : name === 'lodged' ? s * 0.5 : 0; // the steady view looks at the body's middle
-  o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;
+  if (rec.steady) { size = p[2]; s = 0; }
+  const lift = rec.steady && !head ? 0.14 : 0; // (the steady view looks a little above the wound, so the head is in the picture) // the steady view: one size, looks at where the round meets the body's middle, the whole time
+  o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s + lift; o.fz = H[2] + d[2] * s;
+  // and, gently, goes with the body as it is knocked away, so it never leaves the picture
+  if (rec.steady && K.follow && K.follow0) { o.fx += K.follow[0] - K.follow0[0]; o.fy += K.follow[1] - K.follow0[1]; o.fz += K.follow[2] - K.follow0[2]; }
   o.phi = side * (p[0] + p[4] * t * short) * kcDeg; o.el = (p[1] + 2.5 * Math.sin(t * 0.8)) * kcDeg;
+  // the steady view turns with the torso, so a body twisted by the hit still faces the camera the same way
+  if (rec.steady) {
+    o.el = p[1] * kcDeg;
+    if (K.fig && K.fig.tor && K.sw) {
+      const F = K.fig.tor.F, B = K.sw.B, N = K.sw.N, a = Math.atan2(F[0] * N[0] + F[1] * N[1] + F[2] * N[2], F[0] * B[0] + F[1] * B[1] + F[2] * B[2]);
+      if (K.face0 === null || K.face0 === undefined) K.face0 = a;
+      let da = a - K.face0; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+      void da; // (the body's spin is taken out in kcBuildFig instead)
+    }
+  }
   // (size is what fills the shorter side of the screen: the height on a phone held sideways)
   const sd = 0.5 * Math.min(W, Hh);
   o.f = fb * p[3]; o.R = Math.max(head ? 0.42 : 0.55, (o.f * size) / sd); o.f = (o.R * sd) / size; o.ax = 0.5; o.ay = 0.5;
@@ -33480,10 +33503,12 @@ function kcDirect(K, V) {
   const c = K.cam, W = V.W, H = V.H, T = K.T;
   let P;
   K.orbNow = null;
-  if (T < K.Tc && !K.take) P = kcSwingPose(K, V, kcP1);
+  // the steady film cuts straight from the chase to its one view: no swing round the body
+  if (T < K.Tc && !K.take && !(K.rec && K.rec.steady)) P = kcSwingPose(K, V, kcP1);
+  else if (T < K.Tc && !K.take) P = kcPoseFromOrbit(K, kcShotOrbit(K, V, 'entry', 0, kcO1), kcP1);
   else P = kcShotPose(K, V, kcP1);
   K.fallK = 0;
-  if (K.holdT0 !== null || K.take) {
+  if ((K.holdT0 !== null && !(K.rec && K.rec.steady)) || K.take) { // (the steady film holds its view to the end; the scope then shows the fall)
     const w = K.take ? 1 : smooth((T - K.holdT0) / K.tn.fallIn);
     if (w > 0) {
       kcFallPose(K, V, kcP2);
@@ -33657,7 +33682,7 @@ const kcBolt = { classic: { root: [4.5, -3.8], knob: [2.2, 0.7], r: 1.15 }, chas
 const kcRifleShots = {
   side: [1.0, 1.12, 0.62, 0.52, 0, false],
   muzzle: [2.3, 2.6, 0.93, 0.5, -0.03, false],
-  action: [2.0, 2.15, 0.36, 0.56, 0.02, false],
+  action: [3.1, 3.4, 0.33, 0.5, 0.02, false],
   low: [1.12, 1.3, 0.66, 0.6, -0.085, false],
   mirror: [1.05, 1.2, 0.6, 0.53, 0, true],
 };
@@ -34052,36 +34077,29 @@ function kcHand(ctx, K, Rf, T, squeeze) {
     if (u < 0.4) { ctx.fillStyle = 'rgba(220,215,205,' + (0.25 * (1 - u / 0.4)).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px, -4.5, 1.5 + 3 * u, 0, TAU); ctx.fill(); } // a wisp of smoke from the open breech
   }
   // where the hand is: on the grip, or travelling to the bolt knob
-  const gx = (gp.gt[0] + gp.gb[0]) / 2, gy = (gp.gt[1] + gp.gb[1]) / 2;
+  // the fist sits on the grip just behind the trigger, so the finger only has a short way to reach
+  const gx = gp.tr[0] - 3.6, gy = gp.tr[1] + 0.5;
   let hx = gx, hy = gy;
   if (B) { const kx = B.root[0] + Math.cos(Math.atan2(B.knob[1] - B.root[1], B.knob[0] - B.root[0]) - lift * 1.25) * 3 - back * 5, ky = B.root[1] + Math.sin(Math.atan2(B.knob[1] - B.root[1], B.knob[0] - B.root[0]) - lift * 1.25) * 3; hx = lerp(gx, kx, reach); hy = lerp(gy, ky + 1.2, reach); }
-  // the sleeve, from off the bottom edge to the wrist
-  const wx = hx - 5.5, wy = hy + 4.5;
-  ctx.fillStyle = sleeve; ctx.beginPath(); ctx.moveTo(wx - 3, wy - 2.6); ctx.lineTo(wx - 40, wy + 34); ctx.lineTo(wx - 25, wy + 44); ctx.lineTo(wx + 3, wy + 3.2); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.moveTo(wx - 1, wy); ctx.lineTo(wx - 30, wy + 37); ctx.stroke();
-  ctx.fillStyle = '#23281f'; ctx.beginPath(); ctx.moveTo(wx - 3.4, wy - 2.2); ctx.lineTo(wx + 3.2, wy + 3.4); ctx.lineTo(wx + 1.6, wy + 5.2); ctx.lineTo(wx - 5, wy - 0.4); ctx.closePath(); ctx.fill(); // the cuff
-  // the back of the hand
-  ctx.fillStyle = glove; ctx.beginPath(); ctx.ellipse(hx - 2.8, hy + 1.4, 4.4, 3.1, -0.7, 0, TAU); ctx.fill();
-  // the fingers wrapped round the grip (or the knob), each a rounded roll with a seam between
-  ctx.lineCap = 'round';
-  const ax = gp.gb[0] - gp.gt[0], ay = gp.gb[1] - gp.gt[1], al = Math.hypot(ax, ay) || 1, ux = reach > 0.5 ? 0.3 : ax / al, uy = reach > 0.5 ? 0.95 : ay / al, nx = uy, ny = -ux;
-  for (let i = 0; i < 3; i++) {
-    const t = 0.15 + i * 0.27, x0 = hx - 2.5 + ux * (t * al * 0.55 - 1.5), y0 = hy + uy * (t * al * 0.55 - 1.5);
-    ctx.strokeStyle = glove; ctx.lineWidth = 2.1; ctx.beginPath(); ctx.moveTo(x0 - nx * 1.5, y0 - ny * 1.5); ctx.lineTo(x0 + nx * 3.6, y0 + ny * 3.6); ctx.stroke();
-    ctx.strokeStyle = glove2; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(x0 + nx * 0.4 - ux * 0.6, y0 + ny * 0.4 - uy * 0.6); ctx.lineTo(x0 + nx * 3.4 - ux * 0.6, y0 + ny * 3.4 - uy * 0.6); ctx.stroke(); // the light on each knuckle
-  }
-  // the index finger along to the trigger (while the hand is on the grip)
+  // a stick figure's hand, like everyone else in the game: a stick forearm coming in from below, a
+  // round fist on the grip, and one short stick finger on the trigger that draws it back as the
+  // shot is taken (or the fist goes to the bolt knob and works it)
+  const ink = '#15171b', fist = 2.1;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(hx - 34, hy + 40); ctx.lineTo(hx - 0.8, hy + 0.9); ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx, hy, fist, 0, TAU); ctx.fill();
   if (reach < 0.5) {
-    // the finger curls back as it takes up the trigger, slowly, until the shot breaks
-    const sq = smooth(squeeze === undefined ? 1 : squeeze), tx = gp.tr[0] + 0.9 - sq * 1.6, ty = gp.tr[1] + 0.2 * sq, fx0 = hx + 0.5, fy0 = hy - 2.2;
-    ctx.strokeStyle = glove; ctx.lineWidth = 1.7; ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0 - 0.6, tx, ty); ctx.stroke();
-    ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(fx0 + 1, fy0 + 0.5); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0, tx - 0.4, ty + 0.4); ctx.stroke();
+    // the finger: from the fist to its knuckle, then down onto the trigger; the tip comes back as it squeezes
+    // the trigger blade itself swings back with the finger
+    const sq = smooth(squeeze === undefined ? 1 : squeeze), tr = gp.tr, bx = tr[0] + 0.35 - sq * 0.9, by = tr[1] + 0.7;
+    ctx.strokeStyle = '#0c0d10'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(tr[0] + 0.5, tr[1] - 1.7); ctx.quadraticCurveTo(tr[0] + 0.9 - sq * 0.4, tr[1] - 0.3, bx, by); ctx.stroke();
+    // the finger: a short hooked stick from the fist, its tip on the blade
+    const tx = bx - 0.15, ty = by - 0.5, kx = tr[0] - 0.9 - sq * 0.3, ky = tr[1] - 1.25;
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.0; ctx.beginPath(); ctx.moveTo(hx + fist * 0.7, hy - fist * 0.45); ctx.lineTo(kx, ky); ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.beginPath(); ctx.arc(tx, ty, 0.5, 0, TAU); ctx.fill();
   }
-  // the thumb, along the top of the stock
-  ctx.strokeStyle = glove; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(hx - 4.5, hy - 1); ctx.lineTo(hx - 1, hy - 3.6 - (reach > 0.5 ? 0.5 : 0)); ctx.stroke();
-  ctx.strokeStyle = glove2; ctx.lineWidth = 0.45; ctx.beginPath(); ctx.moveTo(hx - 4.2, hy - 1.6); ctx.lineTo(hx - 1.2, hy - 4.1); ctx.stroke();
-  // seams on the back of the glove
-  ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(hx - 5.5, hy + 2.2); ctx.quadraticCurveTo(hx - 3, hy + 0.5, hx - 0.8, hy + 1.6); ctx.stroke();
+  // the thumb, a short stick over the top of the grip
+  ctx.lineWidth = 1.0; ctx.beginPath(); ctx.moveTo(hx - fist * 0.5, hy - fist * 0.8); ctx.lineTo(hx + 1.6, hy - fist * 1.9); ctx.stroke();
 }
 
 
@@ -41001,8 +41019,6 @@ UI.settings = function (fromTitle) {
     <div class="setgroup"><div class="eyebrow">Picture</div>${tog('lowRes', 'Lighter graphics', 'Draws the picture with fewer dots, which is easier on the phone. Try this if the scope feels choppy.')}</div>
     <div class="setgroup"><div class="eyebrow">Your progress</div>
       <button class="setrow" data-a="how"><div><b>How to play</b><i>Controls, the numbers under the scope, and how to run the game full screen.</i></div><span class="arrow">&rsaquo;</span></button>
-      <button class="setrow" data-a="director"><div><b>Kill cam director</b><i>Scrub through a kill and set the camera angles yourself. Your cut can then play in the game.</i></div><span class="arrow">&rsaquo;</span></button>
-      ${tog('myCut', 'Use my kill cam cut', 'Plays the camera you set in the director (from the bullet chase on) instead of the usual one.')}
       ${CB.Tester.on ? '<p class="dim">Backing up and erasing are switched off while tester mode is on, so they can only ever touch your real save.</p>' : `<button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
       <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>`}
     </div>
@@ -41026,7 +41042,6 @@ UI.settings = function (fromTitle) {
     },
     testerAgain() { CB.Tester.restart(); UI._chSet = false; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.keepScroll(); UI.settings(fromTitle); UI.toast('Fresh tester save made.', 'good'); },
     how() { UI.howTo(); },
-    director() { CB.Director.open(); },
     back() { UI.title(); },
     export() {
       UI.overlay(`<div class="sheet tall"><div class="sh-head"><h3>Back up or move your save</h3><button class="x" data-a="close">${ICON.cross}</button></div><div class="sh-body twocol">

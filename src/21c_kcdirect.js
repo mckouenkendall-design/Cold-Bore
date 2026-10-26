@@ -35,7 +35,7 @@ const kcRecipes = [
   // steady: the one the game uses. One calm view square across the round's line from the side the
   // target faces, framing the whole body, looking at its middle (so it does not pan about), with only
   // a slow drift; the way out pulls back a little to hold the spray. (The other four are kept for tests.)
-  { id: 'steady', steady: true, entry: [84, 9, 0.36, 1, 2.2], macro: [86, 9, 0.34, 1, 2.2], exit: [90, 8, 0.46, 1, 2.2], whip: 0.9 },
+  { id: 'steady', steady: true, entry: [86, 8, 0.6, 1, 0], macro: [86, 8, 0.6, 1, 0], exit: [86, 8, 0.6, 1, 0], whip: 0.9 },
   { id: 'cut', entry: [40, 12, 0.2, 1, 7], macro: [92, 16, 0.15, 1.5, 4], exit: [112, 8, 0.46, 0.9, 6], whip: 0.22 },
   { id: 'ride', entry: [17, 7, 0.24, 1.1, -4], macro: [70, 28, 0.155, 1.5, -5], exit: [96, -5, 0.5, 0.85, 5], whip: 0.2 },
   { id: 'orbit', entry: [52, 18, 0.22, 1, 14], macro: [100, 20, 0.17, 1.3, 14], exit: [140, 14, 0.5, 0.9, 14], whip: 0.5 },
@@ -56,7 +56,7 @@ function kcPickRecipe(K) {
   const rec = { id: r.id, steady: !!r.steady, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
   rec.entrySide = 1;
   const key = K.plan && K.plan.key;
-  rec.macroSide = key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1;
+  rec.macroSide = !rec.steady && key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1; // (the steady film never changes side)
   rec.exitSide = 1;
   K.rec = rec;
 }
@@ -79,9 +79,22 @@ function kcShotOrbit(K, V, name, t, o) {
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
     if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
   }
-  if (rec.steady) s = name === 'exit' ? pl.sOut * 0.3 : name === 'lodged' ? s * 0.5 : 0; // the steady view looks at the body's middle
-  o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;
+  if (rec.steady) { size = p[2]; s = 0; }
+  const lift = rec.steady && !head ? 0.14 : 0; // (the steady view looks a little above the wound, so the head is in the picture) // the steady view: one size, looks at where the round meets the body's middle, the whole time
+  o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s + lift; o.fz = H[2] + d[2] * s;
+  // and, gently, goes with the body as it is knocked away, so it never leaves the picture
+  if (rec.steady && K.follow && K.follow0) { o.fx += K.follow[0] - K.follow0[0]; o.fy += K.follow[1] - K.follow0[1]; o.fz += K.follow[2] - K.follow0[2]; }
   o.phi = side * (p[0] + p[4] * t * short) * kcDeg; o.el = (p[1] + 2.5 * Math.sin(t * 0.8)) * kcDeg;
+  // the steady view turns with the torso, so a body twisted by the hit still faces the camera the same way
+  if (rec.steady) {
+    o.el = p[1] * kcDeg;
+    if (K.fig && K.fig.tor && K.sw) {
+      const F = K.fig.tor.F, B = K.sw.B, N = K.sw.N, a = Math.atan2(F[0] * N[0] + F[1] * N[1] + F[2] * N[2], F[0] * B[0] + F[1] * B[1] + F[2] * B[2]);
+      if (K.face0 === null || K.face0 === undefined) K.face0 = a;
+      let da = a - K.face0; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+      void da; // (the body's spin is taken out in kcBuildFig instead)
+    }
+  }
   // (size is what fills the shorter side of the screen: the height on a phone held sideways)
   const sd = 0.5 * Math.min(W, Hh);
   o.f = fb * p[3]; o.R = Math.max(head ? 0.42 : 0.55, (o.f * size) / sd); o.f = (o.R * sd) / size; o.ax = 0.5; o.ay = 0.5;
@@ -184,10 +197,12 @@ function kcDirect(K, V) {
   const c = K.cam, W = V.W, H = V.H, T = K.T;
   let P;
   K.orbNow = null;
-  if (T < K.Tc && !K.take) P = kcSwingPose(K, V, kcP1);
+  // the steady film cuts straight from the chase to its one view: no swing round the body
+  if (T < K.Tc && !K.take && !(K.rec && K.rec.steady)) P = kcSwingPose(K, V, kcP1);
+  else if (T < K.Tc && !K.take) P = kcPoseFromOrbit(K, kcShotOrbit(K, V, 'entry', 0, kcO1), kcP1);
   else P = kcShotPose(K, V, kcP1);
   K.fallK = 0;
-  if (K.holdT0 !== null || K.take) {
+  if ((K.holdT0 !== null && !(K.rec && K.rec.steady)) || K.take) { // (the steady film holds its view to the end; the scope then shows the fall)
     const w = K.take ? 1 : smooth((T - K.holdT0) / K.tn.fallIn);
     if (w > 0) {
       kcFallPose(K, V, kcP2);
