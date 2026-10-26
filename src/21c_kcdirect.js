@@ -77,7 +77,7 @@ function kcShotOrbit(K, V, name, t, o) {
   } else {
     // framed between the body's middle and what comes out of it, wide enough to hold both
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
-    if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
+    if (head && !rec.steady) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // (the steady film never turns) // a head from further round and above: never face on to the wound
   }
   if (rec.steady) { size = p[2]; s = 0; }
   const lift = rec.steady && !head ? 0.14 : 0; // (the steady view looks a little above the wound, so the head is in the picture) // the steady view: one size, looks at where the round meets the body's middle, the whole time

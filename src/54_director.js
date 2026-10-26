@@ -16,7 +16,7 @@
 // made on this kill fits every kill. Settings has "Use my kill cam cut" to play it in the game.
 // ---------------------------------------------------------------------------
 const Director = CB.Director = { on: false, keys: [], free: {}, mode: 'free', playing: false, rate: 1, len: 14 };
-const DIR_SHOT = { m: 'c1m1', gun: 'fenwick', tid: 't', part: 'torso', at: 0.8 };
+const DIR_SHOT = CB.DIR_SHOT = { m: 'c1m1', gun: 'fenwick', tid: 't', part: 'torso', at: 0.8 };
 const DIR_STORE = 'coldbore.kccut.v1';
 Director.load = function () { try { const j = JSON.parse(localStorage.getItem(DIR_STORE) || 'null'); if (j && Array.isArray(j.keys)) Director.keys = j.keys; } catch (e) { /* none saved */ } };
 Director.save = function () { try { localStorage.setItem(DIR_STORE, JSON.stringify({ keys: Director.keys })); } catch (e) { /* storage off */ } };

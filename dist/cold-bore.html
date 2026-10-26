@@ -1362,7 +1362,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 1:19 PM";
+const BUILD = "Oct 26, 1:56 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -31117,7 +31117,9 @@ KillCam.start = function (o) {
   path.push([o.tHit, h.x, h.y, h.z]);
   K.path = path; K.pi = 1;
   K.dist = Math.max(1, h.z - path[0][3]);
+  const steadyCut = !K.take && (!KillCam.testRecipe || KillCam.testRecipe === 'steady'); // (the steady view is about a metre wide, so after the cut the round starts just outside it)
   K.dS = Math.min(kcTune.swingFrom, K.dist * 0.3);       // how far out the camera lets go of the round
+  K.dSw = steadyCut ? Math.min(0.7, K.dS) : K.dS;         // and where the round is when the film picks it up again after the cut
   K.zA = path[0][3] + Math.min(1.3, K.dist * 0.08);      // where the chase picks the round up
   K.zS = h.z - K.dS * K.dir[2];
   // the timeline, in real seconds
@@ -31163,7 +31165,7 @@ KillCam.start = function (o) {
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
   K.Td = K.Tc + K.tn.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.tr0 = null; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.tr0 = null; K.ax0 = null; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
@@ -31244,8 +31246,8 @@ function kcAdvance(K, o, dt) {
     if (K.hitT === null) {
       if (T < K.Tc) {
         // the swing: the round eases down from the flight's last speed
-        const u = (T - K.Tb) / K.tn.swing, D = Math.max(0.05, K.dS - pl.sFrom);
-        K.s = -K.dS + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / K.tn.swing;
+        const u = (T - K.Tb) / K.tn.swing, D = Math.max(0.05, K.dSw - pl.sFrom);
+        K.s = -K.dSw + D * (1.28 * u - 0.28 * u * u); K.spd = (D * (1.28 - 0.56 * u)) / K.tn.swing;
         if (!K.snd.h1 && u > 0.12) { K.snd.h1 = 1; kcBeat(0.1); }
         if (!K.snd.h2 && u > 0.7) { K.snd.h2 = 1; kcBeat(0.12); }
       } else {
@@ -31355,6 +31357,7 @@ function kcBeginSwing(K, o) {
     const hd = fig.hd, hr = fig.hr, rx = lx - hd.o[0], ry = ly - hd.o[1];
     let u0 = rx * hd.U[0] + ry * hd.U[1], c0 = rx * hd.F[0] + ry * hd.F[1];
     const ss = sc * kcSkK; // the skull's own size (see src/21b_kcxray.js)
+    if (u0 > -0.035 * sc) u0 = u0 * 0.7 + 0.04 * ss; // the round head's middle is the brain's middle, not the eyes
     if (u0 > -0.035 * sc) { const eu = (u0 - kcSkC[1] * ss) / (0.088 * ss), ef = (c0 - kcSkC[2] * ss) / (0.104 * ss), er = Math.hypot(eu, ef); if (er > 1) { u0 = (kcSkC[1] + (eu / er) * 0.088) * ss; c0 = (kcSkC[2] + (ef / er) * 0.104) * ss; } }
     else { u0 = clamp(u0, -0.105 * sc, -0.035 * sc); c0 = clamp(c0, -0.02 * sc, 0.085 * sc); }
     pl.u0 = u0; pl.c0 = c0; pl.H = [hd.o[0] + hd.U[0] * u0 + hd.F[0] * c0, hd.o[1] + hd.U[1] * u0 + hd.F[1] * c0, 0];
@@ -31404,7 +31407,7 @@ function kcBeginSwing(K, o) {
   evs.sort((p, q) => p.s - q.s);
   pl.sIn = evs[0].s; pl.sOut = evs[evs.length - 1].s;
   pl.sFrom = -pl.sIn + kcTune.standOff;                  // where the round has got to when the swing ends (metres short of the middle)
-  { const D = Math.max(0.05, K.dS - pl.sFrom); pl.sA = -K.dS + D; pl.vA = (D * 0.72) / K.tn.swing; } // exactly where, and how fast it is going
+  { const D = Math.max(0.05, K.dSw - pl.sFrom); pl.sA = -K.dSw + D; pl.vA = (D * 0.72) / K.tn.swing; } // exactly where, and how fast it is going
   pl.sStop = Math.min(0.07 * sc, pl.sOut - 0.06);        // a light round comes to rest just past the middle
   pl.sSpent = pl.sOut + 0.1 + 0.2 * K.exitK;             // one with nothing left after the far side stops here
   // the caption goes to the most important thing the round actually reaches
@@ -31414,7 +31417,7 @@ function kcBeginSwing(K, o) {
   pl.samples = []; for (let s = pl.sIn; s <= pl.sOut + 1e-6; s += 0.024) pl.samples.push(s, -1); // the wound track: (place, when the tip passed)
   // cover on the round's last few metres (anything further was passed in the flight), and the
   // wall behind if the round really goes on into it
-  (K.covers || []).forEach((cv) => { if (cv.done) return; cv.flight = false; cv.s = cv.dz / Math.max(0.3, K.dir[2]); evs.push({ s: Math.max(cv.s, -K.dS + 0.01), kind: 'cover', ref: 'cover', label: '', pri: 0, done: false, cv }); });
+  (K.covers || []).forEach((cv) => { if (cv.done) return; cv.flight = false; cv.s = cv.dz / Math.max(0.3, K.dir[2]); evs.push({ s: Math.max(cv.s, -K.dSw + 0.01), kind: 'cover', ref: 'cover', label: '', pri: 0, done: false, cv }); });
   if (K.wallB && K.wallB.hole && K.simThrough) evs.push({ s: K.wallB.dz / Math.max(0.3, K.dir[2]), kind: 'wall', ref: 'wall', label: '', pri: 0, done: false });
   // ---- the camera's path for the swing, in X-ray space, starting from where the chase camera ended
   const V = o.view, W = V.W, H = V.H, vis = H * 0.85, Hx = pl.H, g = kcRig(K, W, H, 1), f = g.f;
@@ -31924,11 +31927,12 @@ function kcDrawXray(K, V, ctx, dt) {
   // the middle of the body, for the fall's camera to follow (a little below, so the floor shows)
   { const P = fig.P, hd = K.plan && K.plan.part === 'head' && P.head, fx = hd ? P.head[0] : (P.hip[0] + P.neck[0]) / 2, fy = hd ? Math.max(0.3, P.head[1]) : Math.max(0.35, (P.hip[1] + P.neck[1]) / 2 - 0.15), fz = hd ? P.head[2] : (P.hip[2] + P.neck[2]) / 2; /* a head shot follows the head */ if (!K.follow) { K.follow = [fx, fy, fz]; K.follow0 = [fx, fy, fz]; } else { const k = Math.min(1, (dt || 0) * (K.rec && K.rec.steady ? 10 : 3)); K.follow[0] += (fx - K.follow[0]) * k; K.follow[1] += (fy - K.follow[1]) * k; K.follow[2] += (fz - K.follow[2]) * k; } }
   const c = kcDirect(K, V);
-  const u = clamp((T - K.Tb) / K.tn.swing, 0, 1), figA = smooth((u - 0.01) / 0.11);
-  if (!K.bg && u >= 0.5) kcBgRender(K, V); // the backdrop, drawn once
+  const stdy = !!(K.rec && K.rec.steady); // the steady film cuts from the chase straight to the backdrop and the solid body (the flat scene cannot be drawn from the side)
+  const u = clamp((T - K.Tb) / K.tn.swing, 0, 1), figA = stdy ? 1 : smooth((u - 0.01) / 0.11);
+  if (!K.bg && (u >= 0.5 || stdy)) kcBgRender(K, V); // the backdrop, drawn once
   // how far the real scene has come back as the body falls
   const back = K.holdT0 !== null && !(K.rec && K.rec.steady) ? smooth((T - K.holdT0 - K.tn.fallIn * 0.35) / (K.tn.fallIn * 0.6)) : 0;
-  const bgA = (K.bg ? smooth((u - 0.5) / 0.45) : 0) * (1 - back), xa = 1 - back;
+  const bgA = (K.bg ? (stdy ? 1 : smooth((u - 0.5) / 0.45)) : 0) * (1 - back), xa = 1 - back;
   if (bgA < 0.999) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     // the flat figure is left out of the scene once the solid one is fully there, until the fall
@@ -31937,7 +31941,7 @@ function kcDrawXray(K, V, ctx, dt) {
   }
   if (bgA > 0.004) { kcBgDraw(K, V, ctx, c, bgA); kcDrawPanes(ctx, K, c, bgA); }
   // how far the skin has turned to film
-  const xr = smooth((T - (K.Tc - 0.65 * K.tn.swing)) / (0.38 * K.tn.swing)), infl = smooth((u - 0.12) / 0.5);
+  const xr = stdy ? 1 : smooth((T - (K.Tc - 0.65 * K.tn.swing)) / (0.38 * K.tn.swing)), /* (the steady film cuts straight to the X-ray: the solid figure's big round head would shrink as it turned) */ infl = smooth((u - 0.12) / 0.5);
   if (xr < 0.99 && xa > 0.01) kcShell(ctx, K, c, fig, figA * xa, xr, infl, pal);
   if (xr > 0.01) kcXDraw(ctx, K, c, fig, figA * xr * xa);
   if (K.hitT !== null && xa > 0.01) { kcHoles(ctx, K, c, fig, figA * xa); kcRipples(ctx, K, c, fig); }
@@ -32022,6 +32026,13 @@ function kcBuildFig(K) {
   const tor = { o: P.hip, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0], L: 0.56 * sc }, hd = { o: P.head, U: [0, 1, 0], S: [0, 0, fs], F: [fs, 0, 0] };
   tor.L = kcAxes(tor, P.neck[0] - P.hip[0], P.neck[1] - P.hip[1], P.neck[2] - P.hip[2], P.shL[0] - P.shR[0] + P.hpL[0] - P.hpR[0], P.shL[1] - P.shR[1] + P.hpL[1] - P.hpR[1], P.shL[2] - P.shR[2] + P.hpL[2] - P.hpR[2]) || 0.56 * sc;
   kcAxes(hd, P.head[0] - P.neck[0], P.head[1] - P.neck[1], P.head[2] - P.neck[2], tor.S[0], tor.S[1], tor.S[2]);
+  // The steady film: the skull and the ribcage keep the way they faced at the start; the hit still
+  // knocks them back and the limbs still fly, but nothing turns round in front of the locked camera
+  // (a head swinging to a side view in a third of a second reads as the camera lurching)
+  if (K.rec && K.rec.steady) {
+    if (!K.ax0) K.ax0 = { tU: tor.U.slice(), tS: tor.S.slice(), tF: tor.F.slice(), hU: hd.U.slice(), hS: hd.S.slice(), hF: hd.F.slice() };
+    const A = K.ax0; tor.U = A.tU.slice(); tor.S = A.tS.slice(); tor.F = A.tF.slice(); hd.U = A.hU.slice(); hd.S = A.hS.slice(); hd.F = A.hF.slice();
+  }
   K.fig = { J, P, S: (K.fig && K.fig.S) || {}, sc, fs, bw, lw, ws, wh, wt, za, hr: 0.17 * sc, look: L, tor, hd };
   return K.fig;
 }
@@ -33397,7 +33408,7 @@ function kcShotOrbit(K, V, name, t, o) {
   } else {
     // framed between the body's middle and what comes out of it, wide enough to hold both
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
-    if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
+    if (head && !rec.steady) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // (the steady film never turns) // a head from further round and above: never face on to the wound
   }
   if (rec.steady) { size = p[2]; s = 0; }
   const lift = rec.steady && !head ? 0.14 : 0; // (the steady view looks a little above the wound, so the head is in the picture) // the steady view: one size, looks at where the round meets the body's middle, the whole time
@@ -43558,7 +43569,7 @@ CB.drawDrill = drawDrill;
 // made on this kill fits every kill. Settings has "Use my kill cam cut" to play it in the game.
 // ---------------------------------------------------------------------------
 const Director = CB.Director = { on: false, keys: [], free: {}, mode: 'free', playing: false, rate: 1, len: 14 };
-const DIR_SHOT = { m: 'c1m1', gun: 'fenwick', tid: 't', part: 'torso', at: 0.8 };
+const DIR_SHOT = CB.DIR_SHOT = { m: 'c1m1', gun: 'fenwick', tid: 't', part: 'torso', at: 0.8 };
 const DIR_STORE = 'coldbore.kccut.v1';
 Director.load = function () { try { const j = JSON.parse(localStorage.getItem(DIR_STORE) || 'null'); if (j && Array.isArray(j.keys)) Director.keys = j.keys; } catch (e) { /* none saved */ } };
 Director.save = function () { try { localStorage.setItem(DIR_STORE, JSON.stringify({ keys: Director.keys })); } catch (e) { /* storage off */ } };
