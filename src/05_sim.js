@@ -642,7 +642,8 @@ Sim.prototype.stepActorCore = function (a, dt) {
   a.t += dt;
   if (a.dead) { a.deadT += dt; return; }
   if (a.gone) return;
-  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
+  // (a passenger faces the way the vehicle goes, unless a mission has turned them round: vehFace)
+  if (a.inVeh) { const v = a.inVeh, s = sim.seatPos(v, a.seat); a.x = s.x; a.y = s.y; a.face = a.vehFace || v.dir; a.hidden = v.gone; if (v.gone && !a.dead) sim.leave(a); return; }
   if (a.yFn) a.y = a.yFn(a.x);
   // timers for people who have noticed something
   if (a.state === 'susp') {
