@@ -351,9 +351,12 @@ function richSaveInPage() {
       await tapSel('#overlay [data-a="done"]'); await wait(300);
       ok(await ev(() => !document.getElementById('overlay').classList.contains('show')), 'Done closes the cache');
       await tapSel('.tabb[data-tab="settings"]'); await wait(350);
-      const k0 = await ev(() => CB.Save.data.settings.killcam);
-      await tapSel('[data-k="killcam"]'); await wait(250);
-      ok(await ev((k) => CB.Save.data.settings.killcam === !k && JSON.parse(localStorage.getItem('coldbore.save.v1')).settings.killcam === !k, k0), 'flipping the kill camera switch changes the setting and saves it');
+      // the kill camera: every time / notable shots / off
+      await tapSel('[data-a="kcw"][data-v="notable"]'); await wait(250);
+      ok(await ev(() => CB.Save.data.settings.killcamWhen === 'notable' && CB.Save.data.settings.killcam === true && JSON.parse(localStorage.getItem('coldbore.save.v1')).settings.killcamWhen === 'notable'), 'choosing "notable shots" for the kill camera changes the setting and saves it');
+      await tapSel('[data-a="kcw"][data-v="off"]'); await wait(250);
+      ok(await ev(() => CB.Save.data.settings.killcamWhen === 'off' && CB.Save.data.settings.killcam === false), 'turning the kill camera off saves it');
+      await tapSel('[data-a="kcw"][data-v="always"]'); await wait(250);
       await tapSel('[data-k="gore"]'); await wait(250);
       ok(await ev(() => CB.Save.data.settings.gore === false && JSON.parse(localStorage.getItem('coldbore.save.v1')).settings.gore === false), 'the blood switch saves too');
       await tapSel('.tabb[data-tab="range"]'); await wait(350);

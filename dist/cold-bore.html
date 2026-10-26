@@ -1365,7 +1365,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 25, 11:48 PM";
+const BUILD = "Oct 25, 11:52 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -41737,18 +41737,18 @@ UI.brief = function (M, keep) {
         <div class="load">
           <button class="gcard ${why ? 'bad' : ''}" data-a="gun"><span class="gc-pic plate"><canvas data-gun="${gunId}"></canvas></span><span class="gc-row"><span class="gc-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${esc(st.scope.name)}  ·  ${st.silent ? 'silent' : st.quiet ? 'suppressed' : 'loud'}</i></span><span class="chg">Change</span></span></button>
           ${why ? '<div class="warn">' + ICON.cross + '<span>' + esc(why) + ' Pick another rifle or fit different parts.</span></div>' : ''}
-          ${(() => { // the second load (05_sim.js switchAmmo): what it is and how many, if this rifle can take it
-            const a2 = CB.ammo2For(M), p2 = a2 && PART_BY_ID[a2];
-            if (!p2 || why || a2 === cfg.ammo || !partFits(p2, g)) return '';
-            const n = Math.min(3, Math.max(2, Math.floor(st.mag / 3)));
-            return '<div class="note load2"><b>Second load: ' + esc(p2.name) + ' (' + n + ' rounds).</b> Tap the round count in the mission to switch. It costs one pull of the bolt.</div>';
-          })()}
         </div>
         <div class="cta"><button class="btn pri big ${why ? 'off' : ''}" data-a="go" data-snd="go">${why ? 'Rifle not suitable' : 'Take the shot'}</button></div>
       </div>
       <div class="main scroll">
         ${tcard}
         ${say}
+        ${(() => { // the second load (05_sim.js switchAmmo): what it is and how many, if this rifle can take it
+            const a2 = CB.ammo2For(M), p2 = a2 && PART_BY_ID[a2];
+            if (!p2 || why || a2 === cfg.ammo || !partFits(p2, g)) return '';
+            const n = Math.min(3, Math.max(2, Math.floor(st.mag / 3)));
+            return '<div class="note load2"><b>Second load: ' + esc(p2.name) + ' (' + n + ' rounds).</b> Tap the round count in the mission to switch. It costs one pull of the bolt.</div>';
+          })()}
         ${!why && !st.quiet ? '<div class="note loud"><b>Your rifle is loud.</b> Everyone in earshot hears the shot unless something louder covers it.</div>' : ''}
         ${V.length > 1 ? `<div class="vant"><div class="eyebrow">Where to set up</div><div class="vgrid">${V.map((v, i) => `<button class="vcard ${i === P.v ? 'on' : ''}" data-a="vant" data-i="${i}"><b>${esc(v.name)}</b>${v.tag ? '<em>' + esc(v.tag) + '</em>' : ''}<span>${esc(v.desc || '')}</span></button>`).join('')}</div></div>` : `<div class="vant one"><div class="eyebrow">Position</div><p><b>${esc(V[0].name)}.</b> ${esc(V[0].desc || '')}</p></div>`}
         ${T.rest.length ? `<div class="intel"><div class="eyebrow">What else we know</div><ul>${T.rest.map((t) => '<li>' + esc(t) + '</li>').join('')}</ul></div>` : ''}
