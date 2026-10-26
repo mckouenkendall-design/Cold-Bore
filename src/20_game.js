@@ -152,7 +152,9 @@ Game.placeHud = function () {
       P(h.breath, { right: 150, bottom: 26, width: 86, height: 86, left: 'auto', top: 'auto' });
       P(h.reload, { right: 34, bottom: 168, width: 66, height: 66, left: 'auto', top: 'auto' });
       P(h.mark, { left: 80, bottom: 38, width: 62, height: 62, right: 'auto', top: 'auto' });
-      P(h.ammo, { right: 112, bottom: 180, left: 'auto', top: 'auto' });
+      // the rounds sit over RELOAD in the right-hand column, clear of the open ground under the
+      // read-outs where a thumb starts a drag (tapping them changes the load)
+      P(h.ammo, { right: 24, bottom: 246, left: 'auto', top: 'auto' });
       P(h.focus, { right: 166, bottom: 124, width: 52, height: 52, left: 'auto', top: 'auto' });
     }
   } else {

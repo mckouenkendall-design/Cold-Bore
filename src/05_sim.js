@@ -266,6 +266,7 @@ Sim.prototype.stepShooter = function (dt) {
 Sim.prototype.stepStress = function (dt) {
   const sim = this, sh = sim.sh, st = sim.st;
   if (sh.stress === undefined) { sh.stress = 0; sh.stressT = 0; sh.watchers = 0; sh.aimMoving = false; }
+  if (sim.M.practice) { sh.stress = 0; return; } // the Range is for learning the rifle: the pulse stays steady
   // what is under the crosshair is looked at four times a second (it costs a line of sight)
   sh.stressT -= dt;
   if (sh.stressT <= 0) {
@@ -285,7 +286,7 @@ Sim.prototype.stepStress = function (dt) {
   sh.stress = clamp(sh.stress, 0, 1);
 };
 // A shot that went wrong sets the pulse going (it settles back slowly).
-Sim.prototype.jolt = function (k) { const sh = this.sh; sh.stress = clamp((sh.stress || 0) + k, 0, 1); };
+Sim.prototype.jolt = function (k) { const sh = this.sh; if (this.M.practice) return; sh.stress = clamp((sh.stress || 0) + k, 0, 1); };
 
 // ---- noise and awareness -------------------------------------------------------
 Sim.prototype.noiseAll = function (kind, dist) {
