@@ -783,6 +783,110 @@ function stFacade(S, P, Bs, o) {
   });
   return clear;
 }
+// Autumn on the street: fallen leaves, orange, red and yellow, drifted deep against the kerbs,
+// scattered over the pavements and the road, and a few tumbling along the road in the wind.
+// All flat on the ground or skittering along it, from streams of their own.
+const ST_LEAF = ['#c8682a', '#a8402a', '#d8a03a', '#8a5a2a', '#b8782a'];
+function stLeaf(D, R, x, y, sq) { const l = R.r(0.12, 0.22), hh = Math.max(0.03, l * sq * 0.9); D.at = 5; D.poly([x, y, x + l * 0.5, y + hh, x + l, y, x + l * 0.5, y - hh], R.pick(ST_LEAF), 0.95, l); }
+// A drift of leaves along a kerb: a lumpy brown bank at card height y, up to h deep (towards the
+// viewer; a negative h lies away from them), in pieces.
+function stDrift(D, R, y, h) {
+  D.at = 2.5;
+  for (let x = -75; x < 75;) {
+    const l = R.r(2, 9), p = [x + l, y, x, y]; for (let u = x; u < x + l; u += R.r(0.2, 0.6)) p.push(u, y - h * R.r(0.25, 1));
+    p.push(x + l, y - h * 0.3); D.poly(p, R.chance(0.5) ? '#9a5a2a' : '#a8682e', 0.6, 0.6); x += l + R.r(0.2, 3);
+  }
+  D.at = 0;
+}
+function stAutumn(S, H, seed, wet) {
+  const PB = H.PB, PS = H.PS, PR = H.PR;
+  K.deco(S, PB, { ground: true, seed: 5211 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    for (let x = -75; x < 75; x += R.r(0.4, 2)) { const n = R.i(1, 5); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 1), -R.r(0.01, bd * 0.12), sq); }   // blown up against the walls
+    for (let i = 0; i < 150 * 2.4; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, bd * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5221 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), gy = -(hk + face), sq = Math.max(0.12, E.tilt * 1.5), rb = E.hOf(7);
+    stDrift(D, R, gy + 0.01, 0.07);
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 9); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), gy - R.r(0.0, 0.07), sq); }
+    for (let i = 0; i < 150 * 2.2; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, hk * 0.92), sq);
+    for (let i = 0; i < 150 * 0.4; i++) stLeaf(D, R, R.r(-75, 75), gy - R.r(0.05, Math.max(0.06, rb - hk - face) * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PR, { ground: true, seed: 5231 + seed }, (D, R) => {
+    const near = 5.3;
+    stDrift(D, R, -near + 0.02, -0.22);        // (this kerb is the near one: the leaves lie up the road from it)
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 8); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), -near + R.r(0.02, 0.3), 0.3); }
+    for (let i = 0; i < 150 * 0.5; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.2, near - 0.4), 0.22);
+    for (let i = 0; i < 150 * 1.2; i++) stLeaf(D, R, R.r(-75, 75), -near - R.r(0.4, 5), 0.3);
+    D.at = 0;
+  });
+  if (wet) return;
+  // a handful tumbling along the road with the wind, now skating, now flipping over
+  const cols = ST_LEAF.map((c) => S.tone(c, PR)), L = []; { const R = makeRng(5241 + seed); for (let i = 0; i < 14; i++) L.push([R.r(0, 150), R.r(0.6, 1.3), R.r(0.3, 4.9), R.r(0, TAU), i % cols.length, R.r(0.09, 0.14)]); }
+  PR.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 5) return;
+    const t = env.t, w = env.wind || 1, dir = w >= 0 ? 1 : -1, sp = 0.5 + Math.min(3, Math.abs(w)) * 0.45;
+    for (let i = 0; i < L.length; i++) {
+      const q = L[i], g = t * sp * q[1] + Math.sin(t * 0.8 + q[3]) * 1.2 + q[0], xx = -75 + (((g % 150) + 150) % 150), x = dir * xx; if (x < env.x0 - 1 || x > env.x1 + 1) continue;
+      const hop = Math.max(0, Math.sin(t * 2.3 * q[1] + q[3])) * 0.12, fl = Math.cos(t * 5 * q[1] + q[3]), l = q[5], y = -q[2] + hop;
+      ctx.fillStyle = cols[q[4]]; ctx.beginPath(); ctx.moveTo(x - l * 0.5, y); ctx.lineTo(x, y + l * 0.3 * fl + 0.01); ctx.lineTo(x + l * 0.5, y); ctx.lineTo(x, y - l * 0.3 * fl - 0.01); ctx.closePath(); ctx.fill();
+    }
+  } });
+}
+// A hoar frost: the pavements and the road's edges furred white, rime thick along the kerbs,
+// the puddles frozen over and crazed, and the frost glittering under the lamps.
+function stFrost(S, H, seed) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, glints = [];
+  K.deco(S, PB, { ground: true, seed: 5251 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -bd, 150, bd - 0.01, '#dfe8f2', 0.14);
+    for (let x = -75; x < 75; x += R.r(1, 4)) stFlat(D, R, x, -R.r(0.02, bd * 0.9), R.r(0.6, 2.2), Math.max(0.03, sq * R.r(0.3, 0.8)), '#eef4fa', 0.16);
+    D.at = 20; for (let i = 0; i < 900; i++) D.rect(R.r(-75, 75), -R.r(0.02, bd * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5261 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -hk, 150, hk - 0.01, '#dfe8f2', 0.16);
+    D.rect(-75, -hk - face * 0.35, 150, face * 0.35, '#f2f6fa', 0.45);                         // rime along the edge of the kerb
+    for (let x = -75; x < 75; x += R.r(1, 3.5)) stFlat(D, R, x, -R.r(0.02, hk * 0.9), R.r(0.5, 1.8), Math.max(0.03, sq * R.r(0.25, 0.6)), '#eef4fa', 0.18);
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -R.r(0.02, hk * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+    for (let i = 0; i < 140; i++) glints.push(R.r(-75, 75), -R.r(0.03, hk * 0.9), R.r(0, 50), R.r(2, 5));
+  });
+  K.deco(S, PR, { ground: true, seed: 5271 + seed }, (D, R) => {
+    const near = 5.3;
+    // frost on the road where the tyres have not cleared it: along both gutters and the crown
+    // (in patches, not one sheet: a nearer plane's ground may take over part way along)
+    for (let x = -75; x < 75; x += R.r(0.8, 2.6)) {
+      stFlat(D, R, x, -R.r(0.2, 0.6), R.r(0.5, 1.6), R.r(0.08, 0.2), '#dfe8f2', 0.16);
+      stFlat(D, R, x + R.r(0, 1), -near + R.r(0.15, 0.5), R.r(0.5, 1.6), R.r(0.1, 0.25), '#dfe8f2', 0.18);
+      stFlat(D, R, x + R.r(0, 1), -near - R.r(0.3, 4.6), R.r(0.6, 1.8), R.r(0.2, 0.5), '#dfe8f2', 0.15);
+    }
+    for (let i = 0; i < 7; i++) {   // puddles frozen over, white at the rims, crazed across
+      const x = R.r(-60, 60), y = -R.pick([0.45, near - 0.3]) + R.r(-0.1, 0.1), rx = R.r(0.35, 0.8), ry = R.r(0.06, 0.12);
+      D.at = 3; stFlat(D, R, x, y, rx, ry, '#c4d2de', 0.45); D.at = 6; stFlat(D, R, x, y + ry * 0.15, rx * 0.7, ry * 0.55, '#9fb0c0', 0.35);
+      D.at = 14; for (let k = 0; k < 4; k++) { const a = R.r(-rx * 0.7, rx * 0.7); D.seg(x + a, y - ry * 0.6, x + a + R.r(-0.3, 0.3), y + ry * 0.6, 0.012, '#f4f8fc', 0.7); }
+      D.at = 6; D.line([x - rx, y, x - rx * 0.7, y + ry * 0.75, x, y + ry, x + rx * 0.7, y + ry * 0.75, x + rx, y], 0.03, '#f4f8fc', 0.6);
+    }
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -near - R.r(0.05, 4.8), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  // the frost glittering: a few crystals catch the lamp (or the sky) at a time
+  PS.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 6 || !glints.length) return;
+    const t = env.t, r = Math.max(env.px * 1.2, 0.02);
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); let any = false;
+    for (let i = 0; i < glints.length; i += 4) {
+      const x = glints[i]; if (x < env.x0 || x > env.x1) continue;
+      const k = Math.sin(t * glints[i + 3] + glints[i + 2]); if (k < 0.93) continue;
+      const y = glints[i + 1], rr = r * (1 + (k - 0.93) * 25);
+      ctx.moveTo(x - rr, y); ctx.lineTo(x, y + rr * 0.35); ctx.lineTo(x + rr, y); ctx.lineTo(x, y - rr * 0.35); ctx.closePath(); any = true;
+    }
+    if (any) ctx.fill();
+  } });
+}
 function stDetail(S, H, q) {
   const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
   const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
@@ -865,6 +969,10 @@ function stDetail(S, H, q) {
     stLitter(D, R, -75, 75, -near - 0.35, -near - 5, 0.22, 0.9);
     stLitter(D, R, -75, 75, -0.15, -near + 0.3, 0.16, 0.12);
   });
+
+  // ---- the day's own dressing (07i_looks.js): autumn leaves, or a hoar frost ----
+  const dress = S.look && S.look.dress;
+  if (dress === 'autumn') stAutumn(S, H, seed, wet); else if (dress === 'frost') stFrost(S, H, seed);
 
   // ---- pigeons on the cornices, by day ----
   if (S.pal.dark < 0.45 && !wet && birds.length) {

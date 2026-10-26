@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 const LOOKS = {
   // ---- chapter 1: Brickworks, one street ----
-  c1m1: { name: 'amber dusk', pal: { skyTop: '#2b2a5c', skyBot: '#f59a52', fog: '#c08670', amb: '#3e2c4e' }, sky: { mid: '#8a4e72', heaps: 0.5, cirrus: 0.9 }, grade: { bot: '#ff9a4a', a: 0.1, glow: 0.18 } },
+  c1m1: { name: 'amber dusk', pal: { skyTop: '#2b2a5c', skyBot: '#f59a52', fog: '#c08670', amb: '#3e2c4e' }, sky: { mid: '#8a4e72', heaps: 0.5, cirrus: 0.9 }, grade: { bot: '#ff9a4a', a: 0.1, glow: 0.18 }, dress: 'autumn' },
   c1m2: { name: 'moonlit blue', pal: { skyTop: '#040a1e', skyBot: '#1d3462', fog: '#17284e', amb: '#0a1632', water: '#10224a' }, lampCol: '#ffb860', sky: { moon: 0.5, stars: 0.7, heaps: 0.25, cirrus: 0.5, cloudCols: { lit: '#8a9cc6', body: '#22304f' } }, grade: { top: '#2a4a9a', a: 0.12 } },
   c1m3: { name: 'thunder on wet brick', pal: { skyTop: '#06080f', skyBot: '#1e2234', fog: '#181c2a', amb: '#0a0c16' }, lampCol: '#ffd590', sky: { stars: 0 }, wet: 1, grade: { top: '#3a4a7a', a: 0.1 } },
   c1m4: { name: 'spring morning', pal: { skyTop: '#2a78d4', skyBot: '#c4e2f6' }, sky: { heaps: 0.85, cirrus: 0.5 }, grade: { warm: 0.06, a: 0.08 } },

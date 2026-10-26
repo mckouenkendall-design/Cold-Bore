@@ -1105,6 +1105,48 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
   } };
 
 // ---- the location ------------------------------------------------------------
+// A harbour tug working out past the breakwater, a long way off: black hull, red boot top,
+// white house, a buff funnel puffing smoke, bow wave and a wake behind. She crosses one way
+// and later comes back the other; after dark only her lights show much: the masthead lights,
+// the side light she shows (green going right, red going left) and a lit wheelhouse. Behind
+// the breakwater her hull is hidden and only the house shows over the stones. Drawn only.
+function dkTug(S, P, wy, lit, seed) {
+  const hull = S.tone('#20242a', P), boot = S.tone('#8a2f28', P), house = S.tone('#e2ddd0', P), house2 = S.tone('#b8b2a4', P), fun = S.tone('#c98a2b', P), funK = S.tone('#15181c', P), fend = S.tone('#121418', P);
+  const win = S.tone(lit ? S.pal.lit : S.pal.glass, P, true), foam = rgba(S.tone('#e8eef2', P), 0.55), smoke = S.pal.dark > 0.5 ? 'rgb(70,74,86)' : 'rgb(98,96,98)';
+  const run = 1900, sp = 2.6, ph = 760 + (seed % 7) * 37;   // she comes into the usual view about a minute in
+  const at = (t) => { const g = t * sp + ph, lap = Math.floor(g / run), u = g - lap * run, dir = lap % 2 ? -1 : 1; return [dir > 0 ? -950 + u : 950 - u, dir]; };
+  P.add({ x0: -1000, x1: 1000, layer: 0, draw(ctx, env) {
+    const t = env.t, [x, dir] = at(t), s = env.s;
+    if (x + 60 < env.x0 || x - 60 > env.x1 || s < 0.5) return;
+    const bob = Math.sin(t * 0.9) * 0.08, pitch = Math.sin(t * 0.7 + 1) * 0.012;
+    // the wake: lines of foam spreading and fading behind her, and the wave at her bow
+    ctx.fillStyle = foam;
+    for (let k = 0; k < 5; k++) { const l = 10 + k * 9, a0 = x - dir * (10 + k * 7); ctx.globalAlpha = 0.7 * (1 - k / 5.5); ctx.beginPath(); const xa = Math.min(a0, a0 - dir * l), y = wy - 0.12 - k * 0.07; ctx.rect(xa, y, l, Math.max(env.px * 0.9, 0.18 - k * 0.02)); ctx.fill(); }
+    ctx.globalAlpha = 0.8; poly(ctx, [x + dir * 10.6, wy - 0.15, x + dir * 13.2, wy - 0.25, x + dir * 10.2, wy + 0.55], foam); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(x, wy + bob); ctx.scale(dir, 1); ctx.rotate(pitch);
+    // hull, boot top, the thick fender round her bow
+    poly(ctx, [-10.6, 1.45, 10.9, 2.3, 9.6, -0.45, -9.9, -0.45], hull);
+    R4(ctx, -9.8, -0.45, 19.3, 0.5, boot);
+    if (s > 3) { R4(ctx, -10.5, 1.3, 21.2, 0.22, house2); poly(ctx, [9.2, 2.2, 11.3, 2.35, 10.4, 0.2, 9.1, 0.6], fend); }
+    // the house, the wheelhouse up on it, the funnel and the mast
+    R4(ctx, -5.2, 1.5, 9.4, 1.9, house); R4(ctx, -0.2, 3.4, 4.6, 2.0, house);
+    R4(ctx, 0.1, 4.25, 4.0, 0.75, win);
+    if (s > 4) { ctx.fillStyle = house; for (let k = 1; k < 4; k++) ctx.fillRect(0.1 + k, 4.25, 0.12, 0.75); R4(ctx, -4.6, 2.2, 0.9, 0.7, win); R4(ctx, -2.8, 2.2, 0.9, 0.7, win); R4(ctx, -0.4, 5.35, 5.0, 0.18, house2); }
+    poly(ctx, [-3.6, 3.4, -1.6, 3.4, -1.9, 6.6, -3.5, 6.6], fun); R4(ctx, -3.55, 6.1, 1.65, 0.5, funK);
+    line(ctx, 2.2, 5.4, 2.2, 9.6, funK, 0.14, env);
+    if (s > 4) { line(ctx, 1.4, 8.6, 3.0, 8.6, funK, 0.08, env); line(ctx, -9.0, 1.6, -9.0, 2.6, funK, 0.12, env); line(ctx, -9.6, 2.6, -7.6, 2.6, funK, 0.08, env); }
+    ctx.restore();
+    // her smoke, carried back by her own way and by the wind
+    kxPlume(ctx, env, x - dir * 2.6, wy + bob + 6.6, { rise: 9, r0: 0.45, r1: 2.6, n: 9, speed: 0.35, a: 0.42, col: smoke, drift: -dir * 7 + (env.wind || 0) * 1.5, ph: 0.3 });
+    if (lit) {   // masthead lights (two: she has a tow), the side light she shows, her stern light
+      const mx = x + dir * 2.2, my = wy + bob;
+      circ(ctx, mx, my + 9.6, 0.22, '#fff6dc'); circ(ctx, mx, my + 8.9, 0.22, '#fff6dc'); dkGlow(ctx, mx, my + 9.25, 2.4, '255,246,220', 0.7);
+      const side = dir > 0 ? ['#6dff9a', '109,255,154'] : ['#ff5a48', '255,90,72'];
+      circ(ctx, x + dir * 4.6, my + 3.9, 0.2, side[0]); dkGlow(ctx, x + dir * 4.6, my + 3.9, 1.8, side[1], 0.75);
+      circ(ctx, x - dir * 10.2, my + 1.9, 0.18, '#fff6dc'); dkGlow(ctx, x - dir * 10.2, my + 1.9, 1.4, '255,246,220', 0.5);
+    }
+  } });
+}
 SCN.docks = function (o) {
   o = o || {};
   const z = o.z || 255, wy = -2.2, seed = o.seed || 4;
@@ -1218,6 +1260,7 @@ SCN.docks = function (o) {
       dkFoam(ctx, env, xa, xb, wy, 31, foam);
     } });
     K.lighthouse(S, PBW, bx1, wy + 2.8, 19);
+    if (S.weather !== 'storm') dkTug(S, PBW, wy, lit, seed);
     if (S.pal.dark < 0.5 && !rainy) { // gulls wheeling off the breakwater, a long way off: gliding mostly, a few beats now and then
       const gc = S.tone('#eef0ee', PBW);
       PBW.add({ x0: bx1 - 130, x1: bx1 + 40, layer: 2, draw(ctx, env) {
