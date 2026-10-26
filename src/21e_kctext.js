@@ -77,7 +77,7 @@ function kcCaption(ctx, K, c, V) {
   const cp = K.cap; if (!cp || !K.fig || K.short === 2) return;
   const pl = K.plan, age = K.T - cp.t0 - 0.08, life = cp.ref === 'lodged' ? 1.6 : 1.5; if (age < 0 || age > life) return;
   const tx = kcCapText[cp.ref] || [cp.text || '', ''], fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
-  kcLoc(fr, cp.s * K.fig.fs, pl.part === 'head' ? pl.u0 : pl.b0, pl.c0, kcL0);
+  kcTrack(K, cp.s, kcL0);
   if (!kcProj(c, kcL0[0], kcL0[1], kcL0[2], kcQ)) return;
   // (gone by the time the X-ray has faded back into the real scene for the fall)
   const W = V.W, H = V.H, a = smooth(age / 0.12) * (1 - smooth((age - life + 0.3) / 0.3)) * (1 - smooth((K.fallK || 0) / 0.6)), x = kcQ[0], y = kcQ[1];

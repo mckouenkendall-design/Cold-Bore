@@ -3,8 +3,8 @@
 // cut into and how the camera moves between them, the real scene kept behind the X-ray, and
 // the body's fall back in the real place.
 //
-// Shots. Every film picks one of four recipes from its own seed (where the round hit), then
-// varies every angle a little, so no two films look alike:
+// Shots. Every film picks one of four recipes from its own seed (where the round hit) and plays it
+// exactly as written, always on the target's facing side, so each recipe looks the same every time:
 //   cut    a close-up of the round going in from the shooter's side; a whip round to a tight
 //          macro of the main thing it hits, where the film freezes for half a second; a whip out
 //          to a side view of what comes out of the far side
@@ -48,12 +48,12 @@ function kcPickRecipe(K) {
   const R = makeRng(Math.round(K.cavSeed * 1000) + 31), pick = Math.floor(R.f() * kcRecipes.length) % kcRecipes.length;
   const r = kcRecipes.find((q) => q.id === KillCam.testRecipe) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
   const szK = K.part === 'head' ? 0.7 : 1;
-  const jit = (v) => [v[0] + (R.f() - 0.5) * 14, v[1] + (R.f() - 0.5) * 12, v[2] * szK * (0.9 + R.f() * 0.2), v[3], v[4] * (R.f() < 0.25 ? -1 : 1)];
-  const rec = { id: r.id, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88 + (R.f() - 0.5) * 30, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
-  rec.entrySide = R.f() < 0.25 ? -1 : 1;
+  const jit = (v) => [v[0], v[1], v[2] * szK, v[3], v[4]]; // no random variation: the four recipes are the four looks
+  const rec = { id: r.id, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
+  rec.entrySide = 1;
   const key = K.plan && K.plan.key;
   rec.macroSide = key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1;
-  rec.exitSide = R.f() < 0.2 ? -1 : 1;
+  rec.exitSide = 1;
   K.rec = rec;
 }
 // Where shot `name` puts the camera, t seconds into it, as orbit settings round a point.
@@ -71,7 +71,8 @@ function kcShotOrbit(K, V, name, t, o) {
   } else if (name === 'lodged') {
     p = rec.lodged; s = K.s - K.len * 0.5; size = p[2] * (1 - 0.15 * smooth(t / 1.4));
   } else {
-    p = rec.exit; side *= rec.exitSide; s = pl.sOut + 0.13 * szK; size = p[2] * (1 + 0.22 * smooth(t / 1.6));
+    // framed between the body's middle and what comes out of it, wide enough to hold both
+    p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
     if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
   }
   o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;

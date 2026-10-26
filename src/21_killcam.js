@@ -180,6 +180,9 @@ function kcLoc(fr, a, b, c, out) {
   out[0] = fr.o[0] + fr.S[0] * a + fr.U[0] * b + fr.F[0] * c; out[1] = fr.o[1] + fr.S[1] * a + fr.U[1] * b + fr.F[1] * c; out[2] = fr.o[2] + fr.S[2] * a + fr.U[2] * b + fr.F[2] * c;
   return out;
 }
+// A point on the round's own line, s metres past where it meets the body's middle (pl.H). The round,
+// the wound track, the entry and exit marks and the tears all use this, so they always line up.
+function kcTrack(K, s, out) { const H = K.plan.H, d = K.dir; out[0] = H[0] + d[0] * s; out[1] = H[1] + d[1] * s; out[2] = H[2] + d[2] * s; return out; }
 // The same, put straight through the camera.
 function kcLocP(c, fr, a, b, cc, out) { kcLoc(fr, a, b, cc, kcL1); return kcProj(c, kcL1[0], kcL1[1], kcL1[2], out); }
 // Add a run of such points to the current path. pts = [a, b, c, a, b, c, ...] in metres times k.
@@ -1283,7 +1286,7 @@ function kcHoles(ctx, K, c, fig, alpha) {
   };
   for (let i = 0; i < 2; i++) {
     if (i === 1 && K.dmg.skin1 === undefined) break;
-    kcLoc(fr, (i ? pl.sOut : pl.sIn) * fig.fs, bb, pl.c0, kcL0);
+    kcTrack(K, i ? pl.sOut : pl.sIn, kcL0);
     const x = kcL0[0], y = kcL0[1], z = kcL0[2], r = Math.max(0.003, (i ? 0.006 + 0.026 * K.gx : 0.004 + 0.006 * K.gk) * (K.petal ? 1.4 : 1)), sd = i ? pl.sOut * 37 : pl.c0 * 53;
     if (K.gore) { // a ring of bruised, torn skin round it, in ragged tongues on the way out
       ctx.beginPath();
@@ -1384,7 +1387,7 @@ function kcRipples(ctx, K, c, fig) {
   const col = K.gore ? '#ffc2b8' : '#e6f3ff', fill = K.gore ? '#d0303a' : '#bfe0ff';
   for (let i = 0; i < K.rip.length; i++) {
     const r = K.rip[i], dur = 0.35 + 0.45 * r.k, u = (T - r.t0) / dur; if (u < 0 || u > 1) continue;
-    kcLoc(fr, r.s * fig.fs, bb, pl.c0, kcL1);
+    kcTrack(K, r.s, kcL1);
     for (let j = 0; j < 2; j++) {
       const rad = (0.012 + (0.04 + 0.15 * r.k) * easeOut(clamp(u * (j ? 1.6 : 1), 0, 1))) * (j ? 0.6 : 1);
       ctx.beginPath(); if (!kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcSet(kcV1, e1x * rad, 0, e1z * rad), kcSet(kcV2, e2x * rad, e2y * rad, e2z * rad))) break;
@@ -1396,7 +1399,7 @@ function kcRipples(ctx, K, c, fig) {
   const togo = pl.sOut - K.s;
   if (K.exit && K.hitT !== null && togo > 0 && togo < 0.07) {
     const k = 1 - togo / 0.07, b = (0.012 + 0.03 * K.gx) * k * k;
-    kcLoc(fr, (pl.sOut + b * 0.45) * fig.fs, bb, pl.c0, kcL1);
+    kcTrack(K, pl.sOut + b * 0.45, kcL1);
     kcSet(kcV1, e1x * b * 0.85, 0, e1z * b * 0.85); kcSet(kcV2, e2x * b * 0.85, e2y * b * 0.85, e2z * b * 0.85); kcMul(kcV3, d, b * 0.6);
     ctx.beginPath(); if (kcEll(ctx, c, kcL1[0], kcL1[1], kcL1[2], kcV1, kcV2, kcV3)) { ctx.globalAlpha = 0.55; ctx.fillStyle = K.gore ? '#9a6f7a' : '#9cc6ea'; ctx.fill(); ctx.globalAlpha = 0.8; ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); }
   }

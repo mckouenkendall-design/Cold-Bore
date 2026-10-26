@@ -661,9 +661,10 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
       ctx.beginPath(); kcXEgg(ctx, c, tor, ax - Math.sign(g.a) * sh * 0.6, by - sh, cz, g.ra * sc * bw * k, g.rb * sc * k, g.rc * sc * k);
       if (lung) kcXEgg(ctx, c, tor, ax + Math.sign(g.a) * 0.012 * sc - Math.sign(g.a) * sh * 0.6, by - g.rb * sc * 0.42 * k - sh, cz, g.ra * sc * bw * 1.08 * k, g.rb * sc * 0.55 * k, g.rc * sc * 1.05 * k);
       if (g.id === 'liver') kcXEgg(ctx, c, tor, 0.045 * sc * bw, by + 0.01 * sc, cz + 0.015 * sc, 0.05 * sc * bw, 0.028 * sc, 0.042 * sc);
-      ctx.globalAlpha = al; ctx.fillStyle = kcXC.organ + (lung ? 0.09 : g.id === 'liver' ? 0.15 : 0.13) + ')'; ctx.fill();
+      // the organs in their own colours inside the radiograph: pink lungs, dark red liver and kidneys, a pale stomach
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = al * 0.5; ctx.strokeStyle = kcXC.organEdge + '0.5)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.globalAlpha = al * (lung ? 0.62 : 0.78); ctx.fillStyle = g.col; ctx.fill();
+      ctx.globalAlpha = al * 0.85; ctx.strokeStyle = g.hi; ctx.lineWidth = Math.max(1, 0.004 * ps); ctx.stroke();
       if (lung) {
         // the airways
         ctx.beginPath(); const sg = Math.sign(g.a), kb = k;
@@ -682,8 +683,10 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
     const ag = kcAge(K, 'gut');
     ctx.beginPath();
     for (let r = 0; r < 5; r++) { let pen = false; for (let i = 0; i <= 6; i++) { const u = i / 6, a = ((r % 2 ? 1 - u : u) * 0.17 - 0.085) * sc * bw, b = L * (0.29 - r * 0.052) + Math.sin(u * 9 + r) * 0.006 * sc; if (!kcXP(c, tor, a, b, 0.035 * sc, kcXQ)) { pen = false; continue; } if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true; } }
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al * 0.22; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = Math.max(1.5, 0.03 * ps); ctx.stroke(); ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = al * 0.3; ctx.lineWidth = 1; ctx.stroke();
+    // the gut: a fat pink tube with a darker edge and a wet highlight
+    ctx.globalAlpha = al * 0.85; ctx.strokeStyle = '#7a3a36'; ctx.lineWidth = Math.max(2.5, 0.034 * ps); ctx.stroke();
+    ctx.strokeStyle = '#c98274'; ctx.lineWidth = Math.max(1.8, 0.026 * ps); ctx.stroke();
+    ctx.globalAlpha = al * 0.5; ctx.strokeStyle = '#efb9a8'; ctx.lineWidth = Math.max(0.8, 0.007 * ps); ctx.stroke();
     if (ag >= 0) bruiseAt({ a: 0, ra: 0.1 }, ag, 1);
   } });
 }
@@ -704,18 +707,18 @@ function kcXHeart(ctx, K, c, fig, al, g, ag, ps) {
   const hero = !!(pl && pl.key && pl.key.ref === 'heart');
   const heart = (red) => {
     ctx.beginPath(); if (!egg(0, 0, 0.068, 0.047, 0.043)) return;
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al; ctx.fillStyle = kcXC.organ + (hero ? '0.34)' : '0.22)'); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = al * 0.9; ctx.fillStyle = hero ? '#c0202c' : '#a01a26'; ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
     if (red > 0) { ctx.globalAlpha = al * 0.4 * red; ctx.fillStyle = kcXc(K, 'bruise') + '1)'; ctx.fill(); }
-    ctx.globalAlpha = al * (hero ? 0.95 : 0.7); ctx.strokeStyle = kcXC.organEdge + '0.9)'; ctx.lineWidth = hero ? 1.6 : 1.2; ctx.stroke();
+    ctx.globalAlpha = al * (hero ? 0.95 : 0.8); ctx.strokeStyle = '#ea5257'; ctx.lineWidth = hero ? 1.6 : 1.2; ctx.stroke();
     // the inner face of the wall, and the two hollows
     ctx.beginPath(); egg(-0.004, 0, 0.056, 0.038, 0.035); ctx.globalAlpha = al * 0.35; ctx.lineWidth = 1; ctx.stroke();
     ctx.beginPath(); egg(0.006, 0.013, 0.036, 0.017, 0.02); egg(-0.004, -0.017, 0.032, 0.014, 0.018);
-    ctx.globalAlpha = al * 0.5; ctx.fillStyle = '#021017'; ctx.fill(); ctx.globalAlpha = al * 0.55; ctx.strokeStyle = kcXC.organEdge + '0.8)'; ctx.stroke();
+    ctx.globalAlpha = al * 0.7; ctx.fillStyle = '#4a060c'; ctx.fill(); ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#d8464c'; ctx.stroke();
   };
   // the great vessels: up out of the top and over, then down along the spine
   ctx.beginPath(); kcXRun(ctx, c, tor, [0.012, 0.71, 0.035, 0.0, 0.8, 0.03, 0.006, 0.845, 0.0, 0.026, 0.83, -0.03, 0.024, 0.66, -0.04, 0.018, 0.36, -0.035], sc, 1, L);
-  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al * 0.2; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = Math.max(1.5, 0.022 * ps); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = al * 0.8; ctx.strokeStyle = '#9a1c26'; ctx.lineWidth = Math.max(1.5, 0.022 * ps); ctx.stroke();
   ctx.globalCompositeOperation = 'source-over';
   const split = ag >= 0 ? easeOut(ag / 0.35) : 0;
   if (split <= 0) { heart(0); ctx.globalCompositeOperation = 'lighter'; return; }
@@ -752,7 +755,7 @@ function kcXBrain(ctx, K, c, fig, al, items) {
   items.push({ z: kcXQ[3] + 0.02, f() {
     const k = burst >= 0 ? 1 - burst / 0.4 : 1, sw = ag >= 0 ? 0.08 * Math.exp(-ag * 3) * Math.cos(ag * 14) : 0;
     ctx.beginPath(); kcXEgg(ctx, c, hd, kcBrC[0] * sc, kcBrC[1] * sc, kcBrC[2] * sc, kcBrR[0] * sc * (1 + sw) * k, kcBrR[1] * sc * (1 - sw * 0.5) * k, kcBrR[2] * sc * k);
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al; ctx.fillStyle = kcXC.organ + '0.16)'; ctx.fill(); ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#a01a26'; ctx.fill();
     // the folds: a few wandering lines over its surface, and the split down the middle
     if (0.08 * s > 22) {
       ctx.beginPath();
@@ -788,7 +791,7 @@ function kcXCavity(ctx, K, c, fig, al) {
   for (let i = 0; i < sm.length; i += 2) { if (sm[i + 1] < 0 && K.s >= sm[i]) sm[i + 1] = T; if (sm[i + 1] >= 0 && sm[i] <= lim + 0.012) n = i / 2 + 1; }
   if (n < 1) return;
   const Rm = K.cavR, Rc = K.chanR, sIn = pl.sIn, hp = K.petal ? 0.012 : 0.05, U = fr.U, F = fr.F;
-  const disc = (i, r) => { kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcXL); kcMul(kcXV, U, r); kcMul(kcXV2, F, r); return kcEll(ctx, c, kcXL[0], kcXL[1], kcXL[2], kcXV, kcXV2); };
+  const disc = (i, r) => { kcTrack(K, sm[i * 2], kcXL); kcMul(kcXV, U, r); kcMul(kcXV2, F, r); return kcEll(ctx, c, kcXL[0], kcXL[1], kcXL[2], kcXV, kcXV2); };
   // per slice: how wide the hollow is now, and the channel it leaves
   const rT = K.rT || (K.rT = new Float32Array(160)), rP = K.rP || (K.rP = new Float32Array(160)), m = Math.min(n, 160);
   let anyT = false;
@@ -800,7 +803,7 @@ function kcXCavity(ctx, K, c, fig, al) {
   }
   // the slices' middles on screen, and pixels per metre there
   const qx = K.qX || (K.qX = new Float32Array(160)), qy = K.qY || (K.qY = new Float32Array(160)), qs = K.qS || (K.qS = new Float32Array(160));
-  for (let i = 0; i < m; i++) { kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) return; qx[i] = kcXQ[0]; qy[i] = kcXQ[1]; qs[i] = kcXQ[2]; }
+  for (let i = 0; i < m; i++) { kcTrack(K, sm[i * 2], kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) return; qx[i] = kcXQ[0]; qy[i] = kcXQ[1]; qs[i] = kcXQ[2]; }
   const tx0 = qx[m - 1] - qx[0], ty0 = qy[m - 1] - qy[0], tl0 = Math.hypot(tx0, ty0);
   // A tube whose radius at slice i is f(i) metres: its outline seen from the side as one shape, and a
   // disc for every slice (which is what shows when the line points at the camera). Both go round the
@@ -840,7 +843,7 @@ function kcXCavity(ctx, K, c, fig, al) {
     ctx.beginPath();
     for (let i = 1; i < m - 1; i += 2) {
       const age = T - sm[i * 2 + 1]; if (age < 0.2) continue;
-      kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) continue;
+      kcTrack(K, sm[i * 2], kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) continue;
       const an = kcHash(i * 7.7 + K.cavSeed) * TAU, r = rP[i] * kcXQ[2], l = r * (1.3 + 1.6 * kcHash(i * 2.3));
       ctx.moveTo(kcXQ[0] + Math.cos(an) * r, kcXQ[1] + Math.sin(an) * r); ctx.lineTo(kcXQ[0] + Math.cos(an) * (r + l), kcXQ[1] + Math.sin(an) * (r + l));
     }
@@ -850,7 +853,7 @@ function kcXCavity(ctx, K, c, fig, al) {
   if (K.steel && m > 1) {
     const heat = 0.55 + 0.45 * Math.exp(-(T - (sm[1] || T)) / 6) + 0.08 * Math.sin(K.T * 9);
     ctx.globalCompositeOperation = 'lighter'; ctx.beginPath(); let pen = false;
-    for (let i = 0; i < m; i++) { kcLoc(fr, sm[i * 2] * fs, bb, pl.c0, kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) { pen = false; continue; } if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true; }
+    for (let i = 0; i < m; i++) { kcTrack(K, sm[i * 2], kcXL); if (!kcProj(c, kcXL[0], kcXL[1], kcXL[2], kcXQ)) { pen = false; continue; } if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true; }
     const w = Math.max(2, Rc * kcXQ[2] * 2.4);
     ctx.lineCap = 'round'; ctx.globalAlpha = al * 0.35 * heat; ctx.strokeStyle = '#46c8ff'; ctx.lineWidth = w * 2.4; ctx.stroke();
     ctx.globalAlpha = al * 0.7 * heat; ctx.strokeStyle = '#a8ecff'; ctx.lineWidth = w; ctx.stroke();
