@@ -579,9 +579,9 @@ mission({
   id: 'c4m8', ch: 4, title: 'Wrong Way Round', range: 330, follows: 'c4m3', needs: { pen: 1.4 },
   objective: 'Councillor Rusk, in the back of the long black car. Not the glass. The door.',
   brief: 'Councillor Edwin Rusk chairs the harbour board. The client says he signed every Calloway import licence for ten years. The board also votes on the Aurel bid for the port next week, which I am told is a coincidence. Rusk has had threats, so he had his car armoured, and the man who did it worked the wrong way round: glass that would stop a train, and doors you could open with a tin opener. Tonight he has come to the Aurel building to say no in person, and he will not get out. They have to come down to him. Not through the window, Kestrel. Through the door.',
-  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
+  intel: ['This contract issues ARMOUR-PIERCING rounds: they are already loaded. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
     'Rusk sits in the BACK, behind his driver: white hair, glasses, reading under a little lamp. His chest is just below the window, behind the door.', 'A man from Aurel comes down to talk at the car. He stands at the kerb, close enough to see it happen. Wait until he goes back in.', 'Range 330 m. Wind about 2 m/s from the left.'],
-  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
+  guide: ['Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
     'Do not shoot the glass. Aim at the rear door, a hand below the window and straight under his head.', 'Fire one round while the car stands still. He leaves in under a minute.'],
   wind: { v: 2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
   sight: { kerb: ['veh:car'] },
@@ -629,7 +629,7 @@ mission({
   challenge: { id: 'rolling', text: 'Take him before the car has stopped at the kerb', test: (sim) => sim.kills.some((k) => k.id === 't' && k.how === 'shot' && k.moving) },
   after: 'A councillor dead in his own armoured car. The papers will call it a Calloway grudge, and the harbour board will vote on the Aurel bid without him. The flowers from Aurel reached his house before the police did. I am told that is efficiency.',
   solve() {
-    return [['ammo', 'am_ap', 1.4], ['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2900, xp: 650 },
 });

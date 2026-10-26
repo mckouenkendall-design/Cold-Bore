@@ -38,9 +38,6 @@ body.landscape .h-strip .cell { padding: 4px 8px 5px; }
 /* ---- zoom slider: ticks on the left of the track, a handle that shows the zoom ---- */
 .h-zoom { width: 56px; align-items: flex-start; }
 .h-zoom .zt { margin-left: 30px; }
-.h-zoom .zticks { position: absolute; left: 0; top: 0; bottom: 0; width: 0; pointer-events: none; }
-.h-zoom .zticks span { position: absolute; right: 14px; transform: translateY(50%); font: 700 10px var(--mono); letter-spacing: -.03em; color: #aeb9c6; background: rgba(9, 12, 17, .85); border-radius: 4px; padding: 0 3px; white-space: nowrap; }
-.h-zoom .zticks span i { position: absolute; left: 100%; top: 50%; width: 12px; height: 2px; margin-top: -1px; background: rgba(174, 185, 198, .8); }
 .h-zoom .zk { display: flex; align-items: baseline; justify-content: center; gap: 1px; width: 40px; height: 26px; margin: 0 0 -13px -20px; padding-top: 3px; border-radius: 13px; border-width: 2px; background: #10151d; }
 .h-zoom .zk::after { content: none; }
 .h-zoom .zk b { font: 800 14px var(--mono); letter-spacing: -.04em; color: var(--amber); }

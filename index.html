@@ -684,9 +684,6 @@ body.landscape .h-strip .cell { padding: 4px 8px 5px; }
 /* ---- zoom slider: ticks on the left of the track, a handle that shows the zoom ---- */
 .h-zoom { width: 56px; align-items: flex-start; }
 .h-zoom .zt { margin-left: 30px; }
-.h-zoom .zticks { position: absolute; left: 0; top: 0; bottom: 0; width: 0; pointer-events: none; }
-.h-zoom .zticks span { position: absolute; right: 14px; transform: translateY(50%); font: 700 10px var(--mono); letter-spacing: -.03em; color: #aeb9c6; background: rgba(9, 12, 17, .85); border-radius: 4px; padding: 0 3px; white-space: nowrap; }
-.h-zoom .zticks span i { position: absolute; left: 100%; top: 50%; width: 12px; height: 2px; margin-top: -1px; background: rgba(174, 185, 198, .8); }
 .h-zoom .zk { display: flex; align-items: baseline; justify-content: center; gap: 1px; width: 40px; height: 26px; margin: 0 0 -13px -20px; padding-top: 3px; border-radius: 13px; border-width: 2px; background: #10151d; }
 .h-zoom .zk::after { content: none; }
 .h-zoom .zk b { font: 800 14px var(--mono); letter-spacing: -.04em; color: var(--amber); }
@@ -1370,7 +1367,7 @@ body.portrait .scr.drillres { flex-direction: column; text-align: center; } body
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 9:02 AM";
+const BUILD = "Oct 26, 9:25 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -30194,7 +30191,7 @@ Game.buildHud = function () {
   // the tagged people's checklist, in the binoculars
   h.tags = mk('h-tags');
   // zoom slider: ticks at whole steps of the scope's power, and a handle that shows the zoom
-  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zticks"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
+  h.zoom = mk('h-zoom', '<div class="zt"><div class="zf"></div><div class="zk"><b>3</b><i>x</i></div></div><span class="zl">ZOOM</span>');
   h.fire = mk('h-ctl h-fire', '<span>FIRE</span>');
   h.breath = mk('h-ctl h-breath', '<svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="bg"/><circle cx="50" cy="50" r="46" class="fg"/></svg><span>HOLD<br>BREATH</span><em class="bpm"><i>&#9829;</i><b>70</b></em>');
   // focus: once a contract, two seconds of the world at half speed, when you choose
@@ -30203,7 +30200,7 @@ Game.buildHud = function () {
   // MARK: lock the distance to what the crosshair is on (only shown to players who get it, see View.canMark)
   h.mark = mk('h-ctl h-mark', '<span>MARK</span><em></em>');
   h.ammo = mk('h-ammo');
-  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Z</b> focus &nbsp; <span class="k-ammo"><b>X</b> other rounds &nbsp; </span><b>Esc</b> notebook');
+  h.keys = mk('h-keys', '<b>Mouse</b> aim &nbsp; <b>Click</b> fire &nbsp; <b>Wheel</b> zoom &nbsp; <b>Shift</b> hold breath &nbsp; <b>R</b> reload &nbsp; <b>Q / E</b> zero &nbsp; <span class="k-mark"><b>M</b> mark range &nbsp; </span><b>F</b> hold to fast-forward &nbsp; <b>B</b> binoculars &nbsp; <b>Z</b> focus &nbsp; <b>Esc</b> notebook');
   h.fade = mk('h-fade');
   h.banner = mk('h-banner');
   // the coach's card on a guided run (hidden otherwise)
@@ -30334,15 +30331,12 @@ Game.updateHud = function (dt) {
   set(h.fire.firstChild, G.spotting ? 'RIFLE' : sh.reloadT > 0 ? 'RELOADING' : sh.ammo <= 0 ? 'EMPTY' : sh.chargeT > 0 ? 'CHARGING' : G.coach && G.coach.out && G.coach.out.fire ? 'FIRE<br>NOW' : 'FIRE');
   h.reload.classList.toggle('need', sh.ammo <= 0 && sh.reserve > 0 && sh.reloadT <= 0);
   h.reload.classList.toggle('off', sh.ammo >= st.mag || sh.reserve <= 0);
-  // ammo pips, and the other load (tap to chamber it)
-  const key = sh.ammo + '/' + st.mag + '/' + sh.reserve + '/' + sh.load + '/' + sh.altAmmo + '/' + sh.altReserve;
+  // ammo pips and the round count
+  const key = sh.ammo + '/' + st.mag + '/' + sh.reserve;
   if (h.ammo._k !== key) {
     h.ammo._k = key; let s = ''; const n = Math.min(st.mag, 12);
     for (let i = 0; i < n; i++) s += '<i class="' + (i < Math.round((sh.ammo / st.mag) * n) ? 'r' : 'e') + '"></i>';
-    const cur = AMMO_SHORT[st.cfg.ammo] || 'STD', alt = sim.stB ? (sh.load ? sim.stA : sim.stB) : null;
-    h.ammo.innerHTML = '<div class="pips">' + s + '</div><span>' + (sim.stB ? '<u>' + cur + '</u> ' : '') + sh.ammo + (sh.load ? '' : ' <em>+' + sh.reserve + '</em>') + '</span>' +
-      (alt ? '<div class="alt' + (sh.altAmmo + sh.altReserve > 0 ? '' : ' none') + '"><i>&#8644;</i> ' + (AMMO_SHORT[alt.cfg.ammo] || 'STD') + ' <b>' + (sh.altAmmo + sh.altReserve) + '</b></div>' : '');
-    h.ammo.classList.toggle('switch', !!sim.stB); h.ammo.classList.toggle('special', !!sh.load);
+    h.ammo.innerHTML = '<div class="pips">' + s + '</div><span>' + sh.ammo + ' <em>+' + sh.reserve + '</em></span>';
   }
   // pills, timer
   h.cover.classList.toggle('show', sim.covered()); if (sim.covered()) set(h.cover, 'NOISE COVER: ' + String(sim.coverName).toUpperCase());
@@ -30417,14 +30411,12 @@ Game.start = function (missionId, opts) {
   const M = MISSION_BY_ID[missionId];
   const gunId = opts.gun || Save.data.equipped;
   const cfg = opts.cfg || (Save.data.guns[gunId] && Save.data.guns[gunId].cfg) || defaultConfig(gunId);
-  const st = buildStats(gunId, cfg);
+  const st = buildStats(gunId, issueRounds(M, gunId, cfg)); // (a contract that needs AP rounds issues them)
   const resume = opts.resume || null; delete opts.resume;
   G.mission = M; G.lastStart = { missionId, opts: Object.assign({}, opts, { gun: gunId, cfg }) };
   // (a retry runs with the story choices the first attempt had, so the world it replays is the same one)
   const flags = resume && resume.flags ? resume.flags : Save.data.flags;
-  // the second kind of round (opts.ammo2 from the loadout screen, otherwise the contract's own choice; null for none)
-  const ammo2 = opts.ammo2 !== undefined ? opts.ammo2 : ammo2For(M);
-  const simOpts = { flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed, assist: Save.data.settings.assist, guided: !!opts.guided, ammo2 };
+  const simOpts = { flags, shotSeed: opts.shotSeed === undefined ? (Date.now() & 0xffffff) : opts.shotSeed, assist: Save.data.settings.assist, guided: !!opts.guided };
   G.sim = new Sim(M, st, opts.vantage || 0, simOpts);
   G.lastStart.flags = Object.assign({}, flags);
   // Everything the player did to the scope, one entry per world step: where it pointed, the zoom and
@@ -30445,7 +30437,7 @@ Game.start = function (missionId, opts) {
   G.view.mark = null; clearTimeout(G.markT);
   const canMark = G.view.canMark(G.sim);
   G.hud.mark.style.display = canMark ? '' : 'none'; G.hud.keys.querySelector('.k-mark').style.display = canMark ? '' : 'none';
-  G.hud.keys.querySelector('.k-ammo').style.display = G.sim.stB ? '' : 'none'; G.hud.ammo._k = null;
+  G.hud.ammo._k = null;
   G.scale = 1; G.paused = false; G.endShown = false; G.state = 'mission'; G.fireHeld = false; G.view.gore = Save.data.settings.gore !== false;
   document.body.classList.add('in-mission');
   const h = G.hud;
@@ -30454,7 +30446,6 @@ Game.start = function (missionId, opts) {
   h.sZero.classList.toggle('dial', !!st.scope.turret); h.strip.classList.toggle('has-dial', !!st.scope.turret);
   h.sZero.style.display = st.scope.turret ? '' : 'none';
   h.zoom.style.display = st.zoomMax > st.zoomMin ? '' : 'none';
-  G.zoomTicks(st);
   h.sub.innerHTML = ''; h.call.className = 'h-call'; G.callT = 0; G.seenFx = null;
   Spotter.reset(); G.tagN = 0;
   G.focusT = 0; G.focusUsed = false; h.focus.classList.remove('used'); h.focus.classList.remove('on');
@@ -30735,15 +30726,6 @@ Game.focus = function () {
   document.body.classList.add('focusing'); G.hud.focus.classList.add('on'); G.hud.focus.classList.add('used');
   return true;
 };
-// Chamber the other kind of round (it costs one pull of the bolt).
-const AMMO_SHORT = { am_ball: 'STD', am_match: 'MATCH', am_sub: 'SUB', am_ap: 'AP', am_heavy: 'HEAVY', am_tracer: 'TRACER', am_hmatch: 'MATCH', am_77: 'HEAVY', am_7n1: 'STEEL', am_22hv: 'FAST', am_300sup: 'SUPER', am_300red: 'LIGHT', am_slap: 'SABOT', am_sp: 'SOFT', am_sg_hollow: 'HOLLOW' };
-Game.switchAmmo = function () {
-  const G = Game, sim = G.sim; if (!sim || G.state !== 'mission' || G.paused || G.cine || G.spotting || !sim.stB) return false;
-  const ok = sim.switchAmmo();
-  if (ok) { const nm = PART_BY_ID[sim.st.cfg.ammo]; G.callout('LOADED: ' + (AMMO_SHORT[sim.st.cfg.ammo] || 'STD'), nm ? nm.name : '', 'c-obj'); }
-  else { G.hud.ammo.classList.add('shake'); setTimeout(() => G.hud.ammo.classList.remove('shake'), 300); }
-  return ok;
-};
 Game.fire = function () { const G = Game; if (G.spotting) { Spotter.toggle(false); return; } if (G.sim && G.state === 'mission' && !G.paused && !G.cine) { Sfx.unlock(); if (G.sim.fire() && navigator.vibrate) { try { navigator.vibrate(G.sim.st.quiet ? 15 : 35); } catch (e) { /* not supported */ } } } };
 // MARK: measure what the crosshair is on and lock that distance (see View.setMark). On the open
 // sky it clears the mark instead. Holding the button (or the M key) down clears it too.
@@ -30758,20 +30740,6 @@ Game.clearMark = function () { const G = Game; if (!G.sim || !G.view.markFor(G.s
 const MARK_HOLD = 0.6; // seconds held down that clear the mark
 Game.markDown = function () { const G = Game; G.markTarget(); clearTimeout(G.markT); G.markT = setTimeout(() => G.clearMark(), MARK_HOLD * 1000); };
 Game.markUp = function () { clearTimeout(Game.markT); };
-// The zoom slider's ticks: the scope's lowest power and whole multiples of it up to the highest
-// (3x 6x 9x on the plain scope, 4x 8x 12x on the mil-dot, 5x 10x 15x 20x on the tactical one).
-Game.zoomStops = function (st) {
-  const a = st.zoomMin, b = st.zoomMax, out = [];
-  if (!(b > a)) return out;
-  let step = a; while ((b - a) / step > 4.01) step *= 2;
-  for (let z = a; z <= b + 1e-6; z += step) out.push(z);
-  if (b - out[out.length - 1] > step * 0.35) out.push(b); else out[out.length - 1] = b;
-  return out;
-};
-Game.zoomTicks = function (st) {
-  const box = Game.hud.zoom.querySelector('.zticks'), a = st.zoomMin, b = st.zoomMax;
-  box.innerHTML = Game.zoomStops(st).map((z) => '<span style="bottom:' + ((Math.log(z / a) / Math.log(b / a)) * 100).toFixed(2) + '%"><i></i>' + (Math.abs(z - Math.round(z)) < 0.05 ? Math.round(z) : fmt(z, 1)) + 'x</span>').join('');
-};
 Game.zoomBy = function (f) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.sh.zoomT * f); };
 Game.zoomTo = function (u) { const s = Game.sim; if (s && !Game.spotting) s.setZoom(s.st.zoomMin * Math.pow(s.st.zoomMax / s.st.zoomMin, clamp(u, 0, 1))); };
 
@@ -30842,17 +30810,11 @@ Game.bindInput = function () {
   press(h.ff, () => { G.ffHeld = true; }, () => { G.ffHeld = false; });
   press(h.spot, () => Spotter.toggle());
   press(h.focus, () => G.focus());
-  press(h.ammo, () => G.switchAmmo());
   press(h.sZero.querySelector('.zminus'), () => { if (G.sim) G.sim.dial(-1); });
   press(h.sZero.querySelector('.zplus'), () => { if (G.sim) G.sim.dial(1); });
   // zoom slider: drag up for more magnification
   const zt = h.zoom;
-  // (the ticks pull the handle onto them when it comes close, so 6x is easy to hit exactly)
-  const zset = (e) => {
-    const r = zt.querySelector('.zt').getBoundingClientRect(), s = G.sim; let u = clamp(1 - (e.clientY - r.top) / r.height, 0, 1);
-    if (s && s.st.zoomMax > s.st.zoomMin) G.zoomStops(s.st).forEach((z) => { const us = Math.log(z / s.st.zoomMin) / Math.log(s.st.zoomMax / s.st.zoomMin); if (Math.abs(u - us) < 0.035) u = us; });
-    G.zoomTo(u);
-  };
+  const zset = (e) => { const r = zt.querySelector('.zt').getBoundingClientRect(); G.zoomTo(clamp(1 - (e.clientY - r.top) / r.height, 0, 1)); };
   zt.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zt.setPointerCapture(e.pointerId); zt._d = true; zset(e); });
   zt.addEventListener('pointermove', (e) => { if (zt._d) zset(e); });
   const zr = () => { zt._d = false; }; zt.addEventListener('pointerup', zr); zt.addEventListener('pointercancel', zr);
@@ -30869,7 +30831,6 @@ Game.bindInput = function () {
     else if (e.key === 'f' || e.key === 'F') G.ffHeld = true;
     else if ((e.key === 'b' || e.key === 'B') && !e.repeat) Spotter.toggle();
     else if ((e.key === 'z' || e.key === 'Z') && !e.repeat) G.focus();
-    else if ((e.key === 'x' || e.key === 'X') && !e.repeat) G.switchAmmo();
     else if (e.key === ' ') { if (!e.repeat) G.fire(); e.preventDefault(); }
     else if (e.key === 'q' || e.key === 'Q' || e.key === '[') G.sim.dial(e.ctrlKey ? -4 : -1);
     else if (e.key === 'e' || e.key === 'E' || e.key === ']') G.sim.dial(e.ctrlKey ? 4 : 1);
@@ -32480,6 +32441,36 @@ function kcXEgg(ctx, c, fr, a, b, cc, ra, rb, rc) {
   kcMul(kcXV, fr.S, ra); kcMul(kcXV2, fr.U, rb); kcMul(kcXV3, fr.F, rc);
   return kcEll(ctx, c, kcXL[0], kcXL[1], kcXL[2], kcXV, kcXV2, kcXV3);
 }
+// Lines drawn on the surface of an egg (centre a, b, cc in the frame; half-sizes ra, rb, rc): each
+// line is a list of points given as directions [x, y, z] from the middle (scaled onto the surface).
+// Used for the folds of the brain, the fissures of the lungs, the vessels on the heart and so on.
+function kcXOnEgg(ctx, c, fr, a, b, cc, ra, rb, rc, lines) {
+  ctx.beginPath();
+  for (let l = 0; l < lines.length; l++) {
+    const L = lines[l]; let pen = false;
+    for (let i = 0; i < L.length; i++) {
+      const p = L[i], n = Math.hypot(p[0], p[1], p[2]) || 1;
+      if (!kcXP(c, fr, a + (p[0] / n) * ra, b + (p[1] / n) * rb, cc + (p[2] / n) * rc, kcXQ)) { pen = false; continue; }
+      if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true;
+    }
+  }
+}
+// Wandering lines over a sphere for brain folds and the like: n lines of m steps from seeded starts,
+// each turning smoothly, kept to the front half (z > zMin) and to one side if side is set.
+const kcXWorms = (() => { const memo = {}; return (seed, n, m, step, side, zMin) => {
+  const key = seed + ':' + n + ':' + m + ':' + side; if (memo[key]) return memo[key];
+  const R = makeRng(hashStr(key)), out = [];
+  for (let i = 0; i < n; i++) {
+    let th = R.r(0, TAU), ph = R.r(-1.2, 1.2), dir = R.r(0, TAU); const L = [];
+    for (let k = 0; k < m; k++) {
+      const x = Math.cos(ph) * Math.cos(th), y = Math.sin(ph), z = Math.cos(ph) * Math.sin(th);
+      if ((side && Math.sign(x) !== side) || z < (zMin === undefined ? -2 : zMin)) break;
+      L.push([x, y, z]); dir += R.r(-1.1, 1.1); th += Math.cos(dir) * step; ph = clamp(ph + Math.sin(dir) * step, -1.45, 1.45);
+    }
+    if (L.length > 2) out.push(L);
+  }
+  return (memo[key] = out);
+}; })();
 // The outline of a box round (x, y, z) with half-axes A, B, C (arrows in space), added to the path:
 // its eight corners put through the camera, and the outside of them walked round.
 const kcHX = new Float32Array(8), kcHY = new Float32Array(8);
@@ -33047,6 +33038,26 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = al * (lung ? 0.62 : 0.78); ctx.fillStyle = g.col; ctx.fill();
       ctx.globalAlpha = al * 0.85; ctx.strokeStyle = g.hi; ctx.lineWidth = Math.max(1, 0.004 * ps); ctx.stroke();
+      // volume: a soft lit cap on the upper front of each organ
+      const ra = g.ra * sc * bw * k, rb = g.rb * sc * k, rc = g.rc * sc * k, ox = ax - Math.sign(g.a) * sh * 0.6, oy = by - sh;
+      ctx.beginPath(); kcXEgg(ctx, c, tor, ox - ra * 0.18, oy + rb * 0.25, cz + rc * 0.2, ra * 0.55, rb * 0.5, rc * 0.5); ctx.globalAlpha = al * 0.28; ctx.fillStyle = g.hi; ctx.fill();
+      // the organ's own marks
+      const lw = Math.max(0.8, 0.0022 * ps);
+      if (lung) { // the fissures between the lobes, and the fine mottle of the air sacs
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, [[[-1, 0.6, 0.3], [-0.3, 0.1, 0.9], [0.4, -0.5, 0.75], [1, -0.8, 0.2]], [[-1, 0.05, 0.3], [-0.2, -0.15, 0.95], [0.7, -0.3, 0.6]]]);
+        ctx.globalAlpha = al * 0.7; ctx.strokeStyle = '#7d3b44'; ctx.lineWidth = lw * 1.2; ctx.stroke();
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra * 0.97, rb * 0.97, rc * 0.97, kcXWorms(g.id + 'al', 34, 4, 0.12, 0, 0));
+        ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f1bcc0'; ctx.lineWidth = lw * 0.7; ctx.stroke();
+      } else if (g.id === 'liver') { // the line between its lobes and the vessels fanning through it
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, [[[0.25, 1, 0.3], [0.15, 0.2, 1], [0.3, -1, 0.4]]].concat(kcXWorms('liv', 9, 6, 0.22, 0, 0)));
+        ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#3e1410'; ctx.lineWidth = lw; ctx.stroke();
+      } else if (g.id === 'stomach') { // the folds of its lining
+        const L = []; for (let r = -2; r <= 2; r++) { const q = []; for (let i = 0; i <= 8; i++) { const u = -1 + i / 4; q.push([u, r * 0.22 + 0.08 * Math.sin(i * 1.9 + r), 0.8]); } L.push(q); }
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, L); ctx.globalAlpha = al * 0.55; ctx.strokeStyle = '#8a4a36'; ctx.lineWidth = lw; ctx.stroke();
+      } else if (g.id.indexOf('kid') === 0) { // the bean's notch and the pale hollow inside it
+        ctx.beginPath(); kcXEgg(ctx, c, tor, ox - Math.sign(g.a) * ra * 0.35, oy, cz, ra * 0.4, rb * 0.45, rc * 0.5); ctx.globalAlpha = al * 0.6; ctx.fillStyle = '#d6a08c'; ctx.fill();
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, kcXWorms(g.id + 'k', 6, 4, 0.25, 0, 0)); ctx.globalAlpha = al * 0.5; ctx.strokeStyle = '#4a1416'; ctx.lineWidth = lw; ctx.stroke();
+      }
       if (lung) {
         // the airways
         ctx.beginPath(); const sg = Math.sign(g.a), kb = k;
@@ -33137,20 +33148,30 @@ function kcXBrain(ctx, K, c, fig, al, items) {
   items.push({ z: kcXQ[3] + 0.02, f() {
     const k = burst >= 0 ? 1 - burst / 0.4 : 1, sw = ag >= 0 ? 0.08 * Math.exp(-ag * 3) * Math.cos(ag * 14) : 0;
     ctx.beginPath(); kcXEgg(ctx, c, hd, kcBrC[0] * sc, kcBrC[1] * sc, kcBrC[2] * sc, kcBrR[0] * sc * (1 + sw) * k, kcBrR[1] * sc * (1 - sw * 0.5) * k, kcBrR[2] * sc * k);
-    ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#a01a26'; ctx.fill();
-    // the folds: a few wandering lines over its surface, and the split down the middle
-    if (0.08 * s > 22) {
-      ctx.beginPath();
-      for (let j = 0; j < 7; j++) {
-        let pen = false;
-        for (let i = 0; i <= 10; i++) {
-          const t = -1.2 + (i / 10) * 2.4, side = j < 3 ? -1 : j < 6 ? 1 : 0, lat = side * (0.35 + 0.18 * (j % 3)), w = 0.06 * Math.sin(i * 2.1 + j * 1.3);
-          const n0 = j === 6 ? 0.02 * Math.sin(i * 3) : lat + w, n1 = Math.cos(t) * 0.85, n2 = Math.sin(t) * 0.9;
-          if (!kcXP(c, hd, (kcBrC[0] + kcBrR[0] * n0) * sc, (kcBrC[1] + kcBrR[1] * n1) * sc, (kcBrC[2] + kcBrR[2] * n2) * sc, kcXQ)) { pen = false; continue; }
-          if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true;
-        }
+    // a real brain: pinkish grey, two halves split down the middle, the surface packed with folds
+    // (the deep grooves dark, the ridges catching the light), the cerebellum tucked under the back with
+    // its fine stripes, and the brain stem running down out of it
+    const bx = kcBrC[0] * sc, by = kcBrC[1] * sc, bz = kcBrC[2] * sc, Ra = kcBrR[0] * sc * (1 + sw) * k, Rb = kcBrR[1] * sc * (1 - sw * 0.5) * k, Rc = kcBrR[2] * sc * k;
+    ctx.globalAlpha = al * 0.9; ctx.fillStyle = '#c98a8c'; ctx.fill();
+    ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#8a4a52'; ctx.lineWidth = Math.max(1, 0.012 * s); ctx.stroke();
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by + Rb * 0.25, bz + Rc * 0.15, Ra * 0.7, Rb * 0.55, Rc * 0.7); ctx.globalAlpha = al * 0.3; ctx.fillStyle = '#efc4c2'; ctx.fill();
+    // the cerebellum and the stem
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by - Rb * 0.62, bz - Rc * 0.55, Ra * 0.62, Rb * 0.32, Rc * 0.36); ctx.globalAlpha = al * 0.9; ctx.fillStyle = '#b77478'; ctx.fill(); ctx.strokeStyle = '#7a3a44'; ctx.lineWidth = Math.max(0.8, 0.008 * s); ctx.stroke();
+    { const L = []; for (let r = -3; r <= 3; r++) { const q = []; for (let i = 0; i <= 10; i++) { const t = -1.3 + i * 0.26; q.push([Math.sin(t), r * 0.13, -Math.cos(t) * 0.6 - 0.2]); } L.push(q); }
+      kcXOnEgg(ctx, c, hd, bx, by - Rb * 0.62, bz - Rc * 0.55, Ra * 0.62, Rb * 0.32, Rc * 0.36, L); ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#6a2a34'; ctx.lineWidth = Math.max(0.6, 0.005 * s); ctx.stroke(); }
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by - Rb * 0.95, bz - Rc * 0.2, Ra * 0.16, Rb * 0.35, Rc * 0.16); ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#b5787c'; ctx.fill();
+    if (0.08 * s > 6) {
+      const lw = Math.max(0.6, 0.0042 * s);
+      // the folds on each half: dark grooves, then a light edge beside each
+      for (const sd of [-1, 1]) {
+        const W = kcXWorms('brain', 150, 13, 0.052, sd, -0.25);
+        kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, W); ctx.globalAlpha = al * 0.85; ctx.strokeStyle = '#6e2c38'; ctx.lineWidth = lw; ctx.stroke();
+        kcXOnEgg(ctx, c, hd, bx + Ra * 0.02, by + Rb * 0.03, bz, Ra * 0.995, Rb * 0.995, Rc * 0.995, W); ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f6d0cc'; ctx.lineWidth = lw * 0.6; ctx.stroke();
       }
-      ctx.globalAlpha = al * 0.22; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = 1; ctx.stroke();
+      // the split between the halves, and the deep groove along each side
+      const mid = [], syl = [[], []]; for (let i = 0; i <= 14; i++) { const t = -1.4 + i * 0.2; mid.push([0, Math.cos(t), Math.sin(t)]); }
+      for (let i = 0; i <= 8; i++) { const u = i / 8; syl[0].push([-0.95 + u * 0.1, -0.15 + u * 0.35, 0.5 - u * 0.9]); syl[1].push([0.95 - u * 0.1, -0.15 + u * 0.35, 0.5 - u * 0.9]); }
+      kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, [mid, syl[0], syl[1]]); ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#4a1822'; ctx.lineWidth = lw * 1.8; ctx.stroke();
     }
     if (ag >= 0 && pl && pl.part === 'head') { // bruised all through, slowly
       ctx.beginPath(); kcXEgg(ctx, c, hd, kcBrC[0] * sc, kcBrC[1] * sc, kcBrC[2] * sc, kcBrR[0] * sc * k, kcBrR[1] * sc * k, kcBrR[2] * sc * k);
@@ -34734,7 +34755,7 @@ Coach.play = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) });
+  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, });
   const coach = new Coach(sim), dt = o.dt || 1 / 60, maxT = o.maxT || 400;
   sim.setZoom(st.zoomMax);
   const aimAt = (p) => { // put the crosshair on a world point, as a player would with a finger
@@ -35328,11 +35349,16 @@ function apReaches(st, pen) {
   return st.pen - nowAdd + ap.mod.penAdd >= pen;
 }
 
-// The second kind of round a contract hands out with the rifle's own (a few rounds, chambered during
-// the mission at the cost of one pull of the bolt). A mission can name its own with `ammo2`; the
-// default is armour-piercing, which is what the cover, glass and car-door contracts want. The
-// loadout screen may let the player choose another and pass it to UI.launch as opts.ammo2.
-function ammo2For(M) { return M && M.ammo2 !== undefined ? M.ammo2 : 'am_ap'; }
+// There is no second load to switch to during a mission (the owner wants nothing on the scope for
+// it). A contract that needs armour-piercing rounds issues them instead: when the rifle's own rounds
+// fall short and AP fits it and reaches, the mission is played with AP loaded (never saved).
+function ammo2For() { return null; }
+function issueRounds(M, gunId, cfg) {
+  const need = (M && M.needs) || {}, g = GUN_BY_ID[gunId], ap = PART_BY_ID.am_ap;
+  if (!need.pen || !g || !ap || !partFits(ap, g) || cfg.ammo === 'am_ap') return cfg;
+  const st = buildStats(gunId, cfg);
+  return st.pen < need.pen && apReaches(st, need.pen) ? Object.assign({}, cfg, { ammo: 'am_ap' }) : cfg;
+}
 
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
@@ -35343,12 +35369,12 @@ function gunAllowed(M, st) {
   if (need.glass && st.pen < 0.3) return 'Too weak to shoot through window glass.';
   if (need.rof && st.cycle > need.rof) return 'Too slow between shots for this job.';
   if (need.mag && st.mag < need.mag) return 'Not enough rounds in the magazine for this job.';
-  // (armour-piercing rounds come along as the second load, so any rifle that can fire them will do)
-  if (need.pen && st.pen < need.pen && !(ammo2For(M) === 'am_ap' && apReaches(st, need.pen))) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
+  // (the contract issues armour-piercing rounds, so any rifle that can fire them will do)
+  if (need.pen && st.pen < need.pen && !apReaches(st, need.pen)) return 'Not enough punch for this job, even with armour-piercing rounds.';
   if (M.allow) { const r = M.allow(st); if (r) return r; }
   return null;
 }
-CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For;
+CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For; CB.issueRounds = issueRounds;
 
 
 // ===== 31_missions_ch1.js =====
@@ -36848,9 +36874,9 @@ mission({
   id: 'c3m8', ch: 3, title: 'Boarded Up', range: 470, follows: 'c3m2', needs: { pen: 1.4 },
   objective: 'The new lookout behind the boards on the hunting tower. Shoot through the planks.',
   brief: 'They learned from the tower. There is a new lookout up there, and they have nailed old fence boards across the front of it, so now he watches the valley through the cracks like a hen in a coop. Nobody comes up this side of the mountain without him seeing. An ordinary round stops in the first plank. Pip has sent up a box of armour-piercing: a hardened core that goes through boards, and through him. You will not see much of him. It is a cold morning, and a man has to breathe. The cook still brings the soup up. Leave him be.',
-  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
+  intel: ['This contract issues ARMOUR-PIERCING rounds: they are already loaded. Ordinary rounds stop in the first plank.', 'You will not see him whole. His breath comes out through the cracks, and his binoculars glint in a gap when he looks out.',
     'Breath and binoculars mark his face. His chest is half a metre lower. When he sits down at the radio, all of him drops half a metre.', 'The cook in white brings soup up the stair. His tall hat shows in the slot under the eaves. Wait until he has gone back down.', 'Range 470 m. Wind about 3 m/s from the right.'],
-  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
+  guide: ['Find the hunting tower on the left, at the edge of the trees. Its front is boarded up now.', 'Wait for the cook in white to come down the stair and walk back toward the lodge.',
     'Watch for puffs of breath and the glint of binoculars between the boards. That is his head.', 'Wait until he stands still, hold for drop and wind, and put the aim half a metre below his head. One round.'],
   wind: { v: -3, gust: 1 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Larch stump', desc: '470 m across the valley, a little above the top of the tower.', eye: [0, 38, 0] }],
@@ -36893,7 +36919,7 @@ mission({
   solve(H) {
     const T = H.tower;
     const clear = (s) => { const c = s.byId.cook, t = s.byId.t; return c.zone !== 'boards' && (c.hidden || Math.abs(c.x - T.stairFoot) > 8) && t.goal === null && t.wait > 1.6 && t.state === 'calm'; };
-    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2100, xp: 460 },
 });
@@ -37481,9 +37507,9 @@ mission({
   id: 'c4m8', ch: 4, title: 'Wrong Way Round', range: 330, follows: 'c4m3', needs: { pen: 1.4 },
   objective: 'Councillor Rusk, in the back of the long black car. Not the glass. The door.',
   brief: 'Councillor Edwin Rusk chairs the harbour board. The client says he signed every Calloway import licence for ten years. The board also votes on the Aurel bid for the port next week, which I am told is a coincidence. Rusk has had threats, so he had his car armoured, and the man who did it worked the wrong way round: glass that would stop a train, and doors you could open with a tin opener. Tonight he has come to the Aurel building to say no in person, and he will not get out. They have to come down to him. Not through the window, Kestrel. Through the door.',
-  intel: ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
+  intel: ['This contract issues ARMOUR-PIERCING rounds: they are already loaded. The doors are thin steel, but ordinary rounds still stop in them.', 'The windows are armoured glass. Nothing you own goes through it, and a round on the glass tells him everything.',
     'Rusk sits in the BACK, behind his driver: white hair, glasses, reading under a little lamp. His chest is just below the window, behind the door.', 'A man from Aurel comes down to talk at the car. He stands at the kerb, close enough to see it happen. Wait until he goes back in.', 'Range 330 m. Wind about 2 m/s from the left.'],
-  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
+  guide: ['Watch the long black car pull up outside the Aurel doors. Rusk is in the back seat.', 'Wait for the Aurel man at the kerb to finish talking and go back inside.',
     'Do not shoot the glass. Aim at the rear door, a hand below the window and straight under his head.', 'Fire one round while the car stands still. He leaves in under a minute.'],
   wind: { v: 2, gust: 0.8 }, par: 1, rules: { kill: ['t'] },
   sight: { kerb: ['veh:car'] },
@@ -37531,7 +37557,7 @@ mission({
   challenge: { id: 'rolling', text: 'Take him before the car has stopped at the kerb', test: (sim) => sim.kills.some((k) => k.id === 't' && k.how === 'shot' && k.moving) },
   after: 'A councillor dead in his own armoured car. The papers will call it a Calloway grudge, and the harbour board will vote on the Aurel bid without him. The flowers from Aurel reached his house before the police did. I am told that is efficiency.',
   solve() {
-    return [['ammo', 'am_ap', 1.4], ['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['until', (s) => { const a = s.byId.aide, v = s.byId.car; return a.hidden && s.t > 20 && v.goal === null && !v.gone && s.alive('t'); }, 90], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 2900, xp: 650 },
 });
@@ -38252,11 +38278,11 @@ mission({
   objective: 'The listener in the tin lock-up. Find his legs under the shutter, then shoot through it.',
   brief: 'Somebody told Aurel the armoury boat was going down before it touched the bottom, and I have found out who. A listener: a man with a bench full of radio sets in a tin lock-up in Calder Yard. He hears every police call, every taxi, and until tonight every word I said to you. He works with the shutter half up, because those old valve sets cook a room, so all you will see of him is his legs. That shutter is tin. Armour-piercing goes through it like a letter through a door. His minder is in there with him, and the tea lady comes round. Read the feet, Kestrel.',
   intel(f) {
-    return ['Load your ARMOUR-PIERCING rounds for the shot: tap the round count beside RELOAD. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
+    return ['This contract issues ARMOUR-PIERCING rounds: they are already loaded. The shutter and the walls are tin; ordinary rounds stop in them.', 'Under the shutter you only see legs. The listener wears a long GREY coat: its hem shows above his shoes. He stands at his bench.',
       'His minder wears a short black jacket and steps outside now and then to smoke. The tea lady wears a wine-red skirt. She must not be hit.', 'A standing man\'s chest is about a metre and a quarter straight above his shoes. Anyone in there with him will see him fall.',
       vargaHelps(f) ? 'Range 420 m, wind 3 m/s from the left. Varga is keeping the police band quiet tonight, so he will hear nothing useful.' : 'Range 420 m, wind 3 m/s from the left. A train on the far line covers a loud shot.'];
   },
-  guide: ['Before the shot, load the armour-piercing rounds: tap the round count beside RELOAD (X on a computer). It costs one pull of the bolt.', 'Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
+  guide: ['Find the tin lock-up with the lit gap under its shutter, on the right of the strip.', 'Read the legs: the long grey coat hem is the listener; the skirt is the tea lady; plain black trousers are the minder.',
     'Wait until the tea lady has gone and the minder has stepped outside to smoke.', 'Aim a metre and a quarter straight above the listener\'s shoes, hold for drop and wind, and fire once while he stands still.'],
   wind: { v: 3, gust: 1.2 }, par: 1, rules: { kill: ['t'] },
   vantages: [{ name: 'Grain elevator', desc: 'High over the yard, 420 m out, looking straight at the strip.', eye: [0, 30, 0] }],
@@ -38304,7 +38330,7 @@ mission({
   solve(H) {
     const L = H.lock;
     const clear = (s) => { const m = s.byId.mind, tea = s.byId.tea, a = s.byId.t; return m.zone !== 'lockup' && m.goal === null && tea.zone !== 'lockup' && (tea.hidden || tea.x < L.s0 - 3) && a.goal === null && a.wait > 1.6 && a.state === 'calm'; };
-    return [['ammo', 'am_ap', 1.4], ['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
+    return [['until', clear, 150], ['hold'], ['shoot', 't', 'torso'], ['shoot', 't', 'torso']];   // the second shot only if the first misses
   },
   reward: { cr: 4100, xp: 880 },
 });
@@ -43211,9 +43237,8 @@ Test.cfgFor = function (M, gunId, base) {
   const g = GUN_BY_ID[gunId], cfg = Object.assign(defaultConfig(gunId), base || {}), need = M.needs || {};
   if ((need.quiet || need.silent) && g.supp === true && cfg.muzzle === 'mz_none') cfg.muzzle = 'mz_supl';
   if (need.silent && g.supp === true && partFits(PART_BY_ID.am_sub, g)) cfg.ammo = 'am_sub';
-  // (armour-piercing rounds normally come along as the second load and are chambered by the script)
-  if (need.pen && ammo2For(M) !== 'am_ap' && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
-  return cfg;
+  // (a contract that needs armour-piercing rounds issues them, as in play)
+  return issueRounds(M, gunId, cfg);
 };
 
 Test.run = function (missionId, gunId, o) {
@@ -43224,7 +43249,7 @@ Test.run = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) };
+  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed };
   const sim = new Sim(M, st, o.vantage || 0, simOpts);
   const log = [];
   // optional: run the shot oracle alongside and check that what it foretold is what happened

@@ -77,11 +77,16 @@ function apReaches(st, pen) {
   return st.pen - nowAdd + ap.mod.penAdd >= pen;
 }
 
-// The second kind of round a contract hands out with the rifle's own (a few rounds, chambered during
-// the mission at the cost of one pull of the bolt). A mission can name its own with `ammo2`; the
-// default is armour-piercing, which is what the cover, glass and car-door contracts want. The
-// loadout screen may let the player choose another and pass it to UI.launch as opts.ammo2.
-function ammo2For(M) { return M && M.ammo2 !== undefined ? M.ammo2 : 'am_ap'; }
+// There is no second load to switch to during a mission (the owner wants nothing on the scope for
+// it). A contract that needs armour-piercing rounds issues them instead: when the rifle's own rounds
+// fall short and AP fits it and reaches, the mission is played with AP loaded (never saved).
+function ammo2For() { return null; }
+function issueRounds(M, gunId, cfg) {
+  const need = (M && M.needs) || {}, g = GUN_BY_ID[gunId], ap = PART_BY_ID.am_ap;
+  if (!need.pen || !g || !ap || !partFits(ap, g) || cfg.ammo === 'am_ap') return cfg;
+  const st = buildStats(gunId, cfg);
+  return st.pen < need.pen && apReaches(st, need.pen) ? Object.assign({}, cfg, { ammo: 'am_ap' }) : cfg;
+}
 
 // Which rifles a mission will accept. Returns null if fine, or a reason.
 function gunAllowed(M, st) {
@@ -92,9 +97,9 @@ function gunAllowed(M, st) {
   if (need.glass && st.pen < 0.3) return 'Too weak to shoot through window glass.';
   if (need.rof && st.cycle > need.rof) return 'Too slow between shots for this job.';
   if (need.mag && st.mag < need.mag) return 'Not enough rounds in the magazine for this job.';
-  // (armour-piercing rounds come along as the second load, so any rifle that can fire them will do)
-  if (need.pen && st.pen < need.pen && !(ammo2For(M) === 'am_ap' && apReaches(st, need.pen))) return apReaches(st, need.pen) ? 'This job needs armour-piercing rounds. Fit them in the Ammunition slot.' : 'Not enough punch for this job, even with armour-piercing rounds.';
+  // (the contract issues armour-piercing rounds, so any rifle that can fire them will do)
+  if (need.pen && st.pen < need.pen && !apReaches(st, need.pen)) return 'Not enough punch for this job, even with armour-piercing rounds.';
   if (M.allow) { const r = M.allow(st); if (r) return r; }
   return null;
 }
-CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For;
+CB.MISSIONS = MISSIONS; CB.ammo2For = ammo2For; CB.issueRounds = issueRounds;

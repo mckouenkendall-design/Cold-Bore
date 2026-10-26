@@ -430,7 +430,7 @@ Coach.play = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) });
+  const sim = new Sim(M, st, o.vantage || 0, { flags, shotSeed: o.seed === undefined ? 1 : o.seed, });
   const coach = new Coach(sim), dt = o.dt || 1 / 60, maxT = o.maxT || 400;
   sim.setZoom(st.zoomMax);
   const aimAt = (p) => { // put the crosshair on a world point, as a player would with a finger

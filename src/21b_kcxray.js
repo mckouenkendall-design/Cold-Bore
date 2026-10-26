@@ -98,6 +98,36 @@ function kcXEgg(ctx, c, fr, a, b, cc, ra, rb, rc) {
   kcMul(kcXV, fr.S, ra); kcMul(kcXV2, fr.U, rb); kcMul(kcXV3, fr.F, rc);
   return kcEll(ctx, c, kcXL[0], kcXL[1], kcXL[2], kcXV, kcXV2, kcXV3);
 }
+// Lines drawn on the surface of an egg (centre a, b, cc in the frame; half-sizes ra, rb, rc): each
+// line is a list of points given as directions [x, y, z] from the middle (scaled onto the surface).
+// Used for the folds of the brain, the fissures of the lungs, the vessels on the heart and so on.
+function kcXOnEgg(ctx, c, fr, a, b, cc, ra, rb, rc, lines) {
+  ctx.beginPath();
+  for (let l = 0; l < lines.length; l++) {
+    const L = lines[l]; let pen = false;
+    for (let i = 0; i < L.length; i++) {
+      const p = L[i], n = Math.hypot(p[0], p[1], p[2]) || 1;
+      if (!kcXP(c, fr, a + (p[0] / n) * ra, b + (p[1] / n) * rb, cc + (p[2] / n) * rc, kcXQ)) { pen = false; continue; }
+      if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true;
+    }
+  }
+}
+// Wandering lines over a sphere for brain folds and the like: n lines of m steps from seeded starts,
+// each turning smoothly, kept to the front half (z > zMin) and to one side if side is set.
+const kcXWorms = (() => { const memo = {}; return (seed, n, m, step, side, zMin) => {
+  const key = seed + ':' + n + ':' + m + ':' + side; if (memo[key]) return memo[key];
+  const R = makeRng(hashStr(key)), out = [];
+  for (let i = 0; i < n; i++) {
+    let th = R.r(0, TAU), ph = R.r(-1.2, 1.2), dir = R.r(0, TAU); const L = [];
+    for (let k = 0; k < m; k++) {
+      const x = Math.cos(ph) * Math.cos(th), y = Math.sin(ph), z = Math.cos(ph) * Math.sin(th);
+      if ((side && Math.sign(x) !== side) || z < (zMin === undefined ? -2 : zMin)) break;
+      L.push([x, y, z]); dir += R.r(-1.1, 1.1); th += Math.cos(dir) * step; ph = clamp(ph + Math.sin(dir) * step, -1.45, 1.45);
+    }
+    if (L.length > 2) out.push(L);
+  }
+  return (memo[key] = out);
+}; })();
 // The outline of a box round (x, y, z) with half-axes A, B, C (arrows in space), added to the path:
 // its eight corners put through the camera, and the outside of them walked round.
 const kcHX = new Float32Array(8), kcHY = new Float32Array(8);
@@ -665,6 +695,26 @@ function kcXOrgans(ctx, K, c, fig, al, items) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = al * (lung ? 0.62 : 0.78); ctx.fillStyle = g.col; ctx.fill();
       ctx.globalAlpha = al * 0.85; ctx.strokeStyle = g.hi; ctx.lineWidth = Math.max(1, 0.004 * ps); ctx.stroke();
+      // volume: a soft lit cap on the upper front of each organ
+      const ra = g.ra * sc * bw * k, rb = g.rb * sc * k, rc = g.rc * sc * k, ox = ax - Math.sign(g.a) * sh * 0.6, oy = by - sh;
+      ctx.beginPath(); kcXEgg(ctx, c, tor, ox - ra * 0.18, oy + rb * 0.25, cz + rc * 0.2, ra * 0.55, rb * 0.5, rc * 0.5); ctx.globalAlpha = al * 0.28; ctx.fillStyle = g.hi; ctx.fill();
+      // the organ's own marks
+      const lw = Math.max(0.8, 0.0022 * ps);
+      if (lung) { // the fissures between the lobes, and the fine mottle of the air sacs
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, [[[-1, 0.6, 0.3], [-0.3, 0.1, 0.9], [0.4, -0.5, 0.75], [1, -0.8, 0.2]], [[-1, 0.05, 0.3], [-0.2, -0.15, 0.95], [0.7, -0.3, 0.6]]]);
+        ctx.globalAlpha = al * 0.7; ctx.strokeStyle = '#7d3b44'; ctx.lineWidth = lw * 1.2; ctx.stroke();
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra * 0.97, rb * 0.97, rc * 0.97, kcXWorms(g.id + 'al', 34, 4, 0.12, 0, 0));
+        ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f1bcc0'; ctx.lineWidth = lw * 0.7; ctx.stroke();
+      } else if (g.id === 'liver') { // the line between its lobes and the vessels fanning through it
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, [[[0.25, 1, 0.3], [0.15, 0.2, 1], [0.3, -1, 0.4]]].concat(kcXWorms('liv', 9, 6, 0.22, 0, 0)));
+        ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#3e1410'; ctx.lineWidth = lw; ctx.stroke();
+      } else if (g.id === 'stomach') { // the folds of its lining
+        const L = []; for (let r = -2; r <= 2; r++) { const q = []; for (let i = 0; i <= 8; i++) { const u = -1 + i / 4; q.push([u, r * 0.22 + 0.08 * Math.sin(i * 1.9 + r), 0.8]); } L.push(q); }
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, L); ctx.globalAlpha = al * 0.55; ctx.strokeStyle = '#8a4a36'; ctx.lineWidth = lw; ctx.stroke();
+      } else if (g.id.indexOf('kid') === 0) { // the bean's notch and the pale hollow inside it
+        ctx.beginPath(); kcXEgg(ctx, c, tor, ox - Math.sign(g.a) * ra * 0.35, oy, cz, ra * 0.4, rb * 0.45, rc * 0.5); ctx.globalAlpha = al * 0.6; ctx.fillStyle = '#d6a08c'; ctx.fill();
+        kcXOnEgg(ctx, c, tor, ox, oy, cz, ra, rb, rc, kcXWorms(g.id + 'k', 6, 4, 0.25, 0, 0)); ctx.globalAlpha = al * 0.5; ctx.strokeStyle = '#4a1416'; ctx.lineWidth = lw; ctx.stroke();
+      }
       if (lung) {
         // the airways
         ctx.beginPath(); const sg = Math.sign(g.a), kb = k;
@@ -755,20 +805,30 @@ function kcXBrain(ctx, K, c, fig, al, items) {
   items.push({ z: kcXQ[3] + 0.02, f() {
     const k = burst >= 0 ? 1 - burst / 0.4 : 1, sw = ag >= 0 ? 0.08 * Math.exp(-ag * 3) * Math.cos(ag * 14) : 0;
     ctx.beginPath(); kcXEgg(ctx, c, hd, kcBrC[0] * sc, kcBrC[1] * sc, kcBrC[2] * sc, kcBrR[0] * sc * (1 + sw) * k, kcBrR[1] * sc * (1 - sw * 0.5) * k, kcBrR[2] * sc * k);
-    ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#a01a26'; ctx.fill();
-    // the folds: a few wandering lines over its surface, and the split down the middle
-    if (0.08 * s > 22) {
-      ctx.beginPath();
-      for (let j = 0; j < 7; j++) {
-        let pen = false;
-        for (let i = 0; i <= 10; i++) {
-          const t = -1.2 + (i / 10) * 2.4, side = j < 3 ? -1 : j < 6 ? 1 : 0, lat = side * (0.35 + 0.18 * (j % 3)), w = 0.06 * Math.sin(i * 2.1 + j * 1.3);
-          const n0 = j === 6 ? 0.02 * Math.sin(i * 3) : lat + w, n1 = Math.cos(t) * 0.85, n2 = Math.sin(t) * 0.9;
-          if (!kcXP(c, hd, (kcBrC[0] + kcBrR[0] * n0) * sc, (kcBrC[1] + kcBrR[1] * n1) * sc, (kcBrC[2] + kcBrR[2] * n2) * sc, kcXQ)) { pen = false; continue; }
-          if (pen) ctx.lineTo(kcXQ[0], kcXQ[1]); else ctx.moveTo(kcXQ[0], kcXQ[1]); pen = true;
-        }
+    // a real brain: pinkish grey, two halves split down the middle, the surface packed with folds
+    // (the deep grooves dark, the ridges catching the light), the cerebellum tucked under the back with
+    // its fine stripes, and the brain stem running down out of it
+    const bx = kcBrC[0] * sc, by = kcBrC[1] * sc, bz = kcBrC[2] * sc, Ra = kcBrR[0] * sc * (1 + sw) * k, Rb = kcBrR[1] * sc * (1 - sw * 0.5) * k, Rc = kcBrR[2] * sc * k;
+    ctx.globalAlpha = al * 0.9; ctx.fillStyle = '#c98a8c'; ctx.fill();
+    ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#8a4a52'; ctx.lineWidth = Math.max(1, 0.012 * s); ctx.stroke();
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by + Rb * 0.25, bz + Rc * 0.15, Ra * 0.7, Rb * 0.55, Rc * 0.7); ctx.globalAlpha = al * 0.3; ctx.fillStyle = '#efc4c2'; ctx.fill();
+    // the cerebellum and the stem
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by - Rb * 0.62, bz - Rc * 0.55, Ra * 0.62, Rb * 0.32, Rc * 0.36); ctx.globalAlpha = al * 0.9; ctx.fillStyle = '#b77478'; ctx.fill(); ctx.strokeStyle = '#7a3a44'; ctx.lineWidth = Math.max(0.8, 0.008 * s); ctx.stroke();
+    { const L = []; for (let r = -3; r <= 3; r++) { const q = []; for (let i = 0; i <= 10; i++) { const t = -1.3 + i * 0.26; q.push([Math.sin(t), r * 0.13, -Math.cos(t) * 0.6 - 0.2]); } L.push(q); }
+      kcXOnEgg(ctx, c, hd, bx, by - Rb * 0.62, bz - Rc * 0.55, Ra * 0.62, Rb * 0.32, Rc * 0.36, L); ctx.globalAlpha = al * 0.6; ctx.strokeStyle = '#6a2a34'; ctx.lineWidth = Math.max(0.6, 0.005 * s); ctx.stroke(); }
+    ctx.beginPath(); kcXEgg(ctx, c, hd, bx, by - Rb * 0.95, bz - Rc * 0.2, Ra * 0.16, Rb * 0.35, Rc * 0.16); ctx.globalAlpha = al * 0.85; ctx.fillStyle = '#b5787c'; ctx.fill();
+    if (0.08 * s > 6) {
+      const lw = Math.max(0.6, 0.0042 * s);
+      // the folds on each half: dark grooves, then a light edge beside each
+      for (const sd of [-1, 1]) {
+        const W = kcXWorms('brain', 150, 13, 0.052, sd, -0.25);
+        kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, W); ctx.globalAlpha = al * 0.85; ctx.strokeStyle = '#6e2c38'; ctx.lineWidth = lw; ctx.stroke();
+        kcXOnEgg(ctx, c, hd, bx + Ra * 0.02, by + Rb * 0.03, bz, Ra * 0.995, Rb * 0.995, Rc * 0.995, W); ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f6d0cc'; ctx.lineWidth = lw * 0.6; ctx.stroke();
       }
-      ctx.globalAlpha = al * 0.22; ctx.strokeStyle = kcXC.organEdge + '1)'; ctx.lineWidth = 1; ctx.stroke();
+      // the split between the halves, and the deep groove along each side
+      const mid = [], syl = [[], []]; for (let i = 0; i <= 14; i++) { const t = -1.4 + i * 0.2; mid.push([0, Math.cos(t), Math.sin(t)]); }
+      for (let i = 0; i <= 8; i++) { const u = i / 8; syl[0].push([-0.95 + u * 0.1, -0.15 + u * 0.35, 0.5 - u * 0.9]); syl[1].push([0.95 - u * 0.1, -0.15 + u * 0.35, 0.5 - u * 0.9]); }
+      kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, [mid, syl[0], syl[1]]); ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#4a1822'; ctx.lineWidth = lw * 1.8; ctx.stroke();
     }
     if (ag >= 0 && pl && pl.part === 'head') { // bruised all through, slowly
       ctx.beginPath(); kcXEgg(ctx, c, hd, kcBrC[0] * sc, kcBrC[1] * sc, kcBrC[2] * sc, kcBrR[0] * sc * k, kcBrR[1] * sc * k, kcBrR[2] * sc * k);

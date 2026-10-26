@@ -12,9 +12,8 @@ Test.cfgFor = function (M, gunId, base) {
   const g = GUN_BY_ID[gunId], cfg = Object.assign(defaultConfig(gunId), base || {}), need = M.needs || {};
   if ((need.quiet || need.silent) && g.supp === true && cfg.muzzle === 'mz_none') cfg.muzzle = 'mz_supl';
   if (need.silent && g.supp === true && partFits(PART_BY_ID.am_sub, g)) cfg.ammo = 'am_sub';
-  // (armour-piercing rounds normally come along as the second load and are chambered by the script)
-  if (need.pen && ammo2For(M) !== 'am_ap' && partFits(PART_BY_ID.am_ap, g) && buildStats(gunId, cfg).pen < need.pen) cfg.ammo = 'am_ap';
-  return cfg;
+  // (a contract that needs armour-piercing rounds issues them, as in play)
+  return issueRounds(M, gunId, cfg);
 };
 
 Test.run = function (missionId, gunId, o) {
@@ -25,7 +24,7 @@ Test.run = function (missionId, gunId, o) {
   const why = gunAllowed(M, st);
   if (why && !o.force) return { skipped: true, why };
   const flags = o.flags || {};
-  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed, ammo2: o.ammo2 !== undefined ? o.ammo2 : ammo2For(M) };
+  const simOpts = { flags, shotSeed: o.seed === undefined ? 1 : o.seed };
   const sim = new Sim(M, st, o.vantage || 0, simOpts);
   const log = [];
   // optional: run the shot oracle alongside and check that what it foretold is what happened
