@@ -462,7 +462,7 @@ details { margin: 0 0 10px; } summary { display: flex; align-items: center; min-
 .cc-t { min-width: 0; } .cc-t b { display: block; font: 800 15px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--tc); } .cc-t i { display: block; font-style: normal; font-size: 11.5px; line-height: 1.3; color: var(--dim); }
 .odds { display: flex; flex-direction: column; gap: 2px; }
 .od { display: grid; grid-template-columns: 66px minmax(0, 1fr) 32px; align-items: center; gap: 6px; height: 14px; } .od span { font: 700 9.5px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--rc); } .od > i { display: block; height: 5px; border-radius: 3px; background: var(--well); overflow: hidden; } .od > i > i { display: block; height: 100%; background: var(--rc); border-radius: 3px; } .od b { font: 600 11.5px var(--mono); text-align: right; }
-.cc-f { display: flex; gap: 6px; margin-top: auto; } .cc-f .btn { flex: 1; min-width: 0; padding: 0 6px; font-size: 12.5px; letter-spacing: .06em; white-space: nowrap; }
+.cc-f { display: flex; gap: 6px; margin-top: auto; } .cc-f.two { flex-direction: column; } .cc-f.two .btn { flex: none; } .cc-f .btn { flex: 1; min-width: 0; padding: 0 6px; font-size: 12.5px; letter-spacing: .06em; white-space: nowrap; }
 .cc-why { font-size: 11.5px; line-height: 1.25; color: var(--mute); text-align: center; } .cc-why.no { color: #ff9a91; }
 .ptiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
 .ptile { padding: 10px 10px 9px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); min-width: 0; } .ptile b { font: 700 20px var(--mono); } .ptile small { font-size: 12px; color: var(--mute); font-weight: 500; }
@@ -1362,7 +1362,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 10:07 AM";
+const BUILD = "Oct 26, 10:19 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -40381,7 +40381,7 @@ UI.collection = function () {
       return `<div class="ccard t-${k}">
         <div class="cc-h"><span class="cc-ic">${ICON.box}</span><span class="cc-t"><b>${CACHE_NAME[k]}</b><i>${blurb[k]}</i></span></div>
         <div class="odds">${odds.map((p, r) => `<div class="od r${r}"><span>${RAR[r]}</span><i><i style="width:${p}%"></i></i><b>${p}%</b></div>`).join('')}</div>
-        <div class="cc-f">${have ? `<button class="btn pri" data-a="open" data-t="${k}" data-snd="riser">Open  ·  ${have}</button>` : ''}<button class="btn ${have ? 'ghost' : 'pri'} ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
+        <div class="cc-f ${have ? 'two' : ''}">${have ? `<button class="btn pri" data-a="open" data-t="${k}" data-snd="riser">Open  ·  ${have}</button>` : ''}<button class="btn ${have ? 'ghost' : 'pri'} ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
         <div class="cc-why ${can ? '' : 'no'}">${can ? (have ? 'You have ' + have + ' to open' : 'You have none of these') : 'Not enough credits: ' + fmtCr(price - d.credits) + ' short'}</div>
       </div>`;
     }).join('');
@@ -40468,7 +40468,7 @@ UI.openCache = function (tier) {
         <p>${res.dupe ? 'You already own this one. Traded in for <b class="co-cr" data-to="' + res.cr + '">0</b> credits.' : 'New skin. It fits every rifle you own' + (uiSkinMoves(s) ? ', and it moves.' : '.') + Progress.setOf(s.id).map((S) => ' ' + esc(S.name) + ' set: ' + S.skins.filter((id) => d.skins[id]).length + ' of ' + S.skins.length + '.').join('')}</p>
         ${(res.sets || []).map((S) => `<div class="co-set">${ICON.check}<b>Set complete: ${esc(S.name)}</b><i>+${fmtCr(S.cr)} cr and a ${esc(CACHE_NAME[S.cache].toLowerCase())}</i></div>`).join('')}</div>
       <div class="co-pre"><span class="co-hint">${esc(kind)}  ·  tap both latches</span><button class="btn ghost" data-a="skip">Skip</button></div>
-      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">' + (how && how !== 'best' && d.caches.indexOf(how) >= 0 ? 'Open another (' + d.caches.filter((c) => c === how).length + ')' : 'Open next (' + left + ')') + '</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
+      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">' + (how && how !== 'best' && d.caches.indexOf(how) >= 0 ? 'Open next (' + d.caches.filter((c) => c === how).length + ')' : 'Open next (' + left + ')') + '</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
     </div></div>`, {
     latch(ds) { latch(+ds.i); },
     skip() { reveal(true); },

@@ -393,7 +393,7 @@ UI.collection = function () {
       return `<div class="ccard t-${k}">
         <div class="cc-h"><span class="cc-ic">${ICON.box}</span><span class="cc-t"><b>${CACHE_NAME[k]}</b><i>${blurb[k]}</i></span></div>
         <div class="odds">${odds.map((p, r) => `<div class="od r${r}"><span>${RAR[r]}</span><i><i style="width:${p}%"></i></i><b>${p}%</b></div>`).join('')}</div>
-        <div class="cc-f">${have ? `<button class="btn pri" data-a="open" data-t="${k}" data-snd="riser">Open  ·  ${have}</button>` : ''}<button class="btn ${have ? 'ghost' : 'pri'} ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
+        <div class="cc-f ${have ? 'two' : ''}">${have ? `<button class="btn pri" data-a="open" data-t="${k}" data-snd="riser">Open  ·  ${have}</button>` : ''}<button class="btn ${have ? 'ghost' : 'pri'} ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
         <div class="cc-why ${can ? '' : 'no'}">${can ? (have ? 'You have ' + have + ' to open' : 'You have none of these') : 'Not enough credits: ' + fmtCr(price - d.credits) + ' short'}</div>
       </div>`;
     }).join('');
@@ -480,7 +480,7 @@ UI.openCache = function (tier) {
         <p>${res.dupe ? 'You already own this one. Traded in for <b class="co-cr" data-to="' + res.cr + '">0</b> credits.' : 'New skin. It fits every rifle you own' + (uiSkinMoves(s) ? ', and it moves.' : '.') + Progress.setOf(s.id).map((S) => ' ' + esc(S.name) + ' set: ' + S.skins.filter((id) => d.skins[id]).length + ' of ' + S.skins.length + '.').join('')}</p>
         ${(res.sets || []).map((S) => `<div class="co-set">${ICON.check}<b>Set complete: ${esc(S.name)}</b><i>+${fmtCr(S.cr)} cr and a ${esc(CACHE_NAME[S.cache].toLowerCase())}</i></div>`).join('')}</div>
       <div class="co-pre"><span class="co-hint">${esc(kind)}  ·  tap both latches</span><button class="btn ghost" data-a="skip">Skip</button></div>
-      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">' + (how && how !== 'best' && d.caches.indexOf(how) >= 0 ? 'Open another (' + d.caches.filter((c) => c === how).length + ')' : 'Open next (' + left + ')') + '</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
+      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">' + (how && how !== 'best' && d.caches.indexOf(how) >= 0 ? 'Open next (' + d.caches.filter((c) => c === how).length + ')' : 'Open next (' + left + ')') + '</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
     </div></div>`, {
     latch(ds) { latch(+ds.i); },
     skip() { reveal(true); },
