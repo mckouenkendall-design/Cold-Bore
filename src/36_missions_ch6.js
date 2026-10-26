@@ -369,6 +369,7 @@ mission({
 // The fourth choice. Every path is a win: the outcome decides sparedRook.
 mission({
   id: 'c6m5', ch: 6, title: 'Rook', range: 1300,
+  cine: 'take', // a man with his hands up: the kill camera shows it as one unbroken real-time shot, no X-ray
   objective: 'Rook is standing up with his hands raised. Nobody is giving the order this time.',
   speaker: 'Pip',
   brief: 'His glass is gone and he knows who broke it. He has been on the open channel for a minute, asking for you by name. He says he is going to stand up. Kestrel, I was not here three years ago. I only know what it cost you: a man with his hands in the air, an order, and a round you put wide on purpose. This is the same ridge. Shoot him, or do not. Nobody is giving orders today, least of all me. If you only want him harmless, he will have to put that rifle down some time.',

@@ -547,7 +547,10 @@ Game.startCine = function (pr) {
   const k = pr.kills[pr.kills.length - 1], a = sim.byId[k.id], b = sim.bullets[pr.i];
   if (!a || !b) return false;
   let ok = false;
-  try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
+  // The full film the first time a contract is won and for any notable shot; after that the short cut
+  // (about five seconds), so a replayed contract does not make you sit through the same film again.
+  const rec = Save.data.missions && Save.data.missions[sim.M.id], cut = rec && rec.done && !G.notable(pr) && !sim.M.practice ? 'short' : 'full';
+  try { ok = KC.start({ sim, view: G.view, gunId: G.gunId, cfg: G.cfg, bullet: b, path: pr.path, t0: pr.t0, tHit: k.t, hit: k, actor: a, kills: pr.kills, gore: set.gore !== false, step: SIM_STEP, cut }) !== false; } catch (e) { ok = false; if (window.console) console.error(e); }
   if (!ok) return false;
   b.cine = true; // (no callout under the crosshair for this round: the kill camera shows what it did)
   if (G.focusT > 0) { G.focusT = 0; document.body.classList.remove('focusing'); G.hud.focus.classList.remove('on'); }
