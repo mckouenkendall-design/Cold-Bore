@@ -411,3 +411,107 @@ PAT_KINDS.bolts = [160, 96, (x, w, h, R, p) => {
   stBolt(R, R.r(60, 90), R.r(60, 78), R.r(150, 190), R.r(50, 90), 0.8, 2, paths);
   stGlowLines(x, w, h, paths, p.b || '#a58cff', 1.1);
 }, { res: ST_RES }];
+
+// ---- Damascus: pattern-welded steel ------------------------------------------------------------------
+// Hundreds of folded layers, forged and twisted, then etched: bright ridges and dark valleys that flow
+// in waves, pinch into ladders and curl into raindrop eyes. a: bright steel, b: dark steel.
+PAT_KINDS.damascus = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a || '#8d98a3'), B = rgbOf(p.b || '#3d454e'), W1 = stFbm(R, w, h, 48, 3), W2 = stFbm(R, w, h, 20, 3), Fn = stNoise(R, w, h, 0.8), Dr = stCells(R, w, h, 5, 3, 0.4);
+  stShade(x, w, h, res, (X, Y, o) => {
+    const q = Dr.q(X, Y), eye = Math.exp(-q.d * q.d / 40) * 7; // raindrop eyes: the layers swirl round a point
+    const f = Y * 0.55 + (W1(X, Y) - 0.5) * 34 + (W2(X, Y) - 0.5) * 9 + 2.2 * Math.sin(X * TAU / 32) + eye * Math.sin(Math.atan2(Y - q.e, X) * 2);
+    const band = 0.5 + 0.5 * Math.sin(f * 1.35), fine = 0.5 + 0.5 * Math.sin(f * 4.05 + 1.3);
+    let t = Math.pow(band, 1.6) * 0.75 + fine * 0.25; t = smooth((t - 0.15) / 0.75);
+    const n = (Fn(X, Y) - 0.5) * 14;
+    o[0] = B[0] + (A[0] - B[0]) * t + n; o[1] = B[1] + (A[1] - B[1]) * t + n; o[2] = B[2] + (A[2] - B[2]) * t + n * 1.05;
+  });
+}, { res: ST_RES }];
+
+// ---- Contour: a real topographic map ------------------------------------------------------------------
+// Hills and valleys from layered noise, with a contour line every few metres (every fifth one heavier),
+// faint hill shading, and lines kept an even width however steep the ground.
+PAT_KINDS.topo = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a || '#1f3a35'), Bc = rgbOf(p.b || '#7fd6b8'), H = stFbm(R, w, h, 64, 4), d = 0.35;
+  stShade(x, w, h, res, (X, Y, o) => {
+    const z = H(X, Y) * 14, gx = (H(X + d, Y) - H(X - d, Y)) * 14 / (2 * d), gy = (H(X, Y + d) - H(X, Y - d)) * 14 / (2 * d), g = Math.hypot(gx, gy) + 1e-4;
+    const fr = z - Math.round(z), dist = Math.abs(fr) / g, idx = ((Math.round(z) % 5) + 5) % 5 === 0, lw = idx ? 0.45 : 0.22;
+    const a = clamp((lw - dist) * res + 0.5, 0, 1) * (idx ? 1 : 0.8);
+    const shade = clamp(0.5 - (gx * 0.6 + gy * 0.8) * 1.6, 0, 1), l = (shade - 0.5) * 22 + (H(X, Y) - 0.5) * 18;
+    o[0] = A[0] + l + (Bc[0] - A[0] - l) * a; o[1] = A[1] + l + (Bc[1] - A[1] - l) * a; o[2] = A[2] + l + (Bc[2] - A[2] - l) * a;
+  });
+}, { res: ST_RES }];
+
+// ---- Black Ice: frozen over ---------------------------------------------------------------------------
+// Dark ice with depth: plates split by fine bright fractures, frost ferns growing across the surface in
+// sixty-degree branches, and trapped bubbles. a: ice, b: the light in it.
+PAT_KINDS.frost = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a || '#0e1a26'), Bc = rgbOf(p.b || '#9fd8ff'), C = stCells(R, w, h, 6, 4, 0.45), Dp = stFbm(R, w, h, 40, 3), Wx = stFbm(R, w, h, 24, 2), Jg = stNoise(R, w, h, 2.5), Fn = stNoise(R, w, h, 1);
+  stShade(x, w, h, res, (X, Y, o) => {
+    const q = C.q(X + (Wx(X, Y) - 0.5) * 12 + (Jg(X, Y) - 0.5) * 1.6, Y + (Wx(Y, X) - 0.5) * 12 + (Jg(Y, X) - 0.5) * 1.6), hp = stHash2(q.i, q.j, 3), hw = hp < 0.2 ? 0 : 0.12 + 0.24 * hp;
+    const crack = hw ? clamp((hw - q.e) * res + 0.5, 0, 1) : 0, halo = hw ? Math.exp(-q.e / 1.4) * 0.35 : 0;
+    const depth = Dp(X, Y), l = depth * 0.45 + halo + (C.P[q.i].v - 0.5) * 0.12 + (Fn(X, Y) - 0.5) * 0.06;
+    o[0] = A[0] + Bc[0] * l * 0.4; o[1] = A[1] + Bc[1] * l * 0.4; o[2] = A[2] + Bc[2] * l * 0.45;
+    o[0] += (235 - o[0]) * crack; o[1] += (248 - o[1]) * crack; o[2] += (255 - o[2]) * crack;
+  });
+  // frost ferns: a stem with side shoots at sixty degrees, and shoots on the shoots
+  const fern = (x0, y0, an, L, lw, d) => {
+    const pts = [x0, y0]; let cx = x0, cy = y0;
+    for (let s = 1; s <= L; s++) {
+      cx += Math.cos(an) * 1.2; cy += Math.sin(an) * 1.2; pts.push(cx, cy);
+      if (d < 2 && s % 2 === 0 && s < L - 1) { const k = (L - s) * 0.42; fern(cx, cy, an + Math.PI / 3, Math.floor(k), lw * 0.6, d + 1); fern(cx, cy, an - Math.PI / 3, Math.floor(k), lw * 0.6, d + 1); }
+    }
+    txRep(x, w, h, () => { x.strokeStyle = rgba(p.b || '#9fd8ff', 0.25); x.lineWidth = lw * 3; txLine(x, pts); x.stroke(); x.strokeStyle = 'rgba(235,248,255,0.85)'; x.lineWidth = lw; x.stroke(); });
+  };
+  x.lineCap = 'round';
+  for (let i = 0; i < 11; i++) fern(R.r(0, w), R.r(0, h), R.r(0, TAU), R.i(12, 24), 0.4, 0);
+  for (let i = 0; i < 40; i++) { const cx = R.r(0, w), cy = R.r(0, h), r = R.r(0.25, 1.1); txRep(x, w, h, () => { x.strokeStyle = 'rgba(220,240,255,0.5)'; x.lineWidth = 0.15; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.stroke(); x.fillStyle = 'rgba(255,255,255,0.7)'; x.beginPath(); x.arc(cx - r * 0.35, cy - r * 0.35, r * 0.25, 0, TAU); x.fill(); }); }
+}, { res: ST_RES }];
+
+// ---- Marble Hall: polished stone ------------------------------------------------------------------------
+// Veins that follow a turbulent flow the way real marble forms: broad soft drifts, sharp dark veins with
+// fine branches, and (c) a few veins filled with gold that catch the light. a: stone, b: veins.
+PAT_KINDS.marble = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a || '#efebe5'), Bv = rgbOf(p.b || '#6f727a'), G = p.c ? rgbOf(p.c) : null, T1 = stFbm(R, w, h, 48, 5), T2 = stFbm(R, w, h, 24, 4), Cl = stFbm(R, w, h, 32, 3), Fn = stNoise(R, w, h, 0.9);
+  const vein = (v, sharp) => Math.pow(1 - Math.abs(Math.sin(v)), sharp);
+  stShade(x, w, h, res, (X, Y, o) => {
+    const t1 = (X * 0.9 + Y * 0.5) * TAU / 128 * 2 + T1(X, Y) * 13, t2 = (X * 0.4 - Y * 0.8) * TAU / 128 * 3 + T2(X, Y) * 10;
+    const v1 = vein(t1, 10), v2 = vein(t2, 26) * smooth((Cl(X, Y) - 0.4) / 0.3), soft = vein(t1 * 0.5 + 0.7, 2.5) * 0.25 + (Cl(X, Y) - 0.5) * 0.25;
+    const dk = clamp(v1 * 1.1 + v2 * 0.85 + soft * 1.4, 0, 1), n = (Fn(X, Y) - 0.5) * 6;
+    let r = A[0] + (Bv[0] - A[0]) * dk + n, g = A[1] + (Bv[1] - A[1]) * dk + n, b = A[2] + (Bv[2] - A[2]) * dk + n;
+    if (G) { const gv = clamp(vein(t2 * 0.5 + 1.9, 30) * 1.4, 0, 1) * smooth((Cl(Y, X) - 0.4) / 0.2); if (gv > 0.01) { const s = 0.8 + 0.4 * Fn(X * 2, Y * 2); r += (G[0] * s - r) * gv; g += (G[1] * s - g) * gv; b += (G[2] * s - b) * gv; } }
+    o[0] = r; o[1] = g; o[2] = b;
+  });
+}, { res: ST_RES }];
+
+// ---- Engraved scrollwork -------------------------------------------------------------------------------
+// Hand-cut gunsmith's scroll: spiralling vines that tighten into curls, acanthus leaves with a centre
+// vein and shading cuts along one side, a fine border, and a stippled ground. a: ground ('none' to lay
+// over metal), b: the ink of the cuts.
+PAT_KINDS.scroll = [96, 80, (x, w, h, R, p) => {
+  txBg(x, w, h, p.a); const ink = p.b || '#2c3138';
+  x.strokeStyle = ink; x.fillStyle = ink; x.lineCap = 'round'; x.lineJoin = 'round';
+  // a curl: a spiral that tightens from radius r0 over turns, winding d (1 or -1)
+  const curl = (cx, cy, r0, turns, a0, d) => { const pts = []; for (let k = 0; k <= 60; k++) { const u = k / 60, th = a0 + d * u * turns * TAU, r = r0 * Math.pow(1 - u, 1.3) + 0.4; pts.push(cx + Math.cos(th) * r, cy + Math.sin(th) * r); } return pts; };
+  // a leaf from (bx, by) pointing along an, length L: outline, centre vein, cuts on its shaded side
+  const leaf = (bx, by, an, L, d) => {
+    const ca = Math.cos(an), sa = Math.sin(an), P = (u, v) => [bx + ca * u - sa * v, by + sa * u + ca * v], o = [];
+    for (let i = 0; i <= 12; i++) { const u = i / 12, wv = Math.sin(u * Math.PI) * L * 0.3 * (1 + 0.25 * Math.sin(u * 9)); o.push(P(u * L, wv * d)); }
+    for (let i = 12; i >= 0; i--) { const u = i / 12; o.push(P(u * L, -Math.sin(u * Math.PI) * L * 0.12 * d)); }
+    x.lineWidth = 0.45; x.beginPath(); o.forEach((q, i) => (i ? x.lineTo(q[0], q[1]) : x.moveTo(q[0], q[1]))); x.closePath(); x.stroke();
+    x.lineWidth = 0.22; x.beginPath(); let q = P(0, 0); x.moveTo(q[0], q[1]); for (let i = 1; i <= 8; i++) { q = P((i / 8) * L * 0.92, Math.sin((i / 8) * Math.PI) * L * 0.06 * d); x.lineTo(q[0], q[1]); } x.stroke();
+    x.lineWidth = 0.14; for (let i = 1; i < 9; i++) { const u = i / 10, a = P(u * L, Math.sin(u * Math.PI) * L * 0.05 * d), b = P(u * L + L * 0.06, Math.sin(u * Math.PI) * L * 0.27 * d); x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); }
+  };
+  const vine = (y0, sx, d) => {
+    const main = []; for (let xx = -8; xx <= w + 8; xx += 2) main.push(xx + sx, y0 + 9 * Math.sin(((xx) / w) * TAU) * d);
+    x.lineWidth = 1.3; txLine(x, main, true); x.stroke(); x.lineWidth = 0.35; x.globalAlpha = 0.7; x.save(); x.translate(0.6, 0.6); txLine(x, main, true); x.stroke(); x.restore(); x.globalAlpha = 1;
+    for (const c of [[w * 0.25, -1], [w * 0.75, 1]]) {
+      const cx = c[0] + sx, cy = y0 + 9 * Math.sin((c[0] / w) * TAU) * d - c[1] * d * 10, sp = curl(cx, cy, 11, 1.8, c[1] * d > 0 ? Math.PI / 2 : -Math.PI / 2, c[1] * d);
+      x.lineWidth = 1.1; txLine(x, sp, true); x.stroke(); x.beginPath(); x.arc(sp[sp.length - 2], sp[sp.length - 1], 1.3, 0, TAU); x.fill();
+      for (let k = 0; k < 4; k++) { const i = 6 + k * 9, an = Math.atan2(sp[i * 2 + 3] - sp[i * 2 + 1], sp[i * 2 + 2] - sp[i * 2]); leaf(sp[i * 2], sp[i * 2 + 1], an - c[1] * d * 0.9, 9 - k * 1.5, c[1] * d); }
+      leaf(cx - 8, cy + c[1] * d * 8, -Math.PI / 2 * c[1] * d - 0.5, 10, 1); leaf(cx + 8, cy + c[1] * d * 8, -Math.PI / 2 * c[1] * d + 0.5, 10, -1); leaf(cx, cy + c[1] * d * 11, Math.PI / 2 * c[1] * d, 8, 1);
+    }
+  };
+  txRep(x, w, h, () => { vine(20, 0, 1); vine(60, w / 2, -1); });
+  x.globalAlpha = 0.5; for (let i = 0; i < 260; i++) { const cx = R.r(0, w), cy = R.r(0, h); txRep(x, w, h, () => { x.beginPath(); x.arc(cx, cy, 0.18, 0, TAU); x.fill(); }); }
+  x.globalAlpha = 1;
+}, { res: ST_RES }];

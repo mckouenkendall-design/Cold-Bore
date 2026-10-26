@@ -245,13 +245,10 @@ const PAT_KINDS = {
   tiger: [96, 64, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.fillStyle = p.b; for (let i = 0; i < 9; i++) { const bx = (i / 9) * w + R.r(-3, 3); x.beginPath(); x.moveTo(bx, -2); x.bezierCurveTo(bx + R.r(4, 12), h * 0.3, bx - R.r(4, 12), h * 0.6, bx + R.r(-3, 6), h + 2); x.lineTo(bx + R.r(3, 7), h + 2); x.bezierCurveTo(bx - R.r(0, 8), h * 0.6, bx + R.r(8, 16), h * 0.3, bx + R.r(2, 6), -2); x.closePath(); x.fill(); } }],
   carbon: [16, 16, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, 16, 16); x.fillStyle = p.a; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8); x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(0, 0, 8, 3); x.fillRect(8, 8, 8, 3); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, 6, 8, 2); x.fillRect(8, 14, 8, 2); }],
   hex: [42, 48, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, w, h); x.strokeStyle = p.a; x.lineWidth = 2.2; const hx = (cx, cy) => { x.beginPath(); for (let k = 0; k < 6; k++) { const an = (k / 6) * TAU + Math.PI / 6; x.lineTo(cx + Math.cos(an) * 13, cy + Math.sin(an) * 13); } x.closePath(); x.stroke(); }; hx(0, 0); hx(w, 0); hx(0, h); hx(w, h); hx(w / 2, h / 2); }],
-  topo: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 1.1; for (let c = 0; c < 4; c++) { const cx = R.r(0, w), cy = R.r(0, h); for (let r = 5; r < 42; r += 7) for (let ox = -w; ox <= w; ox += w) for (let oy = -h; oy <= h; oy += h) { x.globalAlpha = 0.75; x.beginPath(); x.ellipse(cx + ox, cy + oy, r * 1.3, r * 0.8, c, 0, TAU); x.stroke(); } } }],
   stripes: [40, 40, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 40, 40); x.fillStyle = p.b; x.beginPath(); x.moveTo(0, 40); x.lineTo(20, 40); x.lineTo(40, 20); x.lineTo(40, 0); x.closePath(); x.fill(); x.beginPath(); x.moveTo(0, 0); x.lineTo(0, 20); x.lineTo(20, 0); x.closePath(); x.fill(); }],
   plaid: [48, 48, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 48, 48); x.fillStyle = p.b; x.globalAlpha = 0.55; x.fillRect(0, 0, 24, 48); x.fillRect(0, 0, 48, 24); x.globalAlpha = 0.35; x.fillStyle = '#fff'; x.fillRect(34, 0, 3, 48); x.fillRect(0, 34, 48, 3); }],
-  damascus: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, w, h); x.strokeStyle = p.a; for (let y = -10; y < h + 10; y += 5) { x.lineWidth = R.r(1, 2.6); x.beginPath(); for (let xx = 0; xx <= w; xx += 4) { const yy = y + Math.sin((xx / w) * TAU * 2 + y * 0.35) * 6 + Math.sin((xx / w) * TAU * 5 + y) * 2; if (xx === 0) x.moveTo(xx, yy); else x.lineTo(xx, yy); } x.stroke(); } }],
   circuit: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.fillStyle = p.b; x.lineWidth = 1.4; for (let i = 0; i < 16; i++) { let cx = R.i(0, 11) * 8 + 4, cy = R.i(0, 11) * 8 + 4; x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 3; k++) { if (R.chance(0.5)) cx += R.pick([-16, 16, 24]); else cy += R.pick([-16, 16, 24]); x.lineTo(cx, cy); } x.stroke(); x.beginPath(); x.arc(cx, cy, 2.2, 0, TAU); x.fill(); } }],
   galaxy: [128, 96, (x, w, h, R) => { const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#0b0820'); g.addColorStop(0.5, '#2a1650'); g.addColorStop(1, '#0b0820'); x.fillStyle = g; x.fillRect(0, 0, w, h); for (let i = 0; i < 5; i++) { const gg = x.createRadialGradient(R.r(0, w), R.r(0, h), 0, R.r(0, w), R.r(0, h), 40); gg.addColorStop(0, R.pick(['rgba(180,80,220,0.35)', 'rgba(60,140,255,0.3)', 'rgba(255,120,160,0.25)'])); gg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gg; x.fillRect(0, 0, w, h); } x.fillStyle = '#fff'; for (let i = 0; i < 70; i++) { x.globalAlpha = R.r(0.3, 1); x.fillRect(R.r(0, w), R.r(0, h), R.r(0.5, 1.6), R.r(0.5, 1.6)); } }],
-  frost: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 0.9; for (let i = 0; i < 9; i++) { const cx = R.r(0, w), cy = R.r(0, h); x.globalAlpha = R.r(0.3, 0.8); for (let k = 0; k < 6; k++) { const an = (k / 6) * TAU + i, l = R.r(8, 20); x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + Math.cos(an) * l, cy + Math.sin(an) * l); x.stroke(); x.beginPath(); x.moveTo(cx + Math.cos(an) * l * 0.6, cy + Math.sin(an) * l * 0.6); x.lineTo(cx + Math.cos(an + 0.6) * l * 0.85, cy + Math.sin(an + 0.6) * l * 0.85); x.stroke(); } } }],
   filigree: [64, 64, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 1.3; x.globalAlpha = 0.8; for (const q of [[16, 16, 1], [48, 48, 1], [48, 16, -1], [16, 48, -1]]) { x.beginPath(); for (let a = 0; a < TAU * 1.6; a += 0.2) { const r = 1.5 + a * 1.7; x.lineTo(q[0] + Math.cos(a * q[2]) * r, q[1] + Math.sin(a * q[2]) * r); } x.stroke(); } }],
   grid: [40, 40, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 40, 40); x.strokeStyle = p.b; x.globalAlpha = 0.5; x.lineWidth = 0.7; for (let i = 0; i <= 40; i += 10) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 40); x.moveTo(0, i); x.lineTo(40, i); x.stroke(); } x.globalAlpha = 0.9; x.lineWidth = 1.2; x.strokeRect(0, 0, 40, 40); }],
 
@@ -439,29 +436,7 @@ const PAT_KINDS = {
     x.globalAlpha = 1; x.fillStyle = p.c || '#ffffff'; for (let j = 0; j <= 64; j += 16) for (let i = 0; i <= 64; i += 16) { x.beginPath(); x.arc(i, j, 1.6, 0, TAU); x.fill(); }
   }],
   // Engraving: a running vine of scrolls and leaves, as cut into a fine action. Clear background by default so it can go over any metal.
-  scroll: [96, 80, (x, w, h, R, p) => {
-    txBg(x, w, h, p.a); x.strokeStyle = p.b; x.fillStyle = p.b; x.lineCap = 'round'; x.lineJoin = 'round';
-    const leaf = (bx, by, an, L) => { const dx = Math.cos(an), dy = Math.sin(an); x.beginPath(); x.moveTo(bx, by); x.quadraticCurveTo(bx + dx * L * 0.5 - dy * L * 0.4, by + dy * L * 0.5 + dx * L * 0.4, bx + dx * L, by + dy * L); x.quadraticCurveTo(bx + dx * L * 0.5 + dy * L * 0.4, by + dy * L * 0.5 - dx * L * 0.4, bx, by); x.fill(); };
-    const vine = (c, sx) => {
-      x.lineWidth = 1.5; x.beginPath(); for (let xx = -4; xx <= 100; xx += 4) x.lineTo(xx + sx, c + 8 * Math.sin((xx / 96) * TAU)); x.stroke();
-      for (const q of [[24, c - 3, -1], [72, c + 3, 1]]) { // each curl: middle x, middle y, which way it winds
-        const d = q[2]; let ex = 0, ey = 0;
-        x.lineWidth = 1.4; x.beginPath(); for (let k = 0; k <= 40; k++) { const u = k / 40, th = -d * Math.PI / 2 + d * u * 1.75 * TAU, r = 11 - 9.4 * u; ex = q[0] + sx + Math.cos(th) * r; ey = q[1] + Math.sin(th) * r; x.lineTo(ex, ey); } x.stroke();
-        x.beginPath(); x.arc(ex, ey, 1.7, 0, TAU); x.fill();
-        leaf(q[0] + sx - 7, c - d * 7, -d * Math.PI / 2 - 0.7, 7); leaf(q[0] + sx + 7, c - d * 7, -d * Math.PI / 2 + 0.7, 7); leaf(q[0] + sx, c - d * 8, -d * Math.PI / 2, 5);
-      }
-      leaf(sx, c, 0.48 + 1.0, 7); leaf(sx, c, 0.48 - 1.0, 7); leaf(48 + sx, c, -0.48 + 1.0, 7); leaf(48 + sx, c, -0.48 - 1.0, 7);
-    };
-    txRep(x, w, h, () => { vine(20, 0); vine(60, 48); });
-    x.globalAlpha = 0.45; for (let i = 0; i < 70; i++) { x.beginPath(); x.arc(R.r(1, w - 1), R.r(1, h - 1), 0.55, 0, TAU); x.fill(); }
-  }],
   // Marble: pale clouds and wandering veins. c is an optional second vein colour.
-  marble: [128, 96, (x, w, h, R, p) => {
-    txBg(x, w, h, p.a); txClouds(x, w, h, R, 10, [p.b], 14, 30, 0.08, 0.24, 2.4);
-    const vein = (col, n, wide) => { for (let i = 0; i < n; i++) { const pts = txWander(R, R.r(0, w), R.r(0, h), R.r(-1.0, -0.25) + (R.chance(0.5) ? Math.PI : 0), R.i(9, 13), 6.5, 0.6), lw = R.r(0.8, 1.7) * wide, fork = Math.floor(pts.length / 4) * 2, twig = txWander(R, pts[fork], pts[fork + 1], R.r(0.3, 1.2), R.i(3, 6), 5, 0.6);
-      txRep(x, w, h, () => { x.strokeStyle = col; x.globalAlpha = 0.16; x.lineWidth = lw * 4.5; txLine(x, pts, true); x.stroke(); x.globalAlpha = 0.9; x.lineWidth = lw; x.stroke(); x.globalAlpha = 0.7; x.lineWidth = lw * 0.6; txLine(x, twig, true); x.stroke(); }, 2); } };
-    vein(p.b, 9, 1.15); if (p.c) vein(p.c, 4, 0.9);
-  }],
   // Mother of pearl: soft pastel clouds with fine pale growth lines.
   pearl: [128, 96, (x, w, h, R) => {
     txBg(x, w, h, '#f4f0ea');
