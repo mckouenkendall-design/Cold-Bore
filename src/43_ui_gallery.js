@@ -631,9 +631,7 @@ UI.grTick = function (dt) {
   const G = UI.gr;
   if (!G || !G.view || !G.view.isConnected) { if (UI.onTick === UI.grTick) UI.onTick = null; return; }
   if (window.innerWidth !== G.W || window.innerHeight !== G.H) { if (!G.re) G.re = setTimeout(() => { if (UI.gr === G) UI.gallery(G.sec); }, 160); return; }
-  G.t += dt; G.acc += dt;
-  if (G.acc < 1 / 30) return;
-  G.acc = 0;
+  G.t += dt; // every frame, so the moving skins on the wall run at the screen's full rate
   const from = G.drag !== undefined && G.drag !== null ? -G.drag / G.W : G.sec;
   [Math.floor(from), Math.ceil(from)].forEach((k, j, a) => { if (j === 1 && a[1] === a[0]) return; if (G.secs[k] && G.secs[k].painted && G.secs[k].moves) UI.grFx(G, k, G.t); });
 };

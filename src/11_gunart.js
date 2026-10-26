@@ -78,7 +78,7 @@ const SKINS = [
   { id: 'hex', name: 'Hive', r: 2, furn: { pat: 'hex', a: '#e2b33c', b: '#2a2414' }, metal: '#1c1c1e', acc: '#121214' },
   { id: 'topo', name: 'Contour', r: 2, furn: { pat: 'topo', a: '#1f3a35', b: '#7fd6b8' }, metal: { pat: 'topo', a: '#182826', b: '#4f9a84' }, acc: '#101816' },
   { id: 'hazard', name: 'Hazard', r: 2, furn: { pat: 'stripes', a: '#f2c318', b: '#18181a' }, metal: '#232326', acc: '#f2c318' },
-  { id: 'splat', name: 'Paint Shop', r: 2, furn: { pat: 'splat', base: '#e9e4d6', cols: ['#e0413a', '#2f6db5', '#f2c318', '#3f8f4f'] }, metal: '#26282c', acc: '#16181b' },
+  { id: 'splat', name: 'Paint Shop', r: 2, furn: { pat: 'splat', base: '#e9e4d6', cols: ['#e0413a', '#2f6db5', '#f2c318', '#3f8f4f'] }, metal: { col: '#26282c', over: { pat: 'splat', base: 'none', sparse: 1, seed: 'm', cols: ['#e0413a', '#2f6db5', '#f2c318', '#f4f1e8'] } }, acc: { col: '#16181b', over: { pat: 'splat', base: 'none', sparse: 1, seed: 'a', s: 0.7, cols: ['#e0413a', '#2f6db5', '#f2c318', '#f4f1e8'] } } },
   { id: 'zebra', name: 'Savannah', r: 2, furn: { pat: 'tiger', a: '#efe9da', b: '#121214' }, metal: '#1a1b1e', acc: '#0f1012' },
   { id: 'plaid', name: 'Lumberjack', r: 2, furn: { pat: 'plaid', a: '#a8312b', b: '#1c1c1e' }, metal: '#2a2c30', acc: '#18191c' },
   // rare, second batch: new kinds of pattern
@@ -92,7 +92,7 @@ const SKINS = [
   { id: 'bandana', name: 'Bandana', r: 2, furn: { pat: 'paisley', a: '#b3202a', b: '#f4efe6', c: '#16161a' }, metal: '#1c1c1f', acc: '#16161a' },
   { id: 'leopard', name: 'Spotted Cat', r: 2, furn: { pat: 'leopard', a: '#dba95a', b: '#24170c', c: '#a96a26' }, metal: '#2a2118', acc: '#1c150e' },
   { id: 'giraffe', name: 'Tall Order', r: 2, furn: { pat: 'giraffe', a: '#8f5324', b: '#f1e3bf' }, metal: '#3b2c1d', acc: '#241a10' },
-  { id: 'graffiti', name: 'Back Alley', r: 2, furn: { pat: 'graffiti', a: '#8f9499' }, metal: '#232427', acc: '#f2d21a' },
+  { id: 'graffiti', name: 'Back Alley', r: 2, furn: { pat: 'graffiti', a: '#8f9499', s: 0.55, off: [-4, -24] }, metal: { col: '#232427', over: { pat: 'graffiti', only: 'tags', a: 'none', s: 0.8 } }, acc: '#f2d21a' },
   { id: 'dazzle', name: 'Razzle Dazzle', r: 2, furn: { pat: 'dazzle', cols: ['#e6eaed', '#15171a', '#6f8799', '#2f4a66'] }, metal: { pat: 'dazzle', cols: ['#e6eaed', '#15171a', '#6f8799', '#2f4a66'] }, acc: '#15171a' },
   { id: 'koi', name: 'Koi Pond', r: 2, furn: { pat: 'koi', a: '#1d4c86', b: '#bfe0f5', c: '#f2702a', d: '#fff6ea' }, metal: '#16283c', acc: '#f2702a' },
   // epic
@@ -116,15 +116,19 @@ const SKINS = [
   { id: 'stained', name: 'Cathedral Glass', r: 3, furn: { pat: 'stained', cols: ['#d1342f', '#2f62c9', '#e8b72e', '#2f9a5a', '#7a3fb5', '#e8742e', '#2fb0c4'] }, metal: { pat: 'parker', a: '#34373c', b: '#1f2125', c: '#4d5157' }, acc: { grad: ['#f0d88a', '#b88f33', '#f6e3a1'] }, line: '#0c0c0e', lineW: 0.36 },
   // legendary
   { id: 'midas', name: 'Midas', r: 4, furn: { pat: 'filigree', a: '#d9aa2e', b: '#fff0b0' }, metal: { grad: ['#fff2b8', '#d9aa2e', '#8a6412', '#f4d568'] }, acc: { grad: ['#fff2b8', '#d9aa2e', '#8a6412'] }, line: '#5a3f08', shimmer: '#fff8d8' },
-  { id: 'kintsugi', name: 'Kintsugi', r: 4, furn: { pat: 'cracks', a: '#121316', b: '#f0c14a' }, metal: { pat: 'cracks', a: '#0c0d10', b: '#f0c14a' }, acc: '#0a0b0d', shimmer: '#ffe9a8' },
+  { id: 'kintsugi', name: 'Kintsugi', r: 4, furn: { pat: 'kintsugi', a: '#121316', b: '#f0c14a', seed: 'f1', over: { pat: 'kintsugi', gleam: 1, a: '#121316', b: '#f0c14a', seed: 'f1', blend: 'lighter', pulse: [0.2, 1, 0.21] } },
+    metal: { pat: 'kintsugi', a: '#0c0d10', b: '#e9b843', seed: 'm1', s: 0.8, over: { pat: 'kintsugi', gleam: 1, a: '#0c0d10', b: '#e9b843', seed: 'm1', s: 0.8, blend: 'lighter', pulse: [0.2, 1, 0.21, 0.5] } },
+    acc: { pat: 'kintsugi', a: '#0e0f12', b: '#f0c14a', seed: 'a1', s: 0.65, over: { pat: 'kintsugi', gleam: 1, a: '#0e0f12', b: '#f0c14a', seed: 'a1', s: 0.65, blend: 'lighter', pulse: [0.2, 1, 0.21, 0.25] } }, line: 'rgba(40,28,6,0.7)', shimmer: '#ffe9a8' },
   { id: 'aurora', name: 'Aurora', r: 4, furn: { anim: 'aurora' }, metal: { anim: 'aurora' }, acc: '#0b1420', shimmer: '#d8fff0' },
-  { id: 'obsidian', name: 'Magma', r: 4, furn: { pat: 'cracks', a: '#161012', b: '#ff5a1f' }, metal: { pat: 'cracks', a: '#0f0b0c', b: '#ff8a3a' }, acc: '#1a0f0c', glow: '#ff5a1f', shimmer: '#ffd0a0' },
+  { id: 'obsidian', name: 'Magma', r: 4, furn: { pat: 'magma', a: '#161012', seed: 'mf', over: { pat: 'magma', glowOnly: 1, group: 0, a: 'none', seed: 'mf', blend: 'lighter', pulse: [0, 0.8, 0.33, 0], over: { pat: 'magma', glowOnly: 1, group: 1, a: 'none', seed: 'mf', blend: 'lighter', pulse: [0, 0.8, 0.33, 0.33], over: { pat: 'magma', glowOnly: 1, group: 2, a: 'none', seed: 'mf', blend: 'lighter', pulse: [0, 0.8, 0.33, 0.66] } } } },
+    metal: { pat: 'magma', a: '#161012', seed: 'mm', cool: 1, s: 0.8, over: { pat: 'magma', glowOnly: 1, group: 0, a: 'none', seed: 'mm', cool: 1, s: 0.8, blend: 'lighter', pulse: [0, 0.8, 0.33, 0], over: { pat: 'magma', glowOnly: 1, group: 1, a: 'none', seed: 'mm', cool: 1, s: 0.8, blend: 'lighter', pulse: [0, 0.8, 0.33, 0.33], over: { pat: 'magma', glowOnly: 1, group: 2, a: 'none', seed: 'mm', cool: 1, s: 0.8, blend: 'lighter', pulse: [0, 0.8, 0.33, 0.66] } } } }, acc: '#1a0f0c', line: 'rgba(30,6,0,0.7)', glow: '#ff5a1f', shimmer: '#ffd0a0', lens: ['#fff0a8', '#ff7a1a', '#7a1404'] },
   { id: 'blueprint', name: 'Blueprint', r: 4, furn: { pat: 'grid', a: '#1c4fa0', b: '#cfe3ff' }, metal: { pat: 'grid', a: '#173f82', b: '#cfe3ff' }, acc: '#123368', line: '#eaf2ff', shimmer: '#ffffff' },
   // legendary, second batch: every one of these moves
   { id: 'eruption', name: 'Eruption', r: 4, furn: { anim: 'lava' }, metal: { anim: 'lava', cool: 1 }, acc: '#1a0d0a', line: 'rgba(20,4,0,0.7)', glow: '#ff6a1f', shimmer: '#ffe2a8', lens: ['#fff0a8', '#ff7a1a', '#7a1404'] },
   { id: 'prism', name: 'Prism Foil', r: 4, furn: { anim: 'holo', over: { pat: 'prism', a: 'none' } }, metal: { anim: 'holo', lit: 80, sat: 70, cycles: 5, over: { pat: 'prism', a: 'none', s: 0.5 } }, acc: '#f1f3f8', line: 'rgba(40,30,80,0.55)', rubber: '#2a2c36', shimmer: '#ffffff' },
   { id: 'coderain', name: 'Falling Code', r: 4, furn: { anim: 'coderain' }, metal: { anim: 'coderain', dim: 1 }, acc: '#04140b', line: '#1c8a47', rubber: '#020a05', glow: '#2bff7a', lens: ['#c8ffd8', '#0e6a30', '#2bff7a'] },
-  { id: 'livewire', name: 'Live Wire', r: 4, furn: { anim: 'veins' }, metal: { anim: 'veins', seed: 'v7', a: '#0b0911' }, acc: '#0c0a12', line: 'rgba(210,120,255,0.35)', glow: '#c04dff', shimmer: '#f1d6ff', lens: ['#f3d6ff', '#6a1aa8', '#ff5ce0'] },
+  { id: 'livewire', name: 'Live Wire', r: 4, furn: { pat: 'plasma', a: '#0b0911', seed: 'w1', over: { pat: 'treeglow', a: 'none', b: '#c86bff', seed: 'w1', blend: 'lighter', pulse: [0.3, 1, 0.55, 0], over: { pat: 'treeglow', part: 1, a: 'none', b: '#c86bff', seed: 'w1', blend: 'lighter', pulse: [0.25, 1, 0.55, 0.12], over: { pat: 'arcs', a: 'none', b: '#d98cff', seed: 'a1', blend: 'lighter', crackle: [0.19, 0.75, 'a1'], over: { pat: 'arcs', a: 'none', b: '#9fd8ff', n: 2, seed: 'b1', blend: 'lighter', crackle: [0.29, 0.7, 'b1'] } } } } },
+    metal: { pat: 'plasma', a: '#08070d', seed: 'w2', over: { pat: 'treeglow', a: 'none', b: '#c86bff', seed: 'w2', blend: 'lighter', pulse: [0.3, 1, 0.55, 0], over: { pat: 'treeglow', part: 1, a: 'none', b: '#c86bff', seed: 'w2', blend: 'lighter', pulse: [0.25, 1, 0.55, 0.12], over: { pat: 'arcs', a: 'none', b: '#d98cff', seed: 'a2', blend: 'lighter', crackle: [0.19, 0.75, 'a2'], over: { pat: 'arcs', a: 'none', b: '#9fd8ff', n: 2, seed: 'b2', blend: 'lighter', crackle: [0.29, 0.7, 'b2'] } } } } }, acc: '#0c0a12', line: 'rgba(210,120,255,0.35)', glow: '#c04dff', shimmer: '#f1d6ff', lens: ['#f3d6ff', '#6a1aa8', '#ff5ce0'] },
   { id: 'deepfield', name: 'Deep Field', r: 4, furn: { anim: 'starfield' }, metal: { anim: 'starfield', far: 1 }, acc: '#0a1024', line: 'rgba(150,190,255,0.4)', shimmer: '#cfe6ff' },
   { id: 'quicksilver', name: 'Quicksilver', r: 4, furn: { anim: 'chrome' }, metal: { anim: 'chrome', fast: 1 }, acc: '#15181c', line: 'rgba(0,0,0,0.7)', shimmer: '#ffffff' },
   { id: 'thunder', name: 'Thunderhead', r: 4, furn: { anim: 'storm' }, metal: { anim: 'storm', dark: 1 }, acc: '#0d0f18', line: 'rgba(170,160,255,0.35)', glow: '#8f7dff', shimmer: '#f2ecff' },
@@ -159,11 +163,15 @@ const GUN_ART = {
 // shapes wider than about sixty do not fit on a stock.
 // ---------------------------------------------------------------------------
 const _patCache = {};
-function patTile(key, w, h, fn, seed) {
+// res: pixels per texture pixel. The fine textures (11b_skintex.js) are drawn at three times the
+// usual detail so they stay sharp on a phone when the rifle is shown close; paintFill scales them back.
+function patTile(key, w, h, fn, seed, res) {
   if (_patCache[key]) return _patCache[key];
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const x = c.getContext('2d'); fn(x, w, h, makeRng(hashStr(seed === undefined ? key : seed)));
-  _patCache[key] = c; return c;
+  res = res || 1;
+  const c = document.createElement('canvas'); c.width = Math.round(w * res); c.height = Math.round(h * res);
+  const x = c.getContext('2d'); if (res !== 1) x.scale(res, res);
+  fn(x, w, h, makeRng(hashStr(seed === undefined ? key : seed)), res);
+  c._res = res; _patCache[key] = c; return c;
 }
 
 // ---- helpers for drawing tiles ----
@@ -224,8 +232,10 @@ const txDrop = (L, W, k) => { // outline of a paisley drop: round at the bottom,
   return out;
 };
 
-// Every kind of texture: [tile width, tile height, how to draw it].
-// The draw function gets (context, width, height, random numbers, the paint).
+// Every kind of texture: [tile width, tile height, how to draw it, options].
+// The draw function gets (context, width, height, random numbers, the paint, res).
+// options.res draws the tile at that many pixels per texture pixel (the context is already scaled,
+// so vector drawing needs no change; code that writes pixels directly must use width * res).
 const PAT_KINDS = {
   // ---- the original set (kept exactly as it was) ----
   wood: [160, 48, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; for (let i = 0; i < 16; i++) { x.globalAlpha = R.r(0.25, 0.8); x.lineWidth = R.r(0.6, 2.2); const y = R.r(0, h); x.beginPath(); x.moveTo(-5, y); x.bezierCurveTo(w * 0.3, y + R.r(-5, 5), w * 0.6, y + R.r(-5, 5), w + 5, y); x.stroke(); } x.globalAlpha = 0.5; x.fillStyle = p.b; for (let i = 0; i < 3; i++) { x.beginPath(); x.ellipse(R.r(0, w), R.r(0, h), R.r(5, 12), R.r(1.5, 3), 0, 0, TAU); x.fill(); } }],
@@ -237,14 +247,12 @@ const PAT_KINDS = {
   hex: [42, 48, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, w, h); x.strokeStyle = p.a; x.lineWidth = 2.2; const hx = (cx, cy) => { x.beginPath(); for (let k = 0; k < 6; k++) { const an = (k / 6) * TAU + Math.PI / 6; x.lineTo(cx + Math.cos(an) * 13, cy + Math.sin(an) * 13); } x.closePath(); x.stroke(); }; hx(0, 0); hx(w, 0); hx(0, h); hx(w, h); hx(w / 2, h / 2); }],
   topo: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 1.1; for (let c = 0; c < 4; c++) { const cx = R.r(0, w), cy = R.r(0, h); for (let r = 5; r < 42; r += 7) for (let ox = -w; ox <= w; ox += w) for (let oy = -h; oy <= h; oy += h) { x.globalAlpha = 0.75; x.beginPath(); x.ellipse(cx + ox, cy + oy, r * 1.3, r * 0.8, c, 0, TAU); x.stroke(); } } }],
   stripes: [40, 40, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 40, 40); x.fillStyle = p.b; x.beginPath(); x.moveTo(0, 40); x.lineTo(20, 40); x.lineTo(40, 20); x.lineTo(40, 0); x.closePath(); x.fill(); x.beginPath(); x.moveTo(0, 0); x.lineTo(0, 20); x.lineTo(20, 0); x.closePath(); x.fill(); }],
-  splat: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.base; x.fillRect(0, 0, w, h); for (let i = 0; i < 22; i++) { x.fillStyle = R.pick(p.cols); const cx = R.r(0, w), cy = R.r(0, h), r = R.r(3, 11); for (let ox = -w; ox <= w; ox += w) for (let oy = -h; oy <= h; oy += h) { x.beginPath(); x.arc(cx + ox, cy + oy, r, 0, TAU); x.fill(); for (let k = 0; k < 5; k++) { x.beginPath(); x.arc(cx + ox + R.r(-r, r) * 2, cy + oy + R.r(-r, r) * 2, r * 0.22, 0, TAU); x.fill(); } } } }],
   plaid: [48, 48, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 48, 48); x.fillStyle = p.b; x.globalAlpha = 0.55; x.fillRect(0, 0, 24, 48); x.fillRect(0, 0, 48, 24); x.globalAlpha = 0.35; x.fillStyle = '#fff'; x.fillRect(34, 0, 3, 48); x.fillRect(0, 34, 48, 3); }],
   damascus: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, w, h); x.strokeStyle = p.a; for (let y = -10; y < h + 10; y += 5) { x.lineWidth = R.r(1, 2.6); x.beginPath(); for (let xx = 0; xx <= w; xx += 4) { const yy = y + Math.sin((xx / w) * TAU * 2 + y * 0.35) * 6 + Math.sin((xx / w) * TAU * 5 + y) * 2; if (xx === 0) x.moveTo(xx, yy); else x.lineTo(xx, yy); } x.stroke(); } }],
   circuit: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.fillStyle = p.b; x.lineWidth = 1.4; for (let i = 0; i < 16; i++) { let cx = R.i(0, 11) * 8 + 4, cy = R.i(0, 11) * 8 + 4; x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 3; k++) { if (R.chance(0.5)) cx += R.pick([-16, 16, 24]); else cy += R.pick([-16, 16, 24]); x.lineTo(cx, cy); } x.stroke(); x.beginPath(); x.arc(cx, cy, 2.2, 0, TAU); x.fill(); } }],
   galaxy: [128, 96, (x, w, h, R) => { const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#0b0820'); g.addColorStop(0.5, '#2a1650'); g.addColorStop(1, '#0b0820'); x.fillStyle = g; x.fillRect(0, 0, w, h); for (let i = 0; i < 5; i++) { const gg = x.createRadialGradient(R.r(0, w), R.r(0, h), 0, R.r(0, w), R.r(0, h), 40); gg.addColorStop(0, R.pick(['rgba(180,80,220,0.35)', 'rgba(60,140,255,0.3)', 'rgba(255,120,160,0.25)'])); gg.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = gg; x.fillRect(0, 0, w, h); } x.fillStyle = '#fff'; for (let i = 0; i < 70; i++) { x.globalAlpha = R.r(0.3, 1); x.fillRect(R.r(0, w), R.r(0, h), R.r(0.5, 1.6), R.r(0.5, 1.6)); } }],
   frost: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 0.9; for (let i = 0; i < 9; i++) { const cx = R.r(0, w), cy = R.r(0, h); x.globalAlpha = R.r(0.3, 0.8); for (let k = 0; k < 6; k++) { const an = (k / 6) * TAU + i, l = R.r(8, 20); x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + Math.cos(an) * l, cy + Math.sin(an) * l); x.stroke(); x.beginPath(); x.moveTo(cx + Math.cos(an) * l * 0.6, cy + Math.sin(an) * l * 0.6); x.lineTo(cx + Math.cos(an + 0.6) * l * 0.85, cy + Math.sin(an + 0.6) * l * 0.85); x.stroke(); } } }],
   filigree: [64, 64, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.lineWidth = 1.3; x.globalAlpha = 0.8; for (const q of [[16, 16, 1], [48, 48, 1], [48, 16, -1], [16, 48, -1]]) { x.beginPath(); for (let a = 0; a < TAU * 1.6; a += 0.2) { const r = 1.5 + a * 1.7; x.lineTo(q[0] + Math.cos(a * q[2]) * r, q[1] + Math.sin(a * q[2]) * r); } x.stroke(); } }],
-  cracks: [128, 96, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; x.shadowColor = p.b; x.shadowBlur = 3; for (let i = 0; i < 9; i++) { let cx = R.r(0, w), cy = R.r(0, h); x.lineWidth = R.r(0.8, 2.2); x.beginPath(); x.moveTo(cx, cy); for (let k = 0; k < 7; k++) { cx += R.r(-18, 18); cy += R.r(-14, 14); x.lineTo(cx, cy); } x.stroke(); } }],
   grid: [40, 40, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 40, 40); x.strokeStyle = p.b; x.globalAlpha = 0.5; x.lineWidth = 0.7; for (let i = 0; i <= 40; i += 10) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 40); x.moveTo(0, i); x.lineTo(40, i); x.stroke(); } x.globalAlpha = 0.9; x.lineWidth = 1.2; x.strokeRect(0, 0, 40, 40); }],
 
   // ---- finishes (common and uncommon) ----
@@ -399,19 +407,6 @@ const PAT_KINDS = {
     txRep(x, w, h, () => { x.fillStyle = p.c; txSuit(x, 0, 16, 16, 7.5); txSuit(x, 3, 32, 48, 7.5); x.fillStyle = p.b; txSuit(x, 1, 48, 16, 7.5); txSuit(x, 2, 0, 48, 7.5); });
     x.fillStyle = rgba(p.c, 0.35); for (const q of [[0, 16], [32, 16], [16, 48], [48, 48], [16, 32], [48, 32], [0, 0], [32, 0], [32, 32], [0, 32]]) txRep(x, w, h, () => { x.beginPath(); x.arc(q[0], q[1], 1.1, 0, TAU); x.fill(); });
   }],
-  // Graffiti: a block wall covered in fat spray squiggles, arrows, stars and drips. No letters, nothing that reads as a word.
-  graffiti: [160, 96, (x, w, h, R, p) => {
-    txBg(x, w, h, p.a);
-    x.strokeStyle = 'rgba(0,0,0,0.18)'; x.lineWidth = 1; x.beginPath(); for (let y = 0; y < h; y += 16) { x.moveTo(0, y + 0.5); x.lineTo(w, y + 0.5); for (let xx = (y / 16) % 2 ? 20 : 0; xx < w; xx += 40) { x.moveTo(xx + 0.5, y); x.lineTo(xx + 0.5, y + 16); } } x.stroke();
-    const C = p.cols || ['#ff3d8a', '#22d3ee', '#f2d21a', '#7ddc3a', '#ff7a1a', '#f6f6f6', '#8a4dff'];
-    x.lineCap = 'round'; x.lineJoin = 'round';
-    const tag = (pts, col, lw, soft) => txRep(x, w, h, () => { for (let pass = 0; pass < 2; pass++) { x.strokeStyle = pass ? col : '#101012'; x.lineWidth = pass ? lw : lw + 2.4; txLine(x, pts, soft); x.stroke(); } });
-    for (let i = 0; i < 11; i++) { const cx = R.r(0, w), cy = R.r(0, h), r = R.r(9, 17), c = C[(i + 3) % C.length]; txRep(x, w, h, () => { const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, rgba(c, 0.85)); g.addColorStop(0.5, rgba(c, 0.6)); g.addColorStop(1, rgba(c, 0)); x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2); }); }
-    for (let i = 0; i < 14; i++) { let cx = ((i * 0.618) % 1) * w + R.r(-6, 6), cy = ((i + 0.5) / 14) * h + R.r(-4, 4); const pts = [cx, cy], n = R.i(4, 7), dir = R.chance(0.5) ? 1 : -1; for (let k = 0; k < n; k++) { cx += dir * R.r(5, 10); cy += (k % 2 ? 1 : -1) * R.r(8, 17); pts.push(cx, cy); } tag(pts, C[i % C.length], R.r(2.8, 4.4), true); }
-    for (let i = 0; i < 4; i++) { const cx = R.r(0, w), cy = R.r(0, h), an = R.r(0, TAU), l = R.r(10, 16), ca = Math.cos(an), sa = Math.sin(an), tx = cx + ca * l, ty = cy + sa * l; tag([cx, cy, tx, ty], C[(i + 2) % C.length], 2.4); tag([tx - ca * 5 - sa * 4, ty - sa * 5 + ca * 4, tx, ty, tx - ca * 5 + sa * 4, ty - sa * 5 - ca * 4], C[(i + 2) % C.length], 2.4); }
-    for (let i = 0; i < 8; i++) { const cx = R.r(0, w), cy = R.r(0, h), r = R.r(4.5, 7.5), rot = R.r(0, 1), c = C[(i + 4) % C.length], pts = []; for (let k = 0; k < 10; k++) { const an = rot + (k / 10) * TAU, rr = k % 2 ? r * 0.45 : r; pts.push(cx + Math.cos(an) * rr, cy + Math.sin(an) * rr); } txRep(x, w, h, () => { txSharp(x, pts); x.fillStyle = c; x.strokeStyle = '#101012'; x.lineWidth = 1.6; x.stroke(); x.fill(); }); }
-    for (let i = 0; i < 9; i++) { const cx = R.r(0, w), cy = R.r(0, h), l = R.r(6, 16), c = C[i % C.length]; txRep(x, w, h, () => { x.strokeStyle = c; x.lineWidth = 1.5; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx, cy + l); x.stroke(); x.fillStyle = c; x.beginPath(); x.arc(cx, cy + l, 1.4, 0, TAU); x.fill(); }); }
-  }],
 
   // ---- fine materials (epic) ----
   // Case hardening: mottled blues, purples and straw yellows from the heat treatment.
@@ -561,15 +556,6 @@ const PAT_KINDS = {
   }],
   // Rain: thin slanting streaks.
   rain: [64, 64, (x, w, h, R, p) => { txBg(x, w, h, p.a); x.strokeStyle = p.b; x.lineCap = 'round'; x.lineWidth = 0.9; for (let i = 0; i < 26; i++) { const cx = R.r(0, w), cy = R.r(0, h), l = R.r(5, 12), al = R.r(0.25, 0.75); txRep(x, w, h, () => { x.globalAlpha = al; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx - l * 0.28, cy + l); x.stroke(); }); } }],
-  // Lightning: forked bolts running along the rifle.
-  bolts: [160, 96, (x, w, h, R, p) => {
-    txBg(x, w, h, p.a);
-    const paths = [], bolt = (x0, y0, len, lw, dy) => { const pts = [x0, y0]; let cx = x0, cy = y0; for (let k = 0, n = Math.ceil(len / 7); k < n; k++) { cx += R.r(4, 10); cy += R.r(-6, 6) + dy; pts.push(cx, cy); if (lw > 1 && R.chance(0.3)) bolt(cx, cy, len * 0.35, lw * 0.5, R.pick([-2.5, 2.5])); } paths.push({ pts, lw }); };
-    bolt(R.r(0, 30), R.r(18, 34), 150, 1.9, 0); bolt(R.r(70, 100), R.r(60, 78), 120, 1.5, 0);
-    x.lineCap = 'round'; x.lineJoin = 'round';
-    const pass = (mul, add, al, col) => paths.forEach((q) => txRep(x, w, h, () => { x.globalAlpha = al; x.strokeStyle = col; x.lineWidth = q.lw * mul + add; txLine(x, q.pts); x.stroke(); }));
-    pass(1, 9, 0.1, p.b); pass(1, 4, 0.25, p.b); pass(1, 1, 0.9, p.b); pass(0.7, 0, 1, '#ffffff');
-  }],
   // Light on shallow water: a bright net of ripples. With a: 'none' only the net is drawn.
   caustic: [128, 96, (x, w, h, R, p) => {
     const clear = !p.a || p.a === 'none', A = clear ? [255, 255, 255] : rgbOf(p.a), B = rgbOf(p.b || '#ffffff'), D = txMix3(A, [0, 20, 60], 0.35);
@@ -584,7 +570,7 @@ const PAT_KINDS = {
 };
 
 // Fields that say how a coat is laid on, not what its tile looks like. Two paints that differ only in these share one tile.
-const TILE_SKIP = { over: 1, drift: 1, s: 1, rot: 1, off: 1, alpha: 1, blend: 1, pulse: 1, flash: 1 };
+const TILE_SKIP = { over: 1, drift: 1, s: 1, rot: 1, off: 1, alpha: 1, blend: 1, pulse: 1, flash: 1, crackle: 1 };
 const _tileKeys = typeof WeakMap === 'function' ? new WeakMap() : null;
 function tileKey(p) {
   let k = _tileKeys && _tileKeys.get(p);
@@ -595,7 +581,7 @@ function tileKey(p) {
 function paintTile(p) {
   const kind = p && PAT_KINDS[p.pat];
   if (!kind) return null;
-  return patTile(tileKey(p), kind[0], kind[1], (x, w, h, R) => kind[2](x, w, h, R, p), p.seed === undefined ? undefined : p.pat + ':' + p.seed);
+  return patTile(tileKey(p), kind[0], kind[1], (x, w, h, R, res) => kind[2](x, w, h, R, p, res), p.seed === undefined ? undefined : p.pat + ':' + p.seed, kind[3] && kind[3].res);
 }
 
 // ---- moving paints ----
@@ -627,11 +613,23 @@ const ANIM_GRADS = {
 const _animCache = {};
 function animPaint(p) { const k = JSON.stringify(p); return _animCache[k] || (_animCache[k] = Object.assign(ANIM_PAINTS[p.anim](p), p.over ? { over: p.over } : null)); }
 
+// crackle: [every, on for, tag]. Electricity: the coat sparks on for a moment in most of its turns,
+// each time somewhere else on the rifle (paintFill shifts it), fading in fast and out a little slower.
+const _u01 = (s) => (hashStr(s) % 10007) / 10007;
+function crackleAlpha(c, t) {
+  const per = c[0], tag = c[2] || '', k = Math.floor(t / per), u = (t - k * per) / per;
+  if (_u01('c' + tag + k) > 0.82) return 0; // now and then a turn with no spark
+  const on = c[1] * (0.55 + 0.45 * _u01('d' + tag + k));
+  if (u > on) return 0;
+  const a = Math.min(1, u / 0.07) * (1 - smooth((u - on * 0.45) / (on * 0.55)));
+  return a * (0.78 + 0.22 * Math.sin(t * 70 + k * 1.7));
+}
 // How strongly a coat is laid on at a given moment.
 function paintAlpha(p, time) {
   if (typeof p === 'string') return 1;
   let a = p.alpha === undefined ? 1 : p.alpha; const t = time || 0;
-  if (p.pulse) a *= p.pulse[0] + (p.pulse[1] - p.pulse[0]) * (0.5 + 0.5 * Math.sin(TAU * p.pulse[2] * t));
+  if (p.pulse) a *= p.pulse[0] + (p.pulse[1] - p.pulse[0]) * (0.5 + 0.5 * Math.sin(TAU * (p.pulse[2] * t + (p.pulse[3] || 0))));
+  if (p.crackle) a *= crackleAlpha(p.crackle, t);
   if (p.flash) { const per = p.flash[0], dur = p.flash[1], k = Math.floor(t / per), u = (t - k * per - 1.1 - (k ? 0.25 * per * ((hashStr('f' + k) % 100) / 100) : 0)) / dur; a *= u < 0 || u > 1 ? 0 : (u > 0.45 && u < 0.6 ? 0.2 : 1 - u * 0.6); }
   return a;
 }
@@ -645,11 +643,12 @@ function paintFill(ctx, p, bounds, time) {
   if (!tile) return p.a || '#444';
   const pt = ctx.createPattern(tile, 'repeat');
   if (pt.setTransform) {
-    const m = new DOMMatrix(), t = time || 0;
+    const m = new DOMMatrix(), t = time || 0, res = tile._res || 1;
     if (p.rot) m.rotateSelf(p.rot);
-    m.scaleSelf(0.22 * (p.s || 1));
-    let dx = (p.off ? p.off[0] : 0) + (p.drift ? p.drift[0] * t : 0), dy = (p.off ? p.off[1] : 0) + (p.drift ? p.drift[1] * t : 0);
+    m.scaleSelf((0.22 * (p.s || 1)) / res);
+    let dx = ((p.off ? p.off[0] : 0) + (p.drift ? p.drift[0] * t : 0)) * res, dy = ((p.off ? p.off[1] : 0) + (p.drift ? p.drift[1] * t : 0)) * res;
     if (p.flash) { const k = Math.floor(t / p.flash[0]); dx += hashStr('x' + k) % tile.width; dy += hashStr('y' + k) % tile.height; } // a different bolt each time
+    if (p.crackle) { const k = Math.floor(t / p.crackle[0]), tag = p.crackle[2] || ''; dx += hashStr('cx' + tag + k) % tile.width; dy += hashStr('cy' + tag + k) % tile.height; } // and a different spark
     if (dx || dy) m.translateSelf(((dx % tile.width) + tile.width) % tile.width, ((dy % tile.height) + tile.height) % tile.height);
     pt.setTransform(m);
   }

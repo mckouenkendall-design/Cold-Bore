@@ -267,7 +267,8 @@ UI.flushSeen = function () {
 // Called every frame while no mission is running.
 UI.tick = function (dt) {
   UI.t = (UI.t || 0) + dt;
-  if (UI.live.length) { UI._lt = (UI._lt || 0) + dt; if (UI._lt > 0.045) { UI._lt = 0; for (let i = 0; i < UI.live.length; i++) { const l = UI.live[i]; if (l.vis && l.cv.isConnected) UI.paintJob(l, UI.t); } } }
+  // moving pictures (skins, calling cards, portraits) are redrawn every frame, so they run at the screen's full rate
+  for (let i = 0; i < UI.live.length; i++) { const l = UI.live[i]; if (l.vis && l.cv.isConnected) UI.paintJob(l, UI.t); }
   if (UI.attract) UI.attractStep(dt);
   if (Sfx.ok && Sfx.mode !== 'off') Sfx.pump();
   if (UI.onTick) UI.onTick(dt);
