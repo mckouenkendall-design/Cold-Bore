@@ -515,3 +515,38 @@ PAT_KINDS.scroll = [96, 80, (x, w, h, R, p) => {
   x.globalAlpha = 0.5; for (let i = 0; i < 260; i++) { const cx = R.r(0, w), cy = R.r(0, h); txRep(x, w, h, () => { x.beginPath(); x.arc(cx, cy, 0.18, 0, TAU); x.fill(); }); }
   x.globalAlpha = 1;
 }, { res: ST_RES }];
+
+// ---- Camouflage ----------------------------------------------------------------------------------------
+// Printed military camouflage (woodland, desert, snow, urban): the ground colour, then each further
+// colour as a layer of smooth organic shapes from noise, stretched sideways the way real patterns are
+// laid out along a body. Each layer is smaller and sparser than the one under it, so big interlocking
+// shapes carry the pattern and the darkest colour falls as small accents on top. Edges are crisp,
+// like print, with a slight ragged jag.
+PAT_KINDS.camo = [192, 128, (x, w, h, R, p, res) => {
+  const cols = p.cols.map(rgbOf), n = cols.length, L = [], J = stNoise(R, w, h, 1.6);
+  for (let k = 1; k < n; k++) L.push({ f: stFbm(R, w, h, Math.max(10, 30 - k * 6), 3), wx: stFbm(R, w, h, 40, 2), t: [0.5, 0.53, 0.58, 0.6, 0.62][k - 1] });
+  stShade(x, w, h, res, (X, Y, o) => {
+    let c = cols[0];
+    for (let k = 0; k < L.length; k++) {
+      const l = L[k], wx = X + (l.wx(X, Y) - 0.5) * 10, v = l.f(wx * 0.62, Y * 1.0) + (J(X, Y) - 0.5) * 0.035;
+      if (v > l.t) c = cols[k + 1];
+    }
+    o[0] = c[0]; o[1] = c[1]; o[2] = c[2];
+  });
+}, { res: 2 }];
+// Tiger stripe: dark ragged brush strokes running along the length on a lighter ground. vertical: 1
+// turns them upright (a zebra's hide).
+PAT_KINDS.tiger = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a), B = rgbOf(p.b), F = stFbm(R, w, h, 32, 3), W = stFbm(R, w, h, 48, 2), Br = stFbm(R, w, h, 16, 3), J = stNoise(R, w, h, 1.2), v = !!p.vertical;
+  const per = v ? 9.6 : 12;
+  stShade(x, w, h, res, (X, Y, o) => {
+    const u = v ? Y : X, t = v ? X : Y;
+    // bands across the length, bent by a slow wander, ragged at the edges
+    const sn = Math.sin((t / per) * TAU + (W(X, Y) - 0.5) * 9 + (F(X, Y) - 0.5) * 4) + (J(X, Y) - 0.5) * 0.25;
+    // tiger stripe breaks each band into brush strokes; a zebra's run on
+    const brk = v ? 1 : smooth((Br(u * 0.35, t) - 0.38) / 0.1);
+    const th = v ? -0.05 : 0.25 + (1 - brk) * 2;
+    const c = clamp((sn - th) * 6 + 0.5, 0, 1);
+    o[0] = A[0] + (B[0] - A[0]) * c; o[1] = A[1] + (B[1] - A[1]) * c; o[2] = A[2] + (B[2] - A[2]) * c;
+  });
+}, { res: 2 }];

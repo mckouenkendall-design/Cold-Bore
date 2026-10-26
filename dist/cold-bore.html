@@ -1365,7 +1365,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 8:01 AM";
+const BUILD = "Oct 26, 8:06 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -25530,7 +25530,7 @@ const SKINS = [
   { id: 'topo', name: 'Contour', r: 2, furn: { pat: 'topo', a: '#1f3a35', b: '#7fd6b8' }, metal: { pat: 'topo', a: '#182826', b: '#4f9a84' }, acc: '#101816' },
   { id: 'hazard', name: 'Hazard', r: 2, furn: { pat: 'stripes', a: '#f2c318', b: '#18181a' }, metal: '#232326', acc: '#f2c318' },
   { id: 'splat', name: 'Paint Shop', r: 2, furn: { pat: 'splat', base: '#e9e4d6', cols: ['#e0413a', '#2f6db5', '#f2c318', '#3f8f4f'] }, metal: { col: '#26282c', over: { pat: 'splat', base: 'none', sparse: 1, seed: 'm', cols: ['#e0413a', '#2f6db5', '#f2c318', '#f4f1e8'] } }, acc: { col: '#16181b', over: { pat: 'splat', base: 'none', sparse: 1, seed: 'a', s: 0.7, cols: ['#e0413a', '#2f6db5', '#f2c318', '#f4f1e8'] } } },
-  { id: 'zebra', name: 'Savannah', r: 2, furn: { pat: 'tiger', a: '#efe9da', b: '#121214' }, metal: '#1a1b1e', acc: '#0f1012' },
+  { id: 'zebra', name: 'Savannah', r: 2, furn: { pat: 'tiger', a: '#efe9da', b: '#121214', vertical: 1 }, metal: '#1a1b1e', acc: '#0f1012' },
   { id: 'plaid', name: 'Lumberjack', r: 2, furn: { pat: 'plaid', a: '#a8312b', b: '#1c1c1e' }, metal: '#2a2c30', acc: '#18191c' },
   // rare, second batch: new kinds of pattern
   { id: 'terrain', name: 'Mixed Terrain', r: 2, furn: { pat: 'terrain', cols: ['#a39669', '#c9bf93', '#73804c', '#4d3b26', '#39492b', '#e0d8b6'] }, metal: { pat: 'terrain', cols: ['#a39669', '#c9bf93', '#73804c', '#4d3b26', '#39492b', '#e0d8b6'] }, acc: '#2e3222' },
@@ -25691,9 +25691,7 @@ const PAT_KINDS = {
   // ---- the original set (kept exactly as it was) ----
   wood: [160, 48, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.strokeStyle = p.b; for (let i = 0; i < 16; i++) { x.globalAlpha = R.r(0.25, 0.8); x.lineWidth = R.r(0.6, 2.2); const y = R.r(0, h); x.beginPath(); x.moveTo(-5, y); x.bezierCurveTo(w * 0.3, y + R.r(-5, 5), w * 0.6, y + R.r(-5, 5), w + 5, y); x.stroke(); } x.globalAlpha = 0.5; x.fillStyle = p.b; for (let i = 0; i < 3; i++) { x.beginPath(); x.ellipse(R.r(0, w), R.r(0, h), R.r(5, 12), R.r(1.5, 3), 0, 0, TAU); x.fill(); } }],
   laminate: [80, 48, (x, w, h, R, p) => { for (let y = 0; y < h; y += 4) { x.fillStyle = (y / 4) % 2 ? p.a : p.b; x.fillRect(0, y, w, 4); } x.strokeStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i < 9; i++) { const y = R.r(0, h); x.beginPath(); x.moveTo(0, y); x.lineTo(w, y + R.r(-2, 2)); x.stroke(); } }],
-  camo: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.cols[0]; x.fillRect(0, 0, w, h); for (let i = 0; i < 26; i++) { x.fillStyle = p.cols[1 + (i % (p.cols.length - 1))]; const cx = R.r(0, w), cy = R.r(0, h); for (let ox = -w; ox <= w; ox += w) for (let oy = -h; oy <= h; oy += h) { x.beginPath(); for (let k = 0; k < 7; k++) { const an = (k / 7) * TAU, rr = R.r(6, 16); x.lineTo(cx + ox + Math.cos(an) * rr * 1.5, cy + oy + Math.sin(an) * rr * 0.8); } x.closePath(); x.fill(); } } }],
   digital: [96, 96, (x, w, h, R, p) => { x.fillStyle = p.cols[0]; x.fillRect(0, 0, w, h); for (let i = 0; i < 150; i++) { x.fillStyle = p.cols[R.i(1, p.cols.length - 1)]; const s = 6; x.fillRect(R.i(0, w / s) * s, R.i(0, h / s) * s, s * R.i(1, 3), s * R.i(1, 2)); } }],
-  tiger: [96, 64, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, w, h); x.fillStyle = p.b; for (let i = 0; i < 9; i++) { const bx = (i / 9) * w + R.r(-3, 3); x.beginPath(); x.moveTo(bx, -2); x.bezierCurveTo(bx + R.r(4, 12), h * 0.3, bx - R.r(4, 12), h * 0.6, bx + R.r(-3, 6), h + 2); x.lineTo(bx + R.r(3, 7), h + 2); x.bezierCurveTo(bx - R.r(0, 8), h * 0.6, bx + R.r(8, 16), h * 0.3, bx + R.r(2, 6), -2); x.closePath(); x.fill(); } }],
   carbon: [16, 16, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, 16, 16); x.fillStyle = p.a; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8); x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(0, 0, 8, 3); x.fillRect(8, 8, 8, 3); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, 6, 8, 2); x.fillRect(8, 14, 8, 2); }],
   hex: [42, 48, (x, w, h, R, p) => { x.fillStyle = p.b; x.fillRect(0, 0, w, h); x.strokeStyle = p.a; x.lineWidth = 2.2; const hx = (cx, cy) => { x.beginPath(); for (let k = 0; k < 6; k++) { const an = (k / 6) * TAU + Math.PI / 6; x.lineTo(cx + Math.cos(an) * 13, cy + Math.sin(an) * 13); } x.closePath(); x.stroke(); }; hx(0, 0); hx(w, 0); hx(0, h); hx(w, h); hx(w / 2, h / 2); }],
   stripes: [40, 40, (x, w, h, R, p) => { x.fillStyle = p.a; x.fillRect(0, 0, 40, 40); x.fillStyle = p.b; x.beginPath(); x.moveTo(0, 40); x.lineTo(20, 40); x.lineTo(40, 20); x.lineTo(40, 0); x.closePath(); x.fill(); x.beginPath(); x.moveTo(0, 0); x.lineTo(0, 20); x.lineTo(20, 0); x.closePath(); x.fill(); }],
@@ -27071,6 +27069,41 @@ PAT_KINDS.scroll = [96, 80, (x, w, h, R, p) => {
   x.globalAlpha = 0.5; for (let i = 0; i < 260; i++) { const cx = R.r(0, w), cy = R.r(0, h); txRep(x, w, h, () => { x.beginPath(); x.arc(cx, cy, 0.18, 0, TAU); x.fill(); }); }
   x.globalAlpha = 1;
 }, { res: ST_RES }];
+
+// ---- Camouflage ----------------------------------------------------------------------------------------
+// Printed military camouflage (woodland, desert, snow, urban): the ground colour, then each further
+// colour as a layer of smooth organic shapes from noise, stretched sideways the way real patterns are
+// laid out along a body. Each layer is smaller and sparser than the one under it, so big interlocking
+// shapes carry the pattern and the darkest colour falls as small accents on top. Edges are crisp,
+// like print, with a slight ragged jag.
+PAT_KINDS.camo = [192, 128, (x, w, h, R, p, res) => {
+  const cols = p.cols.map(rgbOf), n = cols.length, L = [], J = stNoise(R, w, h, 1.6);
+  for (let k = 1; k < n; k++) L.push({ f: stFbm(R, w, h, Math.max(10, 30 - k * 6), 3), wx: stFbm(R, w, h, 40, 2), t: [0.5, 0.53, 0.58, 0.6, 0.62][k - 1] });
+  stShade(x, w, h, res, (X, Y, o) => {
+    let c = cols[0];
+    for (let k = 0; k < L.length; k++) {
+      const l = L[k], wx = X + (l.wx(X, Y) - 0.5) * 10, v = l.f(wx * 0.62, Y * 1.0) + (J(X, Y) - 0.5) * 0.035;
+      if (v > l.t) c = cols[k + 1];
+    }
+    o[0] = c[0]; o[1] = c[1]; o[2] = c[2];
+  });
+}, { res: 2 }];
+// Tiger stripe: dark ragged brush strokes running along the length on a lighter ground. vertical: 1
+// turns them upright (a zebra's hide).
+PAT_KINDS.tiger = [128, 96, (x, w, h, R, p, res) => {
+  const A = rgbOf(p.a), B = rgbOf(p.b), F = stFbm(R, w, h, 32, 3), W = stFbm(R, w, h, 48, 2), Br = stFbm(R, w, h, 16, 3), J = stNoise(R, w, h, 1.2), v = !!p.vertical;
+  const per = v ? 9.6 : 12;
+  stShade(x, w, h, res, (X, Y, o) => {
+    const u = v ? Y : X, t = v ? X : Y;
+    // bands across the length, bent by a slow wander, ragged at the edges
+    const sn = Math.sin((t / per) * TAU + (W(X, Y) - 0.5) * 9 + (F(X, Y) - 0.5) * 4) + (J(X, Y) - 0.5) * 0.25;
+    // tiger stripe breaks each band into brush strokes; a zebra's run on
+    const brk = v ? 1 : smooth((Br(u * 0.35, t) - 0.38) / 0.1);
+    const th = v ? -0.05 : 0.25 + (1 - brk) * 2;
+    const c = clamp((sn - th) * 6 + 0.5, 0, 1);
+    o[0] = A[0] + (B[0] - A[0]) * c; o[1] = A[1] + (B[1] - A[1]) * c; o[2] = A[2] + (B[2] - A[2]) * c;
+  });
+}, { res: 2 }];
 
 
 // ===== 12_partart.js =====
