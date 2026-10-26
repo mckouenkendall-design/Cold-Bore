@@ -1367,7 +1367,7 @@ body.portrait .scr.drillres { flex-direction: column; text-align: center; } body
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 9:25 AM";
+const BUILD = "Oct 26, 10:07 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -26190,7 +26190,7 @@ function gunShapes(gunId, cfg) {
       const lace = []; for (let x = -27.2, k = 0; x < -15; x += 1.5, k++) lace.push(x, k % 2 ? -3.15 : -5.05);
       Ln('#e6d3a4', lace, 0.26); Ln('rgba(0,0,0,0.35)', [-27.9, -4.1, -14.6, -4.0], 0.2);
     }
-    if (pg) { Rc('metal', -30 * s, 9.6 * s, 1.3, 4.5, 0.4); Rc('metal', 4, 2.4, fore - 6, 0.9, 0.3); P('acc', [-27, -5.2, -13, -5.6, -12, -3.4, -28, -2.9]); }
+    if (pg) { Rc('metal', -30 * s, 9.6 * s, 1.3, 4.5, 0.4, { mono: 1 }); Rc('metal', 4, 2.4, fore - 6, 0.9, 0.3); P('acc', [-27, -5.2, -13, -5.6, -12, -3.4, -28, -2.9]); }
     Rc('rubber', -37.8 * s, padTop, 1.6, 11.9 * s + (-2.1 - padTop), 0.6);
     stockBack = -37.8 * s;
     // action
@@ -26203,10 +26203,10 @@ function gunShapes(gunId, cfg) {
     if (A.semi) {
       Rc('metal', 10, 2.3, 7, 1.3, 0.4); C('acc', 14, -3.4, 0.7);
       if (magPart === 'mg_ext') Rc('acc', 10.6, 2.8, 5.6, 4.6, 0.5);
-      if (magPart === 'mg_quick') Ln('#d6a12a', [11.6, 3.6, 13.2, 5.4, 14.8, 3.6], 0.6);
+      if (magPart === 'mg_quick') { Rc('acc', 11.0, 3.2, 4.4, 2.0, 0.5); Ln('#d6a12a', [11.9, 3.7, 13.2, 4.7, 14.5, 3.7], 0.5); } // the quick-change magazine's release block, with its yellow mark
     } else {
       Rc('metal', 10.5, 2.3, 9, magPart === 'mg_ext' ? 2.0 : 0.8, 0.3);
-      if (magPart === 'mg_quick') Ln('#d6a12a', [13.4, 3.1, 15, 4.9, 16.6, 3.1], 0.6);
+      if (magPart === 'mg_quick') { Rc('acc', 12.8, 2.7, 4.4, 2.0, 0.5); Ln('#d6a12a', [13.7, 3.2, 15, 4.2, 16.3, 3.2], 0.5); }
       if (magPart === 'mg_k_trench') { // the old twenty-round drum, hung under the rifle
         Rc('metal', 11.2, 2.6, 6.6, 3.2, 0.4); C('metal', 14.6, 8.2, 3.7); C('acc', 14.6, 8.2, 1.3); Rc('metal', 17.6, 7.4, 2.4, 1.6, 0.4);
         Ln('rgba(255,255,255,0.14)', [12.2, 5.6, 17.0, 5.6], 0.3);
@@ -26236,7 +26236,7 @@ function gunShapes(gunId, cfg) {
     Rc('acc', -22 * s, (stock === 'st_cheek' ? -7.8 : -6.6) * s, 13 * s, (stock === 'st_cheek' ? 3.8 : 2.6) * s, 0.7);
     P('furn', [-31 * s, -5.2 * s, -28.6 * s, -5.2 * s, -28.6 * s, 8.4 * s, -31 * s, 8.4 * s]);
     if (!thin) P('furn', [-28.8 * s, 6.5 * s, -28.8 * s, 8.3 * s, -4, 1.6, -4, 0.2]); else Ln('#15171a', [-28.8 * s, 7.5 * s, -4, 0.8], 0.9);
-    if (stock === 'st_chassis' || A.amr || A.elr) { Rc('metal', -27 * s, 8.3 * s, 1.4, 4.6, 0.4); Rc('rubber', -27.6 * s, 12.6 * s, 2.6, 0.9, 0.3); }
+    if (stock === 'st_chassis' || A.amr || A.elr) { Rc('metal', -27 * s, 8.3 * s, 1.4, 4.6, 0.4, { mono: 1 }); Rc('rubber', -27.6 * s, 12.6 * s, 2.6, 0.9, 0.3); }
     Rc('rubber', -32.6 * s, -5.4 * s, 1.7, 14 * s, 0.6);
     stockBack = -32.6 * s;
     Ln('#0c0d0f', [2.5, 1.0, 3.2, 4.4, 8.8, 4.4, 9.8, 1.0], 0.7); Ln('#0c0d0f', [6, 1.2, 5.4, 3.4], 0.6);
@@ -26247,7 +26247,7 @@ function gunShapes(gunId, cfg) {
     }
     if (A.amr) { P('metal', [4, -6.5 * s, 8, -10.5 * s, 18, -10.5 * s, 22, -6.5 * s, 20.5, -6.5 * s, 17, -9.3 * s, 9, -9.3 * s, 5.5, -6.5 * s]); }
     // magazine
-    if (!A.take) { const ml = (magPart === 'mg_ext' ? 12.5 : 8.5) * s; P('acc', [10, 1, 18.5, 1, 17.6, 1 + ml, 9.4, 1 + ml]); if (magPart === 'mg_quick') Ln('#d6a12a', [11.5, 1 + ml, 13.5, 3.4 + ml, 15.5, 1 + ml], 0.7); }
+    if (!A.take) { const ml = (magPart === 'mg_ext' ? 12.5 : 8.5) * s; P('acc', [10, 1, 18.5, 1, 17.6, 1 + ml, 9.4, 1 + ml]); if (magPart === 'mg_quick') Ln('#d6a12a', [11.5, ml - 1.6, 13.5, ml - 0.2, 15.5, ml - 1.6], 0.6); }
     rx1 = 26;
     cuff = { x: 1.8, y: -4.4 * s, len: 6.6 };
   } else if (A.type === 'ar') {
@@ -26264,7 +26264,7 @@ function gunShapes(gunId, cfg) {
     const thin = stock === 'st_skel';
     P('furn', thin ? [-27 * s, -5.4 * s, -10, -5.4 * s, -10, -1.8 * s, -24 * s, -1.4 * s, -24.5 * s, 5.8 * s, -27 * s, 5.8 * s] : [-27 * s, -5.6 * s, -9, -5.6 * s, -9, -1.4 * s, -14, -1.0 * s, -23 * s, 6 * s, -27 * s, 6 * s]);
     if (stock === 'st_cheek') Rc('acc', -22 * s, -7.6 * s, 11, 2.2, 0.6);
-    if (stock === 'st_chassis') { Rc('metal', -24 * s, 6 * s, 1.3, 4.6, 0.4); Rc('acc', -22 * s, -7.2 * s, 11, 1.8, 0.6); }
+    if (stock === 'st_chassis') { Rc('metal', -24 * s, 6 * s, 1.3, 4.6, 0.4, { mono: 1 }); Rc('acc', -22 * s, -7.2 * s, 11, 1.8, 0.6); }
     Rc('rubber', -28.4 * s, -5.7 * s, 1.6, 11.8 * s, 0.6);
     stockBack = -28.4 * s;
     Ln('#0c0d0f', [3.4, 2.7 * s, 4.2, 5.6 * s, 9, 5.6 * s, 9.4, 2.7 * s], 0.7); Ln('#0c0d0f', [6.6, 2.8 * s, 6.1, 4.6 * s], 0.6);
@@ -26275,7 +26275,7 @@ function gunShapes(gunId, cfg) {
       const ml = (magPart === 'mg_ext' ? 14 : 10) * s;
       if (A.mag === 'curved') P('acc', [10, 2.5 * s, 16, 2.5 * s, 18.2, 2.5 * s + ml, 12.4, 2.5 * s + ml + 0.8]);
       else P('acc', [10, 2.5 * s, 17, 2.5 * s, 17.6, 2.5 * s + ml * 0.85, 10.8, 2.5 * s + ml * 0.85]);
-      if (magPart === 'mg_quick') Ln('#d6a12a', [12.5, 2.5 * s + ml, 14.5, 5 * s + ml, 16.5, 2.5 * s + ml], 0.7);
+      if (magPart === 'mg_quick') Ln('#d6a12a', [12.5, ml - 0.2, 14.5, ml + 1.2, 16.5, ml - 0.2], 0.6);
     }
     rx1 = 21;
     cuff = { x: -25.6 * s, y: -4.9 * s, len: 6.6 };
@@ -26303,7 +26303,7 @@ function gunShapes(gunId, cfg) {
       // thumbhole wooden stock with a cut-out
       P('furn', [0, -2.2, -9, -1.4, -34, -3.4, -36, -3.0, -36.4, 8.2, -33, 8.6, -13, 3.8, -8.5, 9.6, -3.6, 9.0, -1.2, 1.6], { hole: sk ? [-29, -0.6, -14, -0.2, -15, 2.8, -30, 5.4] : [-27, 0.2, -15, 0.4, -16, 2.6, -28, 4.6] });
       if (stock === 'st_cheek' || stock === 'st_chassis') P('acc', [-29, -6.0, -15, -5.6, -14, -3.0, -30, -3.3]);
-      if (stock === 'st_chassis') Rc('metal', -31, 8.3, 1.3, 4.4, 0.4);
+      if (stock === 'st_chassis') Rc('metal', -31, 8.3, 1.3, 4.4, 0.4, { mono: 1 });
       Rc('rubber', -37.8, -3.1, 1.6, 11.6, 0.6);
       stockBack = -37.8;
       cuff = { x: -35.2, y: 1.2, len: 5.4 };
@@ -26315,7 +26315,7 @@ function gunShapes(gunId, cfg) {
     const ol20 = magPart === 'mg_ol_20', ml = magPart === 'mg_ext' ? 12 : ol20 ? 13.6 : 8.5;
     P('acc', [10.5, 1.2, 18, 1.2, 20.2 + (ol20 ? 2 : 0), 1.2 + ml, 13 + (ol20 ? 1.8 : 0), 1.6 + ml]);
     if (ol20) for (let i = 1; i < 5; i++) { const f = i / 5; Ln('rgba(0,0,0,0.35)', [10.5 + 2.6 * f * f, 1.2 + ml * f, 18 + 3.6 * f * f, 1.2 + ml * f], 0.3); }
-    if (magPart === 'mg_quick') Ln('#d6a12a', [14, 1.6 + ml, 16, 4 + ml, 18.4, 1.4 + ml], 0.7);
+    if (magPart === 'mg_quick') Ln('#d6a12a', [14, ml - 0.9, 16, ml + 0.6, 18.4, ml - 1.0], 0.6);
     C('metal', 22, -2.2, 0.8);
     if (support === 'sp_hs_grip') { Rc('metal', 29.8, -1.3, 5.4, 0.9, 0.3); P('acc', [30.5, -0.6, 34.4, -0.6, 33.8, 7.6, 31.0, 7.6]); for (let y = 1.8; y < 7; y += 1.3) Ln('rgba(0,0,0,0.35)', [31.0, y, 33.9, y], 0.3); }
     rx1 = 26;
@@ -26382,7 +26382,7 @@ function gunShapes(gunId, cfg) {
   // support
   const fx = Math.min(hgEnd - 5, rx1 + 16);
   const bipod = (fat) => { const w = fat ? 1.35 : 1.0; Rc('rubber', fx - 1.5, -0.8, 3, 1.6, 0.4); Ln('#17191c', [fx, 0.6, fx - 5.5, 15.5], w); Ln('#17191c', [fx, 0.6, fx + 3.5, 15.8], w); Ln('#2a2d31', [fx - 5.5, 15.5, fx - 7.5, 15.8], 1.3 * w); Ln('#2a2d31', [fx + 3.5, 15.8, fx + 5.5, 15.9], 1.3 * w); if (fat) { Ln('#8d949c', [fx - 6.6, 15.7, fx - 6.9, 16.6], 0.35); Ln('#8d949c', [fx + 4.5, 15.9, fx + 4.6, 16.7], 0.35); } };
-  if (support === 'sp_bag') { P('bag', [stockBack + 3, 10.5, stockBack + 13, 9.6, stockBack + 14.5, 14.5, stockBack + 2, 14.8]); Ln('rgba(0,0,0,0.25)', [stockBack + 8, 10, stockBack + 8.4, 14.6], 0.3); }
+  if (support === 'sp_bag') { P('bag', [stockBack + 3, 10.5, stockBack + 13, 9.6, stockBack + 14.5, 14.5, stockBack + 2, 14.8], { rest: 'bag' }); Ln('rgba(0,0,0,0.25)', [stockBack + 8, 10, stockBack + 8.4, 14.6], 0.3); }
   else if (support === 'sp_bipod' || (A.amr && (support === 'sp_none' || support === 'sp_av_mono'))) bipod(support === 'sp_av_mono');
   else if (support === 'sp_tripod') { const hx2 = rx1 - 6; Rc('rubber', hx2 - 3.5, 2.2, 7, 2.2, 0.6); C('metal', hx2, 5.4, 1.5); Ln('#17191c', [hx2, 6, hx2 - 13, 26], 1.1); Ln('#17191c', [hx2, 6, hx2 + 12, 26], 1.1); Ln('#22252a', [hx2, 6, hx2 + 1.5, 26.5], 1.1); Ln('#17191c', [hx2 - 6.5, 16, hx2 + 6, 16], 0.5); }
   else if (support === 'sp_sticks') { // two crossed poles; the fore-end lies in the fork
@@ -26395,11 +26395,11 @@ function gunShapes(gunId, cfg) {
     C('metal', sling[0], sling[1] + 0.5, 0.55); C('metal', sling[2], sling[3] + 0.3, 0.55);
   } else if (support === 'sp_rearbag') { // a bag with two ears; the butt sits between them
     const x0 = stockBack + 0.6, gc = '#4f5a3c';
-    P(gc, [x0, 16, x0 + 12.5, 16, x0 + 12.8, 12.0, x0 + 11.6, 9.9, x0 + 9.6, 11.6, x0 + 3.2, 11.6, x0 + 1.2, 9.9, x0 - 0.2, 12.0]);
+    P(gc, [x0, 16, x0 + 12.5, 16, x0 + 12.8, 12.0, x0 + 11.6, 9.9, x0 + 9.6, 11.6, x0 + 3.2, 11.6, x0 + 1.2, 9.9, x0 - 0.2, 12.0], { rest: 'ears', mid: x0 + 6.4 });
     Ln('rgba(0,0,0,0.3)', [x0 + 0.6, 13.6, x0 + 12, 13.6], 0.3); Ln('rgba(230,225,190,0.45)', [x0 + 2, 15, x0 + 10.5, 15], 0.22);
   }
   if (support === 'sp_av_mono') { // a long screw-down leg under the butt
-    const mx = -27.4 * big; Rc('metal', mx, 8.3 * big, 1.8, 15.4 - 8.3 * big, 0.4); C('acc', mx + 0.9, 11.6, 1.2); Rc('rubber', mx - 1.2, 15.2, 4.2, 1.1, 0.4);
+    const mx = -27.4 * big; Rc('metal', mx, 8.3 * big, 1.8, 15.4 - 8.3 * big, 0.4, { mono: 1 }); C('acc', mx + 0.9, 11.6, 1.2); Rc('rubber', mx - 1.2, 15.2, 4.2, 1.1, 0.4);
   }
 
   // spare rounds: a leather cuff of three (or the Kessler's clip of five), showing which load is in the rifle
@@ -26420,6 +26420,24 @@ function gunShapes(gunId, cfg) {
     }
     if (clip) Rc('#a88436', cuff.x - 0.55, cuff.y - 0.25, 0.75, n * pitch + 0.15, 0.2);
     else Rc('#3b2a1d', cuff.x + L * 0.22, cuff.y - 0.45, L * 0.22, n * pitch + 0.5, 0.3);
+  }
+  // Anything that holds the rifle up from below (a monopod leg, a bag) is moved to meet the real
+  // underside of whatever stock is fitted where it stands, so none of them floats below a slim stock
+  // or cuts into a deep one.
+  const under = (xq) => {
+    let y = -Infinity;
+    for (const q of sh) {
+      if (q.t === 'l' || q.mono || q.rest || q.zone === 'bag') continue;
+      if (q.t === 'r') { if (xq >= q.x && xq <= q.x + q.w && q.y + q.h > y) y = q.y + q.h; }
+      else if (q.t === 'c') { const dx = xq - q.x; if (Math.abs(dx) < q.r) y = Math.max(y, q.y + Math.sqrt(q.r * q.r - dx * dx)); }
+      else for (let i = 0, n = q.pts.length; i < n; i += 2) { const ax = q.pts[i], ay = q.pts[i + 1], bx = q.pts[(i + 2) % n], by2 = q.pts[(i + 3) % n]; if ((ax - xq) * (bx - xq) <= 0 && ax !== bx) y = Math.max(y, ay + ((xq - ax) / (bx - ax)) * (by2 - ay)); }
+    }
+    return y;
+  };
+  for (const q of sh) {
+    if (q.mono) { const top = under(q.x + q.w / 2); if (isFinite(top) && top < q.y + q.h - 1) { const bot = q.y + q.h; q.y = top - 0.4; q.h = bot - q.y; } }
+    else if (q.rest === 'bag') { for (let i = 0; i < q.pts.length; i += 2) if (q.pts[i + 1] < 12) { const top = under(q.pts[i]); if (isFinite(top) && top < 13.5) q.pts[i + 1] = top + 0.1; } }
+    else if (q.rest === 'ears') { const top = under(q.mid); if (isFinite(top) && top < 14) { const dy = top + 0.1 - 11.6; for (let i = 1; i < q.pts.length; i += 2) if (q.pts[i] < 13) q.pts[i] += dy; } }
   }
   return { sh, x0: stockBack - 1, x1: tip + 1, art: A };
 }
@@ -40368,7 +40386,7 @@ UI.collection = function () {
       return `<div class="ccard t-${k}">
         <div class="cc-h"><span class="cc-ic">${ICON.box}</span><span class="cc-t"><b>${CACHE_NAME[k]}</b><i>${blurb[k]}</i></span></div>
         <div class="odds">${odds.map((p, r) => `<div class="od r${r}"><span>${RAR[r]}</span><i><i style="width:${p}%"></i></i><b>${p}%</b></div>`).join('')}</div>
-        <div class="cc-f"><button class="btn pri ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
+        <div class="cc-f">${have ? `<button class="btn pri" data-a="open" data-t="${k}" data-snd="riser">Open  ·  ${have}</button>` : ''}<button class="btn ${have ? 'ghost' : 'pri'} ${can ? '' : 'off'}" data-a="buycache" data-t="${k}" data-quiet="1">Buy  ·  ${fmtCr(price)} cr</button></div>
         <div class="cc-why ${can ? '' : 'no'}">${can ? (have ? 'You have ' + have + ' to open' : 'You have none of these') : 'Not enough credits: ' + fmtCr(price - d.credits) + ' short'}</div>
       </div>`;
     }).join('');
@@ -40455,12 +40473,13 @@ UI.openCache = function (tier) {
         <p>${res.dupe ? 'You already own this one. Traded in for <b class="co-cr" data-to="' + res.cr + '">0</b> credits.' : 'New skin. It fits every rifle you own' + (uiSkinMoves(s) ? ', and it moves.' : '.') + Progress.setOf(s.id).map((S) => ' ' + esc(S.name) + ' set: ' + S.skins.filter((id) => d.skins[id]).length + ' of ' + S.skins.length + '.').join('')}</p>
         ${(res.sets || []).map((S) => `<div class="co-set">${ICON.check}<b>Set complete: ${esc(S.name)}</b><i>+${fmtCr(S.cr)} cr and a ${esc(CACHE_NAME[S.cache].toLowerCase())}</i></div>`).join('')}</div>
       <div class="co-pre"><span class="co-hint">${esc(kind)}  ·  tap both latches</span><button class="btn ghost" data-a="skip">Skip</button></div>
-      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">Open next (' + left + ')</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
+      <div class="co-btns">${res.dupe ? '' : '<button class="btn ghost" data-a="fit" data-snd="equip">Put it on my rifle</button>'}${left ? '<button class="btn pri" data-a="next" data-snd="riser">' + (how && how !== 'best' && d.caches.indexOf(how) >= 0 ? 'Open another (' + d.caches.filter((c) => c === how).length + ')' : 'Open next (' + left + ')') + '</button>' : ''}${left > 1 ? '<button class="btn ghost" data-a="all" data-snd="riser">Open all</button>' : ''}<button class="btn ${left ? 'ghost' : 'pri'}" data-a="done">Done</button></div>
     </div></div>`, {
     latch(ds) { latch(+ds.i); },
     skip() { reveal(true); },
     fit(ds, b) { const c = gunCfg(gunId); c.skin = s.id; d.guns[gunId].cfg = c; Save.write(); UI.toast(s.name + ' fitted to ' + GUN_BY_ID[gunId].name + '.', 'good'); if (b) b.classList.add('off'); },
-    next() { UI.openCache(how === 'best' ? 'best' : undefined); },
+    // the next one of the same kind you chose, while you have any (then the best one left)
+    next() { UI.openCache(how && how !== 'best' && d.caches.indexOf(how) >= 0 ? how : 'best'); },
     all() { UI.openAll([res]); },
     done() { UI.closeOverlay(); if (UI.medalSweep) UI.medalSweep(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
   }, 'center tk');
