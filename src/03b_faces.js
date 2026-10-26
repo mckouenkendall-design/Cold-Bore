@@ -130,7 +130,8 @@ function figFace(c, G, part) {
   const sg = Math.sign(f || 1), edge = sg * hr * 0.99;
   if (v0 < 0) x0 = edge; if (v1 < 0) x1 = edge;
   if (Math.abs(x1 - x0) < 0.04) { const far = Math.abs(x0) > Math.abs(x1) ? x0 : x1; x0 = far; x1 = far - sg * 0.04; }
-  const talk = A.anim === 'talk' || (A.anim === 'phone' || A.anim === 'sitphone') ? Math.max(0, Math.sin(t * 11 + sd) * Math.sin(t * 2.3 + sd * 3)) : 0;
+  const sp = A.anim === 'talk' ? figSpeaking(A, t) : A.anim === 'phone' || A.anim === 'sitphone' || G.radio ? 1 : 0; // (talking, not listening)
+  const talk = sp > 0 ? sp * Math.max(0, Math.sin(t * 11 + sd) * Math.sin(t * 2.3 + sd * 3)) : 0;
   const open = Math.max(M.open, talk * 0.55), w = Math.abs(x1 - x0), mx = (x0 + x1) / 2, cv = M.curve * 0.02;
   const lip = figC(mix(G.ink, '#c9ccd1', 0.45));
   if (open > 0.12 && w > 0.012) {

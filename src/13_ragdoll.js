@@ -83,7 +83,7 @@ function rdLivingPose(A, t, ph) {
   const p = figPose(A.deathPose || 'stand', t, ph, A);
   if (A.animFrom && A.animAt !== undefined && A.deathAt !== undefined) {
     const u = (t - A.animAt) / POSE_BLEND;
-    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, figBlendK(u, key)); } }
   }
   return figJoints(p);
 }
@@ -466,7 +466,7 @@ function rdStep(R) {
     rdCollide(s, R.env);
   }
   rdFriction(s, R.env);
-  if (!window.__noScript) rdScript(s, R.env);
+  rdScript(s, R.env);
   for (let i = 0; i < RD_N; i++) s.gnd[i] = s.cn[i] > 0 ? 1 : 0; // what lies on the floor (for the joint limits next step)
   // A step may lose energy (the floor, friction, the joints) but never gain it: when the many
   // little corrections disagree they can push a body about, and a dead body does not bounce.

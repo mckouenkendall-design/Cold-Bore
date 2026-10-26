@@ -93,15 +93,16 @@ function figPose(anim, t, ph, A) {
   const b = Math.sin(t * 1.6 + (A.seed || 0)) * 0.015;
   const p = { hy: FIG.hip + b * 0.4, lean: 0, tL: 0.04, tR: -0.04, kL: 0.02, kR: 0.02, aL: 0.06, aR: -0.06, eL: 0.12, eR: 0.12 };
   const s = Math.sin(ph);
+  // the state somebody is in (once dead, the one they died in, which drawFigure remembers), for the poses that go with it
+  const st = A.dead ? A._st : A.state;
   anim = figAimAs(A, anim);
   switch (anim) {
     case 'walk':
-      figGait(p, FIG_GAIT.walk, ph);
-      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28; p.lean = 0.05;
+      figWalk(p, t, ph, A); // each person's own walk (src/03f_moves.js)
       break;
     case 'run': case 'panic':
       figGait(p, FIG_GAIT.run, ph); p.lean = 0.24;
-      if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
+      if (anim === 'panic') figPanic(p, t, ph, A);
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }
       break;
     case 'climb': { // up a ladder: hand over hand, a foot up to the next rung with each
@@ -133,15 +134,13 @@ function figPose(anim, t, ph, A) {
       break;
     }
     case 'talk':
-      p.aR = 0.5 + 0.2 * Math.sin(t * 3.1 + (A.seed || 0)); p.eR = 1.3 + 0.45 * Math.sin(t * 2.3);
-      p.aL = 0.15; p.eL = 0.5 + 0.2 * Math.sin(t * 1.7);
-      p.head = 0.05 * Math.sin(t * 1.3);
+      figTalk(p, t, A);
       break;
     case 'sit': case 'type': case 'sitphone': case 'sitdrink':
       p.hy = 0.5; p.tL = 1.5; p.tR = 1.42; p.kL = 1.5; p.kR = 1.42; p.lean = 0.04;
       if (anim === 'type') { p.aL = 0.75; p.eL = 0.8 + 0.06 * Math.sin(t * 9); p.aR = 0.7; p.eR = 0.85 + 0.06 * Math.cos(t * 11); p.lean = 0.12; }
       else if (anim === 'sitphone') { p.aR = 0.35; p.eR = 2.45; p.aL = 0.5; p.eL = 0.9; }
-      else if (anim === 'sitdrink') { const u = (Math.sin(t * 0.9 + (A.seed || 0)) > 0.75) ? 1 : 0; p.aR = 0.5; p.eR = u ? 2.2 : 1.2; p.aL = 0.5; p.eL = 0.9; }
+      else if (anim === 'sitdrink') { const u = smooth((Math.sin(t * 0.9 + (A.seed || 0)) - 0.6) / 0.3); p.aR = 0.5 + 0.05 * u; p.eR = lerp(1.2, 2.2, u); p.head = -0.1 * u; p.aL = 0.5; p.eL = 0.9; }
       else { p.aL = 0.55; p.eL = 0.9; p.aR = 0.5; p.eR = 0.95; }
       break;
     case 'lean':
@@ -152,9 +151,11 @@ function figPose(anim, t, ph, A) {
       break;
     case 'aim':
       p.aL = 1.45; p.eL = 0.1; p.aR = 1.5; p.eR = 0.05; p.tL = 0.22; p.tR = -0.2; p.lean = 0.06;
+      if (st === 'alarm') figAlarm(p, t, A); // a guard calling it in (src/03f_moves.js)
       break;
     case 'aimrifle':
       p.aL = 1.25; p.eL = 0.4; p.aR = 0.7; p.eR = 1.5; p.tL = 0.25; p.tR = -0.22; p.lean = 0.1;
+      if (st === 'alarm') figAlarm(p, t, A);
       break;
     case 'look':
       p.aL = 0.75; p.eL = 2.2; p.aR = 0.7; p.eR = 2.25; p.head = -0.05;
@@ -168,12 +169,11 @@ function figPose(anim, t, ph, A) {
     case 'kneel':
       p.hy = 0.47; p.tL = 0.4; p.kL = 1.95; p.tR = 0.3; p.kR = 1.9; p.aL = -0.5; p.eL = -0.7; p.aR = -0.55; p.eR = -0.7; p.lean = 0.08; p.head = 0.25;
       break;
-    case 'cower':
-      p.hy = 0.5; p.tL = 1.25; p.kL = 2.3; p.tR = 1.15; p.kR = 2.25; p.lean = 0.55; p.aL = 2.5; p.eL = 0.9; p.aR = 2.4; p.eR = 1.0;
-      p.hx = 0.02 * Math.sin(t * 18);
+    case 'cower': // crouched down low, feet on the ground (src/03f_moves.js)
+      figCower(p, t, A);
       break;
-    case 'work': // hands busy at waist height (welding, fishing, counting money)
-      p.lean = 0.18; p.aL = 0.7; p.eL = 0.8 + 0.1 * Math.sin(t * 5); p.aR = 0.6; p.eR = 0.9 + 0.1 * Math.cos(t * 6);
+    case 'work': // hands busy at waist height, with a tool that suits the person
+      figWork(p, t, A);
       break;
     case 'sweep':
       p.lean = 0.22; p.aL = 0.6 + 0.2 * Math.sin(t * 2.4); p.eL = 0.5; p.aR = 0.3 + 0.2 * Math.sin(t * 2.4); p.eR = 0.9;
@@ -213,13 +213,22 @@ function figPose(anim, t, ph, A) {
       }
       break;
     }
-    default: // stand
-      p.aL = 0.07 + b; p.aR = -0.05 - b;
+    default: // stand: each person's own way of waiting about, a suspicious one peering round
+      if (st === 'susp') figPeer(p, t, A);
+      else figStand(p, t, A, b);
   }
   return p;
 }
 
 const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
+// How far into a change of pose at u (0 to 1). The arms, head and body draw back a touch before they
+// go and go a touch too far before they settle; the hips and legs (which carry the weight) just ease.
+const POSE_SWING = { lean: 1, head: 1, aL: 1, aR: 1, eL: 1, eR: 1 };
+function figBlendK(u, key) {
+  if (POSE_SWING[key] !== 1) return smooth(u);
+  const c = 1.6, v = 2 * u;
+  return u < 0.5 ? (v * v * ((c + 1) * v - c)) / 2 : ((v - 2) * (v - 2) * ((c + 1) * (v - 2) + c) + 2) / 2;
+}
 
 // ---- changing pose ----------------------------------------------------------
 // Every change of pose eases over POSE_BLEND seconds, out of whatever the figure looked like at
@@ -237,7 +246,7 @@ function figLivePose(A) {
   const t = A.t || 0, ph = A.ph || 0, p = figPose(A.animCur || A.anim || 'stand', t, ph, A);
   if (A.animFrom && A.animAt !== undefined) {
     const u = (t - A.animAt) / POSE_BLEND;
-    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, figBlendK(u, key)); } }
   }
   return p;
 }
@@ -469,7 +478,10 @@ function figHandTypes(G, A) {
   else if (an === 'hands') { R = L = 'open'; }
   else if (an === 'wave') R = 'open';
   else if (an === 'talk') { R = Math.sin(G.t * 1.3 + G.seed) > 0.2 ? 'open' : 'relaxed'; L = 'relaxed'; }
-  else if (an === 'panic' || an === 'cower') { R = L = 'splay'; }
+  else if (an === 'cower') { R = L = figTraits(A).cower === 2 ? 'fist' : 'open'; }
+  else if (an === 'panic') { const P = figTraits(A).panic; R = L = P === 4 || P === 1 ? 'open' : 'splay'; if (A.sawKill && A.react > 0 && A.react < 0.85) R = 'open'; }
+  else if (A.state === 'susp' && an === 'stand') { R = 'open'; L = 'fist'; } // shading the eyes, a hand on the hip
+  else if (an === 'stand' && figTraits(A).pockets) { R = L = 'fist'; }
   else if (mood === 'alarm' || mood === 'hurt' || (A.state === 'susp' && A.role === 'guard')) { R = L = 'fist'; }
   else if (an === 'arms') { R = L = 'fist'; }
   G.handR = R; G.handL = L;
@@ -1243,7 +1255,7 @@ function figClip(c, G, mode) {
 
 // ---- things that belong to what somebody is doing --------------------------
 function figRifle(c, G) {
-  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead;
+  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead && !G.radio;
   const a = G.haR, b = G.haL;
   let dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), ox = a[0], oy = a[1];
   const dp = G.dead ? figAimAs(A, A.deathPose) : '', dropped = dp === 'guard' || dp === 'aimrifle'; // (a slung rifle stays on the back)
@@ -1251,6 +1263,7 @@ function figRifle(c, G) {
     const C = FIG_LOOSE.rifle, L = figLoose(G, 'rifle', figLooseFrom(G, 'rifle', G.st.drop[0] + G.fs * C.cx, Math.max(0.2, G.st.drop[1]), 0.8));
     ox = L ? L.x - Math.cos(L.r) * C.cx : G.cR[0]; oy = L ? L.y - Math.sin(L.r) * C.cx : Math.max(G.cR[1], 0.045); dx = L ? Math.cos(L.r) : G.fs; dy = L ? Math.sin(L.r) : 0; l = 0.34;
   }
+  else if (G.radio) { ox = b[0]; oy = b[1]; dx = G.fs * 0.45; dy = -0.89; l = 0.3; } // hanging by the grip from one hand while the other has the radio
   else if (!held || l < 0.05) { // not in the hands: slung on the back, muzzle up
     const o = -G.fl * (G.wc + 0.03); ox = figPX(G, 0.42, o); oy = figPY(G, 0.42, o); dx = G.ux + G.nx * G.fl * 0.2; dy = G.uy + G.ny * G.fl * 0.2; l = 0.3;
   }
@@ -1278,6 +1291,7 @@ function figRifle(c, G) {
 }
 function figProps(c, G) {
   const anim = G.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
+  if (G.radio || G.tool) { figTool(c, G, G.radio ? 'radio' : G.tool); return; } // (src/03g_tools.js)
   if (anim === 'aim') {
     // a pistol, pointing where the arm points
     let dx = ha[0] - G.elR[0], dy = ha[1] - G.elR[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
@@ -1844,6 +1858,8 @@ function drawFigure(ctx, A, env) {
   G.sc = sc; G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
+  if (!L.build) { const T = figTraits(A); G.bw = T.bw * (T.broad ? 1.08 : 1); } // heavy, slight, broad (drawn only: the shapes a round is tested against stay the same)
+  if (!dead) A._st = A.state; // remembered so the pose a body falls from is the one it was drawn in
   const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
   G.pressHand = null; if (A.woundFx && !dead) figWounded(A, G, an); // the flinch and the hand to the wound, drawn only
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
@@ -1881,8 +1897,9 @@ function drawFigure(ctx, A, env) {
   if (G.fine) { A._mood = faceMood(A); G.face = true; G.back = false; } else G.face = false;
   G.anim = an; if (G.fine) { figHandTypes(G, A); if (G.pressHand === 'R') G.handR = 'open'; else if (G.pressHand === 'L') G.handL = 'open'; }
   const K = figWear(G), bag = L.bag, anim = G.anim = an;
-  const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
-  const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
+  G.radio = !dead && figRadioUp(A, anim); G.tool = !dead && anim === 'work' ? figWorkTool(A) : null;
+  const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead && !G.radio, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
+  const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || (FIG_GRIP_ANIM[anim] === 1 && !G.radio) || G.radio || !!G.tool), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
 
   c.save(); c.translate(A.x, A.y); if (sc !== 1) c.scale(sc, sc);
   c.lineCap = 'round'; c.lineJoin = 'round';
