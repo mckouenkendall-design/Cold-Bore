@@ -326,7 +326,7 @@ const FIG_SHOES = ['#101114', '#2b2119', '#1c1e23'];
 const FGS = { ctx: null, A: null, L: null, env: null, st: null, anim: 'stand', px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
   sc: 1, ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
   ux: 0, uy: 1, nx: 1, ny: 0, T: 0.56, ww: 0.08, wc: 0.09, wsh: 0.1, hdx: 0, hdy: 0, htilt: 0, wind: 0,
-  cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false,
+  cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false, shL: null, shR: null,
   hip: [0, 0], neck: [0, 0], head: [0, 0], sh: [0, 0], knL: [0, 0], ftL: [0, 0], knR: [0, 0], ftR: [0, 0], elL: [0, 0], haL: [0, 0], elR: [0, 0], haR: [0, 0] };
 
 function figSeg(ctx, a, b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
@@ -490,7 +490,7 @@ function figHandTypes(G, A) {
 const FIG_ANKLE = 0.87, FIG_CUFF = 0.8; // how far down the shin the leg stops (inside the shoe), and where a sleeve or trouser leg ends
 // Everything behind the body: the far arm, both legs and both shoes. The far side is a shade darker.
 function figLimbsBack(c, G, K, farGrip) {
-  const st = G.st, bw = G.bw, px = G.px, sl = K.sleeve, lg = K.legs, hip = G.hip, sh = G.sh, elL = G.elL, haL = G.haL, knL = G.knL, knR = G.knR, ftL = G.ftL, ftR = G.ftR;
+  const st = G.st, bw = G.bw, px = G.px, sl = K.sleeve, lg = K.legs, hip = G.hip, sh = G.shL || G.sh, elL = G.elL, haL = G.haL, knL = G.knL, knR = G.knR, ftL = G.ftL, ftR = G.ftR;
   const cx = lerp(elL[0], haL[0], FIG_CUFF), cy = lerp(elL[1], haL[1], FIG_CUFF);
   const aLx = lerp(knL[0], ftL[0], FIG_ANKLE), aLy = lerp(knL[1], ftL[1], FIG_ANKLE), aRx = lerp(knR[0], ftR[0], FIG_ANKLE), aRy = lerp(knR[1], ftR[1], FIG_ANKLE);
   if (!G.hi) {
@@ -534,7 +534,7 @@ function figLimbsBack(c, G, K, farGrip) {
 }
 // The arm nearer to us, in front of everything. (At medium size its hand was painted with the head.)
 function figArmNear(c, G, K, grip) {
-  const bw = G.bw, sl = K.sleeve, sh = G.sh, el = G.elR, ha = G.haR;
+  const bw = G.bw, sl = K.sleeve, sh = G.shR || G.sh, el = G.elR, ha = G.haR;
   const cx = lerp(el[0], ha[0], FIG_CUFF), cy = lerp(el[1], ha[1], FIG_CUFF);
   if (!G.hi) {
     if (sl) { c.strokeStyle = figC(sl); c.lineWidth = Math.max(0.088 * bw, G.px * 1.1); c.beginPath(); c.moveTo(sh[0], sh[1]); c.lineTo(el[0], el[1]); c.lineTo(cx, cy); c.stroke(); }
@@ -1801,7 +1801,7 @@ function figRim(c, G, K) {
   const bw = G.bw, rw = G.rw, bag = G.L.bag;
   c.strokeStyle = G.rim;
   c.lineWidth = Math.max((K.sleeve ? 0.094 : 0.078) * bw + 2 * rw, G.px * 2.7);
-  c.beginPath(); figSeg(c, G.sh, G.elL); figSeg(c, G.elL, G.haL); figSeg(c, G.sh, G.elR); figSeg(c, G.elR, G.haR);
+  c.beginPath(); figSeg(c, G.shL || G.sh, G.elL); figSeg(c, G.elL, G.haL); figSeg(c, G.shR || G.sh, G.elR); figSeg(c, G.elR, G.haR);
   c.moveTo(G.hip[0], G.hip[1]); c.lineTo(G.knL[0], G.knL[1]); c.lineTo(lerp(G.knL[0], G.ftL[0], FIG_ANKLE), lerp(G.knL[1], G.ftL[1], FIG_ANKLE));
   c.moveTo(G.hip[0], G.hip[1]); c.lineTo(G.knR[0], G.knR[1]); c.lineTo(lerp(G.knR[0], G.ftR[0], FIG_ANKLE), lerp(G.knR[1], G.ftR[1], FIG_ANKLE));
   if (!G.hi) {
@@ -1863,6 +1863,7 @@ function drawFigure(ctx, A, env) {
   const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
   G.pressHand = null; if (A.woundFx && !dead) figWounded(A, G, an); // the flinch and the hand to the wound, drawn only
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
+  figTurnView(G, A); // half way round a turn: seen from the front (src/03h_turn.js)
   const mv = dead ? 0 : figMv(A);
   G.mv = dead ? 0 : mv; G.lag = dead ? 0 : clamp((st.s - st.vs * 0.03) * inv, -0.2, 0.2);
   // the light: how dim, and where the bright edge goes
