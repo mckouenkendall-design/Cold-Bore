@@ -2882,12 +2882,38 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
     kxGlow(ctx, '#ff4a3d', -L / 2 + 0.04, c.body - 0.19, braking ? 1.0 : 0.5, braking ? 0.7 : 0.35);
     if (braking && s > 5) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22; ctx.drawImage(kxBlob('#ff4a3d'), -L / 2 - 2.2, -0.12, 2.6, 0.3); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   }
+  if (s > 12) kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, !st);
   if (night && st && st.moving) { // headlight beam, and its patch on the road ahead
     ctx.globalCompositeOperation = 'lighter'; const g = ctx.createLinearGradient(L / 2, 0, L / 2 + 9, 0); g.addColorStop(0, 'rgba(255,240,190,0.28)'); g.addColorStop(1, 'rgba(255,240,190,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(L / 2, c.body - 0.2); ctx.lineTo(L / 2 + 9, c.body + 0.9); ctx.lineTo(L / 2 + 9, 0); ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 0.3; ctx.drawImage(kxBlob('#fff0be'), L / 2 + 0.5, -0.22, 7, 0.5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.restore();
+}
+// Close up, the weather on a car (drawn only, in the car's own frame): in rain the drops burst
+// in little crowns on the roof, bonnet and boot; on a frosty night a car parked for the night
+// has rime along its roof and bonnet. The glass is left clear, so whoever sits inside still shows.
+function kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, parked) {
+  const rain = S.weather === 'rain' || S.weather === 'storm', frost = parked && S.look && S.look.dress === 'frost';
+  if (!rain && !frost) return;
+  if (frost) {
+    ctx.fillStyle = 'rgba(236,243,250,0.75)'; ctx.beginPath();
+    ctx.rect(c0 + slopeR + 0.05, c.h - 0.035, c1 - c0 - slopeR - 0.08, 0.05);
+    ctx.rect(c1 + slopeF + 0.05, c.body - 0.03, L / 2 - c1 - slopeF - 0.2, 0.04); ctx.rect(-L / 2 + 0.12, c.body - 0.03, Math.max(0, c0 + L / 2 - 0.2), 0.04);
+    ctx.fill();
+    return;
+  }
+  // three places the rain lands: the roof, the bonnet, the boot; each splash lasts a fifth of a second
+  const t = env.t, n = env.s > 30 ? 9 : 5, r = Math.max(0.012, env.px * 0.7), hx = (k) => kxH(k * 7.31, x * 0.13);
+  ctx.strokeStyle = 'rgba(225,235,248,0.6)'; ctx.lineWidth = r; ctx.lineCap = 'round'; ctx.beginPath();
+  for (let k = 0; k < n; k++) {
+    const u = (t * 5 + hx(k) * 9) % 1, cyc = Math.floor(t * 5 + hx(k) * 9), h2 = kxH(cyc, k + x), part = k % 3;
+    const xa = part === 0 ? c0 + slopeR + 0.1 : part === 1 ? c1 + slopeF + 0.1 : -L / 2 + 0.15, xb = part === 0 ? c1 - 0.1 : part === 1 ? L / 2 - 0.25 : c0 - 0.1;
+    if (xb <= xa) continue;
+    const px = xa + (xb - xa) * h2, py = part === 0 ? c.h : c.body, sp = 0.05 + u * 0.09, up = Math.sin(u * Math.PI) * 0.07;
+    ctx.moveTo(px - sp * 0.4, py + 0.01); ctx.lineTo(px - sp, py + up); ctx.moveTo(px + sp * 0.4, py + 0.01); ctx.lineTo(px + sp, py + up);
+  }
+  ctx.stroke(); ctx.lineCap = 'butt';
 }
 // A side window that can be wound down. st.pane[i] = { a, b, t0, dur, gone }: the pane moves
 // from a to b (0 = shut, 1 = all the way down) over dur seconds from time t0.
