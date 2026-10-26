@@ -45,6 +45,7 @@ UI.dossier = function () {
 
 // Choose a calling card and a reticle tint. Locked ones say how to earn them.
 UI.looks = function () {
+  if (CB.cardsCatchUp) CB.cardsCatchUp();
   const d = Save.data, own = (k, id) => !!d.tester || !!(d.cos[k] || {})[id];
   const cards = COS_CARDS.map((c) => `<button class="lk-card ${d.cos.card === c.id ? 'on' : ''} ${own('cards', c.id) ? '' : 'locked'}" data-a="card" data-id="${c.id}"><canvas data-card="${c.id}" data-lazy></canvas><b>${esc(c.name)}</b><i>${own('cards', c.id) ? (d.cos.card === c.id ? 'In use' : 'Yours') : esc(c.how)}</i></button>`).join('');
   const tints = COS_TINTS.map((c) => `<button class="lk-tint ${d.cos.tint === c.id ? 'on' : ''} ${own('tints', c.id) ? '' : 'locked'}" data-a="tint" data-id="${c.id}"><canvas data-tint="${c.id}" data-lazy></canvas><b>${esc(c.name)}</b><i>${own('tints', c.id) ? (d.cos.tint === c.id ? 'In use' : 'Yours') : esc(c.how)}</i></button>`).join('');
