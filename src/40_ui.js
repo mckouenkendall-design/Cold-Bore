@@ -28,7 +28,11 @@ const ICON = {
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 10-3-3M3 14h15a3 3 0 11-3 3M3 19h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
   room: '<svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 9.5h12M6 15.5h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="8.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="11.6" r="1.1" fill="currentColor"/><circle cx="8.5" cy="17.6" r="1.1" fill="currentColor"/><circle cx="15.5" cy="17.6" r="1.1" fill="currentColor"/></svg>',
   guide: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="18.5" r="2.6" fill="currentColor"/><circle cx="18.5" cy="5.5" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 17c5-1.2 1.5-7.8 7-9.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.4 2.6" stroke-linecap="round"/></svg>',
+  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  guard: '<svg viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="3.2" fill="currentColor"/><path d="M5 21v-4.5a7 7 0 0114 0V21z" fill="currentColor"/></svg>',
+  file: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6l2 2h8v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  look: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5l5.5 5.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M8 10.5h5M10.5 8v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
 };
 const fmtCr = (n) => Math.round(n).toLocaleString('en-US');
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -49,6 +53,7 @@ function uiSkinMoves(s) {
 UI.ensure = function () {
   if (UI.root) return;
   UI.root = document.getElementById('ui'); UI.over = document.getElementById('overlay');
+  CB.grunge();
   const click = (map) => (e) => {
     const t = e.target.closest('[data-a]'); if (!t || t.classList.contains('off')) return;
     Sfx.unlock(); if (Sfx.mode === 'off' && Game.state !== 'mission') Sfx.menu();
@@ -96,7 +101,7 @@ UI.toast = function (text, cls) {
 //   <canvas data-gun="id" [data-cfg] [data-live]>                          a rifle
 //   <canvas data-part-id="id" data-part-slot="slot" data-gun [data-cfg] [data-dim]>   one part, side view
 //   <canvas data-glass="scopeId" data-gun [data-cfg]>                      the view through a scope
-//   <canvas data-swatch="skinId" [data-gun]>                               a skin swatch
+//   <canvas data-swatch="skinId" [data-gun] [data-rifle]>                  a skin swatch (data-rifle: worn by that rifle)
 //   <canvas data-mthumb="missionId" [data-v]>                              a picture of a mission's scene
 // Add data-lazy and it is only drawn once it has scrolled into view (a grid of ninety skins must not
 // freeze the phone). Skins that move are redrawn a couple of dozen times a second, but only while
@@ -118,7 +123,7 @@ UI.paintIn = function (box, where) {
     const j = UI.jobFor(cv); if (!j) return;
     j.where = where; cv._job = j;
     if (j.lazy) lazy.push(cv);
-    else if (j.kind === 'thumb') UI.queue(j);
+    else if (j.kind === 'thumb' || j.kind === 'tphoto') UI.queue(j);
     else { UI.paintJob(j); j.done = true; j.vis = true; if (j.anim) UI.live.push(j); }
   });
   if (lazy.length) UI.watch(where, lazy);
@@ -132,9 +137,20 @@ UI.jobFor = function (cv) {
     let sk = SKIN_BY_ID[ds.swatch] || SKINS[0];
     // "factory finish" is a different colour on every rifle, so show the colours of the rifle in question
     if (sk.kind === 'factory' && GUN_ART[ds.gun]) { const A = GUN_ART[ds.gun]; sk = { id: 'factory:' + ds.gun, furn: A.furn, metal: A.metal, acc: A.acc }; }
-    return { cv, lazy, kind: 'swatch', skin: sk, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
+    // data-rifle: show the skin worn by a rifle (the one in data-gun) instead of three slanted panels
+    const rifle = ds.rifle !== undefined && GUN_BY_ID[ds.gun] ? ds.gun : null;
+    return { cv, lazy, kind: 'swatch', skin: sk, rifle, cfg: rifle ? Object.assign({}, gunCfg(rifle), { skin: SKIN_BY_ID[ds.swatch] ? ds.swatch : 'factory' }) : null, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
   }
   if (ds.mthumb) return { cv, lazy, kind: 'thumb', id: ds.mthumb, v: +ds.v || 0 };
+  if (ds.tphoto) return { cv, lazy, kind: 'tphoto', id: ds.tphoto };
+  // drawn pictures (45_ui_art.js and 44_portraits.js); the ones that move are redrawn while on screen
+  if (ds.insignia) return { cv, lazy, kind: 'insig', n: +ds.insignia, pres: +ds.pres || 0 };
+  if (ds.portrait) return { cv, lazy, kind: 'portrait', who: ds.portrait, mood: ds.mood || 'calm', anim: ds.mood === 'talk' };
+  if (ds.card) return { cv, lazy, kind: 'card', id: ds.card, anim: !!ds.live && CB.cardMoves(ds.card) };
+  if (ds.case) return { cv, lazy, kind: 'case', tier: ds.case, open: +ds.open || 0, anim: !!ds.live };
+  if (ds.medal) return { cv, lazy, kind: 'medal', id: ds.medal, tier: +ds.tier || 0 };
+  if (ds.tint) return { cv, lazy, kind: 'tint', id: ds.tint };
+  if (ds.drill) return { cv, lazy, kind: 'drill', id: ds.drill };
   if (ds.gun) { const cfg = cfgOf(ds.gun); return { cv, lazy, kind: 'gun', id: ds.gun, cfg, anim: !!ds.live && (uiSkinMoves(SKIN_BY_ID[cfg.skin || 'factory']) || ds.gun === 'stormglass') }; }
   return null;
 };
@@ -154,6 +170,13 @@ UI.paintJob = function (j, time) {
     if (j.kind === 'gun') drawGun(x, j.id, j.cfg, w / 2, h / 2, w - 10, h - 8, { time: t });
     else if (j.kind === 'part') drawPartArt(x, j.slot, j.id, 3, 3, w - 6, h - 6, { gunId: j.gun, cfg: j.cfg, time: t, dim: j.dim });
     else if (j.kind === 'glass') drawReticleThumb(x, j.id, w / 2, h / 2, Math.min(w, h) / 2 - 0.5, { gunId: j.gun, cfg: j.cfg, time: t });
+    else if (j.kind === 'swatch' && j.rifle) {
+      // in a small cell a skin whose only movement is the sweep of light keeps that light on the rifle
+      // (it starts again at the stock as it leaves the muzzle) instead of resting between sweeps
+      if (j.shimOnly === undefined) j.shimOnly = !!j.skin.shimmer && !/"(anim|drift|pulse|flash)"/.test(JSON.stringify(j.skin));
+      const tt = j.shimOnly && time !== undefined ? (((t * 0.35) % 1) + 0.3) / 0.35 : t;
+      drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: tt });
+    }
     else if (j.kind === 'swatch') {
       drawSwatch(x, j.skin, 0, 0, w, h, t);
       if (j.skin.shimmer && time !== undefined) { // the same band of light that sweeps along the rifle
@@ -161,7 +184,15 @@ UI.paintJob = function (j, time) {
         const g = x.createLinearGradient(bx - bw, 0, bx + bw, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, rgba(j.skin.shimmer, 0.55)); g.addColorStop(1, 'rgba(255,255,255,0)');
         x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; x.transform(1, 0, -0.5, 1, h * 0.25, 0); x.fillRect(bx - bw, -2, bw * 2, h + 4); x.restore();
       }
-    } else if (j.kind === 'thumb') {
+    } else if (j.kind === 'insig') { const s = Math.min(w, h); CB.insignia(x, j.n, (w - s) / 2, (h - s) / 2, s, j.pres); }
+    else if (j.kind === 'portrait') { const s = Math.min(w, h); CB.portrait(x, j.cv.dataset.portrait || j.who, (w - s) / 2, (h - s) / 2, s, { mood: j.cv.dataset.mood || j.mood, t }); }
+    else if (j.kind === 'card') CB.callingCard(x, j.id, 0, 0, w, h, t);
+    else if (j.kind === 'case') CB.drawCase(x, j.tier, w, h, { t, open: j.open, glow: j.cv._glow || 0, rar: j.cv._rar });
+    else if (j.kind === 'medal') { const s = Math.min(w, h); CB.drawMedal(x, j.id, (w - s) / 2, (h - s) / 2, s, j.tier); }
+    else if (j.kind === 'tint') CB.drawTint(x, j.id, w, h);
+    else if (j.kind === 'drill') CB.drawDrill(x, j.id, w, h);
+    else if (j.kind === 'tphoto') { const M = MISSION_BY_ID[j.id], s = M && UI.targetPhoto(M, w, h); if (s) x.drawImage(s, 0, 0, s.width, s.height, 0, 0, w, h); }
+    else if (j.kind === 'thumb') {
       const M = MISSION_BY_ID[j.id], s = M && UI.sceneShot(M, j.v, w, h);
       if (s) { x.drawImage(s.cv, 0, 0, s.cv.width, s.cv.height, 0, 0, w, h); if (j.cv.id === 'thumb') { const lab = document.getElementById('thtime'); if (lab) lab.textContent = s.label + '  ·  ' + s.dist + ' m'; } }
     }
@@ -199,7 +230,7 @@ UI.pump = function () {
     const j = UI.pq.shift(); j.queued = false;
     if (!j.cv.isConnected) continue;
     UI.paintJob(j); j.done = true;
-    if (j.kind === 'thumb') break; // a scene picture is a big job: one per turn
+    if (j.kind === 'thumb' || j.kind === 'tphoto') break; // a scene or a target photo is a big job: one per turn
   }
   if (UI.pq.length) setTimeout(UI.pump, 16); else UI.pumping = false;
 };
@@ -212,13 +243,14 @@ UI.sceneShot = function (M, vi, w, h) {
     const cv = document.createElement('canvas'), st = buildStats('halden');
     const sim = new Sim(M, st, vi, { flags: Save.data.flags, shotSeed: 1 });
     for (let i = 0; i < 45; i++) sim.step(1 / 30);
+    sim.S.objects.forEach((o) => { if (o.kind === 'duck') o.alive = false; }); // a picture never gives away where the rubber duck is hidden
     const V = new View(cv), dpr = Math.min(2, window.devicePixelRatio || 1);
     V.layout(w, h, dpr, 'plain');
     const b = sim.S.bounds, zr = sim.S.refZ - sim.eye0.z, spanMil = ((b.x1 - b.x0) / zr) * 1000;
     sim.sh.zoom = sim.sh.zoomT = clamp((FOV_AT_1X / (spanMil * 0.5)) * ((V.R * 2) / w), 1.5, 14);
     sim.sh.swx = sim.sh.swy = 0;
     V.draw(sim, 0.016, 0);
-    const s = { cv, label: timeLabel(sim.S), dist: Math.round(zr) };
+    const s = { cv, label: timeLabel(sim.S), dist: Math.round(zr), key };
     UI.shots[key] = s; UI.shotKeys.push(key);
     if (UI.shotKeys.length > 28) delete UI.shots[UI.shotKeys.shift()];
     return s;
@@ -239,7 +271,11 @@ UI.tick = function (dt) {
   if (UI.attract) UI.attractStep(dt);
   if (Sfx.ok && Sfx.mode !== 'off') Sfx.pump();
   if (UI.onTick) UI.onTick(dt);
+  if (UI.anims.length) { const a = UI.anims; UI.anims = []; for (let i = 0; i < a.length; i++) { let keep = false; try { keep = a[i](dt) !== false; } catch (e) { keep = false; } if (keep) UI.anims.push(a[i]); } }
 };
+// Run fn(dt) every frame while the menus are up, until it returns false.
+UI.anims = [];
+UI.anim = function (fn) { UI.anims.push(fn); };
 
 // ---- the scope drifting over a night street on the title -------------------------------
 UI.attractStart = function () {
@@ -281,69 +317,126 @@ UI.attractStep = function (dt) {
 };
 
 // ---- title -------------------------------------------------------------------------------
+// The next contract to play: the first open one not yet finished (null once every one is).
+UI.nextContract = function () { const d = Save.data; return MISSIONS.find((m) => Progress.missionOpen(m) && !(d.missions[m.id] && d.missions[m.id].done)) || null; };
+// Where a contract sits in the story, as on the case board: III.4 is the fourth of chapter three.
+UI.contractNo = function (M) { return ROMAN[M.ch] + '.' + (MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1); };
+// The title. Coming back, the tagline gives way to your card: the calling card you chose behind
+// your rank insignia, the xp to the next rank, the rifle you carry and the contract waiting.
 UI.title = function () {
-  const has = Object.keys(Save.data.missions).length > 0 || Save.data.seen.prologue;
+  const d = Save.data, has = Object.keys(d.missions).length > 0 || d.seen.prologue;
   UI.ensure();
   if (!UI.attract) UI.attractStart(); else UI.attractLayout();
+  let me = '<p class="t-tag">The first shot from a cold barrel.<br>The one you do not get back.</p>';
+  if (has && d.seen.prologue) {
+    const x = Progress.rankXp(), r = rankOf(x), nx = UI.nextContract(), g = GUN_BY_ID[d.equipped] || GUNS[0];
+    const nextLine = nx ? 'Next: ' + esc(nx.title) + '  ·  ' + UI.contractNo(nx) : 'Every contract closed';
+    me = `<div class="t-me"><canvas class="tm-card" data-card="${(d.cos && d.cos.card) || 'plain'}" data-live="1"></canvas><span class="tm-shade"></span>
+      <canvas class="tm-ins" data-insignia="${r.n}" data-pres="${d.prestige || 0}"></canvas>
+      <span class="tm-t"><i>${r.n}  ·  ${esc(r.name)}</i><i class="xp"><i style="width:${UI.xpPct(x).toFixed(0)}%"></i></i><b>${nextLine}</b>${UI.dailyLine && UI.dailyLine() ? '<em>' + UI.dailyLine() + '</em>' : ''}</span>
+      <span class="tm-gun"><canvas data-gun="${g.id}" ${uiCfgAttr(gunCfg(g.id))}></canvas><i>${esc(g.name)}</i></span></div>`;
+  }
+  const nC = d.caches.length;
   UI.render(`
     <div class="scr title">
-      <div class="t-main">
+      <div class="t-main ${has && d.seen.prologue ? 'back' : ''}">
         <div class="eyebrow">A long-range story in six chapters</div>
         <h1 class="logo">COLD<span class="ret"></span>BORE</h1>
-        <p class="t-tag">The first shot from a cold barrel.<br>The one you do not get back.</p>
+        ${me}
         <div class="t-acts">
           <button class="btn pri big" data-a="play" data-snd="go">${has ? 'Continue' : 'Begin'}</button>
-          <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button></div>
+          <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button>${nC && d.seen.prologue ? `<button class="btn ghost t-caches" data-a="caches" aria-label="${nC} ${nC === 1 ? 'cache' : 'caches'} to open">${ICON.box}<span>${nC}</span></button>` : ''}</div>
         </div>
-        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.<br><span class="bld">Build ${BUILD}</span></div>
+        <div class="t-note">No ads and no real money. Everything is earned by playing.${Save.ok ? '' : '<br>This browser is blocking saves, so progress is lost when the tab closes.'}</div>
         <div class="t-turn">${ICON.turn}<span>Made to be played with the phone held sideways. Turn it for the full picture.</span></div>
       </div>
     </div>`, {
     play() { UI.attractStop(); if (!Save.data.seen.prologue) UI.prologue(); else UI.hub(); },
+    caches() { UI.attractStop(); UI.tab = 'collection'; UI.colTab = 'caches'; UI.hub(); },
     how() { UI.howTo(); },
     settings() { UI.settings(true); },
   }, 'is-title');
+  if (UI.medalSweep) UI.medalSweep(); // medals reached since the last contract (or by an older save) are paid here
 };
 
 // ---- story cards ---------------------------------------------------------------------------
-UI.cards = function (cards, done, kicker) {
-  let i = 0;
+// Each page of the story is a moment in a film: the place it happens, seen wide and panning
+// slowly behind black bars, the words typed out at the bottom beside the portrait of whoever the
+// page is about. A tap finishes the typing; the next tap turns the page. Skip leaves at once.
+//   cards  [{ h, p }]   art  [{ m: contract id for the place, v, who, past }] (38_story.js, STORY_ART)
+UI.storyShots = {}; UI.storyKeys = [];
+UI.cards = function (cards, done, kicker, art) {
+  let i = 0, tw = null;
+  const finish = () => { tw = null; UI.storyLeave = null; done(); };
   const show = () => {
-    const c = cards[i];
-    UI.render(`<div class="scr story" data-a="next" data-quiet="1">
-      <div class="st-in ${c.p.length > 330 ? 'long' : ''}"><div class="eyebrow">${esc(kicker || '')}</div>${c.h ? '<h2>' + esc(c.h) + '</h2>' : ''}<p>${esc(c.p)}</p></div>
-      <div class="st-foot"><span>${i + 1} / ${cards.length}</span><span class="tap">Tap to continue</span></div></div>`, {
-      next() { Sfx.ui('page'); i++; if (i >= cards.length) done(); else show(); },
+    const c = cards[i], a = (art && art[i]) || null, who = a && a.who;
+    UI.render(`<div class="scr story cine ${a ? 'has-pic' : ''} ${a && a.past ? 'past' : ''}" data-a="next" data-quiet="1">
+      <div class="st-picbox"><canvas class="st-pic"></canvas></div><div class="st-grade"></div>
+      <div class="st-lb top"></div><div class="st-lb bot"></div>
+      <div class="st-in ${c.p.length > 330 ? 'long' : ''}">${who ? `<canvas class="st-face" data-portrait="${who}" data-mood="talk"></canvas>` : ''}<div class="st-txt"><div class="eyebrow">${esc(kicker || '')}</div>${c.h ? '<h2>' + esc(c.h) + '</h2>' : ''}<p>${esc(c.p)}</p></div></div>
+      <div class="st-foot"><span>${i + 1} / ${cards.length}</span><span class="tap">Tap to continue</span></div>
+      ${cards.length > 1 ? '<button class="st-skip" data-a="skip" data-snd="back">Skip</button>' : ''}</div>`, {
+      next() {
+        if (tw && !tw.done) { tw.finish(); return; } // the first tap finishes the words
+        Sfx.ui('page'); i++; if (i >= cards.length) finish(); else show();
+      },
+      skip() { finish(); },
     }, 'is-story');
+    const root = UI.root.querySelector('.story');
+    if (a) UI.storyPicture(root.querySelector('.st-pic'), a);
     // a long page on a short screen: step the type down until it fits rather than cut it off
     const box = UI.root.querySelector('.st-in'), p = box && box.querySelector('p');
-    if (p) for (let fs = parseFloat(getComputedStyle(p).fontSize), n = 0; n < 8 && box.scrollHeight > box.clientHeight + 1 && fs > 13; n++) { fs -= 1; p.style.fontSize = fs + 'px'; }
+    if (p) for (let fs = parseFloat(getComputedStyle(p).fontSize), n = 0; n < 10 && box.scrollHeight > box.clientHeight + 1 && fs > 13; n++) { fs -= 1; p.style.fontSize = fs + 'px'; }
+    const face = root.querySelector('.st-face');
+    tw = UI.typeIn(p, 62, () => { if (face && face.isConnected) { face.dataset.mood = 'calm'; UI.paintJob(face._job || UI.jobFor(face), 0); } });
   };
   show();
 };
-UI.prologue = function () { UI.cards(PROLOGUE, () => { Save.data.seen.prologue = 1; Save.write(); UI.chapter = 1; UI.chapterIntro(1, () => UI.hub()); }, 'Cold Bore'); };
+// The place behind a story page: the contract's scene seen wide, a third wider than the screen
+// so it can pan, graded once (darker, and grey and cold for the past). Kept for a few pages.
+UI.storyPicture = function (cv, a) {
+  const M = MISSION_BY_ID[a.m]; if (!M || !cv) return;
+  const box = cv.parentElement, W = box.clientWidth, H = box.clientHeight; if (!W || !H) return;
+  const w = Math.round(W * 1.3), h = Math.round(H), key = a.m + '/' + (a.v || 0) + '/' + w + 'x' + h + (a.past ? 'p' : '');
+  let s = UI.storyShots[key];
+  if (!s) {
+    const shot = UI.sceneShot(M, a.v || 0, w, h); if (!shot) return;
+    const g = document.createElement('canvas'); g.width = shot.cv.width; g.height = shot.cv.height;
+    const x = g.getContext('2d'); x.drawImage(shot.cv, 0, 0);
+    x.globalCompositeOperation = 'saturation'; x.fillStyle = 'rgba(128,128,128,' + (a.past ? 0.85 : 0.25) + ')'; x.fillRect(0, 0, g.width, g.height);
+    x.globalCompositeOperation = 'multiply'; x.fillStyle = a.past ? '#8fa0b4' : '#c9c2b4'; x.fillRect(0, 0, g.width, g.height);
+    x.globalCompositeOperation = 'source-over';
+    s = UI.storyShots[key] = g; UI.storyKeys.push(key);
+    if (UI.storyKeys.length > 4) delete UI.storyShots[UI.storyKeys.shift()];
+    delete UI.shots[shot.key]; // the plain picture is not needed again
+  }
+  cv.width = s.width; cv.height = s.height; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.getContext('2d').drawImage(s, 0, 0);
+  cv.style.setProperty('--pan', -(w - W) + 'px');
+  cv.classList.add('pan');
+};
+UI.prologue = function () { UI.cards(PROLOGUE, () => { Save.data.seen.prologue = 1; Save.write(); UI.chapter = 1; UI.chapterIntro(1, () => UI.hub()); }, 'Cold Bore', STORY_ART.prologue.map((a, i) => Object.assign({ past: i < 3 }, a))); };
 UI.chapterIntro = function (n, done) {
   const c = CHAPTER_BY_N[n];
   const cards = c.intro.map((p, i) => ({ h: i === 0 ? c.title : '', p }));
   Save.data.seen['ch' + n] = 1; Save.write();
-  UI.cards(cards, done, 'Chapter ' + ROMAN[n] + '  ·  ' + c.place);
+  UI.cards(cards, done, 'Chapter ' + ROMAN[n] + '  ·  ' + c.place, STORY_ART.intro[n]);
 };
 
 // ---- hub shell -----------------------------------------------------------------------------
 // The frame around the five main screens: the rail of tabs, and a slim bar across the top with
 // whatever `head` the screen wants on the left and the rank and credits on the right.
 UI.shell = function (head, body, cls) {
-  const d = Save.data, r = rankOf(d.xp), nx = nextRank(d.xp);
-  const pct = nx ? ((d.xp - r.xp) / (nx.xp - r.xp)) * 100 : 100;
+  const d = Save.data, x = Progress.rankXp(), r = rankOf(x), pct = UI.xpPct(x);
   const tab = (id, icon, label, badge) => `<button class="tabb ${UI.tab === id ? 'on' : ''}" data-a="tab" data-tab="${id}">${ICON[icon]}<span>${label}</span>${badge ? '<em>' + badge + '</em>' : ''}</button>`;
   return `<div class="scr hub ${cls || ''}">
     <nav class="tabs">
-      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
+      ${tab('contracts', 'target', 'Contracts')}${tab('armory', 'rifle', 'Armory', d.newArmory ? 'New' : '')}<button class="tabb room" data-a="gunroom">${ICON.room}<span>Gun room</span></button>${tab('collection', 'gem', 'Collection', d.caches.length || '')}${tab('dossier', 'file', 'Dossier')}${tab('range', 'flag', 'Range')}${tab('settings', 'gear', 'Settings')}
     </nav>
     <div class="hubmain">
       <div class="top">
         <div class="top-l">${head || ''}</div>
-        <button class="rank" data-a="rankinfo"><b>${r.n}</b><span><i>${esc(r.name)}</i><i class="xp"><i style="width:${pct.toFixed(0)}%"></i></i></span></button>
+        <button class="rank" data-a="rankinfo"><canvas class="rk-ins" data-insignia="${r.n}" data-pres="${d.prestige || 0}"></canvas><span><i>${r.n}  ·  ${esc(r.name)}</i><i class="xp"><i style="width:${pct.toFixed(0)}%"></i></i></span></button>
         <div class="cr"><b>${fmtCr(d.credits)}</b><small>credits</small></div>
       </div>
       ${body}
@@ -362,93 +455,36 @@ UI.hub = function () {
   if (UI.tab === 'collection') return UI.collection();
   if (UI.tab === 'range') return UI.range();
   if (UI.tab === 'settings') return UI.settings(false);
+  if (UI.tab === 'dossier' && UI.dossier) return UI.dossier();
   return UI.contracts();
 };
+// The rank track: every rank in a row along a rail, its insignia, its xp and what it hands you.
+// Where you are is lit and the view opens there. At the top, a prestige starts the track again.
 UI.rankInfo = function () {
-  const d = Save.data, r = rankOf(d.xp), nx = nextRank(d.xp);
-  UI.overlay(`<div class="sheet"><div class="sh-head"><h3>Rank</h3><button class="x" data-a="close">${ICON.cross}</button></div>
-    <div class="sh-body"><p class="dim">Experience (xp) comes from finishing contracts, earning stars and completing challenges. Higher ranks unlock rifles and parts in the armory. Each new rank also brings a sealed cache.</p>
-    <div class="ranks">${RANKS.map((k) => `<div class="rk ${k.n === r.n ? 'cur' : k.n < r.n ? 'had' : ''}"><b>${k.n}</b><span>${esc(k.name)}</span><i>${fmtCr(k.xp)} xp</i></div>`).join('')}</div>
-    <p class="dim">You have ${fmtCr(d.xp)} xp${nx ? ', ' + fmtCr(nx.xp - d.xp) + ' to go until ' + esc(nx.name) : ''}.</p></div></div>`, { close() { UI.closeOverlay(); } });
+  const d = Save.data, x = Progress.rankXp(), r = rankOf(x), nx = nextRank(x), pres = d.prestige || 0;
+  const node = (k) => {
+    const w = rankReward(k.n, pres), got = k.n <= r.n, opens = Progress.opensAt(k.n), sale = opens.guns.length + opens.parts.length + opens.scopes.length;
+    return `<div class="rn ${k.n === r.n ? 'cur' : got ? 'had' : ''} ${k.grade === 1 ? 'fam' : ''}" ${k.n === r.n ? 'id="rncur"' : ''}>
+      <canvas data-insignia="${k.n}" data-pres="${pres}" data-lazy></canvas><b>${k.n}</b><span>${esc(k.name)}</span><i>${fmtCr(k.xp)} xp</i>
+      ${w ? `<em class="rw k-${w.k}">${got ? ICON.check : ''}${esc(w.text.replace(/^Calling card: /, 'Card: ').replace(/^Reticle tint: /, 'Tint: '))}</em>` : '<em class="rw none">Where it starts</em>'}
+      ${sale ? `<em class="rs">${opens.guns.length ? opens.guns.length + (opens.guns.length === 1 ? ' rifle' : ' rifles') : ''}${opens.guns.length && opens.parts.length + opens.scopes.length ? ', ' : ''}${opens.parts.length + opens.scopes.length ? opens.parts.length + opens.scopes.length + ' parts' : ''} for sale</em>` : ''}
+    </div>`;
+  };
+  UI.overlay(`<div class="sheet tall rtrack"><div class="sh-head"><canvas class="rt-ins" data-insignia="${r.n}" data-pres="${pres}"></canvas><div class="sh-t"><div class="eyebrow">Rank ${r.n} of ${RANKS.length}${pres ? '  ·  prestige ' + pres : ''}</div><h3>${esc(r.name)}</h3></div>
+      <div class="rt-xp"><div class="xpbar"><i style="width:${UI.xpPct(x).toFixed(1)}%"></i></div><span>${nx ? fmtCr(nx.xp - x) + ' xp to ' + esc(nx.name) : 'The top of the track'}</span></div><button class="x" data-a="close">${ICON.cross}</button></div>
+    <div class="sh-body"><div class="rtrail">${RANKS.map(node).join('')}</div>
+      <div class="rt-foot"><p class="dim">Experience comes from contracts, stars, challenges, medals and rifle mastery. Every rank hands you something on the way, and the ten marked with a clearance open rifles and parts at Pip's. Rank only ever counts up: the shop never closes again.</p>
+      ${Progress.canPrestige() ? '<button class="btn pri" data-a="prestige">Start the track again</button>' : `<p class="dim">At rank ${RANKS.length} you can start the track again from rank 1, keeping everything you own, with a star on your insignia for each time round.</p>`}</div></div></div>`, {
+    close() { UI.closeOverlay(); },
+    prestige() { if (Progress.prestige()) { UI.closeOverlay(); UI.toast('Prestige ' + Save.data.prestige + '. The track starts again.', 'good'); UI.hub(); } },
+  });
+  const cur = document.getElementById('rncur'), box = UI.over.querySelector('.rtrack .sh-body');
+  if (cur && box) box.scrollTop = Math.max(0, cur.offsetTop - box.clientHeight / 2 + cur.offsetHeight / 2);
 };
 
-// ---- contracts -------------------------------------------------------------------------------
-UI.contracts = function () {
-  const d = Save.data;
-  // open on the furthest chapter reached the first time
-  if (!UI._chSet) { UI._chSet = true; for (let n = 6; n >= 1; n--) if (Progress.chapterOpen(n)) { UI.chapter = n; break; } }
-  const n = UI.chapter, c = CHAPTER_BY_N[n], list = MISSIONS.filter((m) => m.ch === n), open = Progress.chapterOpen(n);
-  if (open && !d.seen['ch' + n]) return UI.chapterIntro(n, () => UI.contracts());
-  const st = list.reduce((s, m) => s + ((d.missions[m.id] && d.missions[m.id].stars) || 0), 0);
-  const chips = CHAPTERS.map((k) => { const o = Progress.chapterOpen(k.n); return `<button class="chip ${k.n === n ? 'on' : ''} ${o ? '' : 'locked'}" data-a="chap" data-n="${k.n}" title="${esc(k.title)}"><b>${ROMAN[k.n]}</b>${o ? '' : ICON.lock}</button>`; }).join('');
-  const rows = open ? list.map((m, i) => {
-    const rec = d.missions[m.id] || { stars: 0 }, ok = Progress.missionOpen(m);
-    return `<button class="mrow ${ok ? '' : 'locked'} ${rec.done ? 'done' : ''}" data-a="mission" data-id="${m.id}" ${ok ? '' : 'data-snd="deny"'}>
-      <span class="mth">${ok ? '<canvas data-mthumb="' + m.id + '" data-lazy></canvas>' : ICON.lock}<span class="num">${i + 1}</span>${ok ? starsHtml(rec.stars || 0) : ''}</span>
-      <span class="mb"><span class="mt"><b>${ok ? esc(m.title) : 'Locked'}</b><i>${ok ? m.range + ' m' + (m.outcomes && m.outcomes.some((o) => o.set) ? '  ·  a choice' : '') : 'Finish the contract before it'}</i></span>
-      ${ok ? `<span class="tags"><i class="medal ${rec.ch ? 'on' : ''}" title="Challenge">${ICON.medal}</i><i class="duck ${d.ducks[m.id] ? 'on' : ''}" title="Rubber duck">${ICON.duck}</i></span>` : ''}</span>
-    </button>`;
-  }).join('') : `<div class="empty">${ICON.lock}<p>Finish chapter ${ROMAN[n - 1]} to open this one.</p></div>`;
-  UI.render(UI.shell(`<div class="chips">${chips}</div>`, `
-    <div class="scroll">
-      <div class="chhead"><div><div class="eyebrow">Chapter ${ROMAN[n]}  ·  ${esc(c.place)}</div><h2>${esc(c.title)}</h2></div>
-        <div class="chmeta"><span>${starsHtml(0, 'one on')} ${st} / ${list.length * 3}</span>${open ? '<button class="lnk" data-a="story">Chapter opening</button>' : ''}</div></div>
-      <div class="mlist">${rows}</div>
-      ${open && Progress.chapterDone(n) && c.outro ? '<div class="outro"><div class="eyebrow">Afterwards</div><p>' + esc(c.outro) + '</p></div>' : ''}
-      ${d.seen.ending && n === 6 ? '<button class="btn ghost wide" data-a="epi">Read the ending again</button>' : ''}
-    </div>`), UI.shellHandlers({
-    chap(ds) { UI.chapter = +ds.n; UI.contracts(); },
-    story() { UI.chapterIntro(n, () => UI.contracts()); },
-    epi() { UI.epilogue(() => UI.contracts()); },
-    mission(ds) { const M = MISSION_BY_ID[ds.id]; if (!Progress.missionOpen(M)) { UI.toast('Finish the contract before it first.'); return; } UI.brief(M); },
-  }), 'is-contracts');
-};
+// ---- contracts: see 47_ui_board.js (the case board) ----
 
-// ---- briefing --------------------------------------------------------------------------------
-UI.brief = function (M, keep) {
-  const d = Save.data, flags = d.flags, rec = d.missions[M.id] || { stars: 0 };
-  if (!keep) UI.pick = { v: 0 };
-  const P = UI.pick, V = M.vantages || [{ name: 'Position', desc: '' }];
-  const gunId = d.equipped, cfg = gunCfg(gunId), st = buildStats(gunId, cfg), why = gunAllowed(M, st), g = GUN_BY_ID[gunId];
-  const intel = missionText(M, 'intel') || [], who = speakerOf(M);
-  const wind = M.wind || { v: 0 }, aw = Math.abs(wind.v || 0) * (V[P.v].windMul === undefined ? 1 : V[P.v].windMul);
-  const par = (typeof M.par === 'function' ? M.par(flags) : M.par) || 1;
-  const choice = M.outcomes && M.outcomes.some((o) => o.set);
-  UI.render(`<div class="scr brief">
-    <div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t"><div class="eyebrow">Chapter ${ROMAN[M.ch]}  ·  Contract ${MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1}</div><h2>${esc(M.title)}</h2></div><button class="btn ghost sm howbtn" data-a="showhow">${ICON.guide}<span>Show me how</span></button>${starsHtml(rec.stars || 0)}</div>
-    <div class="split">
-      <div class="side">
-        <div class="thumb"><canvas id="thumb" data-mthumb="${M.id}" data-v="${P.v}"></canvas><div class="th-cap"><span id="thtime"></span><span>${ICON.wind} ${aw < 0.3 ? 'Calm' : fmt(aw, 1) + ' m/s from ' + ((wind.v || 0) > 0 ? 'left' : 'right')}</span></div></div>
-        <div class="load">
-          <button class="gcard ${why ? 'bad' : ''}" data-a="gun"><span class="gc-pic plate"><canvas data-gun="${gunId}"></canvas></span><span class="gc-row"><span class="gc-t"><b>${esc(g.name)}</b><i>${esc(g.calName)}  ·  ${esc(st.scope.name)}  ·  ${st.silent ? 'silent' : st.quiet ? 'suppressed' : 'loud'}</i></span><span class="chg">Change</span></span></button>
-          ${why ? '<div class="warn">' + ICON.cross + '<span>' + esc(why) + ' Pick another rifle or fit different parts.</span></div>' : ''}
-        </div>
-        <div class="cta"><button class="btn pri big ${why ? 'off' : ''}" data-a="go" data-snd="go">${why ? 'Rifle not suitable' : 'Take the shot'}</button></div>
-      </div>
-      <div class="main scroll">
-        <div class="say"><b>${esc(who)}</b><p>${esc(missionText(M, 'brief'))}</p></div>
-        <div class="obj"><div class="eyebrow">Objective</div><p>${esc(missionText(M, 'objective'))}</p>${choice ? '<div class="choice">There is a decision to make on this one. It changes what comes later.</div>' : ''}</div>
-        ${!why && !st.quiet ? '<div class="note loud"><b>Your rifle is loud.</b> Everyone in earshot hears the shot unless something louder covers it.</div>' : ''}
-        ${V.length > 1 ? `<div class="vant"><div class="eyebrow">Where to set up</div><div class="vgrid">${V.map((v, i) => `<button class="vcard ${i === P.v ? 'on' : ''}" data-a="vant" data-i="${i}"><b>${esc(v.name)}</b>${v.tag ? '<em>' + esc(v.tag) + '</em>' : ''}<span>${esc(v.desc || '')}</span></button>`).join('')}</div></div>` : `<div class="vant one"><div class="eyebrow">Position</div><p><b>${esc(V[0].name)}.</b> ${esc(V[0].desc || '')}</p></div>`}
-        <div class="intel"><div class="eyebrow">What we know</div><ul>${intel.map((t) => '<li>' + esc(t) + '</li>').join('')}</ul></div>
-        <div class="goals"><div class="eyebrow">Rating</div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Complete the contract</span></div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Clean: no alarm, nobody sees it happen</span></div>
-          <div class="goal">${starsHtml(1, 'one on')}<span>Precise: ${par === 1 ? 'one shot' : 'no more than ' + par + ' shots'}</span></div>
-          <div class="goal ch ${rec.ch ? 'got' : ''}"><i>${ICON.medal}</i><span>Challenge: ${esc(M.challenge.text)}</span></div>
-          <div class="goal ch ${d.ducks[M.id] ? 'got' : ''}"><i>${ICON.duck}</i><span>A rubber duck is hidden somewhere in the scene</span></div>
-          <div class="pay">Pays <b>${fmtCr(M.reward.cr)}</b> credits and <b>${M.reward.xp}</b> xp the first time, more for stars and the challenge.</div>
-        </div>
-      </div>
-    </div>
-  </div>`, {
-    back() { UI.hub(); },
-    vant(ds) { P.v = +ds.i; UI.keepScroll(); UI.brief(M, true); },
-    gun() { UI.gunPicker(M); },
-    go() { UI.launch(M.id, { vantage: P.v }); },
-    showhow() { UI.showHow(M); },
-  }, 'is-brief');
-};
+// ---- briefing: see 46_ui_brief.js (the dossier) ----
 
 // ---- guided runs ------------------------------------------------------------------------------
 // The written walkthrough for a mission, as a numbered list (or a note that there is none yet).

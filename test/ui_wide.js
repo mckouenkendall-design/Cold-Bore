@@ -174,7 +174,8 @@ function richSaveInPage() {
     await tapSel('[data-a="back"]'); await wait(200);
     await tapSel('[data-a="play"]'); await look('04_story', '.story', 700);
     ok(await page.locator('.story').count() === 1, 'the prologue card shows after Begin');
-    for (let i = 0; i < 14 && (await page.locator('.story').count()); i++) { await tap(P.w / 2, P.h / 2); await wait(140); }
+    // story pages type their words out: the first tap finishes the words, the next turns the page
+    for (let i = 0; i < 24 && (await page.locator('.story').count()); i++) { await tap(P.w / 2, P.h / 2); await wait(140); }
     ok(await page.locator('.mrow').count() === 7, 'contracts shows the seven missions of chapter one');
     await look('05_contracts_fresh', '.mrow[data-id="c1m1"]', 1500);
     await tapSel('.mrow[data-id="c1m1"]'); await look('06_brief', '[data-a="go"]', 900);
@@ -244,16 +245,30 @@ function richSaveInPage() {
     ok(await ev(() => { const b = [...document.querySelectorAll('[data-a="buycache"]')]; return b.length === 3 && !b[0].classList.contains('off') && b[1].classList.contains('off') && b[2].classList.contains('off') && /not enough credits/i.test(document.querySelector('.ccard.t-vault .cc-why').innerText); }), 'a cache you cannot afford has its Buy button off and says why');
     ok(await ev(() => /no real money/i.test(document.querySelector('.caches').innerText) && /credits/i.test(document.querySelector('.caches').innerText) && ['50%', '30%', '14%', '5%', '1%', '22%', '38%'].every((p) => document.querySelector('.cgrid').innerText.indexOf(p) >= 0)), 'the caches page says there is no real money and shows the odds as percentages');
     await ev(() => { CB.Save.data.credits = 46200; CB.UI.colTab = 'progress'; CB.UI.collection(); }); await look('44_progress', null);
+    await ev(() => { CB.UI.colTab = 'medals'; CB.UI.collection(); }); await look('44b_medals', null);
+    await ev(() => { document.querySelector('.medals').scrollTop = 99999; }); await look('44c_medals_end', null);
+    // opening a cache: the case drops in, then the two latches are tapped by finger before it opens
     await ev(() => { CB.UI.colTab = 'caches'; CB.UI.collection(); CB.UI.openCache('vault'); }); await look('45_cache_shaking', null, 250);
-    await look('46_cache_open', '[data-a="done"]', 1300);
+    await look('45b_cache_latches', '#overlay [data-a="skip"]', 500);
+    await tapSel('#overlay .latch[data-i="0"]'); await tapSel('#overlay .latch[data-i="1"]');
+    await look('46_cache_open', '[data-a="done"]', 2700);
+    ok(await ev(() => !!document.querySelector('.cacheopen.shown')), 'tapping both latches opens the case and shows what was inside');
     await ev(() => { CB.UI.closeOverlay(); CB.UI.tab = 'range'; CB.UI.hub(); }); await look('50_range', '[data-a="go"]', 600);
     await ev(() => { CB.UI.rangeCfg.dist = 1800; CB.UI.rangeCfg.wind = -8; CB.UI.range(); }); await look('51_range_far', '[data-a="go"]', 600);
+    await ev(() => { CB.UI.rangeTab = 'drills'; CB.UI.range(); }); await look('51b_range_drills', '[data-a="drill"]', 600);
+    await ev(() => { CB.UI.drillResult(CB.drillMission('plates'), { win: true, time: 15, shots: 6, stats: { dhits: 5, dLast: 13.2 } }, {}); }); await look('51c_drill_result', '[data-a="again"]', 700);
+    await ev(() => { CB.UI.rangeTab = 'free'; });
     await ev(() => { CB.UI.rangeCfg.dist = 300; CB.UI.rangeCfg.wind = 0; CB.UI.tab = 'settings'; CB.UI.hub(); }); await look('52_settings', null);
     await ev(() => { document.querySelector('#ui .scroll').scrollTop = 99999; }); await look('53_settings_end', null, 300);
     ok(await ev(() => { const t = document.querySelector('#ui').innerText; return /kill camera/i.test(t) && /blood and x-ray detail/i.test(t) && !/slow motion/i.test(t); }), 'settings has the kill camera and blood switches and no slow motion switch');
     await ev(() => { document.querySelector('[data-a="export"]').click(); }); await look('54_save_code', '[data-a="copy"]');
     await ev(() => { CB.UI.closeOverlay(); document.querySelector('[data-a="reset"]').click(); }); await look('55_erase_confirm', '[data-a="close"]');
     await ev(() => { CB.UI.closeOverlay(); CB.UI.toast('Bought: Ranger 4-12x Mil-Dot', 'good'); CB.UI.toast('Not enough credits.', 'bad'); }); await look('56_toasts', null, 200);
+    // the dossier (choices and endings) and the looks you can choose
+    await ev(() => { const d = CB.Save.data; d.outcomes = { c2m5: { spared: 1 } }; d.missions.c2m5 = { done: true, stars: 2, plays: 1, outcome: 'spared' }; d.flags.sparedReyes = true; CB.UI.tab = 'dossier'; CB.UI.hub(); });
+    await look('57_dossier', '[data-a="looks"]', 700);
+    await ev(() => CB.UI.looks()); await look('58_looks', '[data-a="close"]', 600);
+    await ev(() => CB.UI.closeOverlay());
     // results, with the real numbers from a run by the test bot
     const res = await ev(() => {
       const d = CB.Save.data, M = CB.MISSIONS[17], gid = 'halden';
@@ -266,6 +281,11 @@ function richSaveInPage() {
     if (res.ok) {
       await look('60_results_win', '[data-a="next"]', 2200);
       ok(await page.locator('.results.win').count() === 1, 'the results screen says the contract was won');
+      // the payout is a sequence: a tap on the words jumps to the end, and a new rank then takes the screen
+      await tapSel('.results .say.after'); await wait(500);
+      if (await page.locator('#overlay .takeover').count()) { await look('60b_rank_up', '.takeover', 400); await tapSel('#overlay .takeover'); await wait(300); }
+      ok(await ev(() => !document.getElementById('overlay').classList.contains('show') && CB.UI.pay && CB.UI.pay.done), 'a tap jumps to the end of the payout, and the rank-up closes on a tap');
+      await look('60c_results_final', '[data-a="next"]', 300);
       await ev(() => { document.querySelector('.results .main.scroll').scrollTop = 99999; }); await look('61_results_win_end', '[data-a="next"]', 300);
       await ev(() => { const M = CB.MISSIONS[18], r = Object.assign({}, window.__res, { win: false, stars: 0, fail: { code: 'civ', text: 'You shot a bystander. The Ledger does not pay for mistakes, and the police do not forget them.' } }); CB.UI.results(M, r, { missionId: M.id, opts: { gun: 'halden' } }); });
       await look('62_results_lose', '[data-a="again"]', 500);
@@ -293,11 +313,18 @@ function richSaveInPage() {
       await tapSel('.acard[data-id="corvid"]'); await wait(400);
       await tapSel('[data-a="buy"]'); await wait(400);
       ok(await ev(() => !!CB.Save.data.guns.corvid && CB.Save.data.credits === 30000 - 11500 && CB.Save.data.equipped === 'corvid'), 'buying a rifle spends the credits and puts it in your hands');
+      // a new rifle comes out of its case first (on purpose: the unboxing is new)
+      await look('68_unbox', '#overlay .takeover .btn[data-a="close"]', 1200);
+      await tapSel('#overlay .takeover .btn[data-a="close"]'); await wait(300);
       await tapSel('.slot[data-slot="muzzle"]'); await wait(400);
       ok(await page.locator('#overlay .prow').count() >= 4, 'tapping the muzzle tile opens its part cards');
       const c0 = await ev(() => CB.Save.data.credits);
+      // tapping a part you do not own tries it on the rifle first; nothing is bought until Buy (on purpose: it used to buy at once)
       await tapSel('#overlay .prow[data-id="mz_suph"]'); await wait(450);
-      ok(await ev((c) => CB.Save.data.parts.mz_suph === 1 && CB.Save.data.guns.corvid.cfg.muzzle === 'mz_suph' && CB.Save.data.credits === c - 3600, c0), 'tapping a part you do not own buys it and fits it');
+      ok(await ev((c) => !CB.Save.data.parts.mz_suph && CB.Save.data.credits === c && !!document.querySelector('#overlay .preview .gh'), c0), 'tapping a part you do not own shows it on the rifle with the changes, without buying it');
+      await look('69_part_preview', '#overlay [data-a="buy"]', 300);
+      await tapSel('#overlay [data-a="buy"]'); await wait(450);
+      ok(await ev((c) => CB.Save.data.parts.mz_suph === 1 && CB.Save.data.guns.corvid.cfg.muzzle === 'mz_suph' && CB.Save.data.credits === c - 3600, c0), 'Buy in the preview buys the part and fits it');
       ok(await ev(() => { const c = document.querySelector('.slot[data-slot="muzzle"] canvas'); return c && c.dataset.partId === 'mz_suph' && c.width > 100; }), 'the muzzle tile now shows a picture of the new part');
       await tapSel('.slot[data-slot="muzzle"]'); await wait(350);
       await tapSel('#overlay .prow[data-id="mz_supl"]'); await wait(450);
@@ -314,12 +341,13 @@ function richSaveInPage() {
       await tapSel('.bench [data-a="back"]'); await wait(300);
       await tapSel('.tabb[data-tab="collection"]'); await wait(400);
       await tapSel('.seg [data-t="caches"]'); await wait(350);
-      const b0 = await ev(() => { const d = CB.Save.data; d.caches = []; CB.UI.collection(); return { cr: d.credits, skins: Object.keys(d.skins).length }; });
+      const b0 = await ev(() => { const d = CB.Save.data; d.caches = []; CB.UI.collection(); return { cr: d.credits, skins: Object.keys(d.skins).length, sets: Object.keys(d.sets || {}).length }; });
       await tapSel('.ccard.t-sealed [data-a="buycache"]'); await wait(400);
       ok(await ev((b) => CB.Save.data.caches.length === 1 && CB.Save.data.caches[0] === 'sealed' && CB.Save.data.credits === b.cr - 4500, b0), 'buying a sealed cache spends 4,500 credits and adds the cache');
-      await tapSel('.cachebox [data-a="open"]'); await wait(1500);
+      await tapSel('.cachebox [data-a="open"]'); await wait(700);
+      await tapSel('#overlay [data-a="skip"]'); await wait(500); // Skip jumps straight to what was inside
       await look('70_cache_opened_by_touch', '[data-a="done"]', 100);
-      ok(await ev((b) => { const d = CB.Save.data; return d.caches.length === 0 && (Object.keys(d.skins).length === b.skins + 1 || d.credits > b.cr - 4500); }, b0), 'opening it gives a skin (or credits for one already owned)');
+      ok(await ev((b) => { const d = CB.Save.data; const setPaid = Object.keys(d.sets || {}).length > b.sets; return (d.caches.length === 0 || setPaid) && (Object.keys(d.skins).length === b.skins + 1 || d.credits > b.cr - 4500); /* finishing a skin set pays a cache of its own */ }, b0), 'opening it gives a skin (or credits for one already owned)');
       await tapSel('#overlay [data-a="done"]'); await wait(300);
       ok(await ev(() => !document.getElementById('overlay').classList.contains('show')), 'Done closes the cache');
       await tapSel('.tabb[data-tab="settings"]'); await wait(350);

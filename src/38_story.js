@@ -31,6 +31,43 @@ const CHAPTERS = [
 ];
 const CHAPTER_BY_N = {}; CHAPTERS.forEach((c) => { CHAPTER_BY_N[c.n] = c; });
 
+// The five decisions, for the case board and the dossier. Each has the two ways it can go (the
+// story switch it sets) and a line for every way the contract can end that leads there.
+const DECISIONS = [
+  { m: 'c2m5', flag: 'sparedReyes', who: 'reyes', q: 'Tomas Reyes saw your muzzle flash, and he was walking to the detective.', yes: 'Reyes reached Varga', no: 'Reyes never reached the gate',
+    ways: { shot: 'You shot Reyes', silenced: 'The gunman got to him first', spared: 'You shot the gunman', ran: 'Reyes ran for it' } },
+  { m: 'c4m5', flag: 'savedBrandt', who: 'brandt', q: 'Marlow ordered Nadia Brandt dead. A masked man was on the fire escape.', yes: 'Brandt finished her story', no: 'Brandt never finished it',
+    ways: { saved: 'You stopped the masked man', waited: 'You waited, and he did it', toolate: 'You were too late', obeyed: 'You did as Marlow said' } },
+  { m: 'c5m5', flag: 'sparedMarlow', who: 'marlow', q: 'Marlow was burning the files and leaving.', yes: 'You left Marlow for Varga', no: 'You ended it at the safehouse',
+    ways: { spared: 'You wrecked her car and radio', killed: 'You shot Marlow' } },
+  { m: 'c6m5', flag: 'sparedRook', who: 'rook', q: 'Rook stood up with his hands raised, the way the man did three years ago.', yes: 'You let Rook walk away', no: 'Rook stayed on the ridge',
+    ways: { back: 'You shot him as he left', killed: 'You shot him, hands raised', early: 'You fired before he stood', rifle: 'You shot his rifle instead', wide: 'You put it wide, on purpose', held: 'You held your fire' } },
+  { m: 'c6m6', flag: 'arrestedAurel', who: 'aurel', q: 'Aurel\'s helicopter was lifting off. One shot.', yes: 'Varga arrested Aurel', no: 'Aurel never left Harrow Ridge',
+    ways: { killed: 'You shot Aurel through the cabin', arrested: 'You took out the tail rotor' } },
+];
+const ENDINGS = [
+  { title: 'Clean Hands', how: 'Spare all five' }, { title: 'The Wide Shot', how: 'Spare three or four' },
+  { title: 'Failure to Engage', how: 'Spare one or two' }, { title: 'Balanced Books', how: 'Spare none' },
+];
+
+// What each story page shows behind its words: the place (the scene of a contract, seen wide,
+// panning slowly) and, when the page is about someone, their portrait. m is a contract id, v its
+// vantage, who a portrait (44_portraits.js).
+const STORY_ART = {
+  prologue: [{ m: 'c6m3', who: 'rook' }, { m: 'c6m6' }, { m: 'c6m1' }, { m: 'c1m3', who: 'marlow' }],
+  intro: {
+    1: [{ m: 'c1m1' }, { m: 'c1m6', who: 'marlow' }],
+    2: [{ m: 'c2m1', who: 'maeve' }, { m: 'c2m4', who: 'pip' }],
+    3: [{ m: 'c3m1', who: 'august' }, { m: 'c3m3' }],
+    4: [{ m: 'c4m1' }, { m: 'c4m3', who: 'pip' }],
+    5: [{ m: 'c5m1', who: 'aurel' }, { m: 'c5m2', who: 'varga' }],
+    6: [{ m: 'c6m1' }, { m: 'c6m6' }],
+  },
+  outro: { 1: { m: 'c1m7', who: 'marlow' }, 2: { m: 'c2m7', who: 'aurel' }, 3: { m: 'c3m7', who: 'aurel' }, 4: { m: 'c4m7', who: 'pip' }, 5: { m: 'c5m7', who: 'rook' }, 6: { m: 'c6m6' } },
+  // the epilogue: one page per person, then the verdict, then Pip, then the thanks
+  epilogue: [{ m: 'c6m6', who: 'aurel' }, { m: 'c6m2', who: 'rook' }, { m: 'c5m5', who: 'marlow' }, { m: 'c4m5', who: 'brandt' }, { m: 'c2m5', who: 'reyes' }, { m: 'c1m7', who: 'varga' }, { m: 'c1m5', who: 'pip' }, { m: 'c1m1' }],
+};
+
 const CH1_AFTER = {
   c1m1: 'Clean. The shopkeepers of Brickworks keep their Friday takings for the first time in years. One collector is not a crew, though. Follow the money.',
   c1m2: 'The bag never arrived. The Calloways will count it twice tonight and come up short both times.',
