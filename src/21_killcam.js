@@ -3,7 +3,7 @@
 //
 // Contract with the game loop (src/20_game.js):
 //   KillCam.start(o)      begin. o = { sim, view, gunId, cfg, bullet, path, t0, tHit, hit,
-//                         actor, kills, gore, step }. Return false to decline.
+//                         actor, kills, gore, step, cut }. Return false to decline.
 //   KillCam.advance(dt)   dt = real seconds since last frame. Returns the simulation time
 //                         the world should have reached. The game steps the world up to it.
 //   KillCam.draw(dt)      paint the whole frame onto the game canvas.
@@ -12,32 +12,46 @@
 //   KillCam.stop()        tidy up.
 //   KillCam.active, KillCam.done, KillCam.rate (how fast time is passing, for the sound)
 //
+// Two options:
+//   THE SHORT CUT   KillCam.cut = 'short' (a setting the game keeps), or o.cut = 'short' for one
+//                   film: the same film in about five seconds (a glimpse of the muzzle, a quick
+//                   chase, the way in, the main thing hit, the way out, the fall), for replays
+//                   and second kills. Anything else, or nothing, is the full film.
+//   A MISSION'S OWN STYLE  a mission may carry cine: 'take' (or cine: { style: 'take' }). Its
+//                   film is then one unbroken real-time shot of the target in the real scene
+//                   from the shooter's side, at three-quarters: no rifle, no chase, no X-ray, no
+//                   numbers, captions or stamps. The round arrives, the body falls, the camera
+//                   holds on it and the picture goes down to black. (For a story moment: Rook,
+//                   hands raised.) It sends the beats fly, enter, exit (if it comes out), fall,
+//                   end, all at rate 1; never slow, near or resume.
+//
 // The film has five stages, each with its own picture:
-//   0  THE RIFLE    the player's rifle side on, the flash, the round leaving the muzzle.
-//   1  THE FLIGHT   a camera riding just behind the round through the real scene.
-//   2  THE SWING    the camera lets go of the round and swings round the target until it
-//                   looks across the line of fire, a little from the shooter's side (75
-//                   degrees off the line, drifting to 80), so the round is seen going into,
-//                   through and out of the body rather than flat across it. The scene fades
-//                   into "X-ray space".
-//   3  THE X-RAY    the deep slow motion. The round brakes over its last hand spans, all but
-//                   stops as it touches the skin, then crawls through the body. Bones and
-//                   organs on its line break; it comes out of the far side (or stays in).
-//   4  THE HOLD     the world speeds back up toward real time and the body is seen to fall
-//                   (the ragdoll, src/13_ragdoll.js); a moment after it lands, a flash back to
-//                   the scope, where the same body carries on from where the film left it.
+//   0  THE RIFLE    the player's rifle where the player is, the shot (src/21d_kcrifle.js).
+//   1  THE FLIGHT   a camera riding just behind the round through the real scene, the shot's
+//                   numbers along the bottom (src/21e_kctext.js).
+//   2  THE SWING    the camera lets go of the round and swings round to the first shot of the
+//                   X-ray; the real scene stays behind as a dark blue backdrop.
+//   3  THE X-RAY    the deep slow motion, as a radiograph (src/21b_kcxray.js), cut into shots
+//                   by the director (src/21c_kcdirect.js): the round brakes and goes in, a whip
+//                   to a macro of the main thing it hits (the film freezes there for half a
+//                   second), a whip out to the side as it comes out (or a last macro of where it
+//                   came to rest).
+//   4  THE FALL     the world speeds back up toward real time, the camera comes round to a
+//                   three-quarter view and the X-ray fades back into the real scene, where the
+//                   body falls (src/13_ragdoll.js); a stamp for what the shot was; a moment after
+//                   it lands, down to black and back to the scope, where the same body carries on.
 //
 // Timeline (real seconds, a 155 m chest shot with a .308): rifle 0.95, flight 1.3 to 2.1 by
 // distance, swing 1.3, then the slow motion: approach 1.05, the touch 0.35, through the body
-// about 1.6, the exit hanging in the air 0.85; then the hold until the body is down. About
-// 10.5 s in all; a tap skips it at any point (KillCam.skip).
+// about 1.6 with half a second's freeze at the main thing hit, the exit hanging in the air 0.85;
+// then the fall until the body is down. About 11 s in all; a tap skips it at any point.
 //
 // Sound: the film tells the sound engine every beat as it happens on screen (kcSay, below) and
 // keeps KillCam.rate up to date: how fast time is passing in the picture, 1 = real time. It is
 // the speed the world's clock is running at (world seconds per film second), never below
 // kcTune.rateMin: in the flight it rises and falls with the round's apparent speed (a short
-// shot never gets near real time), at the rifle and from the swing until the hold the picture
-// is far slower than the sound engine can follow and it sits at rateMin, and in the hold it
+// shot never gets near real time), at the rifle and from the swing until the fall the picture
+// is far slower than the sound engine can follow and it sits at rateMin, and in the fall it
 // is exactly the speed the falling body is shown at, rising toward 0.55.
 //
 // Two kinds of space are used. "World" is the game's own: x across, y up, z down range,
