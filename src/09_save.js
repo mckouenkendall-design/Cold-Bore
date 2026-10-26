@@ -20,7 +20,8 @@ Save.fresh = function () {
     prestige: 0, prestigeXp: 0, rankPaid: 1,
     // looks earned along the way: calling cards (the banner behind your name) and reticle tints
     cos: { cards: { plain: 1 }, card: 'plain', tints: { black: 1 }, tint: 'black' },
-    medals: {}, outcomes: {}, endings: {}, drills: {}, mastery: {}, seenGuns: { fenwick: 1 }, newArmory: false, daily: null, shelf: null, sets: {},
+    // medals reached (id: tier) and the counters behind the ones no other record keeps (50_medals.js)
+    medals: {}, mstat: {}, outcomes: {}, endings: {}, drills: {}, mastery: {}, seenGuns: { fenwick: 1 }, newArmory: false, daily: null, shelf: null, sets: {},
   };
 };
 Save.load = function () {

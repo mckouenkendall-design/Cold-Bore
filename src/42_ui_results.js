@@ -36,8 +36,7 @@ UI.results = function (M, res, last) {
   const d = Save.data, recBefore = Object.assign({ stars: 0, ch: false }, d.missions[M.id] || {});
   const guided = !!last.opts.guided;
   const pay = Progress.apply(M, res, { gun: last.opts.gun, guided });
-  const medals = CB.Medals ? CB.Medals.afterMission(M, res, pay, last) : [];
-  const mastery = CB.Mastery ? CB.Mastery.afterMission(last.opts.gun, res, pay) : null;
+  const medals = pay.medals || [], mastery = pay.mastery;
   UI.shots = {}; UI.shotKeys = []; // a choice may have changed what later scenes look like
   const i = MISSIONS.indexOf(M), next = MISSIONS[i + 1];
   const win = res.win, stats = res.stats || {}, score = res.score && res.score.total ? res.score : null;
@@ -67,7 +66,7 @@ UI.results = function (M, res, last) {
   const cachebox = nC ? `<button class="cachebox has crate rv" data-k="cache" data-a="caches" data-snd="riser"><span class="cb-case"><canvas data-case="${topTier}" data-live="1"></canvas></span><div class="cb-t"><b>${nC} ${nC === 1 ? 'cache' : 'caches'} earned</b><i>Left on the table for you. Tap to open ${nC === 1 ? 'it' : 'them'}.</i></div></button>` : '';
   const scoreCard = score ? `<div class="rew scorecard rv" data-k="extra"><div class="eyebrow">Score</div>${(score.parts || []).map((p) => `<div class="rl"><span>${esc(p.label)}</span><b>${p.pts > 0 ? '+' : ''}${fmtCr(p.pts)}</b></div>`).join('')}<div class="rl tot"><span>Total</span><b>${fmtCr(score.total)}</b></div></div>` : '';
   const medalRow = medals.length ? `<div class="rs-medals rv" data-k="medals"><div class="eyebrow">${medals.length === 1 ? 'Medal' : medals.length + ' medals'}</div><div class="mdrow">${medals.map((m) => `<div class="md t${m.tier}"><canvas data-medal="${m.id}" data-tier="${m.tier}"></canvas><div><b>${esc(m.name)}${m.tiers > 1 ? ' ' + ROMAN[m.tier] : ''}</b><span>${esc(m.payText)}</span></div></div>`).join('')}</div></div>` : '';
-  const mastRow = mastery && mastery.ups.length ? `<div class="rs-mast rv" data-k="medals"><div class="eyebrow">Rifle mastery</div>${mastery.ups.map((u) => `<div class="rl"><span>${esc(u.text)}</span><b>${esc(u.pay || '')}</b></div>`).join('')}</div>` : '';
+  const mastRow = mastery && mastery.ups.length ? `<div class="rs-mast rv" data-k="medals"><div class="eyebrow">Rifle mastery  ·  ${esc(GUN_BY_ID[last.opts.gun] ? GUN_BY_ID[last.opts.gun].name : '')} level ${CB.Mastery.level(last.opts.gun)}</div>${mastery.ups.map((u) => `<div class="rl"><span>${esc(u.text.replace(/^[^:]*: /, ''))}</span><b>${esc(u.pay || '')}</b></div>`).join('')}${mastery.skins.length ? `<div class="mskins">${mastery.skins.map((id) => `<span class="mskin own"><span class="ms-pic bed"><canvas data-gun="${last.opts.gun}" ${uiCfgAttr(Object.assign({}, gunCfg(last.opts.gun), { skin: id }))}></canvas></span><b>${esc(SKIN_BY_ID[id].name)}</b><i>New skin, this rifle only</i></span>`).join('')}</div>` : ''}</div>` : '';
   const choiceNote = win && res.outcome && res.outcome.set ? `<div class="decision rv" data-k="extra"><span class="dstamp">Decision recorded</span><span>${pay.outcomeNew ? 'A new way this has gone. ' : ''}This choice changes later contracts. The dossier keeps every way it has gone; play it again to choose differently.</span></div>` : '';
   const nextLabel = pay.storyEnd ? 'The ending' : next ? (pay.chapterDone ? 'Continue' : 'Next contract') : 'Contracts';
   const R0 = rankOf(pay.xpFrom), xpTo = pay.xpFrom + pay.xp;

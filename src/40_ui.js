@@ -32,6 +32,7 @@ const ICON = {
   guard: '<svg viewBox="0 0 24 24"><circle cx="12" cy="6.5" r="3.2" fill="currentColor"/><path d="M5 21v-4.5a7 7 0 0114 0V21z" fill="currentColor"/></svg>',
   file: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6l2 2h8v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   turn: '<svg viewBox="0 0 24 24"><rect x="3" y="9" width="12" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7" transform="rotate(-90 9 12.5)"/><path d="M14 5.5a7 7 0 016.5 7M20.5 12.5l-2-2.2M20.5 12.5l2.2-1.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  look: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5l5.5 5.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M8 10.5h5M10.5 8v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
 };
 const fmtCr = (n) => Math.round(n).toLocaleString('en-US');
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -100,7 +101,7 @@ UI.toast = function (text, cls) {
 //   <canvas data-gun="id" [data-cfg] [data-live]>                          a rifle
 //   <canvas data-part-id="id" data-part-slot="slot" data-gun [data-cfg] [data-dim]>   one part, side view
 //   <canvas data-glass="scopeId" data-gun [data-cfg]>                      the view through a scope
-//   <canvas data-swatch="skinId" [data-gun]>                               a skin swatch
+//   <canvas data-swatch="skinId" [data-gun] [data-rifle]>                  a skin swatch (data-rifle: worn by that rifle)
 //   <canvas data-mthumb="missionId" [data-v]>                              a picture of a mission's scene
 // Add data-lazy and it is only drawn once it has scrolled into view (a grid of ninety skins must not
 // freeze the phone). Skins that move are redrawn a couple of dozen times a second, but only while
@@ -136,7 +137,9 @@ UI.jobFor = function (cv) {
     let sk = SKIN_BY_ID[ds.swatch] || SKINS[0];
     // "factory finish" is a different colour on every rifle, so show the colours of the rifle in question
     if (sk.kind === 'factory' && GUN_ART[ds.gun]) { const A = GUN_ART[ds.gun]; sk = { id: 'factory:' + ds.gun, furn: A.furn, metal: A.metal, acc: A.acc }; }
-    return { cv, lazy, kind: 'swatch', skin: sk, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
+    // data-rifle: show the skin worn by a rifle (the one in data-gun) instead of three slanted panels
+    const rifle = ds.rifle !== undefined && GUN_BY_ID[ds.gun] ? ds.gun : null;
+    return { cv, lazy, kind: 'swatch', skin: sk, rifle, cfg: rifle ? Object.assign({}, gunCfg(rifle), { skin: SKIN_BY_ID[ds.swatch] ? ds.swatch : 'factory' }) : null, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
   }
   if (ds.mthumb) return { cv, lazy, kind: 'thumb', id: ds.mthumb, v: +ds.v || 0 };
   if (ds.tphoto) return { cv, lazy, kind: 'tphoto', id: ds.tphoto };
@@ -167,6 +170,7 @@ UI.paintJob = function (j, time) {
     if (j.kind === 'gun') drawGun(x, j.id, j.cfg, w / 2, h / 2, w - 10, h - 8, { time: t });
     else if (j.kind === 'part') drawPartArt(x, j.slot, j.id, 3, 3, w - 6, h - 6, { gunId: j.gun, cfg: j.cfg, time: t, dim: j.dim });
     else if (j.kind === 'glass') drawReticleThumb(x, j.id, w / 2, h / 2, Math.min(w, h) / 2 - 0.5, { gunId: j.gun, cfg: j.cfg, time: t });
+    else if (j.kind === 'swatch' && j.rifle) drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: t });
     else if (j.kind === 'swatch') {
       drawSwatch(x, j.skin, 0, 0, w, h, t);
       if (j.skin.shimmer && time !== undefined) { // the same band of light that sweeps along the rifle

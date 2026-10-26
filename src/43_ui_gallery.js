@@ -340,6 +340,14 @@ function grNameplate(ctx, id, cx, y, maxW) {
   const g = GUN_BY_ID[id], s = (Save.data.stats.guns || {})[id] || { kills: 0, longest: 0 };
   const w = Math.min(maxW, 168), l2 = s.kills ? s.kills + (s.kills === 1 ? ' kill' : ' kills') + (s.longest ? '  ·  longest ' + s.longest + ' m' : '') : 'No kills yet';
   grPlate(ctx, cx - w / 2, y, w, 27, [{ s: g.name.toUpperCase(), size: 12, font: '800 %px ' + GR_HEAD }, { s: l2, size: 9.5, font: '600 %px ' + GR_BODY, col: '#9eabb9' }]);
+  // its mastery level: a small medallion pinned to the plate's corner, steel, silver, gold, then a master's amber
+  const lv = CB.Mastery ? CB.Mastery.level(id) : 0;
+  if (lv) {
+    const t = CB.Mastery.tier(lv), mx = cx + w / 2 - 2, my = y + 2, col = MASTERY_COL[t];
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.beginPath(); ctx.arc(mx + 0.6, my + 1.2, 9, 0, TAU); ctx.fill();
+    const gg = ctx.createRadialGradient(mx - 3, my - 3, 1, mx, my, 9); gg.addColorStop(0, '#ffffff'); gg.addColorStop(0.35, col); gg.addColorStop(1, '#3a3020'); ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(mx, my, 8.5, 0, TAU); ctx.fill();
+    grText(ctx, String(lv), mx, my + 0.5, '800 10px ' + GR_HEAD, '#14100a');
+  }
 }
 UI.grPaintRack = function (G, S, ctx, si) {
   const L = G.L, d = Save.data, fav = G.fav;

@@ -409,3 +409,76 @@
 body.portrait .results.pay > .rs-shade { background: linear-gradient(rgba(6, 8, 12, .55), rgba(6, 8, 12, .9) 45%); }
 body.portrait .tk-in { flex-direction: column; text-align: center; } body.portrait .tk-rew, body.portrait .tk-guns { justify-content: center; }
 body.portrait .tk-in.ub .tk-t { display: block; text-align: left; }
+
+/* ---- skins: each one worn by a rifle on a dark bed, framed in the colour of its kind ---- */
+.rm { --rc: #ffcf7a; }
+.rtiles { grid-template-columns: repeat(auto-fit, minmax(50px, 1fr)); gap: 4px; }
+.rtile span { font-size: 7.5px; letter-spacing: 0; }
+.mastery { margin-bottom: 12px; }
+.skcell { background: linear-gradient(#1c232c, #141920); border-color: rgba(255, 255, 255, .07); }
+.skcell::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; border: 1px solid var(--rc); opacity: .32; pointer-events: none; }
+.skcell.locked::before { opacity: .14; }
+.skcell .skpic { height: 44px; border-radius: 7px; overflow: hidden; background: var(--plate); box-shadow: inset 0 -2px 0 var(--rc); }
+.skcell .skpic canvas { height: 100%; border-radius: 0; }
+.skcell.locked .skpic { box-shadow: none; }
+.skcell.r2.own .skpic { box-shadow: inset 0 -2px 0 var(--rc), inset 0 0 14px -6px var(--rc); }
+.skcell.r3.own { box-shadow: 0 0 14px -7px var(--rc); } .skcell.r3.own .skpic { box-shadow: inset 0 -2px 0 var(--rc), inset 0 0 18px -6px var(--rc); }
+.skcell.r4.own, .skcell.rm.own { box-shadow: 0 0 18px -6px var(--rc); } .skcell.r4.own::before, .skcell.rm.own::before { opacity: .7; }
+.skcell.r4.own .skpic, .skcell.rm.own .skpic { box-shadow: inset 0 -2px 0 var(--rc), inset 0 0 22px -6px var(--rc); }
+.skcell.on { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset, 0 0 16px -6px var(--amber); }
+.sk-set { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; margin-top: 6px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, .04); border: 1px dashed rgba(255, 255, 255, .12); font-size: 11.5px; line-height: 1.3; }
+.sk-set span { font: 800 9px var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--mute); } .sk-set b { font: 700 12px var(--head); letter-spacing: .04em; } .sk-set i { font-style: normal; color: var(--dim); }
+.sk-set.done { border-style: solid; border-color: rgba(95, 211, 138, .45); } .sk-set.done i { color: var(--green); }
+.sk-set em { font-style: normal; color: var(--mute); }
+.sk-side .sk-set em { display: none; } /* beside the shelves there is room for the set's name and count only */
+.lookbtn { position: absolute; right: 6px; bottom: 6px; z-index: 2; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: rgba(10, 14, 20, .72); border: 1px solid rgba(255, 255, 255, .16); color: #e9eef4; }
+.lookbtn svg { width: 20px; height: 20px; } .lookbtn:active { background: rgba(40, 50, 62, .9); }
+
+/* a skin up close */
+.overlay.tk .inspect { position: relative; width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse 70% 60% at 50% 46%, #2a3440 0%, #121820 58%, #07090c 100%); animation: tkin .22s ease-out; }
+.ins-glow { position: absolute; left: 10%; right: 10%; top: 30%; bottom: 26%; border-radius: 50%; background: radial-gradient(closest-side, var(--rc), rgba(0, 0, 0, 0)); opacity: .18; pointer-events: none; }
+.inspect.r3 .ins-glow, .inspect.rm .ins-glow { opacity: .26; } .inspect.r4 .ins-glow { opacity: .32; animation: insglow 2.4s ease-in-out infinite alternate; }
+@keyframes insglow { from { opacity: .2; transform: scale(.94); } to { opacity: .38; transform: scale(1.04); } }
+.ins-cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.ins-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: calc(var(--sat) + 8px) calc(var(--sar) + 10px) 0 calc(var(--sal) + 14px); pointer-events: none; }
+.ins-top > * { pointer-events: auto; }
+.ins-t .eyebrow { color: var(--rc); } .ins-t h2 { font: 800 26px/1.05 var(--head); letter-spacing: .03em; text-transform: uppercase; margin-top: 2px; } .ins-t i { display: block; font-style: normal; font-size: 12px; color: var(--mute); margin-top: 2px; }
+.ins-foot { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 calc(var(--sar) + 14px) calc(var(--sab) + 10px) calc(var(--sal) + 14px); pointer-events: none; }
+.ins-foot > * { pointer-events: auto; } .ins-how { min-width: 0; max-width: 520px; } .ins-how p { font-size: 12px; line-height: 1.35; }
+.ins-foot .btn { flex: none; min-width: 120px; }
+.co-set { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 6px; padding: 6px 10px; border-radius: 9px; background: rgba(95, 211, 138, .12); border: 1px solid rgba(95, 211, 138, .5); }
+.co-set svg { width: 14px; height: 14px; color: var(--green); flex: none; } .co-set b { font: 800 12.5px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--green); } .co-set i { font-style: normal; font-size: 12px; color: var(--ink); }
+.openall .co-set { margin: 0 0 8px; }
+/* skin sets on the Progress page */
+.sets-h { margin: 14px 0 6px; }
+.sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.set { padding: 8px 10px; border-radius: 11px; background: linear-gradient(#1c232c, #141920); border: 1px solid rgba(255, 255, 255, .08); }
+.set.done { border-color: rgba(95, 211, 138, .5); }
+.set-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .set-h b { font: 800 12px var(--head); letter-spacing: .08em; text-transform: uppercase; } .set-h i { font: 600 11.5px var(--mono); font-style: normal; color: var(--amber2); }
+.set-sw { display: flex; gap: 4px; margin: 6px 0 5px; } .set-sw span { flex: 1; min-width: 0; height: 20px; border-radius: 4px; overflow: hidden; opacity: .28; } .set-sw span.have { opacity: 1; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
+.set-sw canvas { display: block; width: 100%; height: 100%; }
+.set-rw { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--dim); } .set-rw svg { width: 12px; height: 12px; color: var(--green); } .set.done .set-rw { color: var(--green); }
+
+/* rifle mastery: badges and the workbench panel */
+.mbadge svg { width: 11px; height: 11px; flex: none; }
+.mbadge.t0 { color: #c4ccd6; border-color: rgba(154, 167, 182, .4); } .mbadge.t1 { color: #eef2f6; border-color: rgba(223, 230, 238, .55); }
+.mbadge.t2 { color: #ffd36e; border-color: rgba(255, 211, 110, .6); } .mbadge.t3 { color: #ffb07a; border-color: rgba(255, 138, 74, .8); box-shadow: 0 0 12px -3px rgba(255, 138, 74, .7); }
+.mbadge.big { position: static; flex: none; padding: 7px 10px 7px 8px; border-radius: 10px; font-size: 17px; gap: 5px; } .mbadge.big svg { width: 16px; height: 16px; }
+.mastery { margin-top: 10px; padding: 10px 11px; border-radius: 12px; background: linear-gradient(#1d252f, #151a21); border: 1px solid rgba(255, 210, 120, .2); }
+.ms-h { display: flex; align-items: center; gap: 10px; } .ms-h .eyebrow { color: #ffd98a; } .ms-h p { font-size: 12px; line-height: 1.35; margin-top: 2px; }
+.ladders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 9px; }
+.lad { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+.ld-t { min-width: 0; } .ld-t b { display: block; font: 700 10.5px/1.15 var(--head); letter-spacing: .07em; text-transform: uppercase; } .ld-t i { display: block; font: 600 11px var(--mono); font-style: normal; color: var(--amber2); }
+.ld-steps { display: flex; gap: 3px; flex: none; }
+.ld-steps i { min-width: 30px; height: 22px; padding: 0 4px; display: grid; place-items: center; border-radius: 5px; font: 600 10px var(--mono); font-style: normal; color: var(--mute); background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .09); white-space: nowrap; }
+.ld-steps i.on { color: #1b0f02; background: linear-gradient(#ffe2a0, #e0a640); border-color: transparent; }
+.mskins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.mskin { min-width: 0; text-align: center; } .mskin b { display: block; font: 700 10px var(--head); letter-spacing: .08em; text-transform: uppercase; margin-top: 4px; } .mskin i { display: block; font-style: normal; font-size: 10.5px; color: var(--mute); }
+.mskin.own i { color: var(--green); }
+.ms-pic { position: relative; display: block; height: 42px; border-radius: 8px; overflow: hidden; } .ms-pic canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mskin:not(.own) canvas { opacity: .42; }
+.ms-pic .lk { position: absolute; right: 3px; top: 3px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: rgba(14, 18, 24, .84); color: #e3e8ee; } .ms-pic .lk svg { width: 10px; height: 10px; }
+@media (max-width: 780px) {
+  .ladders { grid-template-columns: minmax(0, 1fr); }
+  .ins-t h2 { font-size: 21px; } .ins-foot .btn { min-width: 96px; }
+}

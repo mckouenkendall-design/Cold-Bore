@@ -1105,3 +1105,24 @@ function drawSwatch(ctx, skin, x, y, w, h, time) {
 // Reachable from the page (tests, and other files that want to paint with a skin).
 CB.drawGun = drawGun; CB.SKINS = SKINS; CB.SKIN_BY_ID = SKIN_BY_ID; CB.RAR = RAR; CB.RAR_COL = RAR_COL; CB.GUN_ART = GUN_ART;
 CB.drawSwatch = drawSwatch; CB.gunShapes = gunShapes; CB.paintTile = paintTile; CB.zoneFill = zoneFill; CB.zoneLayers = zoneLayers; CB.fillLayers = fillLayers; CB.PAT_KINDS = PAT_KINDS; CB.patCache = _patCache;
+
+// ---- mastery skins (added for rifle mastery, see 49_mastery.js) ----
+// Three for each rifle, worn only by that rifle and earned only by using it: Engraved (a scroll cut
+// into its own steel), Gilded (gold with an engraved scroll, on a figured stock) and Master (the
+// rifle's own colour glowing through cracked dark furniture, on Damascus steel, with a sweep of
+// light). Built from each rifle's factory colours so every one is different. They never come out
+// of a cache (ex says how to earn them) and are listed after the caches' shelves.
+const MASTERY_GLOW = { fenwick: '#ff9a3c', ratter: '#9be05a', kessler: '#d9b25a', orlov: '#ff5a4a', halden: '#5ab8ff', corvid: '#7a8cff', lark: '#4fe0c0', whisper: '#c58bff',
+  marrow: '#ff7aa8', ibex: '#ffd23c', vantage: '#3cd2ff', northwind: '#e8f4ff', anvil: '#ff6a2a', aria: '#b0ff6a', hush: '#8a9cff', stormglass: '#6af0ff' };
+GUNS.forEach((g) => {
+  const A = GUN_ART[g.id]; if (!A) return;
+  const nm = g.id.charAt(0).toUpperCase() + g.id.slice(1), glow = MASTERY_GLOW[g.id] || '#ffb84a';
+  const steel = typeof A.metal === 'string' ? A.metal : '#25282c', furn = A.furn || { pat: 'wood', a: '#5a3a22', b: '#2c180c' };
+  const add = (s) => { SKINS.push(s); SKIN_BY_ID[s.id] = s; };
+  add({ id: 'm1' + g.id, name: nm + ' Engraved', r: 2, only: g.id, mastery: 1, ex: 'Reach mastery level 4 with the ' + g.name, furn,
+    metal: { col: steel, over: { pat: 'scroll', a: 'none', b: '#c9ced4', s: 0.75 } }, acc: { col: A.acc || '#14161a', over: { pat: 'scroll', a: 'none', b: '#9aa1a9', s: 0.6 } } });
+  add({ id: 'm2' + g.id, name: nm + ' Gilded', r: 3, only: g.id, mastery: 2, ex: 'Reach mastery level 8 with the ' + g.name, furn: { pat: 'burl', a: '#7a4a22', b: '#24120a' },
+    metal: { grad: ['#fff0b8', '#d4a83a', '#8a6412', '#f0cf6a'], over: { pat: 'scroll', a: 'none', b: '#5c3f0a', s: 0.7 } }, acc: { grad: ['#f6e3a1', '#b88f33', '#f0d88a'] }, line: '#3a2a08' });
+  add({ id: 'm3' + g.id, name: nm + ' Master', r: 4, only: g.id, mastery: 3, ex: 'Master the ' + g.name + ': every step of its mastery', furn: { pat: 'cracks', a: '#101114', b: glow },
+    metal: { pat: 'damascus', a: '#9aa4ae', b: '#2f353c' }, acc: { grad: [mix(glow, '#ffffff', 0.45), glow, mix(glow, '#000000', 0.55), mix(glow, '#000000', 0.2)] }, line: 'rgba(0,0,0,0.5)', shimmer: glow });
+});

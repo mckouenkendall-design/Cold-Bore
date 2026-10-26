@@ -35,7 +35,7 @@ const COS_CARDS = [
   { id: 'ridge', name: 'Harrow Snow', how: 'Rank 22' },
   { id: 'moon', name: 'Night Glass', how: 'Rank 28' },
   { id: 'kestrel', name: 'Hover', how: 'Rank 33' },
-  { id: 'storm', name: 'Thunderhead', how: 'Rank 38' },
+  { id: 'storm', name: 'Storm Front', how: 'Rank 38' },
   { id: 'brass', name: 'Spent Brass', how: 'Rank 43' },
   { id: 'coil', name: 'Coil Gun', how: 'Rank 48' },
   { id: 'aurora', name: 'Northern Light', how: 'Rank 53' },
@@ -127,7 +127,8 @@ Progress.rec = function (id) {
 // rifle that goes in the glass case.
 Progress.gunStats = function (id) {
   const d = Save.data; if (!d.stats.guns) d.stats.guns = {};
-  if (!d.stats.guns[id]) d.stats.guns[id] = { kills: 0, heads: 0, shots: 0, longest: 0 };
+  if (!d.stats.guns[id]) d.stats.guns[id] = { kills: 0, heads: 0, shots: 0, longest: 0, wins: 0 };
+  if (d.stats.guns[id].wins === undefined) d.stats.guns[id].wins = 0;
   return d.stats.guns[id];
 };
 // The rifle with the most kills. Before any kill has been recorded, the one you carry.
@@ -182,6 +183,7 @@ Progress.apply = function (M, res, info) {
       g.kills++;
       if (k.how === 'shot') { if (k.part === 'head') g.heads++; g.longest = Math.max(g.longest, Math.round(k.range || 0)); }
     });
+    if (res.win && !guided) g.wins++;
   }
   const rank0 = Progress.rankNow().n;
   // what the records were before this run, for the "new record" badges on the results
@@ -234,6 +236,16 @@ Progress.apply = function (M, res, info) {
     if (DUCK_MILESTONES.indexOf(n) >= 0) { out.caches.push('sealed'); out.lines.push({ label: n + ' ducks found', cr: 0, xp: 0, note: 'Sealed cache' }); }
     if (n >= MISSIONS.length && Progress.grantSkin('duckie')) out.unlocked.push({ kind: 'skin', id: 'duckie', text: 'Skin: Bath Time' });
   }
+  // rifle mastery (49_mastery.js) and medals (50_medals.js): steps and medals reached on this run
+  out.mastery = { ups: [], skins: [] }; out.medals = [];
+  if (CB.Mastery && info && info.gun) {
+    out.mastery = CB.Mastery.check(info.gun);
+    out.mastery.ups.forEach((u) => { if (u.xp) { out.xp += u.xp; out.lines.push({ label: 'Mastery: ' + u.text.replace(/^[^:]*: /, ''), cr: 0, xp: u.xp }); } });
+  }
+  if (CB.Medals) {
+    out.medals = CB.Medals.check(M, res, out, info || {});
+    out.medals.forEach((m) => { out.cr += m.cr || 0; out.xp += m.xp || 0; if (m.cache) out.caches.push(m.cache); out.lines.push({ label: 'Medal: ' + m.name + (m.tiers > 1 ? ' ' + ROMAN[m.tier] : ''), cr: m.cr || 0, xp: m.xp || 0, note: m.cache && !m.cr && !m.xp ? CACHE_NAME[m.cache] : '' }); });
+  }
   d.credits += out.cr; d.xp += out.xp;
   // the rank track: every rank passed hands over its reward (once per run through the track)
   const rank1 = Progress.rankNow();
@@ -270,8 +282,31 @@ Progress.openCache = function () {
   const dupe = !!d.skins[skin.id]; let cr = 0;
   if (dupe) { cr = DUPE_CR[skin.r]; d.credits += cr; } else d.skins[skin.id] = 1;
   d.stats.cachesOpened++;
+  const sets = dupe ? [] : Progress.checkSets();
   Save.write();
-  return { tier, skin, dupe, cr };
+  return { tier, skin, dupe, cr, sets };
+};
+
+// ---- skin sets: own every skin in a set and it pays out once ----
+const SKIN_SETS = [
+  { id: 'workshop', name: 'Pip\'s Workshop', skins: ['matte', 'earth', 'wolf', 'stainless', 'benchworn', 'mint'], cr: 1000, cache: 'field' },
+  { id: 'woods', name: 'Woodworker', skins: ['walnut', 'birch', 'maple', 'ebony', 'burl', 'autumn', 'midlam'], cr: 1500, cache: 'sealed' },
+  { id: 'camo', name: 'Field Camouflage', skins: ['woodland', 'desert', 'snowcam', 'urban', 'digital', 'splinter', 'fleck', 'terrain'], cr: 2000, cache: 'sealed' },
+  { id: 'wild', name: 'Wild Things', skins: ['tiger', 'zebra', 'leopard', 'giraffe', 'koi', 'frog', 'diamond'], cr: 2500, cache: 'sealed' },
+  { id: 'city', name: 'Port Calder', skins: ['brick', 'navy', 'graffiti', 'hazard', 'sunset', 'rust'], cr: 3000, cache: 'sealed' },
+  { id: 'cloth', name: 'The Tailor', skins: ['bandana', 'plaid', 'hound', 'scalemail', 'cards'], cr: 3000, cache: 'sealed' },
+  { id: 'smith', name: 'The Smith\'s Bench', skins: ['damascus', 'casehard', 'pearl', 'verdigris', 'ivory'], cr: 4000, cache: 'vault' },
+  { id: 'night', name: 'Night Shift', skins: ['galaxy', 'frost', 'neon', 'oilslick', 'circuit'], cr: 4000, cache: 'vault' },
+  { id: 'legends', name: 'Hall of Legends', skins: ['midas', 'kintsugi', 'aurora', 'obsidian', 'blueprint'], cr: 8000, cache: 'vault' },
+  { id: 'elements', name: 'The Elements', skins: ['eruption', 'lagoon', 'thunder', 'deepfield', 'livewire'], cr: 8000, cache: 'vault' },
+].map((s) => Object.assign(s, { skins: s.skins.filter((id) => SKIN_BY_ID[id]) }));
+CB.SKIN_SETS = SKIN_SETS;
+Progress.setOf = function (skinId) { return SKIN_SETS.filter((s) => s.skins.indexOf(skinId) >= 0); };
+// Pay any set that has just been completed. Returns them (the reward is already in the save).
+Progress.checkSets = function () {
+  const d = Save.data, out = []; if (!d.sets) d.sets = {};
+  SKIN_SETS.forEach((s) => { if (d.sets[s.id] || !s.skins.length || !s.skins.every((id) => d.skins[id])) return; d.sets[s.id] = 1; d.credits += s.cr; if (s.cache) d.caches.push(s.cache); out.push(s); });
+  return out;
 };
 
 // Buy a cache with credits. Returns null if it worked, or a short reason if not.
