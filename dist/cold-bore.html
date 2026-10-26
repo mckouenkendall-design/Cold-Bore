@@ -651,7 +651,7 @@ body { position: relative; inset: auto; }
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 25, 11:04 PM";
+const BUILD = "Oct 25, 11:06 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -4076,10 +4076,17 @@ const PALS = {
     glass: '#2b4257', lit: '#ffe0a0', litChance: 0.25, star: 0, cloud: '#ffffff', ground: '#eef2f6', road: '#b9c3cc', grass: '#e4eaef', water: '#7f9db4', sun: '#ffffff', inRoom: '#34404e', dark: 0.05 },
 };
 
+// The palette entries a mission's look may change: colours only. Never dark, litChance, star or
+// fogD, which decide what can be seen and which windows are lit.
+const KX_PAL_COLOURS = ['skyTop', 'skyBot', 'fog', 'amb', 'ambT', 'glass', 'lit', 'cloud', 'ground', 'road', 'grass', 'water', 'sun', 'inRoom'];
 function makeScene(o) {
   o = o || {};
   const pal = Object.assign({}, PALS[o.time || 'day']);
+  // the look of the mission being built (07i_looks.js): its own colours for the time of day
+  const look = lkLookFor(o.time || 'day', o.weather || 'clear');
+  if (look.pal) for (let i = 0; i < KX_PAL_COLOURS.length; i++) { const k = KX_PAL_COLOURS[i]; if (look.pal[k] !== undefined) pal[k] = look.pal[k]; }
   const S = {
+    look, lampCol: look.lampCol || null,
     time: o.time || 'day', weather: o.weather || 'clear', pal, planes: [], objects: [], props: [], rooms: {}, zoneLamps: {},
     exits: o.exits || [-60, 60], rng: makeRng(o.seed || 7), refZ: o.refZ || 300, fogK: o.fog || 1, groundMat: o.groundMat || 'dirt',
     sky: { stars: [], clouds: [], sun: o.sun || [40, 60] }, darkZones: {}, litZones: {}, bounds: o.bounds || { x0: -45, x1: 45, y0: -2, y1: 32 }, decals: [], ambience: o.ambience || 'city',
@@ -4359,6 +4366,150 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// Is the air wet enough to catch light (rain, a storm, fog)?
+function kxMisty(S) { return S.weather === 'rain' || S.weather === 'storm' || S.weather === 'fog'; }
+
+// ---- birds that take fright -------------------------------------------------------------
+// A loud shot reaches the birds sitting about the scene a moment after it is fired (sound
+// covers about 343 metres a second). They burst off their perches, climb away from the noise
+// and stay away for half a minute or so, then drift back in and settle. The view tells the
+// scene when a loud shot goes off (kxScareNow); whatever draws perched birds asks kxFlight
+// where each one is. Picture only: nothing in the game knows about them.
+function kxScareNow(S, t) {
+  const sc = S._scare;
+  if (sc && t < sc.until + 8) sc.until = Math.max(sc.until, t + 30);   // still away or coming back: they stay away longer
+  else S._scare = { t, until: t + 30 };
+}
+// For a bird sitting on a plane at distance z: null while it sits, else { u, k }: u from 0 on
+// the perch to 1 out of sight, k = 1 while it flees and -1 while it comes back in.
+function kxFlight(S, z, t, seed) {
+  const sc = S._scare; if (!sc) return null;
+  const lag = z / 343 + kxH(seed, 3) * 0.35, t0 = sc.t + lag; if (t < t0) return null;
+  const up = (t - t0) / 2.8; if (up < 1) return { u: up, k: 1 };
+  const back = sc.until + lag + kxH(seed, 7) * 14; if (t < back) return { u: 1, k: 1 };
+  const dn = (t - back) / 3.4; if (dn < 1) return { u: 1 - dn, k: -1 };
+  return null;
+}
+// A bird in flight, its wings beating (faster as it takes off), drawn as a stroke. Adds to the
+// current path: x, y where it is, w its wingspan in metres. The caller strokes once for all.
+function kxBirdPath(ctx, x, y, w, t, seed, fast) {
+  const fl = Math.sin(t * (fast ? 16 : 10) + seed * 9.1), h = w * 0.5;
+  ctx.moveTo(x - h, y + fl * h * 0.55); ctx.quadraticCurveTo(x - h * 0.45, y + h * 0.18 + fl * h * 0.2, x, y); ctx.quadraticCurveTo(x + h * 0.45, y + h * 0.18 + fl * h * 0.2, x + h, y + fl * h * 0.55);
+}
+// Where a frightened bird is now, from its perch (x, y), flying off the way it faces: up and
+// away, quick at first. Returns null once it is out of sight.
+function kxFleeAt(f, x, y, dir, seed, out) {
+  if (!f || f.u >= 0.999) return null;
+  const u = f.u, far = 9 + kxH(seed, 11) * 8, e = u * u * (3 - 2 * u) * 0.35 + u * 0.65;
+  out[0] = x + dir * far * e * (0.6 + 0.4 * u); out[1] = y + 0.15 + far * 0.75 * e * e + 0.5 * e;
+  return out;
+}
+
+// ---- reflections in water --------------------------------------------------------------
+// Whatever has already been drawn above a waterline (the far bank, a ship, the quay and its
+// lamps, the bridge, the sky) is copied once, turned over and laid under the line in thin
+// strips, each strip pushed sideways by the ripples and fading out with depth, so water
+// mirrors the scene that actually stands over it. yW is the waterline and yN the nearest
+// height of this stretch of water (both on the plane being drawn), xa..xb how far it runs,
+// a how strong the reflection is, rough how much the ripples break it up. Picture only.
+const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null, y0: 1e9, y1: -1e9 };
+// The last finished picture of the world (kept by the view when a scene has water), so the
+// water can mirror things drawn after it: the quay, its lamps, the people and boats on it.
+// It is one frame old, which nobody can see.
+function kxReflSource(ctx) { return kxRefl.src && kxRefl.srcCv === ctx.canvas && kxRefl.src.width === ctx.canvas.width && kxRefl.src.height === ctx.canvas.height ? kxRefl.src : ctx.canvas; }
+function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed, hMax) {
+  const m = kxM(ctx); if (m.b || m.c || m.d >= 0 || a < 0.02) return;
+  const cv = ctx.canvas, Wc = cv.width, Hc = cv.height, Yw = m.d * yW + m.f, Yn = Math.min(Hc, m.d * yN + m.f);
+  const X0 = Math.max(0, Math.floor(m.a * xa + m.e)), X1 = Math.min(Wc, Math.ceil(m.a * xb + m.e)), w = X1 - X0;
+  if (w < 4 || Yn <= Math.max(0, Yw) + 2) return;
+  // only what stands on or just behind this waterline reflects in this stretch (hMax metres of it):
+  // things far behind reflect in the water out near them, not here
+  const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460, (hMax || 1e9) * Math.abs(m.d))); if (depth < 6) return;
+  if (!kxRefl.c || kxRefl.w < w || kxRefl.h < depth) { kxRefl.w = Math.max(kxRefl.w, w); kxRefl.h = Math.max(kxRefl.h, depth); if (!kxRefl.c) kxRefl.c = kxCanvas(kxRefl.w, kxRefl.h); else { kxRefl.c.width = kxRefl.w; kxRefl.c.height = kxRefl.h; } kxRefl.g = kxRefl.c.getContext('2d'); }
+  const g = kxRefl.g; g.clearRect(0, 0, w, depth); g.drawImage(kxReflSource(ctx), X0, Yw - depth, w, depth, 0, 0, w, depth);
+  kxRefl.y0 = Math.min(kxRefl.y0, Yw - depth); kxRefl.y1 = Math.max(kxRefl.y1, Yw);   // the rows to keep for next frame
+  const t = env.t, k = Math.abs(m.d) / Math.max(1e-6, env.s), sd = seed || 0;   // k: device pixels per CSS pixel
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  let d = Math.max(0, Math.floor(-Yw));
+  while (d < depth) {
+    const hb = Math.max(3, Math.round((3 + d * 0.07) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
+    const u = d / depth, wob = Math.sin(t * (1.3 + (d % 7) * 0.09) + d * 0.23 + sd) * (0.3 + d * 0.035) * rough * k;
+    ctx.globalAlpha = a * Math.pow(1 - u, 0.8);
+    ctx.drawImage(kxRefl.c, 0, sy, w, hb, X0 + wob, Yw + d, w, hb);
+    d += hb;
+  }
+  ctx.restore();
+}
+
+// ---- smoke and steam ------------------------------------------------------------------
+// The light in the air this frame, set by the view as it draws the sky: which side the sun
+// (or moon) is on, and the colours a puff of smoke takes on its lit and its shaded side.
+const kxAir = { side: 1, lit: '#ffffff', shade: '#7d8aa0', key: 'd' };
+// One ball of smoke, lit from above and from the sun's side: a shaded underside, a body and a
+// lit cap in three soft steps, with a soft rim so neighbouring balls run together.
+const kxBallPics = new Map();
+function kxBall(col) {
+  const key = col + kxAir.key; let c = kxBallPics.get(key); if (c) return c;
+  if (kxBallPics.size > 80) kxBallPics.clear();
+  const N = 64; c = kxCanvas(N, N);
+  const g = c.getContext('2d'), im = g.createImageData(N, N), d = im.data, B = rgbOf(col.charAt(0) === '#' ? col : kxHexOf(col));
+  const Lt = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.lit, 0.45)), Sh = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.shade, kxAir.soft ? 0.22 : 0.36));
+  const lx = kxAir.side * 0.42, ly = 0.78, lz = 0.46;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    // (row 0 is the bottom: planes are drawn with y up, which turns a picture over)
+    const u = (i + 0.5) / N * 2 - 1, v = (j + 0.5) / N * 2 - 1, dd = Math.sqrt(u * u + v * v), k = (j * N + i) * 4;
+    if (dd >= 1) { d[k + 3] = 0; continue; }
+    const nz = Math.sqrt(1 - dd * dd), dot = u * lx + v * ly + nz * lz, t1 = smooth((dot + 0.15) / 0.45), t2 = smooth((dot - 0.6) / 0.25);
+    for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.round(lerp(lerp(Sh[ch], B[ch], t1), Lt[ch], t2));
+    d[k + 3] = Math.round(255 * smooth((1 - dd) / 0.2));
+  }
+  g.putImageData(im, 0, 0); kxBallPics.set(key, c); return c;
+}
+function kxHexOf(css) { // 'rgb(r,g,b)' or 'r,g,b' to '#rrggbb'
+  const m = String(css).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/); if (!m) return '#cccccc';
+  const h = (v) => { const s = (+v).toString(16); return s.length < 2 ? '0' + s : s; };
+  return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+}
+// A plume billowing up from (x, y). Each puff swells and slows as it climbs and is carried off
+// downwind (the harder it blows the flatter the plume lies); close up, every puff is a knot of
+// smaller ones that turn over as they rise, so the column reads as one rolling mass.
+//   o.rise how high it climbs before it has thinned away (m); o.r0, o.r1 the size of a puff at
+//   the mouth and at the top; o.n puffs in the column; o.speed how fast they come (cycles a
+//   second); o.a how thick it is at the mouth; o.col its colour ('#hex' or 'rgb(r,g,b)');
+//   o.lean how far the wind carries it (a fraction of the rise for each m/s of wind) or o.drift
+//   a fixed distance at the top in metres; o.ph a phase; o.steam: steam thins out faster.
+const kxPlumeU = [];
+function kxPlume(ctx, env, x, y, o) {
+  const rise = o.rise || 4, r0 = o.r0 || 0.2, r1 = o.r1 || 1.2, a0 = o.a === undefined ? 0.5 : o.a, w = env.wind || 0;
+  // enough puffs that each overlaps the next, so the column never breaks up into separate balls
+  const n = Math.min(26, Math.max(o.n || 8, Math.ceil(rise / ((r0 + r1) * 0.5 * 0.75))));
+  const flat = 1 / (1 + Math.abs(w) * (o.flat === undefined ? 0.1 : o.flat)), reach = o.drift !== undefined ? o.drift : w * (o.lean === undefined ? 0.5 : o.lean) * rise;
+  const xa = Math.min(x, x + reach) - r1 * 1.6, xb = Math.max(x, x + reach) + r1 * 1.6;
+  if (xb < env.x0 || xa > env.x1 || (env.y1 !== undefined && y - r1 > env.y1) || (env.y0 !== undefined && y + rise + r1 * 2 < env.y0)) return;
+  const pic = kxBall(o.col || '#e6e9ee'), s = env.s, t = env.t, sp = o.speed || 0.2, ph = o.ph || 0, fade = o.steam ? 1.9 : 1.3;
+  kxPlumeU.length = 0;
+  for (let i = 0; i < n; i++) kxPlumeU.push((((t * sp + i / n + ph) % 1) + 1) % 1, i);
+  // oldest (highest) first, so the thick young puffs near the mouth lie over them
+  const order = []; for (let i = 0; i < n; i++) order.push(i); order.sort((p, q) => kxPlumeU[q * 2] - kxPlumeU[p * 2]);
+  const al = ctx.globalAlpha;
+  for (let oi = 0; oi < n; oi++) {
+    const u = kxPlumeU[order[oi] * 2], i = kxPlumeU[order[oi] * 2 + 1];
+    const a = a0 * Math.pow(1 - u, fade) * Math.min(1, u * 9); if (a < 0.01) continue;
+    const r = Math.max(r0 + (r1 - r0) * Math.pow(u, 0.7), env.px * 1.2), lift = rise * (1 - Math.pow(1 - u, 1.6)) * flat;
+    const curl = Math.sin(u * 5.5 + i * 1.7 + t * 0.35) * r * 0.32;
+    const px = x + reach * Math.pow(u, 1.35) + curl, py = y + lift + Math.cos(u * 4 + i * 2.3) * r * 0.15;
+    const rs = r * s;
+    ctx.globalAlpha = al * a;
+    if (rs < 9) { ctx.drawImage(pic, px - r, py - r, r * 2, r * 2); continue; }
+    // a knot of three, turning slowly as it rises, and a ring of small ones round the top close up
+    const spin = i * 1.3 + u * 2.4;
+    for (let k = 0; k < 3; k++) { const an = spin + k * 2.09, rr = r * 0.62, ox = Math.cos(an) * r * 0.42, oy = Math.sin(an) * r * 0.3; ctx.drawImage(pic, px + ox - rr, py + oy - rr, rr * 2, rr * 2); }
+    ctx.drawImage(pic, px - r * 0.7, py + r * 0.05 - r * 0.7, r * 1.4, r * 1.4);
+    if (rs > 45) for (let k = 0; k < 4; k++) { const an = 0.5 + k * 0.7 + Math.sin(spin + k) * 0.2, rr = r * 0.34; ctx.drawImage(pic, px + Math.cos(an) * r * 0.72 - rr, py + Math.sin(an) * r * 0.62 - rr, rr * 2, rr * 2); }
+  }
+  ctx.globalAlpha = al;
+}
+
 // Brick tiles. One tile holds a patch of running-bond brickwork as see-through dark
 // mortar lines and the odd darker or paler brick, so the same tile works over a wall of
 // any colour. There are a few sizes; the wall picks the one nearest the zoom.
@@ -4511,7 +4662,7 @@ K.ground = function (S, P, o) {
   const edge = o.edge ? S.tone(o.edge, P) : mix(col, '#ffffff', 0.12);
   P.groundY = y; P.groundMat = o.mat || S.groundMat;
   const kind = o.kind || (o.stripes ? 'road' : 'plain');
-  const wet = S.weather === 'rain' || S.weather === 'storm', dark = S.pal.dark;
+  const wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet), dark = S.pal.dark;   // (a look can leave the ground wet after rain)
   const D = makeRng(8101 + Math.round(P.z * 3) + (o.seed || 0) * 17);
   const joint = mix(col, '#000000', 0.2), jointHi = mix(col, '#ffffff', 0.07), paint = S.tone('#d9d2b0', P), paintOld = mix(paint, col, 0.45);
   const bx0 = Math.max(x0, -95), bx1 = Math.min(x1, 95);
@@ -4865,6 +5016,21 @@ K.skyline = function (S, z, o) {
       const bx = b.x + b.w * 0.5, by = b.top === 2 ? base + b.h * 1.18 : b.kind === 5 ? base + b.h * (1.16 + b.k1 * 0.1) : base + b.h + 1.4, r = Math.max(0.7, env.px * 1.3);
       circ(ctx, bx, by, r, '#ff4a3d'); if (s > 0.8) kxGlow(ctx, '#ff4a3d', bx, by, r * 5, 0.5);
     }
+    // after dark, traffic on the roads along the foot of the row: white lamps one way, red the other
+    if (S.pal.dark > 0.3 && o.traffic !== false && s > 0.12) {
+      const span = x1 - x0, r = Math.max(env.px * 0.9, 0.35);
+      for (let lane = 0; lane < 2; lane++) {
+        ctx.fillStyle = lane ? '#ff5a48' : '#fff2cc'; ctx.beginPath();
+        const dir = lane ? -1 : 1, sp = lane ? 11 : 13, gap = 37 + lane * 11, yy = base + 0.9 + lane * 0.5;
+        for (let k = 0; k * gap < span; k++) {
+          const h = kxH(k * 1.3 + lane, (o.seed || 11)); if (h < 0.35) continue;
+          const xx = x0 + ((((k * gap + h * 20 + dir * env.t * sp * (0.8 + h * 0.4)) % span) + span) % span);
+          if (xx < env.x0 - 2 || xx > env.x1 + 2) continue;
+          ctx.rect(xx - r * 1.4, yy, r, r); ctx.rect(xx + r * 0.4, yy, r, r);
+        }
+        ctx.fill();
+      }
+    }
     // the foot of the row sinks into the air
     if (hz > 0) kxFadeAt(ctx, fogC, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), (o.hMin || 30) * 1.6, hz);
   } });
@@ -4881,7 +5047,9 @@ K.mountains = function (S, z, o) {
   const pts = []; let x = x0;
   while (x <= x1) { pts.push([x, base + H * (0.35 + 0.65 * Math.abs(vnoise(x / (o.rough || 420), o.seed || 5))) * (0.75 + 0.25 * R.f())]); x += R.r(60, 170) * (o.step || 1); }
   const rock = S.tone(o.col || '#5f6b78', P), shade = S.tone(darken(o.col || '#5f6b78', 0.22), P), snow = S.tone(o.snowCol || '#f2f6fa', P);
-  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = mix(shade, '#000000', 0.12);
+  // every tone goes through the haze, so in thick air the folds fade with the rock instead of
+  // hanging in the sky on their own
+  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = S.tone(darken(o.col || '#5f6b78', 0.31), P);
   // ridges, gullies and the tree line come from a stream of their own
   const D = makeRng((o.seed || 5) * 71 + 3), peaks = [], sl = o.snowLine || 0.62;
   for (let i = 1; i < pts.length - 1; i++) {
@@ -4913,6 +5081,17 @@ K.mountains = function (S, z, o) {
         ctx.fillStyle = light; ctx.beginPath(); ctx.moveTo(b[0], b[1]); for (let k = 0; k < rg.length; k += 2) ctx.lineTo(rg[k], rg[k + 1]); ctx.lineTo(rg[rg.length - 2] - (b[1] - base) * 0.12, rg[rg.length - 1]); ctx.lineTo(lerp(b[0], a[0], 0.45), lerp(b[1], a[1], 0.45)); ctx.closePath(); ctx.fill();
         ctx.fillStyle = deep; ctx.beginPath(); ctx.moveTo(b[0] + (c[0] - b[0]) * 0.1, b[1] - (b[1] - c[1]) * 0.1); ctx.lineTo(lerp(b[0], c[0], 0.5), lerp(b[1], c[1], 0.5)); ctx.lineTo(lerp(b[0], c[0], 0.3), base + (b[1] - base) * 0.2); ctx.closePath(); ctx.fill();
         if (env.s > 0.05) { ctx.strokeStyle = shade; ctx.lineWidth = Math.max(1.2, env.px); ctx.beginPath(); const gl = peaks[q].gul; for (let g = 0; g < gl.length; g++) { ctx.moveTo(gl[g][0], gl[g][1]); ctx.lineTo(gl[g][2], gl[g][3]); } ctx.stroke(); }
+        if (env.s * (b[1] - base) > 160) { // bands of rock across the faces, tilted the same way, broken here and there
+          const n = env.s * (b[1] - base) > 420 ? 9 : 5, dip = 0.18 + kxH(q, 2) * 0.12;
+          ctx.save(); ctx.beginPath(); ctx.moveTo(a[0], base); ctx.lineTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(c[0], base); ctx.closePath(); ctx.clip();   // kept inside this peak
+          ctx.strokeStyle = deep; ctx.globalAlpha = 0.32; ctx.lineWidth = Math.max(env.px * 1.1, 1.5); ctx.beginPath();
+          for (let k = 1; k <= n; k++) {
+            const yy = base + (b[1] - base) * (0.18 + 0.6 * k / (n + 1)), xa = lerp(a[0], b[0], clamp((yy - a[1]) / Math.max(1, b[1] - a[1]), 0, 1)) + 6, xb = lerp(c[0], b[0], clamp((yy - c[1]) / Math.max(1, b[1] - c[1]), 0, 1)) - 6;
+            if (xb - xa < 20) continue;
+            for (let sgm = 0; sgm < 3; sgm++) { if (kxH(q * 7 + k, sgm) < 0.3) continue; const u0 = sgm / 3 + 0.04, u1 = (sgm + 1) / 3 - 0.04; ctx.moveTo(lerp(xa, xb, u0), yy + (u0 - 0.5) * (xb - xa) * dip); ctx.lineTo(lerp(xa, xb, u1), yy + (u1 - 0.5) * (xb - xa) * dip); }
+          }
+          ctx.stroke(); ctx.globalAlpha = 1; ctx.restore();
+        }
       }
       if (o.snow !== false && b[1] - base > H * sl) {
         const d = (b[1] - base - H * sl) * 0.9 + 12;
@@ -4931,6 +5110,13 @@ K.mountains = function (S, z, o) {
       ctx.lineTo(x1, base - 50); ctx.closePath(); ctx.fill();
     }
     kxFadeAt(ctx, S.pal.fog, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), H * 0.45, 0.3);
+    // after dark a radio mast on a few of the summits shows a slow red warning light
+    if (S.pal.dark > 0.3 && P.haze < 0.985) for (let q = 0; q < peaks.length; q += 3) {
+      const b = pts[peaks[q].i]; if (b[0] < env.x0 - 20 || b[0] > env.x1 + 20) continue;
+      const on = Math.pow(Math.max(0, Math.sin(env.t * 1.6 + q * 1.3)), 4), r = Math.max(env.px * 1.4, 1.2);
+      if (env.s > 0.02) { ctx.strokeStyle = deep; ctx.lineWidth = Math.max(env.px, 0.6); ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + Math.max(env.px * 6, 30)); ctx.stroke(); }
+      circ(ctx, b[0], b[1] + Math.max(env.px * 6, 30), r, rgba('#ff4a3d', 0.35 + 0.65 * on)); kxGlow(ctx, '#ff4a3d', b[0], b[1] + Math.max(env.px * 6, 30), r * 6, 0.45 * on);
+    }
   } });
   return P;
 };
@@ -5253,6 +5439,17 @@ K.building = function (S, P, o) {
         else kxSpillAt(ctx, spillSp, op.x, op.y, op.w, op.h, 1, true);
       }
       if (any && stamp) ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      // in rain or mist each lit window throws a soft shaft of light down through the wet air
+      if (any && kxMisty(S) && s > 3) {
+        ctx.globalAlpha = 1;
+        for (const key in B.wins) {
+          const op = B.wins[key]; if (op.x + op.w < vx0 - 2 || op.x > vx1 + 2) continue;
+          if (env.y0 !== undefined && (op.y - 2.6 > env.y1 || op.y < env.y0)) continue;
+          const room = S.rooms[op.room]; if (!room || !room.lit) continue;
+          kxFadeAt(ctx, '#ffd98a', op.x - op.w * 0.08, op.y, op.w * 1.16, -2.6, 0.13 * dark);
+        }
+        ctx.globalAlpha = 0.3 * dark;
+      }
       if (o.shop && S.rooms[B.shop.room].lit && B.shop.x < vx1 + 2 && B.shop.x + B.shop.w > vx0 - 2) { if (!any) { ctx.globalCompositeOperation = 'lighter'; any = true; } ctx.globalAlpha = 0.3 * dark; kxSpillAt(ctx, kxSpill('#ffe7b3'), B.shop.x, B.shop.y, B.shop.w, B.shop.h, 1.6); }
       if (any) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
     }
@@ -5447,6 +5644,19 @@ K.building = function (S, P, o) {
         else if (b[1] === 2) { R4(ctx, bx - 0.6, ry - 0.1, 1.2, 0.4, vc); poly(ctx, [bx - 0.6, ry + 0.3, bx + 0.6, ry + 0.3, bx + 0.45, ry + 0.56, bx - 0.45, ry + 0.56], S.tone(S.pal.glass, P)); if (env.s > 14) { ctx.fillStyle = vc2; ctx.fillRect(bx - 0.02, ry + 0.3, 0.04, 0.26); ctx.fillRect(bx - 0.6, ry + 0.28, 1.2, 0.04); } }
         else { line(ctx, bx, ry - 0.1, bx, ry + 0.5, vc, 0.06, env); ctx.fillStyle = dishC; ctx.beginPath(); ctx.ellipse(bx + 0.06, ry + 0.62, 0.16, 0.36, -0.5, 0, TAU); ctx.fill(); if (env.s > 12) { ctx.fillStyle = dishD; ctx.beginPath(); ctx.ellipse(bx + 0.1, ry + 0.6, 0.09, 0.27, -0.5, 0, TAU); ctx.fill(); line(ctx, bx + 0.08, ry + 0.6, bx + 0.42, ry + 0.82, vc, 0.03, env); } }
       }
+    } });
+  }
+  // the hour of long shadows: with the sun low and clear, the upper floors catch its warm light
+  // while the shadow of the roofs across the way lies over the lower ones, its edge on a slant
+  if ((S.time === 'dusk' || S.time === 'dawn') && S.pal.dark < 0.5 && S.weather === 'clear') {
+    const sd = S.sky.sun[0] < 0 ? -1 : 1, sl = -0.1 * sd, ys = base + H * (0.3 + 0.25 * kxH(x, w)), warm = S.time === 'dusk' ? 'rgba(255,150,80,0.1)' : 'rgba(255,190,150,0.09)', cool = S.time === 'dusk' ? 'rgba(40,24,70,0.16)' : 'rgba(50,50,90,0.13)';
+    P.add({ x0: x, x1: x + w, layer: 0, draw(ctx, env) {
+      if (env.s < 0.8) return;
+      const a = Math.max(x, env.x0), b = Math.min(x + w, env.x1); if (b <= a) return;
+      const ya = ys + (a - x) * sl, yb = ys + (b - x) * sl;
+      ctx.fillStyle = cool; ctx.beginPath(); ctx.moveTo(a, base); ctx.lineTo(a, ya); ctx.lineTo(b, yb); ctx.lineTo(b, base); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = warm; ctx.beginPath(); ctx.moveTo(a, ya); ctx.lineTo(a, base + H); ctx.lineTo(b, base + H); ctx.lineTo(b, yb); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
     } });
   }
   // for detail added on top by a scene: what the wall is made of and what is already fixed to it
@@ -5932,7 +6142,7 @@ K.fence = function (S, P, x0, x1, h, o) {
 K.lamp = function (S, P, x, h, zone, o) {
   o = o || {}; const y = o.y || 0, post = S.tone('#20242b', P);
   const arm = o.arm === undefined ? 0.9 : o.arm;
-  const postHi = S.tone('#414855', P), lc = o.col || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
+  const postHi = S.tone('#414855', P), lc = o.col || S.lampCol || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
   let kit = null;
   const ob = S.obj({ kind: 'lamp', id: o.id, plane: P, x: x + arm, y: y + h - 0.12, r: o.r || 0.3, zone, on: true, mat: 'glass', layer: 2, reach: o.reach || 9,
     draw(ctx, env) {
@@ -6019,6 +6229,8 @@ K.lamp = function (S, P, x, h, zone, o) {
   }
   if (o.style && o.style !== 'post') kit = kxLampKit(S, P, ob, o, x, y, h, arm);
   ob.baseY = y; ob.postX = x; ob.poolK = o.pool === false ? 0 : 1;
+  // a lamp of another colour (sodium, white) tints the people it lights the same colour as its pool
+  if (!o.col && S.lampCol) ob.col = S.lampCol;
   return ob;
 };
 
@@ -6721,12 +6933,38 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
     kxGlow(ctx, '#ff4a3d', -L / 2 + 0.04, c.body - 0.19, braking ? 1.0 : 0.5, braking ? 0.7 : 0.35);
     if (braking && s > 5) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22; ctx.drawImage(kxBlob('#ff4a3d'), -L / 2 - 2.2, -0.12, 2.6, 0.3); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   }
+  if (s > 12) kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, !st);
   if (night && st && st.moving) { // headlight beam, and its patch on the road ahead
     ctx.globalCompositeOperation = 'lighter'; const g = ctx.createLinearGradient(L / 2, 0, L / 2 + 9, 0); g.addColorStop(0, 'rgba(255,240,190,0.28)'); g.addColorStop(1, 'rgba(255,240,190,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(L / 2, c.body - 0.2); ctx.lineTo(L / 2 + 9, c.body + 0.9); ctx.lineTo(L / 2 + 9, 0); ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 0.3; ctx.drawImage(kxBlob('#fff0be'), L / 2 + 0.5, -0.22, 7, 0.5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.restore();
+}
+// Close up, the weather on a car (drawn only, in the car's own frame): in rain the drops burst
+// in little crowns on the roof, bonnet and boot; on a frosty night a car parked for the night
+// has rime along its roof and bonnet. The glass is left clear, so whoever sits inside still shows.
+function kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, parked) {
+  const rain = S.weather === 'rain' || S.weather === 'storm', frost = parked && S.look && S.look.dress === 'frost';
+  if (!rain && !frost) return;
+  if (frost) {
+    ctx.fillStyle = 'rgba(236,243,250,0.75)'; ctx.beginPath();
+    ctx.rect(c0 + slopeR + 0.05, c.h - 0.035, c1 - c0 - slopeR - 0.08, 0.05);
+    ctx.rect(c1 + slopeF + 0.05, c.body - 0.03, L / 2 - c1 - slopeF - 0.2, 0.04); ctx.rect(-L / 2 + 0.12, c.body - 0.03, Math.max(0, c0 + L / 2 - 0.2), 0.04);
+    ctx.fill();
+    return;
+  }
+  // three places the rain lands: the roof, the bonnet, the boot; each splash lasts a fifth of a second
+  const t = env.t, n = env.s > 30 ? 9 : 5, r = Math.max(0.012, env.px * 0.7), hx = (k) => kxH(k * 7.31, x * 0.13);
+  ctx.strokeStyle = 'rgba(225,235,248,0.6)'; ctx.lineWidth = r; ctx.lineCap = 'round'; ctx.beginPath();
+  for (let k = 0; k < n; k++) {
+    const u = (t * 5 + hx(k) * 9) % 1, cyc = Math.floor(t * 5 + hx(k) * 9), h2 = kxH(cyc, k + x), part = k % 3;
+    const xa = part === 0 ? c0 + slopeR + 0.1 : part === 1 ? c1 + slopeF + 0.1 : -L / 2 + 0.15, xb = part === 0 ? c1 - 0.1 : part === 1 ? L / 2 - 0.25 : c0 - 0.1;
+    if (xb <= xa) continue;
+    const px = xa + (xb - xa) * h2, py = part === 0 ? c.h : c.body, sp = 0.05 + u * 0.09, up = Math.sin(u * Math.PI) * 0.07;
+    ctx.moveTo(px - sp * 0.4, py + 0.01); ctx.lineTo(px - sp, py + up); ctx.moveTo(px + sp * 0.4, py + 0.01); ctx.lineTo(px + sp, py + up);
+  }
+  ctx.stroke(); ctx.lineCap = 'butt';
 }
 // A side window that can be wound down. st.pane[i] = { a, b, t0, dur, gone }: the pane moves
 // from a to b (0 = shut, 1 = all the way down) over dur seconds from time t0.
@@ -8546,7 +8784,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, V.W, V.H);
   ctx.save();
   ctx.beginPath(); if (V.round) ctx.arc(cam.cx, cam.cy, V.R, 0, TAU); else ctx.rect(0, 0, V.W, V.H); ctx.clip();
-  V.drawWorld(sim, cam, dt, simDt);
+  V._scopeDraw = true; V.drawWorld(sim, cam, dt, simDt); V._scopeDraw = false;
   V.drawGlassFx(sim, cam, dt);
   V.drawLens(sim, cam);
   ctx.restore();
@@ -8574,42 +8812,8 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
   const aim = { x: cam.ax, y: cam.ay }, eye = { x: cam.ex, y: cam.ey, z: cam.ez };
   const farStop = sim.farStop || 1e9;
-  // ---- sky ----
-  const hor = cy + aim.y * ppm - ((0 - eye.y) / 4000) * 1000 * ppm * 0; // horizon line (angle 0)
-  const g = ctx.createLinearGradient(0, hor - 230 * ppm, 0, hor);
-  g.addColorStop(0, pal.skyTop); g.addColorStop(1, pal.skyBot);
-  ctx.fillStyle = g; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
-  if (pal.star > 0) {
-    ctx.fillStyle = '#ffffff';
-    const stars = S.sky.stars;
-    for (let i = 0; i < stars.length; i++) {
-      const sx = cx + (stars[i][0] - aim.x * 0.98) * ppm * 0.6, sy = cy - (stars[i][1] - aim.y * 0.98) * ppm * 0.6;
-      if (Math.abs(sx - cx) > hw || Math.abs(sy - cy) > hh) continue;
-      ctx.globalAlpha = pal.star * (0.35 + 0.65 * stars[i][3]) * (0.8 + 0.2 * Math.sin(V.rt * 2 + i));
-      ctx.fillRect(sx, sy, stars[i][2] * 1.3, stars[i][2] * 1.3);
-    }
-    ctx.globalAlpha = 1;
-  }
-  { // sun or moon
-    const sx = cx + (S.sky.sun[0] - aim.x) * ppm, sy = cy - (S.sky.sun[1] - aim.y) * ppm, sr = (pal.dark > 0.5 ? 4.5 : 7) * ppm;
-    if (S.weather !== 'rain' && S.time !== 'overcast' && sx > cx - hw - sr * 4 && sx < cx + hw + sr * 4) {
-      const gg = ctx.createRadialGradient(sx, sy, sr * 0.2, sx, sy, sr * 4);
-      gg.addColorStop(0, rgba(pal.sun, 0.55)); gg.addColorStop(1, rgba(pal.sun, 0));
-      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(sx, sy, sr * 4, 0, TAU); ctx.fill();
-      ctx.fillStyle = pal.sun; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
-      if (pal.dark > 0.5) { ctx.fillStyle = pal.skyTop; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(sx + sr * 0.45, sy - sr * 0.2, sr * 0.9, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    }
-  }
-  ctx.fillStyle = pal.cloud;
-  for (let i = 0; i < S.sky.clouds.length; i++) {
-    const c = S.sky.clouds[i];
-    const drift = ((sim.t * 0.25 * (1 + c.s) * sign(sim.windBase || 1) + c.x + 300) % 600) - 300;
-    const px = cx + (drift - aim.x) * ppm, py = cy - (c.y - aim.y) * ppm;
-    if (px < cx - hw - c.w * ppm || px > cx + hw + c.w * ppm || py < cy - hh - 40 * ppm || py > cy + hh + 40 * ppm) continue;
-    ctx.globalAlpha = S.weather === 'clear' ? 0.75 : 0.9;
-    for (let j = 0; j < c.n; j++) { ctx.beginPath(); ctx.ellipse(px + ((j / (c.n - 1)) - 0.5) * c.w * ppm * 0.8, py - Math.sin(j * 2.3 + c.s * 9) * c.h * ppm * 0.25, c.w * ppm * 0.26, c.h * ppm * (0.45 + 0.25 * Math.sin(j * 1.7 + c.s * 5)), 0, 0, TAU); ctx.fill(); }
-  }
-  ctx.globalAlpha = 1;
+  // ---- sky (06b_sky.js) ----
+  V.drawSky(sim, cam);
 
   // ---- the world, far to near ----
   const nv = !!st.scope.nv;
@@ -8702,9 +8906,10 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     for (let i = 0; i < sim.steam.length; i++) {
       const sm = sim.steam[i]; if (sm.plane !== P || sm.until < sim.t) continue;
       const u = clamp((sim.t - sm.from) / 1.5, 0, 1) * clamp((sm.until - sim.t) / 2, 0, 1);
-      ctx.fillStyle = 'rgba(232,236,240,0.5)';
-      for (let j = 0; j < 9; j++) { const ph = sim.t * 0.5 + j * 1.7; ctx.globalAlpha = 0.5 * u; ctx.beginPath(); ctx.arc(sm.x + Math.sin(ph) * 2.2 + (j - 4) * 0.5, sm.y + 0.6 + ((ph * 0.9) % 4.5), 1.1 + (j % 3) * 0.5, 0, TAU); ctx.fill(); }
-      ctx.globalAlpha = 1;
+      // a jet of steam roaring out of the valve and rolling up into a thick cloud
+      const col = S.pal.dark > 0.5 ? '#aab4c4' : '#eef1f4';
+      kxPlume(ctx, env, sm.x - 0.8, sm.y + 0.3, { n: 13, rise: 4.8, r0: 0.5, r1: 2.2, speed: 0.42, a: 0.85 * u, col, drift: env.wind * 0.25 - 0.6, steam: true });
+      kxPlume(ctx, env, sm.x + 0.8, sm.y + 0.3, { n: 13, rise: 4.4, r0: 0.6, r1: 2.3, speed: 0.38, a: 0.85 * u, col, drift: env.wind * 0.25 + 0.6, ph: 0.5, steam: true });
     }
     // speech and alert marks
     for (let i = 0; i < sim.actors.length; i++) {
@@ -8768,21 +8973,11 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     }
   }
 
-  // ---- weather in front of everything ----
-  if (S.weather === 'rain' || S.weather === 'storm') V.drawRain(sim, cam, S.weather === 'storm');
-  else if (S.weather === 'snow') {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    const n = Math.round(80 * clamp((hw * hh) / 36000, 0.7, 3));
-    for (let i = 0; i < n; i++) {
-      const sp = 40 + (i % 5) * 22;
-      const x = cx - hw + (((i * 97.3 + V.rt * (sim.wind() * 14 + Math.sin(V.rt + i) * 6)) % (hw * 2)) + hw * 2) % (hw * 2), y = cy - hh + ((i * 53.7 + V.rt * sp) % (hh * 2));
-      ctx.beginPath(); ctx.arc(x, y, 1 + (i % 3) * 0.7, 0, TAU); ctx.fill();
-    }
-  }
-  if (S.weather === 'fog') { ctx.fillStyle = rgba(pal.fog, 0.22); ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // lightning flash
-  if (sim.flashT && sim.t - sim.flashT < 0.35) { ctx.fillStyle = 'rgba(235,240,255,' + (0.55 * (1 - (sim.t - sim.flashT) / 0.35) * (Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3)) + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-
+  // ---- weather in front of everything, then the colour of the hour (06c_air.js) ----
+  V.drawWeather(sim, cam);
+  V.drawGrade(sim, cam);
+  if (V._scopeDraw) V.drawShimmer(sim, cam);   // (through the scope only, not in the kill camera)
+  V.keepFrame(sim);
 };
 
 // Rain. Three depths of streaks, every drop with its own speed, length, brightness and
@@ -8809,7 +9004,7 @@ View.prototype.drawRain = function (sim, cam, storm) {
       const sp = (far ? 520 : near ? 1500 : 900) * r.sp, len = (far ? 9 : near ? 34 : 18) * r.len, sl = slant + r.lean + (near ? slant * 0.25 : 0);
       const span = H2 + len + 20, tt = r.y * span + t * sp, cyc = Math.floor(tt / span), yy = (tt - cyc * span) - len - 10;
       const hsh = Math.sin(i * 91.7 + cyc * 47.3) * 43758.5453, lane = hsh - Math.floor(hsh); // a fresh place to fall every time round
-      const xx = (((lane * W2 + sl * yy) % W2) + W2) % W2;
+      const xx = (((lane * W2 + sl * yy - cam.ax * cam.ppm) % W2) + W2) % W2;   // the rain is out in the world: it pans with it
       ctx.moveTo(cx - hw + xx, cy - hh + yy); ctx.lineTo(cx - hw + xx + sl * len, cy - hh + yy + len);
     }
     ctx.stroke();
@@ -8849,15 +9044,19 @@ View.prototype.drawLens = function (sim, cam) {
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - hh + ((V.rt * 40) % 3); y < cy + hh; y += 3) ctx.fillRect(cx - hw, y, hw * 2, 1);
   }
   if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,244,214,' + V.flash * 0.5 + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // soft dark edge
+  // the scope's own coating, flare, rain and frost on the lens, the hide (06d_glass.js)
+  V.drawGlass(sim, cam);
+  // soft dark edge (each make of scope darkens its rim a little differently)
+  const edge = glassOf(st).edge;
   let vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,0.28)'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,' + edge.toFixed(2) + ')'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
   ctx.fillStyle = vg; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   // thin colour fringe, like real glass
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
+  V.drawFrost(sim, cam);
 
-  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
+  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticleLit(sim, cam); }
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -8886,7 +9085,7 @@ View.prototype.bdcMarks = function (sim) {
 View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const V = this, ctx = V.ctx, st = sim.st, R = V.RR || V.R, Rv = Math.min(R, V.hh || R), type = st.scope.ret;
   const nvc = st.scope.nv;
-  const col = nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)';
+  const col = V.retInk || (nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)');   // retInk: the lit middle after dark (06d_glass.js)
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'butt';
   const L = (x1, y1, x2, y2, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(cx + x1, cy + y1); ctx.lineTo(cx + x2, cy + y2); ctx.stroke(); };
   const thin = clamp(ppm * 0.035, 0.9, 1.6);
@@ -9235,6 +9434,877 @@ function hfxDraw(V, sim, ctx, f, dt) {
 }
 
 
+// ===== 06b_sky.js =====
+// ---------------------------------------------------------------------------
+// The sky: its colour, the sun or the moon, the stars and the Milky Way, sun rays and the
+// clouds. Everything up here is placed by angle (mils from straight ahead, y up from the
+// horizon), not by distance, so it never slides against itself as the eye moves; it only
+// pans with the scope. None of it is gameplay: it reads the scene, never changes it.
+//
+// The look of a mission (S.look, see 07i_looks.js) can tune all of it: how much cloud,
+// what kind, the moon's phase, how many stars a town's glow leaves, a Milky Way.
+// ---------------------------------------------------------------------------
+
+// ---- colour on the sky --------------------------------------------------------------
+const skyRgbCache = new Map();
+function skyRgb(r, g, b) {
+  r = Math.round(clamp(r, 0, 255)); g = Math.round(clamp(g, 0, 255)); b = Math.round(clamp(b, 0, 255));
+  const k = (r << 16) | (g << 8) | b; let s = skyRgbCache.get(k);
+  if (!s) { if (skyRgbCache.size > 5000) skyRgbCache.clear(); s = 'rgb(' + r + ',' + g + ',' + b + ')'; skyRgbCache.set(k, s); }
+  return s;
+}
+// A vertical run of colours on screen as thin flat bands: a gradient costs many times as much
+// per pixel on a phone. stops: [[y, '#hex'], ...] in screen pixels from top to bottom.
+function skyBands(ctx, stops, x0, x1, yA, yB) {
+  const w = x1 - x0;
+  if (yA < stops[0][0]) { ctx.fillStyle = stops[0][1]; ctx.fillRect(x0, yA, w, Math.min(yB, stops[0][0]) - yA); }
+  for (let i = 0; i < stops.length - 1; i++) {
+    const ya = stops[i][0], yb = stops[i + 1][0]; if (yb <= yA || ya >= yB || yb <= ya) continue;
+    const A = rgbOf(stops[i][1]), B = rgbOf(stops[i + 1][1]);
+    const diff = Math.max(Math.abs(A[0] - B[0]), Math.abs(A[1] - B[1]), Math.abs(A[2] - B[2]));
+    const n = clamp(Math.ceil(diff * 1.2), 1, Math.max(1, Math.ceil((yb - ya) / 2.5)));
+    for (let k = 0; k < n; k++) {
+      const b0 = Math.round(ya + ((yb - ya) * k) / n), b1 = Math.round(ya + ((yb - ya) * (k + 1)) / n);
+      if (b1 <= yA || b0 >= yB || b1 <= b0) continue;
+      const u = (k + 0.5) / n;
+      ctx.fillStyle = skyRgb(lerp(A[0], B[0], u), lerp(A[1], B[1], u), lerp(A[2], B[2], u));
+      const c0 = Math.max(b0, yA), c1 = Math.min(b1, yB); ctx.fillRect(x0, c0, w, c1 - c0);
+    }
+  }
+  const yl = stops[stops.length - 1][0];
+  if (yB > yl) { ctx.fillStyle = stops[stops.length - 1][1]; ctx.fillRect(x0, Math.max(yA, yl), w, yB - Math.max(yA, yl)); }
+}
+
+// ---- what the sky is like for a scene, worked out once ---------------------------------
+// Cloud colours for each time of day: the lit top, the body, the shaded side and the flat base.
+const SKY_CLOUD = {
+  day: { lit: '#ffffff', body: '#eef3f8', shade: '#c3d0de', under: '#a7b7ca' },
+  dawn: { lit: '#fff0dc', body: '#f2cdbd', shade: '#b39aae', under: '#93809c' },
+  dusk: { lit: '#ffcf8f', body: '#e2967c', shade: '#875a78', under: '#5f4466' },
+  night: { lit: '#4f5f84', body: '#1d2843', shade: '#131b31', under: '#0e1427' },
+  overcast: { lit: '#d9dfe5', body: '#b3bcc5', shade: '#919ba5', under: '#7b858f' },
+  snow: { lit: '#ffffff', body: '#e7edf3', shade: '#c7d2dd', under: '#b2bfcc' },
+};
+// The light on smoke and steam: the colour of its lit side and of its shaded side.
+const SKY_AIR = { day: ['#ffffff', '#7486a0'], dawn: ['#ffe4cc', '#7a6a8c'], dusk: ['#ffc48a', '#5a4468'], night: ['#9aa8c8', '#1a2032'], overcast: ['#eef1f4', '#7a838d'], snow: ['#ffffff', '#93a3b6'] };
+// The colour between the zenith and the horizon (a sky is not a straight fade from one to the other).
+const SKY_MID = { day: '#5ea4e2', dawn: '#9a7fa6', dusk: '#7b4670', night: '#0b1430', overcast: '#97a2ac', snow: '#b8c8d8' };
+
+function skyStyle(S) {
+  if (S._sky) return S._sky;
+  const pal = S.pal, t = S.time, w = S.weather, L = (S.look && S.look.sky) || {};
+  const wet = w === 'rain' || w === 'storm', grey = wet || t === 'overcast' || w === 'fog' || w === 'snow';
+  const cc = Object.assign({}, SKY_CLOUD[t] || SKY_CLOUD.day, L.cloudCols || {});
+  if (wet && t !== 'night') { cc.lit = mix(cc.lit, '#9aa3ac', 0.35); cc.body = mix(cc.body, '#7d8792', 0.45); cc.shade = mix(cc.shade, '#5a636d', 0.4); cc.under = mix(cc.under, '#4a525b', 0.45); }
+  if (w === 'storm') { for (const k in cc) cc[k] = mix(cc[k], '#1c2028', 0.35); }
+  const D = makeRng(hashStr((S.look && S.look.id) || t + w) * 7 + Math.round(S.refZ));
+  const sky = {
+    top: L.top || pal.skyTop, mid: L.mid || SKY_MID[t] || mix(pal.skyTop, pal.skyBot, 0.5), bot: L.bot || pal.skyBot, glow: L.glow || null, cc,
+    night: pal.dark > 0.5 ? 1 : 0, grey, wet,
+    // how much of each kind of cloud: puffy heaps, thin high streaks, a low grey deck
+    heaps: L.heaps !== undefined ? L.heaps : wet || w === 'fog' ? 0 : t === 'overcast' || w === 'snow' ? 0.15 : t === 'night' ? 0.35 : 0.6,
+    cirrus: L.cirrus !== undefined ? L.cirrus : grey ? 0 : t === 'night' ? 0.4 : 0.8,
+    deck: L.deck !== undefined ? L.deck : wet ? 1 : t === 'overcast' || w === 'snow' ? 0.85 : w === 'fog' ? 0.6 : 0,
+    stars: (L.stars === undefined ? 1 : L.stars) * pal.star * (wet || w === 'fog' ? 0 : t === 'overcast' ? 0.2 : 1),
+    milky: L.milky || 0, moon: L.moon === undefined ? 0.72 : L.moon, rays: L.rays === undefined ? (t === 'dawn' || t === 'dusk') && !wet : L.rays,
+    cityGlow: L.cityGlow === undefined ? (S.ambience === 'city' || S.ambience === 'harbour' ? 1 : 0) : L.cityGlow,
+    drift: L.drift === undefined ? 1 : L.drift, clouds: [], streaks: [], deckRows: [], jets: [],
+    sunX: S.sky.sun[0], lowSun: pal.dark < 0.5 && (t === 'dawn' || t === 'dusk' || S.sky.sun[1] < 30),
+  };
+  // The sun (or moon) sits where the scene says; keep the big clouds out of its band so it is never hidden for long.
+  const sun = S.sky.sun, avoid = (y, h) => Math.abs(y + h * 0.4 - sun[1]) < 18 + h * 0.6;
+  const nH = Math.round(sky.heaps * 22);
+  for (let i = 0; i < nH; i++) {
+    let y = D.r(8, 135); const W = D.r(22, 64) * (0.5 + y / 150); let tries = 0;
+    while (avoid(y, W * 0.35) && tries++ < 6) y = D.r(8, 135);
+    sky.clouds.push(skyMakeHeap(D, D.r(-600, 600), y, W, D.r(0.28, 0.42)));
+  }
+  sky.clouds.sort((a, b) => b.y - a.y);   // the highest (and so the farthest) first
+  const nC = Math.round(sky.cirrus * 10);
+  for (let i = 0; i < nC; i++) sky.streaks.push({ x: D.r(-600, 600), y: D.r(60, 210), w: D.r(40, 130), h: D.r(1.2, 3.6), sk: D.r(-0.3, 0.3), a: D.r(0.25, 0.6), n: D.i(2, 4), s: D.f() });
+  if (sky.deck > 0) {
+    // layers of a grey deck, like sheets of torn paper: high and pale to low and dark
+    const rows = Math.round(3 + sky.deck * 3);
+    for (let r = 0; r < rows; r++) {
+      const u = r / Math.max(1, rows - 1), y = lerp(175, 8, Math.pow(u, 0.8)) + D.r(-5, 5);
+      sky.deckRows.push({ y, k: u, s: D.r(0, 100), th: lerp(30, 9, u) * D.r(0.8, 1.2), sp: lerp(0.05, 0.16, u), rain: sky.wet && u > 0.45 ? D.r(0.4, 1) : 0 });
+    }
+  }
+  // airliners passing high over, a few minutes apart
+  if (!grey) for (let i = 0; i < 2; i++) sky.jets.push({ y: D.r(70, 150), dy: D.r(-12, 12), dir: D.chance(0.5) ? 1 : -1, per: D.r(170, 260), ph: D.f(), sp: D.r(7, 10) });
+  S._sky = sky;
+  return sky;
+}
+// A heap of cumulus: a flat base and lobes piled over it, biggest in the middle. Each lobe can
+// be split into smaller ones along its upper edge when the scope is close enough to show them.
+function skyMakeHeap(D, x, y, W, tall) {
+  const H = W * tall, lobes = [], n = Math.max(5, Math.round(W / 6));
+  // a row along the base so the bottom runs flat and unbroken
+  const nb = Math.max(3, Math.round(W / 14));
+  for (let k = 0; k < nb; k++) { const u = (k + 0.5) / nb, lx = (u - 0.5) * W * 0.9 + D.r(-0.2, 0.2) * (W / nb), r = H * D.r(0.2, 0.3) * (1 - 0.35 * Math.abs(2 * u - 1)); lobes.push({ x: lx, y: r * D.r(0.45, 0.7), r, s: D.f() }); }
+  // then lobes of very different sizes heaped inside a lopsided dome
+  const lean = D.r(-0.25, 0.25);
+  for (let k = 0; k < n; k++) {
+    const lx = D.r(-0.46, 0.46) * W, v = (lx / W) * 2 - lean, env = H * Math.pow(Math.max(0, 1 - v * v), 0.55) * D.r(0.75, 1.05);
+    if (env < H * 0.25) continue;
+    const r = H * Math.pow(D.f(), 1.6) * 0.32 + H * 0.1;
+    lobes.push({ x: lx, y: clamp(env - r * D.r(0.7, 1.05), r * 0.45, H), r: Math.min(r, env * 0.6), s: D.f() });
+  }
+  let x0 = 1e9, x1 = -1e9, top = 0;
+  for (const q of lobes) { x0 = Math.min(x0, q.x - q.r); x1 = Math.max(x1, q.x + q.r); top = Math.max(top, q.y + q.r); }
+  return { x, y, W, H, lobes, x0, x1, top, seed: D.f() * 1000 };
+}
+// The smaller lobes along the upper edge of a lobe (made the first time they are wanted).
+function skyKids(q, seed) {
+  if (q.kids) return q.kids;
+  const kids = q.kids = [], n = 5 + Math.floor(kxH(seed, q.s * 91) * 3);
+  for (let i = 0; i < n; i++) {
+    const a = 0.25 + ((i + 0.5) / n) * (Math.PI - 0.5) + (kxH(seed + i, q.s) - 0.5) * 0.3, cr = q.r * (0.26 + kxH(i * 3.1, seed + q.s) * 0.16);
+    const d = q.r - cr * 0.5;
+    kids.push({ x: q.x + Math.cos(a) * d, y: q.y + Math.sin(a) * d, r: cr, s: kxH(i * 7.7, q.s * 13 + seed) });
+  }
+  return kids;
+}
+
+// ---- drawing ------------------------------------------------------------------------------
+// The view calls this first every frame, with whichever camera is drawing (the scope or the
+// kill camera). dt is the frame time.
+View.prototype.drawSky = function (sim, cam) {
+  const V = this, ctx = V.ctx, S = sim.S, pal = S.pal, sky = skyStyle(S), t = V.rt;
+  sky.windNow = sim.wind();
+  // a loud shot: the birds about the scene take fright when the sound reaches them
+  if (V._shotSim !== sim) { V._shotSim = sim; V._shotN = sim.stats.shots; }
+  else if (sim.stats.shots > V._shotN) { V._shotN = sim.stats.shots; if (!sim.st.quiet) kxScareNow(S, sim.sh.lastFire); }
+  // tell the smoke and steam how they are lit this frame
+  const air = SKY_AIR[S.time] || SKY_AIR.day, side = S.sky.sun[0] < 0 ? -1 : 1;
+  kxAir.side = side; kxAir.lit = sky.wet ? mix(air[0], '#9aa4ae', 0.5) : air[0]; kxAir.shade = air[1]; kxAir.soft = pal.dark > 0.5; kxAir.key = S.time + S.weather + side;
+  const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
+  const X = (mx) => cx + (mx - cam.ax) * ppm, Y = (my) => cy - (my - cam.ay) * ppm;
+  const top = cy - hh, bot = cy + hh, left = cx - hw, right = cx + hw;
+  // which part of the sky is on screen, in mils
+  const my1 = cam.ay + hh / ppm, my0 = cam.ay - hh / ppm, mx0 = cam.ax - hw / ppm, mx1 = cam.ax + hw / ppm;
+  // ---- the colour: zenith, a middle tone, the horizon and a band of haze right along it ----
+  const glow = sky.glow || mix(sky.bot, '#ffffff', sky.night ? 0.04 : 0.18);
+  skyBands(ctx, [[Y(260), sky.top], [Y(95), sky.mid], [Y(22), sky.bot], [Y(2), glow], [Y(-6), pal.fog]], left, right, top, bot);
+  if (my1 < -10) return;   // looking down at the ground: nothing of the sky shows
+  const sun = S.sky.sun, sx = X(sun[0]), sy = Y(sun[1]);
+  // ---- stars and the Milky Way ----
+  if (sky.stars > 0.01) { if (sky.milky > 0) V.skyMilky(ctx, cam, sky, X, Y); V.skyStars(ctx, cam, sky, mx0, mx1, my0, my1, t); }
+  // ---- sun or moon ----
+  const veiled = sky.wet || S.time === 'overcast' || S.weather === 'fog';
+  if (sky.night) { if (!veiled || S.weather === 'fog') V.skyMoon(ctx, cam, sky, sx, sy, veiled); }
+  else V.skySun(ctx, cam, sky, sx, sy, veiled, mx0, mx1, my1);
+  // ---- clouds: high streaks, then the heaps, then the low deck ----
+  const drift = (sim.t * sign(sim.windBase || 1)) * sky.drift;
+  if (sky.streaks.length) V.skyCirrus(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, sx, sy);
+  if (sky.jets.length) V.skyJets(ctx, cam, sim, sky, X, Y, mx0, mx1, my0, my1);
+  if (sky.clouds.length) V.skyHeaps(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1);
+  V.skyBolt(ctx, cam, sim, X, Y);   // lightning, behind the lowest cloud
+  if (sky.deckRows.length) V.skyDeck(ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, S);
+};
+
+// Stars. They come from a fixed pattern over the whole sky, cell by cell, so they never swim;
+// zooming in brings out fainter ones, as a real scope does. Each one twinkles on its own, and
+// they thin out toward the horizon where the air is thick.
+View.prototype.skyStars = function (ctx, cam, sky, mx0, mx1, my0, my1, t) {
+  const ppm = cam.ppm, k = sky.stars, cx = cam.cx, cy = cam.cy;
+  const cols = ['#ffffff', '#d4e2ff', '#ffe6c2'];
+  if (!this._starBins) { this._starBins = []; for (let i = 0; i < 18; i++) this._starBins.push([]); }
+  const bins = this._starBins; for (let i = 0; i < 18; i++) bins[i].length = 0;
+  const lo = Math.max(my0, -2);
+  for (let lv = 0; lv < 4; lv++) {
+    const cell = [26, 9, 3, 1][lv], cp = cell * ppm; if (cp < 16) continue;
+    const i0 = Math.floor(mx0 / cell), i1 = Math.floor(mx1 / cell), j0 = Math.floor(lo / cell), j1 = Math.floor(my1 / cell);
+    if ((i1 - i0 + 1) * (j1 - j0 + 1) > 900) continue;
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+      const h = kxH(i * 1.37 + lv * 101, j * 2.11 + lv * 37);
+      // the Milky Way is crowded with faint stars
+      const band = sky.milky ? skyMilkyAt(sky, (i + 0.5) * cell, (j + 0.5) * cell) : 0;
+      if (h > 0.55 + band * 0.4) continue;
+      const u = kxH(i * 3.7 + 11, j * 1.9 + lv), v = kxH(i * 5.3 + lv, j * 7.1 + 3), mx = (i + u) * cell, my = (j + v) * cell;
+      if (my < -2) continue;
+      const mag = Math.pow(kxH(i + 0.3, j + lv * 9.1), 2.6) * [1, 0.75, 0.5, 0.36][lv];
+      const ext = smooth((my + 2) / 22), tw = 0.62 + 0.38 * Math.sin(t * (5 + h * 9) + u * 40) * (0.5 + 0.5 * Math.sin(t * 1.3 + v * 20));
+      const a = clamp((0.2 + mag * 1.2) * k * ext * (0.7 + 0.3 * tw), 0, 1); if (a < 0.04) continue;
+      const sz = 0.7 + mag * 1.6, col = v < 0.12 ? 1 : v > 0.9 ? 2 : 0;
+      bins[col * 6 + Math.min(5, Math.floor(a * 6))].push(cx + (mx - cam.ax) * ppm - sz / 2, cy - (my - cam.ay) * ppm - sz / 2, sz);
+    }
+  }
+  for (let b = 0; b < 18; b++) {
+    const q = bins[b]; if (!q.length) continue;
+    ctx.fillStyle = cols[Math.floor(b / 6)]; ctx.globalAlpha = ((b % 6) + 0.6) / 6; ctx.beginPath();
+    for (let i = 0; i < q.length; i += 3) ctx.rect(q[i], q[i + 1], q[i + 2], q[i + 2]);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+};
+// The Milky Way: a long soft band across the sky with dark lanes of dust down it.
+const SKY_MW = { a: -0.42, x: 40, y: 120, len: 1400, w: 70 };
+function skyMilkyAt(sky, mx, my) {
+  const c = Math.cos(SKY_MW.a), s = Math.sin(SKY_MW.a), dx = mx - SKY_MW.x, dy = my - SKY_MW.y, across = -dx * s + dy * c;
+  return Math.max(0, 1 - Math.abs(across) / SKY_MW.w);
+}
+let skyMwPic = null;
+View.prototype.skyMilky = function (ctx, cam, sky, X, Y) {
+  if (!skyMwPic) {
+    const W = 512, H = 96, c = kxCanvas(W, H), g = c.getContext('2d'), im = g.createImageData(W, H), d = im.data;
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      const u = i / W, v = (j + 0.5) / H * 2 - 1, wob = 0.18 * vnoise(u * 9, 3) + 0.08 * vnoise(u * 31, 8);
+      const core = Math.exp(-Math.pow((v - wob) / 0.42, 2)), dust = Math.max(0, vnoise(u * 22 + v * 3, 21) * 0.8 + vnoise(u * 60 + v * 9, 4) * 0.4);
+      const lane = Math.exp(-Math.pow((v - wob * 0.7 + 0.08) / 0.12, 2)) * (0.5 + 0.5 * vnoise(u * 14, 9));
+      let a = core * (0.55 + 0.45 * dust) * (1 - 0.75 * lane) * Math.min(1, u * 6, (1 - u) * 6);
+      a = clamp(a, 0, 1); const k = (j * W + i) * 4;
+      d[k] = 200 + 40 * dust; d[k + 1] = 208 + 30 * dust; d[k + 2] = 255; d[k + 3] = Math.round(a * 255);
+    }
+    g.putImageData(im, 0, 0); skyMwPic = c;
+  }
+  const ppm = cam.ppm, x = X(SKY_MW.x), y = Y(SKY_MW.y), L = SKY_MW.len * ppm, Wd = SKY_MW.w * 2 * ppm;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = clamp(0.32 * sky.milky * sky.stars, 0, 0.5);
+  ctx.translate(x, y); ctx.rotate(-SKY_MW.a); ctx.drawImage(skyMwPic, -L / 2, -Wd / 2, L, Wd);
+  ctx.restore();
+};
+
+// The moon: a real one, with its seas and craters, lit from one side by its phase, a soft glow
+// round it and a wider faint halo. Nothing about it is ever darker than the sky behind it.
+const skyMoonPics = new Map();
+function skyMoonPic(phase, N) {
+  const key = Math.round(phase * 40) + ':' + N; let c = skyMoonPics.get(key); if (c) return c;
+  if (skyMoonPics.size > 6) skyMoonPics.clear();
+  c = kxCanvas(N, N); const g = c.getContext('2d'), R = N / 2 - 1, im = g.createImageData(N, N), d = im.data;
+  // phase 0 new, 0.5 full, 1 new again; lit from the right while waxing
+  const k = Math.cos(phase * TAU), wax = phase < 0.5 ? 1 : -1;
+  // the seas, laid out roughly as they are on the real moon, and craters scattered over the highlands
+  const seas = [[-0.55, -0.05, 0.3, 0.5], [-0.28, -0.42, 0.3, 0.23], [0.18, -0.38, 0.16, 0.15], [0.32, -0.08, 0.2, 0.17], [0.68, -0.28, 0.1, 0.09], [0.55, 0.15, 0.12, 0.17], [-0.18, 0.35, 0.2, 0.14], [0.36, 0.28, 0.08, 0.08], [0.0, -0.68, 0.38, 0.06], [-0.48, 0.42, 0.09, 0.09]];
+  const craters = []; const D = makeRng(77);
+  for (let i = 0; i < 70; i++) { const a = D.r(0, TAU), rr = Math.sqrt(D.f()) * 0.93; craters.push([Math.cos(a) * rr, Math.sin(a) * rr, D.r(0.018, 0.075) * (i < 8 ? 1.5 : 1), D.f()]); }
+  craters.push([-0.1, 0.72, 0.045, 2], [-0.3, -0.12, 0.05, 2]);   // two young bright ones, with rays
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = (i + 0.5 - N / 2) / R, y = (j + 0.5 - N / 2) / R, r2 = x * x + y * y; const kk = (j * N + i) * 4;
+    if (r2 > 1.0) { d[kk + 3] = 0; continue; }
+    const z = Math.sqrt(1 - r2);
+    let sea = 0; const wob = vnoise(x * 9, 5) * 0.18 + vnoise(y * 13, 6) * 0.1;
+    for (let q = 0; q < seas.length; q++) { const M = seas[q], u = Math.hypot((x - M[0]) / M[2], (y - M[1]) / M[3]) + wob; sea = Math.max(sea, 1 - smooth((u - 0.75) * 3)); }
+    let alb = 1 - 0.3 * sea + 0.05 * vnoise(x * 17 + y * 6, 13) + 0.03 * vnoise(x * 41 - y * 33, 14);
+    for (let q = 0; q < craters.length; q++) {
+      const C = craters[q], dx = x - C[0], dy = y - C[1], reach = C[2] * (C[3] === 2 ? 9 : 1.2);
+      if (dx > reach || dx < -reach || dy > reach || dy < -reach) continue;
+      const dd = Math.sqrt(dx * dx + dy * dy) / C[2];
+      if (C[3] === 2 && dd < 9) { const ang = Math.atan2(dy, dx); alb += 0.12 * Math.max(0, Math.sin(ang * 7 + C[0] * 30) * 0.5 + Math.sin(ang * 13) * 0.5) * (1 - dd / 9) * (dd > 1.2 ? 1 : 0); }
+      if (dd > 1.2) continue;
+      if (C[3] === 2) { alb += dd < 0.7 ? 0.14 : 0.08; continue; }
+      if (dd < 0.78) alb -= 0.1 * (0.5 + C[3] * 0.5) * (1 - sea * 0.5);
+      else alb += 0.11 * clamp((dx * wax) / (dd * C[2] + 1e-6), -0.5, 1);
+    }
+    // light: the terminator falls where the lit half ends, with a soft edge
+    const L1 = smooth(skyTerm(x * wax, z, k) * 12 + 0.5), limb = 0.84 + 0.16 * z, b = clamp(alb, 0.45, 1.15) * limb * (0.86 + 0.14 * L1);
+    // the unlit part is left almost clear (a trace of earthshine), so it is never darker than the sky
+    d[kk] = Math.round(clamp(244 * b, 0, 255)); d[kk + 1] = Math.round(clamp(239 * b, 0, 255)); d[kk + 2] = Math.round(clamp(224 * b, 0, 255));
+    const edge = clamp((1 - Math.sqrt(r2)) * R * 1.2, 0, 1);
+    d[kk + 3] = Math.round(255 * edge * (L1 + (1 - L1) * 0.05));
+  }
+  g.putImageData(im, 0, 0); skyMoonPics.set(key, c); return c;
+}
+// How much of a point on the moon's face is in sunlight, as a signed distance (positive = lit).
+// lx is across the face toward the sun, z out of the face, k the cosine of the phase angle.
+function skyTerm(lx, z, k) { const s = Math.sqrt(Math.max(0, 1 - k * k)); return lx * s - z * k; }
+View.prototype.skyMoon = function (ctx, cam, sky, sx, sy, veiled) {
+  const ppm = cam.ppm, r = 4.6 * ppm, hw = cam.hw, hh = cam.hh;
+  if (sx < cam.cx - hw - r * 14 || sx > cam.cx + hw + r * 14 || sy < cam.cy - hh - r * 14 || sy > cam.cy + hh + r * 14) return;
+  const full = 1 - Math.abs(sky.moon - 0.5) * 2, bright = 0.35 + 0.65 * full;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // a wide faint halo first, behind the disc
+  ctx.globalAlpha = (veiled ? 0.3 : 0.16) * bright; ctx.drawImage(kxBlob('#8ea2d8'), sx - r * 16, sy - r * 16, r * 32, r * 32);
+  if (veiled) { ctx.globalAlpha = 0.12; ctx.strokeStyle = '#cfd9ff'; ctx.lineWidth = Math.max(1, r * 0.35); ctx.beginPath(); ctx.arc(sx, sy, r * 7.5, 0, TAU); ctx.stroke(); }
+  ctx.restore();
+  if (!veiled) { const N = r * 2 > 180 ? 512 : r * 2 > 70 ? 256 : 128; ctx.drawImage(skyMoonPic(sky.moon, N), sx - r, sy - r, r * 2, r * 2); }
+  // the glow close round it is in the air in front of the moon, so it lies over the whole disc
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = (veiled ? 0.45 : 0.26) * bright; ctx.drawImage(kxBlob('#dfe6ff'), sx - r * 5, sy - r * 5, r * 10, r * 10);
+  ctx.restore();
+};
+// The sun: a soft glow, a bright disc, and when it is low a few thin bars of cloud across it,
+// rays fanning out of it, and the light catching in the haze along the horizon.
+View.prototype.skySun = function (ctx, cam, sky, sx, sy, veiled, mx0, mx1, my1) {
+  const ppm = cam.ppm, r = 5.2 * ppm, low = sky.lowSun, cc = sky.cc, hw = cam.hw, hh = cam.hh;
+  const near = sx > cam.cx - hw - r * 30 && sx < cam.cx + hw + r * 30 && sy > cam.cy - hh - r * 30 && sy < cam.cy + hh + r * 30;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (near) {
+    // a wide warm bloom in the haze and a tighter one round the disc, both well below white
+    ctx.globalAlpha = veiled ? 0.16 : low ? 0.3 : 0.16; ctx.drawImage(kxBlob(low ? '#ff9a50' : '#fff0c8'), sx - r * 20, sy - r * 20, r * 40, r * 40);
+    ctx.globalAlpha = veiled ? 0.18 : low ? 0.32 : 0.22; ctx.drawImage(kxBlob(low ? '#ffd08a' : '#fff8e8'), sx - r * 4.5, sy - r * 4.5, r * 9, r * 9);
+  }
+  // rays: faint soft wedges fanning out of a low sun through the haze, slowly turning
+  if (sky.rays && !veiled) {
+    const L = Math.max(hw, hh) * 2.4, g = ctx.createRadialGradient(sx, sy, r * 1.5, sx, sy, L);
+    g.addColorStop(0, 'rgba(255,214,160,0.09)'); g.addColorStop(0.25, 'rgba(255,200,150,0.045)'); g.addColorStop(1, 'rgba(255,190,140,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath();
+    const n = 9, sway = Math.sin(this.rt * 0.04) * 0.03;
+    for (let i = 0; i < n; i++) {
+      const a0 = Math.PI * (-0.1 + 1.2 * (i + kxH(i, 3) * 0.5) / n) + sway, wd = 0.07 + kxH(i, 7) * 0.1, f = 0.5 + kxH(i, 5) * 0.5;
+      ctx.moveTo(sx + Math.cos(a0) * r * 1.5, sy + Math.sin(a0) * r * 1.5); ctx.lineTo(sx + Math.cos(a0) * L * f, sy + Math.sin(a0) * L * f); ctx.lineTo(sx + Math.cos(a0 + wd) * L * f, sy + Math.sin(a0 + wd) * L * f); ctx.lineTo(sx + Math.cos(a0 + wd) * r * 1.5, sy + Math.sin(a0 + wd) * r * 1.5); ctx.closePath();
+    }
+    ctx.fill();
+  }
+  ctx.restore();
+  if (!near || veiled) return;
+  // the disc: a pale rim and a white heart, so it is the brightest thing in the sky
+  ctx.fillStyle = low ? '#ffe2b0' : '#fff6dc'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = low ? '#fff4dc' : '#ffffff'; ctx.beginPath(); ctx.arc(sx, sy, r * 0.86, 0, TAU); ctx.fill();
+  if (low) {
+    ctx.fillStyle = cc.shade; ctx.globalAlpha = 0.7; ctx.beginPath();
+    for (let i = 0; i < 3; i++) { const yy = sy + r * (0.15 + i * 0.32), len = r * (2.4 - i * 0.3), th = r * (0.07 + i * 0.03), dx = Math.sin(this.rt * 0.03 + i) * r * 0.4; ctx.moveTo(sx - len + dx, yy); ctx.quadraticCurveTo(sx + dx, yy - th * 2, sx + len + dx, yy); ctx.quadraticCurveTo(sx + dx, yy + th * 1.2, sx - len + dx, yy); }
+    ctx.fill(); ctx.globalAlpha = 1;
+  }
+};
+// Thin high streaks, lit by the low sun or the moon, with fine combed lines inside once the
+// scope is close enough to show them.
+View.prototype.skyCirrus = function (ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, sx, sy) {
+  const ppm = cam.ppm, cc = sky.cc, col = sky.night ? mix(cc.lit, cc.body, 0.3) : mix(cc.lit, cc.body, 0.25);
+  ctx.fillStyle = col;
+  for (let i = 0; i < sky.streaks.length; i++) {
+    const q = sky.streaks[i], x = ((((q.x + drift * 0.08 + 600) % 1200) + 1200) % 1200) - 600;
+    if (x + q.w < mx0 || x - q.w > mx1 || q.y + q.h * 3 < my0 || q.y - q.h * 3 > my1) continue;
+    const px = X(x), py = Y(q.y), L = q.w * ppm, th = q.h * ppm;
+    ctx.globalAlpha = q.a * (sky.night ? 0.45 : 0.7) * smooth(q.y / 60);
+    ctx.beginPath();
+    for (let k = 0; k < q.n; k++) { const o = (k - (q.n - 1) / 2) * th * 1.6, l = L * (1 - Math.abs(k - (q.n - 1) / 2) * 0.22); rgLensPath(ctx, px + o * q.sk * 4 + k * L * 0.06, py + o, l, th * 0.9, th * 0.6, l * q.sk); }
+    ctx.fill();
+    if (th > 8) { // fine combing inside the streak
+      ctx.globalAlpha *= 0.6; ctx.strokeStyle = mix(col, cc.lit, 0.6); ctx.lineWidth = Math.max(0.8, th * 0.06); ctx.beginPath();
+      for (let k = 0; k < 7; k++) { const o = (k - 3) * th * 0.32, l = L * (0.5 + kxH(k, q.s * 9) * 0.4); ctx.moveTo(px - l + o * q.sk * 3, py + o); ctx.quadraticCurveTo(px + o * q.sk * 3, py + o - th * 0.25, px + l * 0.8 + o * q.sk * 3, py + o + th * 0.1); }
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+};
+function rgLensPath(ctx, x, y, l, up, dn, skew) { ctx.moveTo(x - l, y); ctx.quadraticCurveTo(x + skew, y - up * 2, x + l, y); ctx.quadraticCurveTo(x + skew, y + dn * 2, x - l, y); ctx.closePath(); }
+
+// Heaps of cumulus. Each is drawn in four tones: the flat shaded base, the body of every lobe,
+// the lit upper side of each lobe, and a bright rim on the side facing the sun. Lobes break
+// into smaller lobes (and those into smaller still) as the scope closes in, so a cloud at 30x
+// is as lumpy as one at 3x and never a smooth blob.
+const skyL = [];
+View.prototype.skyHeaps = function (ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1) {
+  const ppm = cam.ppm, cc = sky.cc, S = this, side = 1;
+  for (let ci = 0; ci < sky.clouds.length; ci++) {
+    const c = sky.clouds[ci], sc = 0.55 + 0.45 * clamp(c.y / 110, 0, 1);
+    const x = ((((c.x + drift * (0.12 + c.y * 0.0012) + 600) % 1200) + 1200) % 1200) - 600;
+    if (x + c.x1 * sc < mx0 || x + c.x0 * sc > mx1 || c.y + c.top * sc < my0 || c.y > my1 + 2) continue;
+    const bx = X(x), by = Y(c.y), k = ppm * sc, haze = clamp(1 - c.y / 70, 0, 0.55) * (sky.night ? 0.3 : 1);
+    const hz = (col) => mix(col, sky.bot, haze);
+    // gather the lobes to draw at this zoom
+    skyL.length = 0;
+    for (let i = 0; i < c.lobes.length; i++) {
+      const q = c.lobes[i], rs = q.r * k;
+      const qx = bx + q.x * k, qy = by - q.y * k, rb = rs * 1.25;   // the smaller lobes stand a little proud of their parent
+      if (qx + rb < cam.cx - cam.hw || qx - rb > cam.cx + cam.hw || qy + rb < cam.cy - cam.hh || qy - rb > cam.cy + cam.hh) continue;
+      skyL.push(qx, qy, rs, 0);
+      if (rs > 34) {
+        const kids = skyKids(q, c.seed);
+        for (let j = 0; j < kids.length; j++) {
+          const p = kids[j], ps = p.r * k, px = bx + p.x * k, py = by - p.y * k;
+          if (px + ps < cam.cx - cam.hw || px - ps > cam.cx + cam.hw || py + ps < cam.cy - cam.hh || py - ps > cam.cy + cam.hh) continue;
+          skyL.push(px, py, ps, 1);
+          if (ps > 34) { const gk = skyKids(p, c.seed + 17); for (let m = 0; m < gk.length; m++) { const g2 = gk[m], gs = g2.r * k, gx = bx + g2.x * k, gy = by - g2.y * k; if (gx + gs < cam.cx - cam.hw || gx - gs > cam.cx + cam.hw || gy + gs < cam.cy - cam.hh || gy - gs > cam.cy + cam.hh) continue; skyL.push(gx, gy, gs, 2); } }
+        }
+      }
+    }
+    if (!skyL.length) continue;
+    // where the light comes from: the sun's side, low at dawn and dusk, high by day
+    const sdx = clamp((sky.sunX - x) / 160, -1, 1), lx = sdx * (sky.lowSun ? 0.85 : 0.45), ly = sky.lowSun ? 0.55 : 0.92;
+    const Hs = c.H * k, a = Math.max(1.5, Hs * 0.075), b = Math.max(2.5, Hs * 0.12), base = Math.min(by, cam.cy + cam.hh + 2);
+    const U = (ox, oy) => {
+      ctx.beginPath();
+      for (let i = 0; i < skyL.length; i += 4) { const qx = skyL[i] + ox, qy = skyL[i + 1] + oy; ctx.moveTo(qx + skyL[i + 2], qy); ctx.arc(qx, qy, skyL[i + 2], 0, TAU); }
+      ctx.rect(bx + c.x0 * k * 0.8 + ox, by - Hs * 0.14 + oy, (c.x1 - c.x0) * k * 0.8, Hs * 0.3);
+    };
+    ctx.save(); ctx.beginPath(); ctx.rect(cam.cx - cam.hw, cam.cy - cam.hh, cam.hw * 2, base - (cam.cy - cam.hh)); ctx.clip();
+    // the whole heap in shade, then (inside it) the same heap moved toward the light, lit; then
+    // moved back the other way, in the body tone. A shaded rim is left on the side away from the
+    // light, a lit rim on the side facing it, and both follow every lump of the outline.
+    U(0, 0); ctx.fillStyle = hz(cc.shade); ctx.fill(); ctx.clip();
+    U(lx * a, -ly * a); ctx.fillStyle = hz(cc.lit); ctx.fill(); ctx.clip();
+    U(lx * (a - b), -ly * (a - b)); ctx.fillStyle = hz(cc.body); ctx.fill();
+    ctx.restore();
+    // folds inside the heap: a thin shaded arc under each big lobe, on the side away from the light
+    if (Hs > 30) {
+      ctx.save(); ctx.beginPath(); ctx.rect(cam.cx - cam.hw, cam.cy - cam.hh, cam.hw * 2, base - (cam.cy - cam.hh) - Hs * 0.12); ctx.clip();
+      ctx.strokeStyle = hz(cc.shade); ctx.globalAlpha = 0.32; ctx.lineCap = 'round'; ctx.beginPath();
+      const la = Math.atan2(ly, -lx), lw = Math.max(1, Hs * 0.022);   // on screen, pointing away from the light
+      for (let i = 0; i < skyL.length; i += 4) { const r = skyL[i + 2]; if (r < Hs * 0.16 || r < 8 || skyL[i + 3]) continue; const a0 = la - 0.75, a1 = la + 0.75; ctx.moveTo(skyL[i] + Math.cos(a0) * r * 0.93, skyL[i + 1] + Math.sin(a0) * r * 0.93); ctx.arc(skyL[i], skyL[i + 1], r * 0.93, a0, a1); }
+      ctx.lineWidth = lw; ctx.stroke(); ctx.restore(); ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+    }
+  }
+};
+// A low grey deck: long rows of rolls with dark undersides, packed tighter and darker toward the
+// horizon. Under it, far off, rain can hang in grey curtains.
+// The edge of a layer of the deck at x (mils): a long slow swell, rounded lumps hanging down
+// out of it, and finer ragged detail that only matters once the scope is close.
+function skyDeckEdge(row, x, fine) {
+  const s = row.s, th = row.th, sp = 16, c0 = Math.floor(x / sp);
+  // soft rounded lumps hanging from the base, of very different sizes (many hardly there)
+  let lump = 0;
+  for (let c = c0 - 1; c <= c0 + 1; c++) {
+    const h = kxH(c * 1.7 + s, s), amp = h * h * h, w = sp * (0.6 + kxH(c, s + 5) * 0.7), cx = (c + 0.5 + (kxH(c + 9, s) - 0.5) * 0.6) * sp, u = (x - cx) / w;
+    if (u > -1 && u < 1) lump = Math.max(lump, amp * (1 - u * u));
+  }
+  return th * (0.3 * vnoise(x / 41 + s, 40) + 0.1 * vnoise(x / 9 + s, 45) - 0.34 * lump - (fine ? 0.04 * Math.abs(vnoise(x / 1.3 + s, 43)) : 0));
+}
+View.prototype.skyDeck = function (ctx, cam, sky, drift, X, Y, mx0, mx1, my0, my1, S) {
+  const ppm = cam.ppm, cc = sky.cc, l = cam.cx - cam.hw, r = cam.cx + cam.hw, step = 7, fine = ppm > 9;
+  const ys = []; // the bottom edge on screen, shared by the passes of one layer
+  for (let ri = 0; ri < sky.deckRows.length; ri++) {
+    const row = sky.deckRows[ri], y = row.y, th = row.th; if (y - th > my1 || y + th * 1.5 < my0) continue;
+    const k = row.k, body = mix(mix(cc.body, cc.shade, k * 0.75), sky.bot, 0.3 * (1 - k) * (1 - k)), under = mix(body, cc.under, 0.55), lit = mix(body, cc.lit, 0.35 * (1 - k * 0.5));
+    const off = drift * row.sp, n = Math.ceil((r - l) / step) + 1;
+    ys.length = 0;
+    for (let i = 0; i < n; i++) { const px = l + i * step, mx = cam.ax + (px - cam.cx) / ppm - off; ys.push(Y(y + skyDeckEdge(row, mx, fine))); }
+    const topY = Y(y + th), topW = th * ppm * 0.18;
+    // the layer itself, its top a soft long wave
+    ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(l, cam.cy - cam.hh - 2);
+    if (topY > cam.cy - cam.hh) { for (let i = 0; i < n; i += 3) { const px = l + i * step, mx = cam.ax + (px - cam.cx) / ppm - off; ctx.lineTo(px, topY - topW * vnoise(mx / 30 + row.s, 44)); } }
+    else ctx.lineTo(r + step, cam.cy - cam.hh - 2);
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(l + i * step, ys[i]);
+    ctx.closePath(); ctx.fill();
+    // the darker underside, following every lump
+    ctx.fillStyle = under; ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.moveTo(l, ys[0]);
+    for (let i = 1; i < n; i++) ctx.lineTo(l + i * step, ys[i]);
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(l + i * step, ys[i] - Math.max(1.5, th * ppm * 0.09));
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    // rain hanging under the low layers in grey curtains, leaning with the wind and fading out
+    if (row.rain > 0) {
+      const lean = clamp(sky.windNow * 0.025, -0.35, 0.35), hor = Y(0);
+      ctx.fillStyle = under;
+      for (let c = 0; c < 4; c++) {
+        const cx0 = ((((row.s * 37 + c * 310 + drift * 0.6) % 1240) + 1240) % 1240) - 620, w = (40 + 30 * kxH(c, row.s)) ;
+        if (cx0 + w < mx0 - 40 || cx0 - w > mx1 + 40) continue;
+        const x0 = X(cx0 - w / 2), x1 = X(cx0 + w / 2), yb = Y(y - th * 0.3), hgt = hor - yb; if (hgt <= 2) continue;
+        for (let b = 0; b < 5; b++) {
+          const ya = yb + (hgt * b) / 5, yz = yb + (hgt * (b + 1)) / 5;
+          ctx.globalAlpha = 0.2 * row.rain * (1 - b / 5);
+          ctx.beginPath(); ctx.moveTo(x0 + (ya - yb) * lean, ya); ctx.lineTo(x1 + (ya - yb) * lean, ya); ctx.lineTo(x1 + (yz - yb) * lean, yz); ctx.lineTo(x0 + (yz - yb) * lean, yz); ctx.closePath(); ctx.fill();
+        }
+        // streaks inside the curtain
+        ctx.globalAlpha = 0.18 * row.rain; ctx.strokeStyle = mix(under, '#000000', 0.15); ctx.lineWidth = Math.max(1, (x1 - x0) * 0.02); ctx.beginPath();
+        for (let q = 0; q < 9; q++) { const fx = x0 + (x1 - x0) * kxH(q, c + row.s); ctx.moveTo(fx, yb); ctx.lineTo(fx + hgt * lean, yb + hgt * (0.5 + kxH(q, 9) * 0.5)); }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+};
+
+// Airliners crossing high over: by day a small grey shape drawing a white trail that spreads
+// and drifts with the wind behind it (pink when the sun is low), after dark only its lights,
+// red on one wing, green on the other and a white strobe. Close up it has wings and a tail.
+View.prototype.skyJets = function (ctx, cam, sim, sky, X, Y, mx0, mx1, my0, my1) {
+  const t = sim.t, ppm = cam.ppm, night = sky.night, low = sky.lowSun;
+  for (let i = 0; i < sky.jets.length; i++) {
+    const J = sky.jets[i], cyc = (t / J.per + J.ph) % 1, run = 1400 / J.sp; // seconds to cross
+    const tt = cyc * J.per; if (tt > run + 60) continue;
+    const x = J.dir * (-700 + tt * J.sp), y = J.y + J.dy * (tt / run);
+    if (my1 < y - 10 || my0 > y + 10) continue;
+    const trail = night ? 0 : Math.min(tt * J.sp, 170), tx0 = x - J.dir * trail;
+    if (Math.max(x, tx0) < mx0 - 5 || Math.min(x, tx0) > mx1 + 5) continue;
+    const px = X(x), py = Y(y);
+    if (!night && trail > 0) { // the trail: thin and bright at the jet, wider, fainter and wind-blown behind
+      ctx.save(); ctx.lineCap = 'round'; const col = low ? '#ffd8c8' : '#ffffff', n = 10;
+      for (let k = 0; k < n; k++) {
+        const u0 = k / n, u1 = (k + 1) / n, age0 = u0 * trail / J.sp, age1 = u1 * trail / J.sp;
+        const ax = X(x - J.dir * trail * u0 + sky.windNow * age0 * 0.05), ay = Y(y - J.dy * u0 * 0.1 - age0 * 0.01), bx = X(x - J.dir * trail * u1 + sky.windNow * age1 * 0.05), by = Y(y - J.dy * u1 * 0.1 - age1 * 0.01);
+        ctx.globalAlpha = 0.55 * (1 - u0) * Math.min(1, tt / 3); ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.8, (0.25 + u0 * 1.6) * ppm); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (px < cam.cx - cam.hw - 20 || px > cam.cx + cam.hw + 20) continue;
+    const L = 2.6 * ppm, d = J.dir;
+    if (!night) {
+      ctx.fillStyle = low ? '#6a5a66' : '#7d8794';
+      if (L < 6) { ctx.fillRect(px - Math.max(1, L / 2), py - 0.6, Math.max(2, L), 1.3); }
+      else { // a fuselage, swept wings, a tail fin and the tailplane
+        ctx.beginPath();
+        ctx.moveTo(px + d * L * 0.5, py); ctx.quadraticCurveTo(px + d * L * 0.42, py - L * 0.05, px + d * L * 0.3, py - L * 0.05); ctx.lineTo(px - d * L * 0.45, py - L * 0.04); ctx.lineTo(px - d * L * 0.5, py - L * 0.2); ctx.lineTo(px - d * L * 0.44, py - L * 0.2); ctx.lineTo(px - d * L * 0.36, py - L * 0.04); ctx.lineTo(px - d * L * 0.36, py + L * 0.04); ctx.lineTo(px + d * L * 0.3, py + L * 0.04); ctx.closePath();
+        ctx.moveTo(px + d * L * 0.08, py); ctx.lineTo(px - d * L * 0.14, py + L * 0.16); ctx.lineTo(px - d * L * 0.2, py + L * 0.16); ctx.lineTo(px - d * L * 0.06, py); ctx.closePath();
+        ctx.fill();
+      }
+    } else { // lights only
+      const blink = Math.sin(t * 6 + i * 3) > 0.6, strobe = (t * 1.1 + i) % 1 < 0.06;
+      ctx.fillStyle = '#ff4a3d'; ctx.fillRect(px - d * Math.max(1.5, L * 0.12) - 1, py - 1, 2, 2);
+      ctx.fillStyle = '#5aff8a'; ctx.fillRect(px + d * Math.max(1.5, L * 0.12) - 1, py - 1, 2, 2);
+      if (blink) { ctx.fillStyle = '#ff6a50'; ctx.fillRect(px - 1.5, py + 1, 3, 2); }
+      if (strobe) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8; ctx.drawImage(kxBlob('#ffffff'), px - 7, py - 7, 14, 14); ctx.restore(); }
+    }
+  }
+};
+
+
+// ===== 06c_air.js =====
+// ---------------------------------------------------------------------------
+// The air between the shooter and the world: falling snow in three depths, drifting fog,
+// lightning, and the colour of the hour laid over the finished picture. All of it is drawn
+// after the world and before the glass; none of it changes what anybody can see in the game.
+// ---------------------------------------------------------------------------
+
+View.prototype.drawWeather = function (sim, cam) {
+  const V = this, S = sim.S, ctx = V.ctx, w = S.weather;
+  if (w === 'rain' || w === 'storm') V.drawRain(sim, cam, w === 'storm');
+  else if (w === 'snow') V.drawSnow(sim, cam);
+  if (w === 'fog') V.drawFogVeil(sim, cam);
+  // lightning: the whole picture lit for an instant, hardest on the side the bolt struck
+  if (sim.flashT && sim.t - sim.flashT < 0.4) {
+    const u = (sim.t - sim.flashT) / 0.4, fl = Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3, k = (1 - u) * fl;
+    const b = V.boltFor(sim, cam), side = b ? clamp((b.x - cam.ax) * cam.ppm / cam.hw, -1.4, 1.4) : 0;
+    const x0 = cam.cx - cam.hw, W = cam.hw * 2, bx = cam.cx + side * cam.hw;
+    // (a gradient here: it lasts a fraction of a second, and flat strips would show their seams)
+    const g = ctx.createLinearGradient(bx - W * 1.1, 0, bx + W * 1.1, 0);
+    g.addColorStop(0, 'rgba(200,212,255,0.12)'); g.addColorStop(0.5, 'rgba(200,212,255,0.54)'); g.addColorStop(1, 'rgba(200,212,255,0.12)');
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = clamp(k, 0, 1); ctx.fillStyle = g;
+    ctx.fillRect(x0, cam.cy - cam.hh, W, cam.hh * 2);
+    ctx.restore();
+  }
+};
+
+// Where this flash's bolt is, in mils: chosen once per flash, somewhere the scope can see it.
+View.prototype.boltFor = function (sim, cam) {
+  const V = this; if (!sim.flashT) return null;
+  if (!V._bolt || V._bolt.t !== sim.flashT || V._bolt.sim !== sim) {
+    const h = kxH(sim.flashT * 13.1, 7), span = Math.min(260, (cam.hw / cam.ppm) * 0.8);
+    const pts = [], D = makeRng(Math.floor(sim.flashT * 1000) + 3), x = cam.ax + (h * 2 - 1) * span;
+    let px = x, py = 150; pts.push(px, py);
+    while (py > -5) { py -= D.r(6, 16); px += D.r(-7, 7); pts.push(px, py); }
+    const fork = []; { let fx = pts[6], fy = pts[7]; for (let i = 0; i < 4; i++) { fy -= D.r(5, 12); fx += D.r(2, 9) * (h > 0.5 ? -1 : 1); fork.push(fx, fy); } }
+    V._bolt = { t: sim.flashT, sim, x, pts, fork };
+  }
+  return V._bolt;
+};
+// The bolt itself, in the sky behind everything (called by drawSky).
+View.prototype.skyBolt = function (ctx, cam, sim, X, Y) {
+  if (!sim.flashT || sim.t - sim.flashT > 0.32) return;
+  const b = this.boltFor(sim, cam), u = (sim.t - sim.flashT) / 0.32, a = (1 - u) * (Math.sin(sim.t * 55) > -0.5 ? 1 : 0.2);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // the sky round it lit from inside the cloud
+  ctx.globalAlpha = 0.5 * a; const gx = X(b.x), gy = Y(120), R = 180 * cam.ppm * 0.4; ctx.drawImage(kxBlob('#9fb4ff'), gx - R, gy - R * 0.6, R * 2, R * 1.2);
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass ? '#ffffff' : '#a8baff'; ctx.globalAlpha = (pass ? 0.95 : 0.35) * a; ctx.lineWidth = Math.max(pass ? 1.4 : 5, cam.ppm * (pass ? 0.35 : 1.4));
+    ctx.beginPath(); ctx.moveTo(X(b.pts[0]), Y(b.pts[1])); for (let i = 2; i < b.pts.length; i += 2) ctx.lineTo(X(b.pts[i]), Y(b.pts[i + 1]));
+    ctx.moveTo(X(b.pts[6]), Y(b.pts[7])); for (let i = 0; i < b.fork.length; i += 2) ctx.lineTo(X(b.fork[i]), Y(b.fork[i + 1]));
+    ctx.stroke();
+  }
+  ctx.restore();
+};
+
+// Snow in three depths: a haze of fine far flakes, a middle layer, and a few big soft flakes so
+// close they are out of focus and cross the glass fast. They pan with the world (they are in it),
+// drift with the wind, flutter as they fall, and the closer ones are magnified with the scope.
+View.prototype.drawSnow = function (sim, cam) {
+  const V = this, ctx = V.ctx, cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, W2 = hw * 2, H2 = hh * 2;
+  if (!V.snow) { const R = makeRng(5531); V.snow = []; for (let i = 0; i < 520; i++) V.snow.push([R.f(), R.f(), R.f(), R.r(0.7, 1.3), R.r(0, TAU), R.r(0.6, 1.4)]); }
+  const S = sim.S, t = V.rt, wind = sim.wind(), mag = clamp(cam.ppm / 3.3, 0.6, 12), sm = Math.sqrt(mag);
+  const heavy = S.time === 'snow' ? 1.35 : 1, area = clamp((W2 * H2) / 150000, 0.5, 3.2);
+  const panX = cam.ax * cam.ppm, panY = cam.ay * cam.ppm;
+  const L = [ // count, size px, fall px/s, drift px/s per m/s of wind, flutter px, alpha
+    [Math.round(170 * area * heavy), 1.1, 26, 5, 3, 0.62],
+    [Math.round(70 * area * heavy), 2.2, 58, 11, 6, 0.85],
+    [Math.round(12 * area * heavy), 7, 170, 30, 14, 0.42],
+  ];
+  let base = 0;
+  for (let li = 0; li < 3; li++) {
+    const q = L[li], n = Math.min(q[0], li === 2 ? 40 : 300), near = li === 2;
+    const sz0 = q[1] * (near ? Math.min(3, sm) : li === 1 ? Math.min(1.6, 0.8 + mag * 0.08) : 1), fall = q[2] * (near ? sm : Math.min(2.2, 0.75 + sm * 0.25)), drift = q[3] * (near ? sm : 1);
+    if (!near) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = q[5]; ctx.beginPath(); }
+    else ctx.globalAlpha = q[5];
+    const blob = near ? kxBlob('#ffffff') : null;
+    for (let i = 0; i < n; i++) {
+      const f = V.snow[(base + i) % V.snow.length], sp = f[3], sz = sz0 * f[5];
+      const fl = Math.sin(t * (1.1 + sp) + f[4]) * q[4] * (0.6 + f[2] * 0.6);
+      const X = (((f[0] * W2 + t * wind * drift * sp + fl - panX) % W2) + W2) % W2, Yy = (((f[1] * H2 + t * fall * sp + panY) % (H2 + 20)) + H2 + 20) % (H2 + 20) - 10;
+      if (near) ctx.drawImage(blob, cx - hw + X - sz, cy - hh + Yy - sz, sz * 2, sz * 2);
+      else { ctx.moveTo(cx - hw + X + sz / 2, cy - hh + Yy); ctx.arc(cx - hw + X, cy - hh + Yy, sz / 2, 0, TAU); }
+    }
+    if (!near) ctx.fill();
+    base += n;
+  }
+  ctx.globalAlpha = 1;
+};
+
+// Fog: a thin even veil and broad banks of thicker fog drifting slowly across through it.
+View.prototype.drawFogVeil = function (sim, cam) {
+  const V = this, ctx = V.ctx, S = sim.S, fog = S.pal.fog, t = V.rt, wind = sim.wind();
+  ctx.fillStyle = rgba(fog, 0.14); ctx.fillRect(cam.cx - cam.hw, cam.cy - cam.hh, cam.hw * 2, cam.hh * 2);
+  const blob = kxBlob(fog), W = cam.hw * 2, ppm = cam.ppm;
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    // each bank sits at a height (in mils) and drifts along; it is wide in the world, so it pans with it
+    const my = [-12, -4, 6, -20][i], wd = [420, 300, 520, 360][i] * ppm * 0.6, sp = (8 + i * 5) * (wind < 0 ? -1 : 1);
+    const mx = ((((i * 260 + t * sp) % 1600) + 1600) % 1600) - 800, x = cam.cx + (mx - cam.ax) * ppm, y = cam.cy - (my - cam.ay) * ppm;
+    if (x + wd < cam.cx - cam.hw || x - wd > cam.cx + cam.hw) continue;
+    ctx.globalAlpha = 0.22; ctx.drawImage(blob, x - wd, y - wd * 0.16, wd * 2, wd * 0.32);
+  }
+  ctx.restore();
+};
+
+// The colour of the hour. Every look (07i_looks.js) can lay a wash over the finished picture:
+// a soft tint from the top and another from the bottom (blue in the shadows on a moonlit
+// night, amber low down at sunset), a little more colour by day, and the glow of a low sun in
+// the air. Painted in thin flat bands, never as a gradient, and kept light enough that people
+// and the things players look for stay as easy to see as before.
+const AIR_GRADE = {
+  day: { top: '#3f6fb8', bot: '#ffd29a', a: 0.06 }, dawn: { bot: '#ffb08a', top: '#8a9ad0', a: 0.08, glow: 0.12 }, dusk: { bot: '#ff9a50', top: '#5a4aa0', a: 0.1, glow: 0.14 },
+  night: { top: '#3050a0', a: 0.1 }, overcast: { top: '#a8b4c0', a: 0.05 }, snow: { top: '#c4d4e6', a: 0.06 },
+};
+View.prototype.drawGrade = function (sim, cam) {
+  const V = this, ctx = V.ctx, S = sim.S, G = S._grade || (S._grade = Object.assign({}, AIR_GRADE[S.time] || AIR_GRADE.day, (S.look && S.look.grade) || {}));
+  const x0 = cam.cx - cam.hw, y0 = cam.cy - cam.hh, W = cam.hw * 2, H = cam.hh * 2, a = G.a || 0.08;
+  ctx.save();
+  // one pass of soft light in flat bands: the top tint fading down, the bottom tint fading up,
+  // a warm cast over all of it (each band is cut on whole pixels so none overlap)
+  const top = G.top || null, bot = G.bot || null, warm = G.warm || 0;
+  // looking through the scope, its glass adds its own faint coating colour (06d_glass.js)
+  const gl = V._scopeDraw && !sim.st.scope.nv ? glassOf(sim.st) : null, tint = gl && gl.tint ? gl.tint : null, ta = tint ? gl.ta * 2.2 : 0;
+  if (top || bot || warm || tint) {
+    // (overlay at half strength looks much like soft light and costs a fifth as much on a phone
+    // that draws in software)
+    const n = 9; ctx.globalCompositeOperation = 'overlay';
+    let prev = Math.round(y0);
+    for (let i = 0; i < n; i++) {
+      const v = (i + 0.5) / n, ka = top ? 1 - v : 0, kb = bot ? v : 0, next = Math.round(y0 + (H * (i + 1)) / n);
+      let col = top && bot ? mix(top, bot, kb / Math.max(1e-6, ka + kb)) : (top || bot || '#ffb86a'), al = a * 2.4 * Math.max(ka, kb);
+      if (warm) { col = mix(col, '#ffb86a', warm / (warm + al + 1e-6)); al += warm * 2.5; }
+      if (tint) { col = mix(col, tint, ta / (ta + al + 1e-6)); al += ta; }
+      if (al > 0.005 && next > prev) { ctx.fillStyle = col; ctx.globalAlpha = clamp(al * 0.5, 0, 1); ctx.fillRect(x0, prev, W, next - prev); }
+      prev = next;
+    }
+  }
+  // the haze round a low sun, lit up over everything near it
+  if (G.glow && S.pal.dark < 0.5) {
+    const sx = cam.cx + (S.sky.sun[0] - cam.ax) * cam.ppm, sy = cam.cy - (S.sky.sun[1] - cam.ay) * cam.ppm, R = Math.max(W, H) * 0.9;
+    if (sx > x0 - R && sx < x0 + W + R && sy < y0 + H + R) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = G.glow; ctx.drawImage(kxBlob(S.time === 'day' ? '#fff0d0' : '#ff9a50'), sx - R, sy - R * 0.8, R * 2, R * 1.6); }
+  }
+  ctx.restore();
+};
+
+// Keep a copy of the finished world for the water to mirror next frame (only where there is
+// water: it costs one copy of the picture).
+View.prototype.keepFrame = function (sim) {
+  const S = sim.S; if (!S._water) return;
+  const cv = this.ctx.canvas;
+  if (!this._frame || this._frame.width !== cv.width || this._frame.height !== cv.height) { this._frame = kxCanvas(cv.width, cv.height); this._frameG = this._frame.getContext('2d'); }
+  // only the rows the water asked for this frame (it will want much the same next frame)
+  const y0 = Math.max(0, Math.floor(kxRefl.y0) - 24), y1 = Math.min(cv.height, Math.ceil(kxRefl.y1) + 24);
+  kxRefl.y0 = 1e9; kxRefl.y1 = -1e9;
+  if (y1 <= y0) { kxRefl.src = null; return; }
+  this._frameG.clearRect(0, 0, cv.width, cv.height); this._frameG.drawImage(cv, 0, y0, cv.width, y1 - y0, 0, y0, cv.width, y1 - y0);
+  kxRefl.src = this._frame; kxRefl.srcCv = cv;
+};
+
+// Heat shimmer: on a hot afternoon, and over sunlit water, the air between the shooter and a
+// far target boils, and at high power the picture wavers. The finished picture is copied once
+// and laid back in thin strips, each pushed sideways a little; the waves drift with the wind.
+// Close to the crosshair it moves the picture less than a pixel, so aiming is not disturbed.
+View.prototype.drawShimmer = function (sim, cam) {
+  const V = this, S = sim.S, L = S.look || {}, z = sim.sh.zoom;
+  const heat = L.heat || (S._water && S.pal.dark < 0.3 && S.weather === 'clear' ? 0.5 : 0);
+  const k = heat * smooth((z - 7) / 9); if (k < 0.03 || V.mode === 'plain') return;
+  const ctx = V.ctx, cv = ctx.canvas, dpr = V.dpr, Wd = cv.width, Hd = cv.height;
+  if (!V._shim || V._shim.width !== Wd || V._shim.height !== Hd) { V._shim = kxCanvas(Wd, Hd); V._shimG = V._shim.getContext('2d'); }
+  V._shimG.globalCompositeOperation = 'copy'; V._shimG.drawImage(cv, 0, 0);
+  const t = V.rt, wind = sim.wind(), band = Math.max(3, Math.round(4 * dpr)), cyd = cam.cy * dpr, hhd = cam.hh * dpr;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let y = 0; y < Hd; y += band) {
+    const off = Math.abs(y + band / 2 - cyd) / hhd, amp = k * dpr * (0.35 + 1.6 * off * off);   // under half a pixel at the crosshair
+    const dx = amp * (Math.sin(y * 0.11 - t * 6.5 + wind * 0.3) * 0.7 + Math.sin(y * 0.047 + t * 2.3) * 0.3) + clamp(wind * 0.05, -0.3, 0.3) * amp;
+    if (Math.abs(dx) < 0.15) continue;
+    ctx.drawImage(V._shim, 0, y, Wd, band, dx, y, Wd, band);
+  }
+  ctx.restore();
+};
+
+
+// ===== 06d_glass.js =====
+// ---------------------------------------------------------------------------
+// The scope's own glass: each make of scope has its own coating and edge, rain and snow land
+// on the lens, frost creeps in from the rim in the cold, a low sun throws flare across it, and
+// at low power the blurred edge of the shooter's own hide shows along the bottom. After dark
+// the middle of the reticle lights up (red, green or amber by make) so it never vanishes
+// against a night sky. All of it is drawn on the glass, over the world and never into it.
+// ---------------------------------------------------------------------------
+
+// tint: the colour of the coating (laid on in soft light); edge: how dark the rim is;
+// illum: the colour the reticle lights up in the dark (none for night vision).
+const SCOPE_GLASS = {
+  hunter: { tint: '#ffe2a8', ta: 0.07, edge: 0.34, illum: '255,52,36' },
+  zf4: { tint: '#ffd890', ta: 0.09, edge: 0.4, illum: '255,150,40' },
+  ranger: { tint: '#e8f0ff', ta: 0.05, edge: 0.3, illum: '255,52,36' },
+  bdc: { tint: '#fff0d8', ta: 0.05, edge: 0.3, illum: '255,52,36' },
+  pso: { tint: '#ffcf80', ta: 0.1, edge: 0.38, illum: '255,96,40' },
+  tac: { tint: '#d8e8ff', ta: 0.05, edge: 0.26, illum: '70,255,110' },
+  night: { tint: null, ta: 0, edge: 0.3, illum: null },
+  lrf: { tint: '#d0e4ff', ta: 0.06, edge: 0.26, illum: '255,170,50' },
+  tree: { tint: '#f0f4ff', ta: 0.04, edge: 0.24, illum: '255,52,36' },
+  comp: { tint: '#f4f8ff', ta: 0.03, edge: 0.2, illum: '70,255,110' },
+  oracle: { tint: '#c8f4ff', ta: 0.06, edge: 0.22, illum: '80,230,255' },
+};
+function glassOf(st) { return SCOPE_GLASS[st.scope.id] || SCOPE_GLASS.ranger; }
+
+// Everything on the glass that lies over the picture, called by drawLens before the dark edge.
+View.prototype.drawGlass = function (sim, cam) {
+  const V = this, ctx = V.ctx, S = sim.S, st = sim.st, G = glassOf(st), nv = !!st.scope.nv;
+  const x0 = cam.cx - cam.hw, y0 = cam.cy - cam.hh, W = cam.hw * 2, H = cam.hh * 2;
+  // (the coating's tint is laid on with the colour of the hour, in one pass: see drawGrade)
+  if (V.mode !== 'plain') V.drawHide(sim, cam);
+  if (!nv) V.drawFlare(sim, cam);
+  V.drawLensWet(sim, cam);
+};
+
+// A low sun in or near the picture: a veil of glare, and a line of ghosts (the reflections
+// between the lens elements) running from the sun through the middle and out the other side.
+View.prototype.drawFlare = function (sim, cam) {
+  const V = this, S = sim.S, ctx = V.ctx; if (S.pal.dark > 0.5 || S.weather === 'rain' || S.weather === 'storm' || S.weather === 'fog' || S.time === 'overcast') return;
+  const sx = cam.cx + (S.sky.sun[0] - cam.ax) * cam.ppm, sy = cam.cy - (S.sky.sun[1] - cam.ay) * cam.ppm;
+  const R = Math.max(cam.hw, cam.hh), dx = sx - cam.cx, dy = sy - cam.cy, d = Math.hypot(dx, dy);
+  if (d > R * 1.5) return;
+  // is anything standing between us and the sun? (asked of the scene a few times a second; a sun
+  // behind a building or a hill throws no flare)
+  if (!V._sunSeen || V.rt - V._sunSeen.t > 0.25 || V._sunSeen.sim !== sim) {
+    const hit = sim.rangeAt(S.sky.sun[0], S.sky.sun[1]), lit = hit ? 0 : 1;
+    V._sunSeen = { t: V.rt, sim, lit: V._sunSeen && V._sunSeen.sim === sim ? V._sunSeen.lit * 0.4 + lit * 0.6 : lit };
+  }
+  const k = V._sunSeen.lit * clamp(1.5 - d / R, 0, 1) * (S.time === 'day' ? 0.8 : 1); if (k < 0.03) return;
+  const low = S.time === 'dawn' || S.time === 'dusk';
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.12 * k; ctx.drawImage(kxBlob(low ? '#ffb070' : '#fff2d8'), sx - R * 0.9, sy - R * 0.9, R * 1.8, R * 1.8);
+  // a thin streak across the glass through the sun
+  ctx.globalAlpha = 0.16 * k; ctx.drawImage(kxBlob(low ? '#ffc890' : '#e8f0ff'), sx - R * 1.4, sy - 3, R * 2.8, 6);
+  const ghosts = [[0.35, 0.05, '#7dffb0', 0.1], [0.62, 0.09, '#ffd27a', 0.08], [0.9, 0.035, '#b48aff', 0.14], [1.25, 0.14, '#7ac8ff', 0.06], [1.6, 0.06, '#ff9a6a', 0.1], [1.85, 0.2, '#9affd0', 0.05]];
+  // (the ghosts line up through the middle of the glass, so with the sun dead centre they would all sit on it)
+  const gk = smooth(d / (R * 0.3));
+  for (let i = 0; i < ghosts.length && gk > 0.02; i++) {
+    const g = ghosts[i], gx = sx - dx * 2 * g[0], gy = sy - dy * 2 * g[0], r = R * g[1];
+    ctx.globalAlpha = g[3] * k * gk; ctx.fillStyle = g[2]; ctx.beginPath();
+    for (let j = 0; j < 6; j++) { const a = j * TAU / 6 + 0.3; if (j) ctx.lineTo(gx + Math.cos(a) * r, gy + Math.sin(a) * r); else ctx.moveTo(gx + Math.cos(a) * r, gy + Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+};
+
+// Rain and snow on the lens, and frost round the rim in the cold. The drops sit out toward the
+// edge (a shooter keeps the middle of the glass clear), bead and slide slowly down; flakes land,
+// sit a while and melt. Out of focus, so they are soft: a dark rim, a lighter body, a glint.
+View.prototype.drawLensWet = function (sim, cam) {
+  const V = this, S = sim.S, ctx = V.ctx, w = S.weather, wet = w === 'rain' || w === 'storm', snow = w === 'snow';
+  const R = Math.min(V.RR || cam.hh, Math.hypot(cam.hw, cam.hh)), dt = Math.min(0.1, Math.max(0, V.rt - (V._lwT || V.rt))); V._lwT = V.rt;
+  if (!V.lens || V.lens.sim !== sim) V.lens = { sim, drops: [], R: makeRng(919) };
+  const L = V.lens, rng = L.R;
+  if ((wet || snow) && dt > 0) {
+    const rate = wet ? (w === 'storm' ? 2.2 : 1.2) : 0.7, want = wet ? (w === 'storm' ? 26 : 16) : 14;
+    if (L.drops.length < want && rng.f() < rate * dt * 4) {
+      const a = rng.r(0, TAU), rr = rng.r(0.5, 0.98);
+      L.drops.push({ a, rr, s: wet ? rng.r(0.012, 0.034) : rng.r(0.01, 0.022), life: wet ? rng.r(5, 12) : rng.r(4, 9), t: 0, slide: wet ? rng.r(0.002, 0.02) : 0, kind: wet ? 0 : 1, sp: rng.f() });
+    }
+  }
+  if (L.drops.length) {
+    // all the drops in a few fills (each grows in as it beads and shrinks away as it dries)
+    const D = V._lwPos || (V._lwPos = []); D.length = 0;
+    for (let i = L.drops.length - 1; i >= 0; i--) {
+      const q = L.drops[i]; q.t += dt; if (q.t > q.life) { L.drops.splice(i, 1); continue; }
+      const fade = Math.min(1, q.t * 3) * Math.min(1, (q.life - q.t) / 1.2);
+      D.push(cam.cx + Math.cos(q.a) * q.rr * R, cam.cy + Math.sin(q.a) * q.rr * R + q.t * q.slide * R, q.s * R * (0.4 + 0.6 * fade), q.kind, q.slide > 0.012 ? q.t * q.slide * R : 0, q.sp, fade);
+    }
+    ctx.save();
+    const pass = (style, fn) => { ctx.fillStyle = style; ctx.beginPath(); for (let i = 0; i < D.length; i += 7) if (D[i + 3] === 0) fn(D[i], D[i + 1], D[i + 2], D[i + 4]); ctx.fill(); };
+    pass('rgba(10,14,20,0.3)', (x, y, r) => { ctx.moveTo(x + r, y + r * 0.08); ctx.ellipse(x, y + r * 0.08, r, r * 1.08, 0, 0, TAU); });
+    pass('rgba(200,215,235,0.1)', (x, y, r, tr) => { if (tr > r) ctx.rect(x - r * 0.25, y - tr, r * 0.5, tr); });
+    pass('rgba(200,215,235,0.2)', (x, y, r) => { ctx.moveTo(x + r * 0.78, y + r * 0.15); ctx.ellipse(x, y + r * 0.15, r * 0.78, r * 0.84, 0, 0, TAU); });
+    pass('rgba(255,255,255,0.65)', (x, y, r) => { ctx.moveTo(x - r * 0.14, y - r * 0.35); ctx.arc(x - r * 0.32, y - r * 0.35, r * 0.18, 0, TAU); });
+    // snowflakes: a soft white bloom each, then every flake's three strokes in one line
+    let flakes = 0, rs = 0; const bl = kxBlob('#ffffff');
+    for (let i = 0; i < D.length; i += 7) { if (D[i + 3] !== 1) continue; flakes++; rs += D[i + 2]; const r = D[i + 2]; ctx.globalAlpha = 0.5 * D[i + 6]; ctx.drawImage(bl, D[i] - r * 1.4, D[i + 1] - r * 1.4, r * 2.8, r * 2.8); }
+    if (flakes) {
+      ctx.globalAlpha = 0.65; ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.8, rs / flakes * 0.18); ctx.beginPath();
+      for (let i = 0; i < D.length; i += 7) { if (D[i + 3] !== 1) continue; const x = D[i], y = D[i + 1], r = D[i + 2]; for (let k = 0; k < 3; k++) { const an = D[i + 5] * 3 + k * Math.PI / 3; ctx.moveTo(x - Math.cos(an) * r, y - Math.sin(an) * r); ctx.lineTo(x + Math.cos(an) * r, y + Math.sin(an) * r); } }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+};
+
+// Frost grown in over the dark rim of the glass in the cold: white feathers on black.
+View.prototype.drawFrost = function (sim, cam) {
+  const V = this, S = sim.S, ctx = V.ctx, snow = S.weather === 'snow', cold = snow || S.time === 'snow' || (S.look && S.look.dress === 'frost');
+  if (!cold || V.mode === 'plain') return;
+  const R = Math.min(V.RR || cam.hh, Math.hypot(cam.hw, cam.hh));
+  // frost: a feathery white fringe grown in from the rim (made once)
+  if (!V.frostPic) {
+    const N = 512, c = kxCanvas(N, N), g = c.getContext('2d'), D = makeRng(4242);
+    g.strokeStyle = 'rgba(235,245,255,0.55)'; g.lineCap = 'round';
+    for (let i = 0; i < 260; i++) {
+      const a = D.r(0, TAU), r0 = N / 2 - D.r(0, 10), len = D.r(10, 60) * (0.5 + 0.5 * Math.abs(Math.sin(a * 3))), x = N / 2 + Math.cos(a) * r0, y = N / 2 + Math.sin(a) * r0;
+      const ex = x - Math.cos(a + D.r(-0.4, 0.4)) * len, ey = y - Math.sin(a + D.r(-0.4, 0.4)) * len;
+      g.lineWidth = D.r(0.6, 1.8); g.beginPath(); g.moveTo(x, y); g.lineTo(ex, ey);
+      for (let k = 1; k < 4; k++) { const u = k / 4, bx = lerp(x, ex, u), by = lerp(y, ey, u), bl = len * 0.25 * (1 - u), ba = a + Math.PI + (k % 2 ? 0.7 : -0.7); g.moveTo(bx, by); g.lineTo(bx + Math.cos(ba) * bl, by + Math.sin(ba) * bl); }
+      g.stroke();
+    }
+    V.frostPic = c;
+  }
+  const RR = (V.RR || R) * 0.985, k = snow ? 0.7 : 0.45;
+  ctx.save(); ctx.globalAlpha = k; ctx.drawImage(V.frostPic, cam.cx - RR, cam.cy - RR, RR * 2, RR * 2); ctx.restore();
+};
+
+// The shooter's own hide, right in front of the objective and so far out of focus it is only a
+// soft shape along the bottom of the glass: a roof parapet in town, grass on the hills. It shows
+// only at low power and has gone by about 5x.
+View.prototype.drawHide = function (sim, cam) {
+  const V = this, ctx = V.ctx, S = sim.S, z = sim.sh.zoom, k = 1 - smooth((z - 3) / 2.2); if (k < 0.02) return;
+  const kind = S.ambience === 'wild' || S.ambience === 'snow' ? 'grass' : 'wall';
+  const x0 = cam.cx - cam.hw, W = cam.hw * 2, yb = cam.cy + cam.hh, H = cam.hh * 2, dark = S.pal.dark;
+  const ink = dark > 0.5 ? '#05070b' : mix('#2a2622', S.pal.amb, S.pal.ambT * 0.6), panX = cam.ax * cam.ppm * 0.15;
+  ctx.save(); ctx.globalAlpha = 0.85 * k;
+  if (kind === 'wall') {
+    // the coping of the parapet: a dark soft band with a lit top edge, along the very bottom
+    const top = yb - H * 0.07; ctx.drawImage(kxBlob(ink), x0 - W * 0.2, top - H * 0.05, W * 1.4, H * 0.3);
+    ctx.globalAlpha = 0.3 * k; ctx.drawImage(kxBlob(dark > 0.5 ? '#3a4660' : '#d8c8b0'), x0 - W * 0.1, top - H * 0.035, W * 1.2, H * 0.05);
+  } else if (kind === 'grass') {
+    // a few blurred blades leaning up into the bottom of the picture
+    const col = S.time === 'snow' ? '#c8d2dc' : dark > 0.5 ? '#04080a' : mix('#3a5a32', S.pal.amb, S.pal.ambT * 0.6), sway = Math.sin(V.rt * 0.9) * 6 + (sim.wind() || 0) * 2;
+    ctx.fillStyle = col;
+    // each blade three times, wider and fainter each time: out of focus, without a blur filter
+    for (let pass = 0; pass < 3; pass++) {
+      const grow = [1, 1.6, 2.4][pass]; ctx.globalAlpha = [0.16, 0.1, 0.07][pass] * k; ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const bx = x0 + ((i * 83 + 40 - panX) % (W + 80) + W + 80) % (W + 80) - 40, h = H * (0.08 + kxH(i, 5) * 0.14) * (1 + (grow - 1) * 0.15), bw = (3 + kxH(i, 9) * 6) * grow, lean = (kxH(i, 2) - 0.5) * 60 + sway;
+        ctx.moveTo(bx - bw, yb + 4); ctx.quadraticCurveTo(bx + lean * 0.4, yb - h * 0.5, bx + lean, yb - h); ctx.quadraticCurveTo(bx + lean * 0.5 + bw * 0.3, yb - h * 0.45, bx + bw, yb + 4); ctx.closePath();
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.6 * k; ctx.drawImage(kxBlob(col), x0 - W * 0.2, yb - H * 0.06, W * 1.4, H * 0.18);
+  }
+  ctx.restore();
+};
+
+// How strongly the reticle lights up: off by day, coming on as the light goes, full at night.
+View.prototype.reticleGlow = function (sim) {
+  const S = sim.S, G = glassOf(sim.st); if (!G.illum || sim.st.scope.nv) return 0;
+  const dark = S.pal.dark + (S.weather === 'storm' ? 0.2 : S.weather === 'rain' || S.weather === 'fog' ? 0.1 : 0);
+  return smooth((dark - 0.32) / 0.4);
+};
+// The reticle: etched black, and after dark its middle lit in the scope's own colour. The lit
+// part is the same drawing in another ink, cut to a circle round the middle, so every mark stays
+// exactly where it was and true to scale.
+View.prototype.drawReticleLit = function (sim, cam) {
+  const V = this, ctx = V.ctx, k = V.reticleGlow(sim);
+  V.drawReticle(sim, cam.cx, cam.cy, cam.ppm);
+  if (k < 0.02) return;
+  const G = glassOf(sim.st), Rv = Math.min(V.RR || V.R, V.hh || V.R), r = Rv * 0.62;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.14 * k; ctx.drawImage(kxBlob(kxHexOf(G.illum)), cam.cx - 26, cam.cy - 26, 52, 52);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(cam.cx, cam.cy, r, 0, TAU); ctx.clip();
+  V.retInk = 'rgba(' + G.illum + ',' + (0.55 + 0.4 * k).toFixed(2) + ')';
+  try { V.drawReticle(sim, cam.cx, cam.cy, cam.ppm); } finally { V.retInk = null; }
+  ctx.restore();
+};
+
+
 // ===== 07_scenes.js =====
 // ---------------------------------------------------------------------------
 // Ready-made locations. Each returns the scene plus named handles (buildings,
@@ -9275,10 +10345,11 @@ K.chimney = function (S, P, x, y, o) {
     R4(ctx, x - 0.55, y + 1.6, 1.1, 0.25, capC);
     if (s > 9) { R4(ctx, x - 0.62, y + 1.72, 1.24, 0.08, capC); R4(ctx, x - 0.3, y + 1.85, 0.24, 0.34, potC); R4(ctx, x + 0.08, y + 1.85, 0.24, 0.28, potC); R4(ctx, x - 0.33, y + 2.15, 0.3, 0.05, S.tone('#7d3f22', P)); R4(ctx, x + 0.05, y + 2.09, 0.3, 0.05, S.tone('#7d3f22', P)); }
     // smoke: soft puffs that swell, thin and lean with the wind
-    for (let i = 0; i < 9; i++) { const u = ((env.t * 0.16 + i / 9) % 1), r = 0.4 + u * 1.9; kxPuff(ctx, smoke, x + env.wind * u * u * 3.2 + Math.sin(u * 6 + i) * 0.3, y + 2.2 + u * 6.5, r * 1.15, r, (1 - u) * (night ? 0.3 : 0.5) * Math.min(1, u * 8)); }
+    kxPlume(ctx, env, x, y + 2.2, { n: 12, rise: 6.5, r0: 0.35, r1: 2.0, speed: 0.16, a: night ? 0.45 : 0.7, col: smoke, lean: 0.12, ph: x * 0.07 });
   } });
 };
 // A cable.  o.birds: how many small birds sit on it; o.layer; o.sway: false keeps it still.
+const kxWireFly = [], kxWireAt = [0, 0];
 K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
   o = o || {};
   const c = S.tone('#14161a', P), sg = sag || 1.5, birds = [], D = makeRng(Math.floor(x0 * 7 + y0 * 13 + x1 * 3) + 411);
@@ -9288,9 +10359,11 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
     ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.03, env.px * 0.8);
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
     if (birds.length && env.s > 5) { // birds: a body, a head and a tail, bobbing now and then
-      ctx.fillStyle = c; ctx.beginPath();
+      ctx.fillStyle = c; ctx.beginPath(); kxWireFly.length = 0;
       for (let i = 0; i < birds.length; i++) {
         const u = birds[i][0], bx = (1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * mx + u * u * x1, byy = (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * my + u * u * y1, f = birds[i][2];
+        // a loud shot: they burst off the wire and come back when it has been quiet a while
+        const fl = kxFlight(S, P.z, env.t, i * 7.3 + x0); if (fl) { if (kxFleeAt(fl, bx, byy, f, i * 3.1 + x0, kxWireAt)) kxWireFly.push(kxWireAt[0], kxWireAt[1], i); continue; }
         if (bx < env.x0 - 1 || bx > env.x1 + 1) continue;
         const bob = Math.sin(env.t * 0.9 + birds[i][1] * 30) > 0.93 ? 0.03 : 0;
         ctx.moveTo(bx + 0.11, byy + 0.09); ctx.ellipse(bx, byy + 0.09, 0.11, 0.075, 0, 0, TAU); ctx.moveTo(bx + f * 0.1 + 0.05, byy + 0.17 + bob); ctx.arc(bx + f * 0.1, byy + 0.17 + bob, 0.05, 0, TAU);
@@ -9298,6 +10371,7 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
         ctx.moveTo(bx + f * 0.14, byy + 0.18 + bob); ctx.lineTo(bx + f * 0.2, byy + 0.16 + bob); ctx.lineTo(bx + f * 0.14, byy + 0.15 + bob); ctx.closePath();
       }
       ctx.fill();
+      if (kxWireFly.length) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.05, env.px * 1.1); ctx.lineCap = 'round'; ctx.beginPath(); for (let i = 0; i < kxWireFly.length; i += 3) kxBirdPath(ctx, kxWireFly[i], kxWireFly[i + 1], 0.46, env.t, kxWireFly[i + 2], true); ctx.stroke(); ctx.lineCap = 'butt'; }
     }
   } });
 };
@@ -9539,7 +10613,7 @@ K.skyExtras = function (S, P, o) {
       poly(ctx, [sx - w, base, sx + w, base, sx + w * 0.62, base + h, sx - w * 0.62, base + h], c);
       if (s > 0.8) { poly(ctx, [sx + w * 0.3, base, sx + w, base, sx + w * 0.62, base + h, sx + w * 0.2, base + h], c2); R4(ctx, sx - w * 0.72, base + h - h * 0.03, w * 1.44, h * 0.03, c2); if (s > 2) { ctx.fillStyle = c2; for (let k = 1; k < 5; k++) ctx.fillRect(sx - w * (1 - k * 0.07), base + h * k * 0.2, w * 2 * (1 - k * 0.07), h * 0.008); } }
       // smoke drifting off the top
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.03 + k / 7 + i * 0.37) % 1, r = h * (0.07 + u * 0.3); kxPuff(ctx, smoke, sx + (env.wind || 1) * u * h * 0.5 + Math.sin(u * 7 + k) * h * 0.03, base + h + u * h * 0.5 + r * 0.4, r * 1.3, r, (1 - u) * 0.42 * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, sx, base + h, { n: 11, rise: h * 0.55, r0: h * 0.05, r1: h * 0.3, speed: 0.03, a: 0.62, col: smoke, drift: (env.wind || 1) * h * 0.5, ph: i * 0.37, flat: 0 });
       if (night && Math.sin(env.t * 1.3 + i * 2.1) > 0) { circ(ctx, sx, base + h + 1, Math.max(0.8, env.px * 1.2), '#ff4a3d'); if (s > 0.6) kxGlow(ctx, '#ff4a3d', sx, base + h + 1, Math.max(4, env.px * 5), 0.5); }
     }
     if (o.holder) { // the gas holder: a drum inside a ring of lattice columns
@@ -10017,6 +11091,110 @@ function stFacade(S, P, Bs, o) {
   });
   return clear;
 }
+// Autumn on the street: fallen leaves, orange, red and yellow, drifted deep against the kerbs,
+// scattered over the pavements and the road, and a few tumbling along the road in the wind.
+// All flat on the ground or skittering along it, from streams of their own.
+const ST_LEAF = ['#c8682a', '#a8402a', '#d8a03a', '#8a5a2a', '#b8782a'];
+function stLeaf(D, R, x, y, sq) { const l = R.r(0.12, 0.22), hh = Math.max(0.03, l * sq * 0.9); D.at = 5; D.poly([x, y, x + l * 0.5, y + hh, x + l, y, x + l * 0.5, y - hh], R.pick(ST_LEAF), 0.95, l); }
+// A drift of leaves along a kerb: a lumpy brown bank at card height y, up to h deep (towards the
+// viewer; a negative h lies away from them), in pieces.
+function stDrift(D, R, y, h) {
+  D.at = 2.5;
+  for (let x = -75; x < 75;) {
+    const l = R.r(2, 9), p = [x + l, y, x, y]; for (let u = x; u < x + l; u += R.r(0.2, 0.6)) p.push(u, y - h * R.r(0.25, 1));
+    p.push(x + l, y - h * 0.3); D.poly(p, R.chance(0.5) ? '#9a5a2a' : '#a8682e', 0.6, 0.6); x += l + R.r(0.2, 3);
+  }
+  D.at = 0;
+}
+function stAutumn(S, H, seed, wet) {
+  const PB = H.PB, PS = H.PS, PR = H.PR;
+  K.deco(S, PB, { ground: true, seed: 5211 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    for (let x = -75; x < 75; x += R.r(0.4, 2)) { const n = R.i(1, 5); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 1), -R.r(0.01, bd * 0.12), sq); }   // blown up against the walls
+    for (let i = 0; i < 150 * 2.4; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, bd * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5221 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), gy = -(hk + face), sq = Math.max(0.12, E.tilt * 1.5), rb = E.hOf(7);
+    stDrift(D, R, gy + 0.01, 0.07);
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 9); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), gy - R.r(0.0, 0.07), sq); }
+    for (let i = 0; i < 150 * 2.2; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, hk * 0.92), sq);
+    for (let i = 0; i < 150 * 0.4; i++) stLeaf(D, R, R.r(-75, 75), gy - R.r(0.05, Math.max(0.06, rb - hk - face) * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PR, { ground: true, seed: 5231 + seed }, (D, R) => {
+    const near = 5.3;
+    stDrift(D, R, -near + 0.02, -0.22);        // (this kerb is the near one: the leaves lie up the road from it)
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 8); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), -near + R.r(0.02, 0.3), 0.3); }
+    for (let i = 0; i < 150 * 0.5; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.2, near - 0.4), 0.22);
+    for (let i = 0; i < 150 * 1.2; i++) stLeaf(D, R, R.r(-75, 75), -near - R.r(0.4, 5), 0.3);
+    D.at = 0;
+  });
+  if (wet) return;
+  // a handful tumbling along the road with the wind, now skating, now flipping over
+  const cols = ST_LEAF.map((c) => S.tone(c, PR)), L = []; { const R = makeRng(5241 + seed); for (let i = 0; i < 14; i++) L.push([R.r(0, 150), R.r(0.6, 1.3), R.r(0.3, 4.9), R.r(0, TAU), i % cols.length, R.r(0.09, 0.14)]); }
+  PR.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 5) return;
+    const t = env.t, w = env.wind || 1, dir = w >= 0 ? 1 : -1, sp = 0.5 + Math.min(3, Math.abs(w)) * 0.45;
+    for (let i = 0; i < L.length; i++) {
+      const q = L[i], g = t * sp * q[1] + Math.sin(t * 0.8 + q[3]) * 1.2 + q[0], xx = -75 + (((g % 150) + 150) % 150), x = dir * xx; if (x < env.x0 - 1 || x > env.x1 + 1) continue;
+      const hop = Math.max(0, Math.sin(t * 2.3 * q[1] + q[3])) * 0.12, fl = Math.cos(t * 5 * q[1] + q[3]), l = q[5], y = -q[2] + hop;
+      ctx.fillStyle = cols[q[4]]; ctx.beginPath(); ctx.moveTo(x - l * 0.5, y); ctx.lineTo(x, y + l * 0.3 * fl + 0.01); ctx.lineTo(x + l * 0.5, y); ctx.lineTo(x, y - l * 0.3 * fl - 0.01); ctx.closePath(); ctx.fill();
+    }
+  } });
+}
+// A hoar frost: the pavements and the road's edges furred white, rime thick along the kerbs,
+// the puddles frozen over and crazed, and the frost glittering under the lamps.
+function stFrost(S, H, seed) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, glints = [];
+  K.deco(S, PB, { ground: true, seed: 5251 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -bd, 150, bd - 0.01, '#dfe8f2', 0.14);
+    for (let x = -75; x < 75; x += R.r(1, 4)) stFlat(D, R, x, -R.r(0.02, bd * 0.9), R.r(0.6, 2.2), Math.max(0.03, sq * R.r(0.3, 0.8)), '#eef4fa', 0.16);
+    D.at = 20; for (let i = 0; i < 900; i++) D.rect(R.r(-75, 75), -R.r(0.02, bd * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5261 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -hk, 150, hk - 0.01, '#dfe8f2', 0.16);
+    D.rect(-75, -hk - face * 0.35, 150, face * 0.35, '#f2f6fa', 0.45);                         // rime along the edge of the kerb
+    for (let x = -75; x < 75; x += R.r(1, 3.5)) stFlat(D, R, x, -R.r(0.02, hk * 0.9), R.r(0.5, 1.8), Math.max(0.03, sq * R.r(0.25, 0.6)), '#eef4fa', 0.18);
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -R.r(0.02, hk * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+    for (let i = 0; i < 140; i++) glints.push(R.r(-75, 75), -R.r(0.03, hk * 0.9), R.r(0, 50), R.r(2, 5));
+  });
+  K.deco(S, PR, { ground: true, seed: 5271 + seed }, (D, R) => {
+    const near = 5.3;
+    // frost on the road where the tyres have not cleared it: along both gutters and the crown
+    // (in patches, not one sheet: a nearer plane's ground may take over part way along)
+    for (let x = -75; x < 75; x += R.r(0.8, 2.6)) {
+      stFlat(D, R, x, -R.r(0.2, 0.6), R.r(0.5, 1.6), R.r(0.08, 0.2), '#dfe8f2', 0.16);
+      stFlat(D, R, x + R.r(0, 1), -near + R.r(0.15, 0.5), R.r(0.5, 1.6), R.r(0.1, 0.25), '#dfe8f2', 0.18);
+      stFlat(D, R, x + R.r(0, 1), -near - R.r(0.3, 4.6), R.r(0.6, 1.8), R.r(0.2, 0.5), '#dfe8f2', 0.15);
+    }
+    for (let i = 0; i < 7; i++) {   // puddles frozen over, white at the rims, crazed across
+      const x = R.r(-60, 60), y = -R.pick([0.45, near - 0.3]) + R.r(-0.1, 0.1), rx = R.r(0.35, 0.8), ry = R.r(0.06, 0.12);
+      D.at = 3; stFlat(D, R, x, y, rx, ry, '#c4d2de', 0.45); D.at = 6; stFlat(D, R, x, y + ry * 0.15, rx * 0.7, ry * 0.55, '#9fb0c0', 0.35);
+      D.at = 14; for (let k = 0; k < 4; k++) { const a = R.r(-rx * 0.7, rx * 0.7); D.seg(x + a, y - ry * 0.6, x + a + R.r(-0.3, 0.3), y + ry * 0.6, 0.012, '#f4f8fc', 0.7); }
+      D.at = 6; D.line([x - rx, y, x - rx * 0.7, y + ry * 0.75, x, y + ry, x + rx * 0.7, y + ry * 0.75, x + rx, y], 0.03, '#f4f8fc', 0.6);
+    }
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -near - R.r(0.05, 4.8), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  // the frost glittering: a few crystals catch the lamp (or the sky) at a time
+  PS.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 6 || !glints.length) return;
+    const t = env.t, r = Math.max(env.px * 1.2, 0.02);
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); let any = false;
+    for (let i = 0; i < glints.length; i += 4) {
+      const x = glints[i]; if (x < env.x0 || x > env.x1) continue;
+      const k = Math.sin(t * glints[i + 3] + glints[i + 2]); if (k < 0.93) continue;
+      const y = glints[i + 1], rr = r * (1 + (k - 0.93) * 25);
+      ctx.moveTo(x - rr, y); ctx.lineTo(x, y + rr * 0.35); ctx.lineTo(x + rr, y); ctx.lineTo(x, y - rr * 0.35); ctx.closePath(); any = true;
+    }
+    if (any) ctx.fill();
+  } });
+}
 function stDetail(S, H, q) {
   const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
   const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
@@ -10100,14 +11278,29 @@ function stDetail(S, H, q) {
     stLitter(D, R, -75, 75, -0.15, -near + 0.3, 0.16, 0.12);
   });
 
+  // ---- the day's own dressing (07i_looks.js): autumn leaves, or a hoar frost ----
+  const dress = S.look && S.look.dress;
+  if (dress === 'autumn') stAutumn(S, H, seed, wet); else if (dress === 'frost') stFrost(S, H, seed);
+
   // ---- pigeons on the cornices, by day ----
   if (S.pal.dark < 0.45 && !wet && birds.length) {
-    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB);
+    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB), fly = [];
+    // the ones in flight are drawn over the roofs (worked out below, with the ones sitting)
+    PB.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) {
+      if (!fly.length || env.s < 7) return;
+      ctx.strokeStyle = head; ctx.lineWidth = Math.max(0.06, env.px * 1.2); ctx.lineCap = 'round'; ctx.beginPath();
+      for (let i = 0; i < fly.length; i += 3) kxBirdPath(ctx, fly[i], fly[i + 1], 0.6, env.t, fly[i + 2], true);
+      ctx.stroke(); ctx.lineCap = 'butt';
+    } });
     PB.add({ x0: rowX0 - 1, x1: rowX1 + 1, layer: 0, draw(ctx, env) {
       if (env.s < 7) return;
       const t = env.t, st = [];
+      fly.length = 0;
       for (let i = 0; i < birds.length; i++) {
-        const b = birds[i]; if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
+        const b = birds[i];
+        // a loud shot sends them all off the cornices; they drift back once it has been quiet a while
+        const fl = kxFlight(S, PB.z, t, b[0] * 1.7 + i); if (fl) { if (kxFleeAt(fl, b[0], b[1], b[3], i + b[0], kxWireAt)) fly.push(kxWireAt[0], kxWireAt[1], i); continue; }
+        if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
         // every few seconds each one pecks, turns about, or gives a little hop
         const cyc = (t + b[2]) / 3.7, c = Math.floor(cyc), u = cyc - c, hk = kxH(c, b[2]), dir = hk > 0.5 ? b[3] : -b[3];
         const hop = hk > 0.82 && u < 0.2 ? Math.sin((u / 0.2) * Math.PI) * 0.12 : 0, peck = hk > 0.3 && hk < 0.7 && u > 0.4 && u < 0.6 ? Math.sin(((u - 0.4) / 0.2) * Math.PI) : 0;
@@ -10154,7 +11347,7 @@ function stDetail(S, H, q) {
       if (env.s < 4) return;
       R4(ctx, vx - 0.17, vy - 0.1, 0.34, 0.22, gr);
       if (env.s > 14) { ctx.fillStyle = gr2; ctx.beginPath(); for (let k = 0; k < 4; k++) ctx.rect(vx - 0.14, vy - 0.07 + k * 0.05, 0.28, 0.02); ctx.fill(); }
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.3 + k / 7) % 1, r = 0.12 + u * 0.26; kxPuff(ctx, sc, vx - u * 0.3 + Math.sin(u * 7 + k) * 0.05, vy + 0.1 + u * 1.4, r * 1.25, r, 0.5 * (1 - u) * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, vx, vy + 0.1, { n: 9, rise: 1.5, r0: 0.1, r1: 0.42, speed: 0.3, a: 0.75, col: sc, drift: -0.3 + (env.wind || 0) * 0.08, steam: true });
     } });
   });
 
@@ -10335,6 +11528,9 @@ function dkSeaSetup(S, dk) {
   for (let i = 0; i < S.objects.length; i++) { const ob = S.objects[i]; if (ob.kind === 'lamp' && ob.plane) dkLight(S, { P: ob.plane, x: ob.x, y: ob.y, a: S.pal.dark > 0.5 ? 0.85 : 0.32, w: 0.55, ob }); }
   const clear = S.weather === 'clear', fog = S.weather === 'fog';
   dk.sunA = clear ? (S.pal.dark > 0.5 ? 0.42 : 0.6) : fog ? 0.22 : 0; dk.sunCss = S.pal.sun;
+  // how clearly the water mirrors what stands over it: rain and wind break it up
+  const wet = S.weather === 'rain' || S.weather === 'storm';
+  dk.reflA = wet ? 0.3 : fog ? 0.34 : S.pal.dark > 0.5 ? 0.55 : 0.5; dk.reflR = S.weather === 'storm' ? 3 : wet ? 2 : 1;
 }
 K.sea = function (S, P, o) {
   o = o || {};
@@ -10344,7 +11540,9 @@ K.sea = function (S, P, o) {
   if (o.sheen) col = mix(col, S.tone(o.sheen, P, true), 0.6);       // the sky lying on the water near the horizon
   const hi = mix(col, night ? '#8fa6cc' : '#ffffff', o.shine === undefined ? (night ? 0.17 : 0.26) : o.shine), lo = mix(col, '#000812', night ? 0.34 : 0.17);
   const X0 = o.x0 === undefined ? -6000 : o.x0, X1 = o.x1 === undefined ? 6000 : o.x1;
-  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z) };
+  // mirror: how many metres of what stands over this water it reflects (only what stands on its
+  // own waterline: the near strips would otherwise mirror the water beyond them)
+  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z), mirror: o.mirror === undefined ? 16 : o.mirror }; S._water = true;
   dk.seas.push(me);
   if (o.ground !== false) { P.groundY = y; P.groundMat = 'water'; }
   P.add({ x0: X0, x1: X1, layer: o.layer || 0, draw(ctx, env) { dkSeaDraw(ctx, env, S, dk, me); } });
@@ -10362,6 +11560,8 @@ function dkSeaDraw(ctx, env, S, dk, me) {
   const yb = Math.max(e0 - 2 * px, cut ? ybn - 2 * px : y - 400), yt = Math.min(y, e1 + 2 * px); if (yb >= yt) return;
   if ((y - ybn) * s < 6) R4(ctx, xa, yb, xb - xa, yt - yb, me.col);
   else { const g = ctx.createLinearGradient(0, y, 0, ybn); g.addColorStop(0, me.col); g.addColorStop(1, me.bot); ctx.fillStyle = g; ctx.fillRect(xa, yb, xb - xa, yt - yb); }
+  // the quay, the ships, the lamps and the sky standing over this water, mirrored in it
+  if (me.mirror > 0) kxReflect(ctx, env, y, yb, xa, xb, dk.reflA, dk.reflR + Math.abs(env.wind) * 0.12, me.sd, me.mirror);
 
   // dark shapes: the quay wall, piles and hulls mirrored in the water, broken into bands
   const ms = dk.mirrors;
@@ -10467,9 +11667,13 @@ function dkSeaDraw(ctx, env, S, dk, me) {
 function dkMirCol(S, P, hex) { return mix(S.tone(hex, P), S.tone(darken(S.pal.water, 0.25), P), 0.5); }
 // A gull, standing. About 0.4 m long: obviously a bird, and drawn behind the people.
 // w, g, b are its white, grey and beak colours. dir 1 faces right.
-function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep) {
+const dkGullAt = [0, 0];
+function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep, S, z) {
   const s = env.s;
   if (s < 3.5) return;
+  // a loud shot: the gull lifts off and wheels away, and comes back to the same spot later
+  const fl = S ? kxFlight(S, z, env.t, x * 3.7 + y) : null;
+  if (fl) { if (kxFleeAt(fl, x, y, -dir, x + y, dkGullAt)) { ctx.strokeStyle = w; ctx.lineWidth = Math.max(0.06, env.px * 1.3); ctx.lineCap = 'round'; ctx.beginPath(); kxBirdPath(ctx, dkGullAt[0], dkGullAt[1] + 0.2, 0.9, env.t * 0.7, x, true); ctx.stroke(); ctx.lineCap = 'butt'; } return; }
   if (s < 9) { R4(ctx, x - 0.17, y + 0.1, 0.34, 0.16, w); R4(ctx, x + dir * 0.08 - 0.06, y + 0.24, 0.12, 0.12, w); return; }
   const t = env.t, look = asleep ? 0 : (Math.sin(t * 0.43 + x * 3.1) > 0.55 ? -1 : 1) * dir, nod = asleep ? -0.04 : Math.sin(t * 2.1 + x) > 0.93 ? -0.03 : 0;
   ctx.strokeStyle = b; ctx.lineWidth = Math.max(0.018, env.px * 0.7); ctx.beginPath(); ctx.moveTo(x - 0.03, y); ctx.lineTo(x - 0.03, y + 0.1); ctx.moveTo(x + 0.04, y); ctx.lineTo(x + 0.04, y + 0.1); ctx.stroke();
@@ -10706,16 +11910,12 @@ K.buoy = function (S, P, x, wy, o) {
   return K.thing(S, P, 'bell', x, wy + 1.95, Object.assign({ id: 'bell', lure: 24, lureY: 0, r: 0.46 }, o.bell || {}));
 };
 
-// A ribbon of smoke: rises from (x, y), leans with the wind, and thins out in four steps.
-function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed) {
-  // puffs that rise along a path leaning with the wind, swelling and thinning as they go
-  ctx.fillStyle = css;
-  for (let i = 0; i < 12; i++) {
-    const u = (((t * 0.07 + i / 12 + seed * 0.013) % 1) + 1) % 1, r = (w0 + (w1 - w0) * u) * 0.5;
-    ctx.globalAlpha = a0 * (1 - u) * (1 - u) * 1.4;
-    ctx.beginPath(); ctx.ellipse(x + wind * u * u * len * 0.42 + Math.sin(u * 7 + i * 1.3 + seed) * 0.05 * len * u, y + u * len, r, r * 0.8, 0, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+// A ribbon of smoke: rises from (x, y) and leans with the wind (see kxPlume). It may be drawn
+// inside a boat's own moving frame, so it is not culled here by the plane's edges.
+const dkSmokeEnv = { s: 1, px: 1, t: 0, wind: 0, x0: -1e9, x1: 1e9 };
+function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed, env) {
+  const E = dkSmokeEnv; E.s = env ? env.s : 4; E.px = 1 / E.s; E.t = t; E.wind = 0;
+  kxPlume(ctx, E, x, y, { n: 12, rise: len, r0: w0 * 0.5, r1: w1 * 0.5, speed: 0.07, a: Math.min(0.9, a0 * 2.1), col: css, drift: wind * len * 0.42, ph: seed * 0.013 });
 }
 // A container seen from a long way off: its colour, and close enough, its ribs and frame.
 function dkBoxLite(ctx, s, x, y, w, h, c, d) {
@@ -10833,7 +12033,7 @@ K.freighter = function (S, P, sx, wy, o) {
       }
     }
     // a thread of smoke from the funnel
-    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx);
+    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx, env);
     if (S.hornUntil && t < S.hornUntil) { // whistle steam while the horn sounds
       const k = clamp((t - S.hornFrom) / 0.4, 0, 1) * clamp((S.hornUntil - t) / 0.6, 0, 1); ctx.fillStyle = 'rgba(238,242,246,0.75)';
       for (let i = 0; i < 7; i++) { const u = ((t * 0.9 + i / 7) % 1); ctx.globalAlpha = (1 - u) * 0.8 * k; ctx.beginPath(); ctx.arc(fx + 2.4 + env.wind * u * 1.6 + u * 1.2, top + 11.4 + u * 4.4, 0.35 + u * 1.5, 0, TAU); ctx.fill(); }
@@ -10958,7 +12158,7 @@ K.supplyBarge = function (S, P, x, wy, o) {
       ctx.strokeStyle = ringR; ctx.beginPath(); ctx.arc(x + 3.2, D + 1.62, 0.2, 0.3, 1.2); ctx.moveTo(x + 3.2 + 0.2 * Math.cos(3.44), D + 1.62 + 0.2 * Math.sin(3.44)); ctx.arc(x + 3.2, D + 1.62, 0.2, 3.44, 4.34); ctx.stroke();
       R4(ctx, x + 4.3, D + 2.72, 0.16, 0.85, dk); R4(ctx, x + 4.22, D + 3.5, 0.32, 0.09, dk); line(ctx, x + 1.45, D + 2.72, x + 1.45, D + 4.5, dk, 0.03, env);
     }
-    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
+    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x, env); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
     // cargo under a tarpaulin amidships: a lit ridge, a shaded end, folds, and a hem
     poly(ctx, [x + 9.5, D, x + 15.5, D, x + 15.0, D + 1.5, x + 13.2, D + 1.9, x + 10.2, D + 1.4], tarp);
     if (s > 3) {
@@ -11261,7 +12461,7 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
       ctx.moveTo(-L / 2 + 6, 10.05); ctx.lineTo(-L / 2 + 12.6, 10.05); ctx.moveTo(L / 2 - 13.5, 11.2); ctx.lineTo(L / 2 - 13.5, 15); ctx.moveTo(L / 2 - 14.6, 13.6); ctx.lineTo(L / 2 - 12.4, 13.6);
       ctx.stroke();
     }
-    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01);
+    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01, env);
     if (lit) { // masthead and stern lights, and her coloured side light: red to port, green to starboard
       dkGlow(ctx, L / 2 - 13.5, 15.1, 2.4, '255,244,214', 0.8); circ(ctx, L / 2 - 13.5, 15.1, 0.2, '#fff3c4');
       dkGlow(ctx, L / 2 - 9.6, 10.3, 1.5, dir > 0 ? '90,255,140' : '255,80,60', 0.8); circ(ctx, L / 2 - 9.6, 10.3, 0.15, dir > 0 ? '#6dff9a' : '#ff5a48');
@@ -11278,6 +12478,48 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
   } };
 
 // ---- the location ------------------------------------------------------------
+// A harbour tug working out past the breakwater, a long way off: black hull, red boot top,
+// white house, a buff funnel puffing smoke, bow wave and a wake behind. She crosses one way
+// and later comes back the other; after dark only her lights show much: the masthead lights,
+// the side light she shows (green going right, red going left) and a lit wheelhouse. Behind
+// the breakwater her hull is hidden and only the house shows over the stones. Drawn only.
+function dkTug(S, P, wy, lit, seed) {
+  const hull = S.tone('#20242a', P), boot = S.tone('#8a2f28', P), house = S.tone('#e2ddd0', P), house2 = S.tone('#b8b2a4', P), fun = S.tone('#c98a2b', P), funK = S.tone('#15181c', P), fend = S.tone('#121418', P);
+  const win = S.tone(lit ? S.pal.lit : S.pal.glass, P, true), foam = rgba(S.tone('#e8eef2', P), 0.55), smoke = S.pal.dark > 0.5 ? 'rgb(70,74,86)' : 'rgb(98,96,98)';
+  const run = 1900, sp = 2.6, ph = 760 + (seed % 7) * 37;   // she comes into the usual view about a minute in
+  const at = (t) => { const g = t * sp + ph, lap = Math.floor(g / run), u = g - lap * run, dir = lap % 2 ? -1 : 1; return [dir > 0 ? -950 + u : 950 - u, dir]; };
+  P.add({ x0: -1000, x1: 1000, layer: 0, draw(ctx, env) {
+    const t = env.t, [x, dir] = at(t), s = env.s;
+    if (x + 60 < env.x0 || x - 60 > env.x1 || s < 0.5) return;
+    const bob = Math.sin(t * 0.9) * 0.08, pitch = Math.sin(t * 0.7 + 1) * 0.012;
+    // the wake: lines of foam spreading and fading behind her, and the wave at her bow
+    ctx.fillStyle = foam;
+    for (let k = 0; k < 5; k++) { const l = 10 + k * 9, a0 = x - dir * (10 + k * 7); ctx.globalAlpha = 0.7 * (1 - k / 5.5); ctx.beginPath(); const xa = Math.min(a0, a0 - dir * l), y = wy - 0.12 - k * 0.07; ctx.rect(xa, y, l, Math.max(env.px * 0.9, 0.18 - k * 0.02)); ctx.fill(); }
+    ctx.globalAlpha = 0.8; poly(ctx, [x + dir * 10.6, wy - 0.15, x + dir * 13.2, wy - 0.25, x + dir * 10.2, wy + 0.55], foam); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(x, wy + bob); ctx.scale(dir, 1); ctx.rotate(pitch);
+    // hull, boot top, the thick fender round her bow
+    poly(ctx, [-10.6, 1.45, 10.9, 2.3, 9.6, -0.45, -9.9, -0.45], hull);
+    R4(ctx, -9.8, -0.45, 19.3, 0.5, boot);
+    if (s > 3) { R4(ctx, -10.5, 1.3, 21.2, 0.22, house2); poly(ctx, [9.2, 2.2, 11.3, 2.35, 10.4, 0.2, 9.1, 0.6], fend); }
+    // the house, the wheelhouse up on it, the funnel and the mast
+    R4(ctx, -5.2, 1.5, 9.4, 1.9, house); R4(ctx, -0.2, 3.4, 4.6, 2.0, house);
+    R4(ctx, 0.1, 4.25, 4.0, 0.75, win);
+    if (s > 4) { ctx.fillStyle = house; for (let k = 1; k < 4; k++) ctx.fillRect(0.1 + k, 4.25, 0.12, 0.75); R4(ctx, -4.6, 2.2, 0.9, 0.7, win); R4(ctx, -2.8, 2.2, 0.9, 0.7, win); R4(ctx, -0.4, 5.35, 5.0, 0.18, house2); }
+    poly(ctx, [-3.6, 3.4, -1.6, 3.4, -1.9, 6.6, -3.5, 6.6], fun); R4(ctx, -3.55, 6.1, 1.65, 0.5, funK);
+    line(ctx, 2.2, 5.4, 2.2, 9.6, funK, 0.14, env);
+    if (s > 4) { line(ctx, 1.4, 8.6, 3.0, 8.6, funK, 0.08, env); line(ctx, -9.0, 1.6, -9.0, 2.6, funK, 0.12, env); line(ctx, -9.6, 2.6, -7.6, 2.6, funK, 0.08, env); }
+    ctx.restore();
+    // her smoke, carried back by her own way and by the wind
+    kxPlume(ctx, env, x - dir * 2.6, wy + bob + 6.6, { rise: 9, r0: 0.45, r1: 2.6, n: 9, speed: 0.35, a: 0.42, col: smoke, drift: -dir * 7 + (env.wind || 0) * 1.5, ph: 0.3 });
+    if (lit) {   // masthead lights (two: she has a tow), the side light she shows, her stern light
+      const mx = x + dir * 2.2, my = wy + bob;
+      circ(ctx, mx, my + 9.6, 0.22, '#fff6dc'); circ(ctx, mx, my + 8.9, 0.22, '#fff6dc'); dkGlow(ctx, mx, my + 9.25, 2.4, '255,246,220', 0.7);
+      const side = dir > 0 ? ['#6dff9a', '109,255,154'] : ['#ff5a48', '255,90,72'];
+      circ(ctx, x + dir * 4.6, my + 3.9, 0.2, side[0]); dkGlow(ctx, x + dir * 4.6, my + 3.9, 1.8, side[1], 0.75);
+      circ(ctx, x - dir * 10.2, my + 1.9, 0.18, '#fff6dc'); dkGlow(ctx, x - dir * 10.2, my + 1.9, 1.4, '255,246,220', 0.5);
+    }
+  } });
+}
 SCN.docks = function (o) {
   o = o || {};
   const z = o.z || 255, wy = -2.2, seed = o.seed || 4;
@@ -11333,7 +12575,7 @@ SCN.docks = function (o) {
       for (let i = 0; i < 2; i++) { const cx = i ? 548 : 262, ch = i ? 44 : 58; if (cx < v0 - 60 || cx > v1 + 60) continue;
         poly(ctx, [cx - 2.6, wy + 1.4, cx + 2.6, wy + 1.4, cx + 1.7, wy + ch, cx - 1.7, wy + ch], stackC);
         if (s > 1.2) { R4(ctx, cx - 1.85, wy + ch - 6, 3.7, 2.2, stackR); R4(ctx, cx - 1.95, wy + ch - 12, 3.9, 2.2, stackR); }
-        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx);
+        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx, env);
         if (lit) { const b = dkPulse(t, 1.3, cx, 0); R4(ctx, cx - 1, wy + ch, 2, 2, mix('#5a1f1a', '#ff5a48', b)); dkGlow(ctx, cx, wy + ch + 1, 5, '255,70,50', 0.7 * b); } }
       // a ship lying at the terminal, its boxes stacked on the quay, and the big cranes over them
       if (-420 < v1 && -335 > v0) { poly(ctx, [-424, wy + 9, -338, wy + 9, -334, wy + 12, -344, wy - 0.2, -420, wy - 0.2], shipH); R4(ctx, -420, wy + 9, 20, 11, shipW); R4(ctx, -414, wy + 20, 6, 6, stackR);
@@ -11391,6 +12633,7 @@ SCN.docks = function (o) {
       dkFoam(ctx, env, xa, xb, wy, 31, foam);
     } });
     K.lighthouse(S, PBW, bx1, wy + 2.8, 19);
+    if (S.weather !== 'storm') dkTug(S, PBW, wy, lit, seed);
     if (S.pal.dark < 0.5 && !rainy) { // gulls wheeling off the breakwater, a long way off: gliding mostly, a few beats now and then
       const gc = S.tone('#eef0ee', PBW);
       PBW.add({ x0: bx1 - 130, x1: bx1 + 40, layer: 2, draw(ctx, env) {
@@ -11669,7 +12912,7 @@ SCN.docks = function (o) {
           if (h < 0.34) { R4(ctx, bx - 0.2, 0.12, 0.4, 0.06, rope); R4(ctx, bx - 0.2, 0.2, 0.4, 0.05, rope2); ctx.strokeStyle = rope; ctx.lineWidth = Math.max(0.05, px * 0.7); ctx.beginPath(); ctx.moveTo(bx + 0.2, 0.15); ctx.quadraticCurveTo(bx + 0.6, 0.2, bx + 0.85, 0); ctx.lineTo(bx + 0.9, -0.34); ctx.stroke(); }
           else if (h < 0.64) { for (let i = 0; i < 3; i++) { ctx.fillStyle = i % 2 ? rope2 : rope; ctx.beginPath(); ctx.ellipse(bx + 0.85, 0.06 + i * 0.055, 0.33 - i * 0.04, 0.05, 0, 0, TAU); ctx.fill(); } }
         }
-        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night);
+        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night, S, PQ.z);
       }
       dkFoam(ctx, env, xa, xb, wy, 5, foamQ);
     } });
@@ -11775,7 +13018,7 @@ SCN.docks = function (o) {
 
   // ---- the basin in front: boat lane, then open water toward the shooter ----
   const PL = S.plane(z - 5, 'lane');
-  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08 });
+  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08, mirror: 4 });
   H.PL = PL; H.laneY = wy - 0.25;                 // y for a launch so that it floats at its waterline
   if (o.bell !== undefined && o.bell !== false) H.bell = K.buoy(S, PL, typeof o.bell === 'number' ? o.bell : o.bell.x, wy, { bell: typeof o.bell === 'number' ? {} : o.bell });
   if (o.barge) {
@@ -11791,7 +13034,7 @@ SCN.docks = function (o) {
   }
   if (o.skiff) H.skiff = K.skiff(S, PL, o.skiff.x, wy, o.skiff);
   const PW = S.plane(z - 42, 'basin');
-  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16 });
+  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16, mirror: 5 });
   H.PW = PW;
   if (o.ketch) K.ketch(S, PW, o.ketch.x, wy, o.ketch);
   const dolX = o.dolphinX === undefined ? -27 : o.dolphinX;
@@ -11804,7 +13047,7 @@ SCN.docks = function (o) {
       R4(ctx, dx - 0.62, wy - 0.3, 0.42, 1.8, pc2); R4(ctx, dx + 0.24, wy - 0.3, 0.4, 1.55, pc2);
       R4(ctx, dx - 0.3, wy - 0.3, 0.6, 2.3, pc); R4(ctx, dx - 0.36, wy + 2.0, 0.72, 0.2, cap);
       if (s > 4) { R4(ctx, dx - 0.3, wy + 0.4, 0.14, 1.6, pcHi); R4(ctx, dx - 0.66, wy - 0.3, 1.32, 0.7, weedW); R4(ctx, dx - 0.66, wy + 0.92, 1.34, 0.17, ropeW); R4(ctx, dx - 0.66, wy + 0.98, 1.34, 0.035, ropeW2); }
-      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night, S, PW.z);
       dkFoam(ctx, env, dx - 0.8, dx + 0.8, wy, 13, foam);
     } });
   }
@@ -11825,7 +13068,7 @@ SCN.docks = function (o) {
   }
   // ---- nearest: a trawler's masthead in the corner, with a pennant that shows the wind ----
   const PN = S.plane(Math.round(z * 0.6), 'near');
-  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24 });
+  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24, mirror: 5 });
   H.PN = PN;
   if (o.mast !== false) {
     const mx = o.mastX === undefined ? -26.5 : o.mastX, my = o.mastY === undefined ? 6.3 : o.mastY, mc = S.tone('#2a2620', PN), mc2 = S.tone('#8a6d4c', PN), mc3 = S.tone('#a88a62', PN), steel = S.tone('#c9ced3', PN);
@@ -11844,7 +13087,7 @@ SCN.docks = function (o) {
       if (s > 6) { ctx.fillStyle = mc; ctx.fillRect(mx - 0.13, my - 2.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, my - 0.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, wy + 2.4, 0.26, 0.09); ctx.fillRect(mx + 1.36, my - 2.5, 0.12, 0.24);
         poly(ctx, [mx + 0.55, my - 1.25, mx + 0.75, my - 1.0, mx + 0.55, my - 0.75, mx + 0.35, my - 1.0], steel); }
       if (lit) dkGlow(ctx, mx, my - 2.0, 0.75, '255,240,200', 0.7); circ(ctx, mx, my - 2.0, 0.08, lit ? '#fff3c4' : mc);
-      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night, S, PN.z);
       ctx.restore();
     } });
     K.pennant(S, PN, mx, my, 1.7, o.flagCol || '#c0392b', { sway: (t) => lean(t) * (my - piv) });
@@ -12028,13 +13271,26 @@ function alpWrap(x, a, span) { return a + ((((x - a) % span) + span) % span); }
 // a closed polygon from a flat list of numbers, added to the current path
 function alpPath(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
 
+// How the valley is dressed for each mission's look (07i_looks.js): the colour of the meadow,
+// how many of the trees on the hills are larches turned gold, and what lies on the grass.
+// None of it stands up off the ground: stripes, rime, dew, leaves and flowers are all flat.
+const VLY_DRESS = {
+  autumn: { meadow: '#9c9a4e', accent: 0.34, accentCol: '#c98f2a', leaves: true },
+  hay: { meadow: '#a2aa5a', stripes: true },
+  frost: { meadow: '#7d957f', rime: true },
+  dew: { dew: true },
+  summer: { meadow: '#79ab58', flowers: 2.6 },
+  windy: {},
+};
+function vlyDressOf(S) { return VLY_DRESS[S.look && S.look.dress] || {}; }
+
 // Grass for an open slope or a lawn: broad patches a shade deeper, the pale ripples wind
 // sends through long grass, tufts whose blades lean downwind, and drifts of small flowers.
 // q.yAt(x) is the top edge of the turf; everything is drawn below it, within q.depth metres.
 // q.skip(x, y) can keep things off paths and paving. Returns the function that draws it.
 function alpTurf(S, P, q) {
   const D = makeRng(q.seed || 5), snowy = S.time === 'snow', x0 = q.x0, x1 = q.x1, span = x1 - x0, dep = q.depth, yAt = q.yAt, top = q.top === undefined ? 0.5 : q.top, skip = q.skip || (() => false);
-  const blade = S.tone(snowy ? '#cfd8e0' : darken(q.col, 0.17), P), pale = S.tone(snowy ? '#fbfcfd' : mix(lighten(q.col, 0.2), '#d9e2a0', 0.25), P), deep = S.tone(snowy ? '#dde4ea' : darken(q.col, 0.055), P);
+  const blade = S.tone(snowy ? '#cfd8e0' : vlyDressOf(S).rime ? mix(darken(q.col, 0.1), '#dfe8f0', 0.45) : darken(q.col, 0.17), P), pale = S.tone(snowy ? '#fbfcfd' : mix(lighten(q.col, 0.2), '#d9e2a0', 0.25), P), deep = S.tone(snowy ? '#dde4ea' : darken(q.col, 0.055), P);
   const flC = ['#f4f1e4', '#f1d24a', '#b48ad0'].map((c) => S.tone(c, P)), TU = [], FL = [], RP = [], PA = [];
   for (let i = 0, n = Math.round(span * (q.tufts === undefined ? 0.9 : q.tufts)); i < n; i++) { const x = D.r(x0, x1), y = yAt(x) - D.r(top, dep); if (!skip(x, y)) TU.push([x, y, D.r(0.22, 0.42), D.r(0, TAU)]); }
   TU.sort((a, b) => a[0] - b[0]);
@@ -12044,7 +13300,41 @@ function alpTurf(S, P, q) {
   }
   for (let i = 0, n = Math.round(span / 12); i < n; i++) RP.push([x0 + span * (i + D.f()) / n, D.r(top + 0.6, dep * 0.92), D.r(4, 11), D.r(0.24, 0.48), D.r(0, TAU), D.r(0.7, 1.3)]);
   for (let i = 0, n = Math.round(span / 22); i < n; i++) { const x = x0 + span * (i + D.f()) / n; PA.push([x, D.r(top + 1, dep * 0.9), D.r(6, 15), D.r(0.5, 1.3)]); }
+  // the mission's dressing, from a stream of its own
+  const DR = vlyDressOf(S), E = makeRng((q.seed || 5) * 7 + 911), XS = [], XL = [], XF = [];
+  const stripeA = S.tone(lighten(q.col, 0.12), P), stripeB = S.tone(darken(q.col, 0.06), P), rowC = S.tone(darken(q.col, 0.2), P), rime = S.tone('#e6eef6', P), leafC = ['#c4662a', '#d89a32', '#a8442a', '#e0b84a'].map((c) => S.tone(c, P)), flC2 = ['#ece9da', '#e2cc5a', '#a890c4', '#d88a80'].map((c) => S.tone(c, P));
+  if (!snowy && (DR.rime || DR.dew)) for (let i = 0, n = Math.round(span * (DR.rime ? 0.5 : 0.35)); i < n; i++) XS.push([E.r(x0, x1), E.r(top, dep), E.r(0.03, 0.07), E.r(0, TAU), E.r(0.6, 1.2)]);
+  if (!snowy && DR.leaves) for (let i = 0, n = Math.round(span * 0.6); i < n; i++) XL.push([E.r(x0, x1), E.r(top, dep), E.r(0.07, 0.13), E.i(0, 3), E.r(0, TAU)]);
+  if (!snowy && DR.flowers) for (let i = 0, n = Math.round(span * 0.12 * DR.flowers); i < n; i++) XF.push([E.r(x0, x1), E.r(top + 0.5, dep * 0.9), E.r(0.5, 1.4), E.r(0.1, 0.25), E.i(0, 3)]);
+  XS.sort((a, b) => a[0] - b[0]); XL.sort((a, b) => a[0] - b[0]);
+  const dress = (ctx, env) => {
+    const s = env.s, vx0 = Math.max(x0, env.x0), vx1 = Math.min(x1, env.x1); if (vx1 <= vx0) return;
+    if (DR.stripes && s > 0.6) { // mown in broad stripes, each with a row of cut grass along it
+      const n = 7;
+      for (let i = 0; i < n; i++) { const ya = top + (dep - top) * i / n, yb = top + (dep - top) * (i + 1) / n; ctx.fillStyle = i % 2 ? stripeA : stripeB; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.moveTo(vx0, yAt(vx0) - ya); for (let x = vx0; x <= vx1 + 8; x += 8) ctx.lineTo(Math.min(x, vx1), yAt(Math.min(x, vx1)) - ya - Math.sin(x * 0.05 + i) * 0.12); for (let x = vx1; x >= vx0 - 8; x -= 8) ctx.lineTo(Math.max(x, vx0), yAt(Math.max(x, vx0)) - yb - Math.sin(x * 0.05 + i + 1) * 0.12); ctx.closePath(); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      if (s > 2) { ctx.strokeStyle = rowC; ctx.globalAlpha = 0.55; ctx.lineWidth = Math.max(0.06, env.px * 1.2); ctx.beginPath(); for (let i = 1; i < n; i += 2) { const yy = top + (dep - top) * (i + 0.5) / n; ctx.moveTo(vx0, yAt(vx0) - yy); for (let x = vx0; x <= vx1; x += 3) ctx.lineTo(x, yAt(x) - yy + Math.sin(x * 0.37 + i) * 0.05); } ctx.stroke(); ctx.globalAlpha = 1; }
+    }
+    if (DR.rime && s > 0.8) { // hoar frost lying in the hollows of the grass
+      ctx.fillStyle = rime; ctx.globalAlpha = 0.28; ctx.beginPath();
+      for (let i = 0; i < PA.length; i++) { const p = PA[i]; if (p[0] + p[2] < env.x0 || p[0] - p[2] > env.x1) continue; const y = yAt(p[0]) - p[1]; ctx.moveTo(p[0] + p[2] * 1.1, y); ctx.ellipse(p[0], y, p[2] * 1.1, p[3] * 1.2, 0, 0, TAU); }
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+    if (XS.length && s > 3) { // rime crystals or dew catching the low sun, each glinting now and then
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); const tt = env.t;
+      for (let i = vlyFrom(XS, env.x0 - 1); i < XS.length && XS[i][0] < env.x1 + 1; i++) { const f = XS[i], g = Math.sin(tt * f[4] * 2 + f[3]); if (g < 0.55) continue; const r = Math.max(f[2] * (g - 0.4) * 2, env.px * 0.8); ctx.rect(f[0] - r, yAt(f[0]) - f[1] - r * 0.2, r * 2, r * 0.4); ctx.rect(f[0] - r * 0.2, yAt(f[0]) - f[1] - r, r * 0.4, r * 2); }
+      ctx.fill();
+    }
+    if (XL.length && s > 4) { // fallen leaves blown out over the grass
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = leafC[c]; ctx.beginPath(); for (let i = vlyFrom(XL, env.x0 - 1); i < XL.length && XL[i][0] < env.x1 + 1; i++) { const l = XL[i]; if (l[3] !== c) continue; const r = Math.max(l[2], env.px), y = yAt(l[0]) - l[1]; ctx.moveTo(l[0] + r, y); ctx.ellipse(l[0], y, r, r * 0.45, l[4], 0, TAU); } ctx.fill(); }
+    }
+    if (XF.length && s > 1.5) { // drifts of wild flowers, a haze of colour from far off
+      for (let c = 0; c < 4; c++) { ctx.fillStyle = flC2[c]; ctx.globalAlpha = s > 9 ? 0.22 : 0.3; ctx.beginPath(); for (let i = 0; i < XF.length; i++) { const f = XF[i]; if (f[4] !== c || f[0] + f[2] < env.x0 || f[0] - f[2] > env.x1) continue; const y = yAt(f[0]) - f[1]; ctx.moveTo(f[0] + f[2], y); ctx.ellipse(f[0], y, f[2], f[3], 0, 0, TAU); } ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  };
   return function (ctx, env) {
+    dress(ctx, env);
     const a = alpGale(env), dir = env.wind >= 0 ? 1 : -1, s = env.s;
     if (s > 0.9) { // patches
       ctx.fillStyle = deep; ctx.beginPath(); let n = 0;
@@ -12292,7 +13582,7 @@ K.forestHill = function (S, z, o) {
   const bodyHex = o.col || '#2c4b3b', body = S.tone(bodyHex, P), cap = S.tone('#f1f5f8', P);
   const th = o.th || 12, rows = o.rows === undefined ? 3 : o.rows, tw = o.tw || 0.2, dens = o.density === undefined ? 0.92 : o.density;
   const tx0 = o.tx0 === undefined ? x0 : o.tx0, tx1 = o.tx1 === undefined ? x1 : o.tx1, drop = o.rowDrop || 0.52;
-  const crags = o.crags || [], glades = o.glades || [], accent = snowy ? 0 : (o.accent === undefined ? 0.07 : o.accent);
+  const DRS = vlyDressOf(S), crags = o.crags || [], glades = o.glades || [], accent = snowy ? 0 : DRS.accent || (o.accent === undefined ? 0.07 : o.accent);
   const R = makeRng(sd * 31 + 7), D = makeRng(sd * 53 + 19), TR = [], cols = [], lits = [];
   const bare = (x, r) => { for (let i = 0; i < crags.length; i++) if (r < 2 && Math.abs(x - crags[i][0]) < crags[i][1] * (r ? 0.26 : 0.42)) return true; for (let i = 0; i < glades.length; i++) if (r < glades[i][2] && x > glades[i][0] && x < glades[i][1]) return true; return false; };
   for (let r = 0; r < rows + (o.more || 0); r++) {
@@ -12308,7 +13598,7 @@ K.forestHill = function (S, z, o) {
     const hex = r % 2 ? (o.treeCol2 || '#2f5a45') : (o.treeCol || '#24463a');
     cols.push(S.tone(hex, P)); lits.push(S.tone(mix(lighten(hex, 0.13), '#9fb86a', 0.14), P));
   }
-  const accHex = o.accentCol || mix(o.treeCol || '#24463a', '#86a857', 0.34), accC = S.tone(accHex, P), accL = S.tone(lighten(accHex, 0.14), P), trunkC = S.tone(mix(darken(o.treeCol || '#24463a', 0.45), '#3b2d22', 0.45), P);
+  const accHex = DRS.accentCol || o.accentCol || mix(o.treeCol || '#24463a', '#86a857', 0.34), accC = S.tone(accHex, P), accL = S.tone(lighten(accHex, 0.14), P), trunkC = S.tone(mix(darken(o.treeCol || '#24463a', 0.45), '#3b2d22', 0.45), P);
   const mist = o.mist, mistCol = S.pal.fog, mistDeep = z * 0.11, wisps = [], hazy = P.haze > 0.5;
   if (mist) for (let i = 0; i < 12; i++) wisps.push([x0 + (x1 - x0) * (i + D.f()) / 12, lerp(mist[0], mist[1], D.r(0.15, 0.8)), z * D.r(0.05, 0.11), (mist[1] - mist[0]) * D.r(0.1, 0.2), D.r(0.6, 1.4)]);
 
@@ -12521,15 +13811,9 @@ K.alpWindsock = function (S, P, x, y, h, o) {
 // flatter and carries it further the harder it blows.
 K.plume = function (S, P, x, y, o) {
   o = o || {}; const n = o.n || 15, rise = o.rise || 15, dawn = S.time === 'dawn';
-  const col = S.pal.dark > 0.5 ? '120,130,150' : dawn ? '250,226,214' : '244,246,248', und = S.pal.dark > 0.5 ? '84,94,116' : dawn ? '212,184,180' : '203,211,220';
+  const col = S.pal.dark > 0.5 ? '#76829a' : dawn ? '#f6e4da' : '#eef1f4';
   P.add({ x0: x - 60, x1: x + 60, layer: o.layer || 0, draw(ctx, env) {
-    const w = env.wind, aw = Math.abs(w), lift = rise / (1 + aw * 0.22), reach = w * 4.2, two = env.s > 4;
-    for (let i = 0; i < n; i++) {
-      const u = (env.t * 0.11 + i / n) % 1, r = Math.max(0.42 + u * (2.6 + aw * 0.12), env.px), al = (1 - u) * (1 - u) * 0.62;
-      const px = x + reach * Math.pow(u, 1.4) + Math.sin(u * 7 + i * 1.7) * 0.45 * u, py = y + 0.4 + lift * Math.pow(u, 0.72);
-      if (two) { ctx.fillStyle = 'rgba(' + und + ',' + (al * 0.8).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px - r * 0.12, py - r * 0.22, r, 0, TAU); ctx.fill(); }
-      ctx.fillStyle = 'rgba(' + col + ',' + al.toFixed(3) + ')'; ctx.beginPath(); ctx.arc(px, py, r, 0, TAU); ctx.fill();
-    }
+    kxPlume(ctx, env, x, y + 0.4, { n: Math.round(n * 0.9), rise, r0: 0.45, r1: 2.8 + Math.abs(env.wind) * 0.12, speed: 0.11, a: 0.72, col, lean: 4.2 / rise, flat: 0.22 });
   } });
 };
 
@@ -13100,7 +14384,7 @@ SCN.valley = function (o) {
   const S = makeScene({ time, weather: o.weather || (snowy ? 'snow' : 'clear'), seed: sd, refZ: zR, fog: o.fog, exits: [-112, 112], sun: o.sun || (time === 'dawn' ? [-58, (a6 + 0.016) * 1000] : [58, (a6 + 0.05) * 1000]),
     bounds: { x0: -span, x1: span, y0: onRef(bankY, zD - 95) - 0.02 * zR, y1: o.top === undefined ? lay(a6 + 0.03, zR) : o.top }, ambience: snowy ? 'snow' : 'wild', groundMat: snowy ? 'snow' : 'dirt' });
   const H = { S, z: zR, zD, eye: E, deckY, roadY, kit: VLY };
-  const meadow = snowy ? '#e9eef3' : time === 'dawn' ? '#6f8f5a' : '#7fa860';
+  const meadow = snowy ? '#e9eef3' : vlyDressOf(S).meadow || (time === 'dawn' ? '#6f8f5a' : '#7fa860');
   const sunD = S.sky.sun[0] >= 0 ? 1 : -1, dimK = S.pal.dark > 0.1 || snowy;   // dimK: dull enough for lamps to show
 
   // ---- peaks and hills, far to near ----
@@ -14412,7 +15696,7 @@ K.twBackTowers = function (S, z, o) {
         for (let k = 0; k < 2; k++) {
           const px = x0 + t.w * 0.56 + k * 4.4;
           R4(ctx, px, t.h, 3.4, 2.5, body2); R4(ctx, px + 0.7, t.h + 2.5, 2.0, 0.9, body3);
-          if (s > 5) for (let j = 0; j < 3; j++) { const u = (env.t * 0.07 + j / 3 + T.puff + k * 0.37) % 1; twPuff(ctx, px + 1.7 + env.wind * u * u * 5, t.h + 3.6 + u * 11, 1.6 + u * 4.5, 1.3 + u * 3.2, '#8fa0c4', (1 - u) * Math.min(1, u * 5) * 0.3); }
+          if (s > 2) kxPlume(ctx, env, px + 1.7, t.h + 3.6, { n: 8, rise: 11, r0: 1.4, r1: 4.6, speed: 0.07, a: 0.5, col: '#7f8fb2', lean: 0.45, ph: T.puff + k * 0.37, steam: true });
         }
         line(ctx, x0 + t.w * 0.2, t.h + 3.2, x0 + t.w * 0.2, t.h + 10, body3, 0.25, env);
         twBeacon(ctx, env, x0 + t.w * 0.2, t.h + 10.3, T.ph + 1);
@@ -14782,7 +16066,7 @@ K.twSite = function (S, P, o) {
     const gx = fx1 - 0.6;
     R4(ctx, gx, 0.12, 1.7, 0.95, genC[li]); R4(ctx, gx + 0.1, 0, 0.2, 0.12, dark); R4(ctx, gx + 1.4, 0, 0.2, 0.12, dark); R4(ctx, gx + 0.12, 0.3, 0.7, 0.6, dark);
     if (s > 9) { ctx.fillStyle = genC[li]; for (let k = 0; k < 4; k++) ctx.fillRect(gx + 0.17, 0.38 + k * 0.13, 0.6, 0.04); R4(ctx, gx + 1.05, 0.7, 0.4, 0.22, cabDoor); circ(ctx, gx + 1.15, 0.81, 0.04, '#52e07a'); R4(ctx, gx + 1.3, 1.07, 0.1, 0.3, dark); }
-    for (let k = 0; k < 4; k++) { const u = (env.t * 0.3 + k / 4) % 1; twPuff(ctx, gx + 1.35 + env.wind * u * u * 1.2, 1.45 + u * 2.2, 0.3 + u * 0.9, 0.3 + u * 0.8, '#8b93a3', (1 - u) * Math.min(1, u * 5) * 0.25); }
+    kxPlume(ctx, env, gx + 1.35, 1.45, { n: 7, rise: 2.2, r0: 0.25, r1: 0.95, speed: 0.3, a: 0.45, col: '#8b93a3', lean: 0.55 });
     // the cables that feed the floodlights: slung overhead from the cabin, and along the ground from the generator
     ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.035, env.px * 0.6); ctx.beginPath();
     for (let i = 0; i < Z.lamps.length; i++) {
@@ -14829,6 +16113,26 @@ K.twSite = function (S, P, o) {
   Z.levelY = (l) => l * fh;
   return Z;
 };
+
+// ---- a city in neon (a mission's look: 07i_looks.js) ---------------------------------
+// The far towers outlined in coloured light: a line along the crown of some, a strip up one
+// edge of others, a few slow colour changes. Painted on the far skyline only, nothing near.
+function twNeonCity(S, P) {
+  const D = makeRng(7717 + Math.round(P.z)), bl = P.kxBuildings || [], cols = ['#ff4fc8', '#4fe8ff', '#b46bff', '#ff8a3d', '#5dff9a'], list = [];
+  for (let i = 0; i < bl.length; i++) { const b = bl[i]; if (!D.chance(0.38)) continue; list.push([b.x, b.w, b.h, D.pick(cols), D.i(0, 2), D.f()]); }
+  P.add({ x0: -2000, x1: 2000, layer: 0, draw(ctx, env) {
+    const s = env.s, lw = Math.max(env.px * 1.6, 0.6), t = env.t;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i], x = q[0], w = q[1], h = q[2]; if (x + w < env.x0 || x > env.x1) continue;
+      const on = q[4] === 2 ? 0.55 + 0.45 * Math.sin(t * 0.8 + q[5] * 9) : 1, col = q[3];
+      ctx.globalAlpha = on; ctx.fillStyle = col;
+      if (q[4] !== 1) ctx.fillRect(x + w * 0.04, h - lw * 1.5, w * 0.92, lw);
+      if (q[4] !== 0) ctx.fillRect(q[5] > 0.5 ? x + w * 0.04 : x + w * 0.96 - lw, h * 0.15, lw, h * 0.83);
+      ctx.globalAlpha = 1;
+      if (s > 0.25) { const gx = x + w / 2; kxGlow(ctx, col, gx, h, Math.max(w * 0.7, env.px * 20), 0.22 * on); }
+    }
+  } });
+}
 
 // ---- a helicopter (a vehicle kind, so it flies on a routine like any car) ----------
 CARS.twheli = { len: 12, h: 3.8, body: 3.8, cab: [-0.5, 0.5], win: [], seats: [], wheel: 0, solid: true,
@@ -14885,11 +16189,12 @@ SCN.towers = function (o) {
   const S = makeScene({ time: 'night', weather: o.weather, seed, refZ, exits: [-64, 64], ambience: 'city', groundMat: 'hard',
     bounds: { x0: (-50 * refZ) / (z0 - 44) - 3, x1: (50 * refZ) / (z0 - 4) + 3, y0: -2, y1: 60 } });
   const H = { S, z0, refZ, focus };
-  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm';   // decoration only
+  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet);   // decoration only (a look can leave it wet after rain)
 
   // far away: the rest of the city
-  K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
+  const PSk = K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
   K.skyline(S, z0 + 560, { seed: 17 + seed, hMin: 16, hMax: 30, x0: -700, x1: 700, cols: ['#465264', '#4e5a6c', '#3c4858'] });
+  if (S.look && S.look.dress === 'neon') twNeonCity(S, PSk);
   // fireworks over the harbour (drawn only while they are going off)
   const PW = S.plane(z0 + 400, 'fireworks'); H.fw = null;
   // on the same plane: banks of low cloud drifting over the far rooftops
@@ -15077,7 +16382,7 @@ SCN.towers = function (o) {
         const px = -16.6 + k * 3.7;
         R4(ctx, px + 0.2, by, 0.16, 0.45, c2); R4(ctx, px + 2.44, by, 0.16, 0.45, c2); R4(ctx, px, by + 0.45, 2.8, 2.1, c1); R4(ctx, px + 0.6, by + 2.55, 1.6, 0.7, c2); R4(ctx, px + 0.5, by + 3.2, 1.8, 0.1, c3);
         if (s > 7) { ctx.fillStyle = c2; for (let j = 0; j < 4; j++) ctx.fillRect(px + 0.2, by + 0.7 + j * 0.4, 2.4, 0.12); }
-        for (let j = 0; j < 5; j++) { const u = (env.t * 0.09 + j / 5 + k * 0.43) % 1; twPuff(ctx, px + 1.4 + env.wind * u * u * 3.2, by + 3.5 + u * 6.5, 0.9 + u * 2.6, 0.8 + u * 2.0, '#8fa0c4', (1 - u) * Math.min(1, u * 5) * 0.3); }
+        kxPlume(ctx, env, px + 1.4, by + 3.5, { n: 9, rise: 6.5, r0: 0.8, r1: 2.8, speed: 0.09, a: 0.5, col: '#7f8fb2', lean: 0.5, ph: k * 0.43, steam: true });
       }
       if (H.cradleKit) { const cx = H.cradleKit.x; R4(ctx, cx - 1.1, by + 0.07, 2.2, 1.15, c3); R4(ctx, cx - 0.9, by + 1.22, 1.8, 0.1, c2); if (s > 8) { R4(ctx, cx - 0.8, by + 0.35, 0.7, 0.5, c2); circ(ctx, cx - 0.8, by + 0.1, 0.12, c2); circ(ctx, cx + 0.8, by + 0.1, 0.12, c2); } }
       line(ctx, -4.4, by, -4.4, by + 5.6, c2, 0.1, env); line(ctx, -3.6, by, -3.6, by + 3.8, c2, 0.08, env);              // masts
@@ -15585,15 +16890,9 @@ function ydTuft(ctx, x, y, h, lean) {
   ctx.lineTo(x + lean, y + h); ctx.lineTo(x + h * 0.12, y);
   ctx.lineTo(x + h * 0.5 + lean * 0.7, y + h * 0.62); ctx.lineTo(x + h * 0.3, y); ctx.closePath();
 }
-// Smoke or steam: a few soft discs that rise, swell, lean with the wind and fade in and out.
+// Smoke or steam rising from a point (see kxPlume): lean is how far it has drifted at the top.
 function ydSmoke(ctx, env, x, y, col, n, rise, r0, r1, speed, a, lean, ph) {
-  ctx.fillStyle = col;
-  for (let i = 0; i < n; i++) {
-    const u = (env.t * speed + i / n + (ph || 0)) % 1;
-    ctx.globalAlpha = a * (1 - u) * Math.min(1, u * 5);
-    ctx.beginPath(); ctx.arc(x + lean * u * u + Math.sin(u * 6 + i * 2.1) * r1 * 0.22, y + u * rise, r0 + (r1 - r0) * u, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  kxPlume(ctx, env, x, y, { n: Math.round(n * 1.8), rise, r0, r1: r1 * 0.85, speed, a: Math.min(0.85, a * 2), col, drift: lean, ph, flat: 0 });
 }
 // Thin lines, many at once: pass a flat list [x1, y1, x2, y2, ...].
 function ydLines(ctx, env, pts, col, w) {
@@ -16232,6 +17531,15 @@ K.industry = function (S, z, o) {
     for (let q = 0; q < vis.length; q++) { const th = things[vis[q]]; if (th.t === 'stack' && Math.sin(env.t * 2.2 + th.ph * 6) > 0.2) { const r = Math.max(0.9, env.px * 1.6); ctx.moveTo(th.x + th.w / 2 + r, base + th.h + 1.2); ctx.arc(th.x + th.w / 2, base + th.h + 1.2, r, 0, TAU); } }
     ctx.fill();
     if (s > 0.25) { ctx.fillStyle = lit; ctx.beginPath(); for (let q = 0; q < vis.length; q++) { const i = vis[q], th = things[i]; if (th.t !== 'shed') continue; for (let k = 0; k < th.win.length; k++) ctx.rect(th.win[k][0], th.win[k][1], 3, 1.6); if (fine && dark > 0.25 && i % 3 === 0) ctx.rect(th.x + th.w * 0.42 + 1, base, 7, th.h * 0.3); } ctx.fill(); }
+    // now and then a freight train runs along the far line in front of the works
+    { const per = 95, run = (x1 - x0 + 400) / 14, u = ((env.t + 40) % per) / run;
+      if (u < 1) {
+        const dir = Math.floor((env.t + 40) / per) % 2 ? -1 : 1, head = dir > 0 ? x0 - 200 + u * (x1 - x0 + 400) : x1 + 200 - u * (x1 - x0 + 400);
+        ctx.fillStyle = c3; ctx.beginPath();
+        for (let k = 0; k < 14; k++) { const wx = head - dir * k * 17, w = k ? 16 : 18, h = k ? (k % 3 ? 4.2 : 3.6) : 4.6; if (wx + w < env.x0 || wx - w > env.x1) continue; ctx.rect(wx - (dir > 0 ? w : 0), base + 0.6, w - 0.8, h); }
+        ctx.fill();
+        if (dark > 0.25 && head > env.x0 - 5 && head < env.x1 + 5) { circ(ctx, head, base + 2.2, Math.max(0.5, env.px * 1.2), '#fff2c8'); if (s > 0.6) kxGlow(ctx, '#fff2c8', head + dir * 3, base + 2.2, Math.max(6, env.px * 14), 0.5); }
+      } }
     // smoke and steam, leaning with the wind
     for (let q = 0; q < vis.length; q++) { const th = things[vis[q]];
       if (th.t === 'stack') ydSmoke(ctx, env, th.x + th.w / 2, base + th.h + 4, smokeCol, 5, 48, 4, 21, 0.035, dark > 0.5 ? 0.2 : 0.26, (env.wind || 0) * 26, th.ph);
@@ -17825,7 +19133,7 @@ K.shore = function (S, P, o) {
   P.groundY = 0; P._gm = 'water';
   P.groundFn = (x) => { const dry = x < xl || x > xr; P._gm = dry ? 'hard' : 'water'; return dry ? qy : 0; };
   Object.defineProperty(P, 'groundMat', { get() { return P._gm; }, set() {}, configurable: true });
-  (S._brWater = S._brWater || []).push(P);
+  (S._brWater = S._brWater || []).push(P); S._water = true;
   // what lies on a paved quay, picked once: oil stains, tyre marks, drain covers, patched slabs
   const pv = [], stainC = 'rgba(20,18,16,0.22)', tyreC = 'rgba(20,18,16,0.16)', patchC = S.tone(lighten(o.col || '#6b6660', 0.06), P), grate = S.tone('#2a2826', P);
   if (o.pave) { const D = makeRng(Math.round(P.z * 3) + 4447); for (let sg = -1; sg <= 1; sg += 2) { const e = sg < 0 ? xl : xr; if (Math.abs(e) > 1e5) continue; for (let i = 0; i < 30; i++) pv.push([e - sg * D.r(3, 150), qy - D.r(1.0, 7.5), D.i(0, 3), D.r(0.8, 2.6)]); } }
@@ -17839,9 +19147,12 @@ K.shore = function (S, P, o) {
     if (b > a && env.y1 > -60) {
       R4(ctx, a, -400, b - a, 400, wt);
       R4(ctx, a, -1.6, b - a, 1.6, band2); R4(ctx, a, -0.55, b - a, 0.55, band);
+      const cut = brCut(S, P, env);
+      // the far bank, the bridge and the sky mirrored in the river
+      kxReflect(ctx, env, 0, Math.max(cut, env.y0), a, b, rain ? 0.3 : dark > 0.5 ? 0.55 : 0.48, (rain ? 2 : 1) + Math.abs(env.wind) * 0.12, P.z, o.mirror === undefined ? 90 : o.mirror);
       // ripples drifting toward us with the current; each row fades in at the far side.
       // Rows that nearer water would hide are left out.
-      const step = Math.max(4, env.px * 30), flow = t * 0.05, ph = flow - Math.floor(flow), cut = brCut(S, P, env);
+      const step = Math.max(4, env.px * 30), flow = t * 0.05, ph = flow - Math.floor(flow);
       ctx.strokeStyle = hi; ctx.lineWidth = Math.max(0.07, env.px);
       for (let row = 0; row < 7; row++) {
         const u = row + ph, yy = -0.3 - u * u * 0.95 - u * 0.75, id = row - Math.floor(flow), s0 = Math.floor(a / step) * step;
@@ -18433,7 +19744,7 @@ SCN.bridge = function (o) {
   brProbe(PRf);
   drawSide(PRf, false);
   const PR = H.PR = S.plane(zb, 'bridge');
-  K.shore(S, PR, { left: -EDGE - 4, right: EDGE + 4, qy: QY, col: '#5f5d5c' });
+  K.shore(S, PR, { left: -EDGE - 4, right: EDGE + 4, qy: QY, col: '#5f5d5c', mirror: 12 });
   const bd = { c: S.tone('#3a3d44', PR), c2: S.tone('#565a62', PR), st: S.tone(steelD, PR), stone: S.tone('#77726a', PR), stoneD: S.tone('#5c5852', PR), stoneHi: S.tone('#8a857c', PR), joint: S.tone('#4f4b46', PR), mark: S.tone('#d9d2b0', PR), rail: S.tone('#9aa0a8', PR), tie: S.tone('#2a2622', PR), under: S.tone('#24272c', PR) };
   PR.add({ x0: -400, x1: 400, layer: 0, draw(ctx, env) {
     if (D + 5 < env.y0 || QY - 1 > env.y1) return;
@@ -18500,7 +19811,7 @@ SCN.bridge = function (o) {
 
   // ---- right bank: the records office and its row ----
   const PO = H.PO = S.plane(zb - 60, 'office row');
-  K.shore(S, PO, { left: -EDGE, right: EDGE, qy: QY, col: '#66625e', pave: true });
+  K.shore(S, PO, { left: -EDGE, right: EDGE, qy: QY, col: '#66625e', pave: true, mirror: 10 });
   if (o.office !== false) {
     const row = [
       { id: 'chand', x: 100, w: 15, floors: 3, wall: '#8a6a58', shop: { sign: 'CHANDLER', awning: '#2f6b4a' }, antenna: 0.3 },
@@ -18523,7 +19834,7 @@ SCN.bridge = function (o) {
   // left bank at the same depth: warehouses
   K.sheds(S, PO, -240, -EDGE - 6, { y: QY, h: 10 });
   const PSt = H.PSt = S.plane(zb - 67, 'street');
-  K.shore(S, PSt, { left: -EDGE, right: EDGE, qy: QY, col: '#6e6a66', steps: [EDGE - 0.1, 1], pave: true });
+  K.shore(S, PSt, { left: -EDGE, right: EDGE, qy: QY, col: '#6e6a66', steps: [EDGE - 0.1, 1], pave: true, mirror: 10 });
   brBoat(S, PSt, 90.5, 6.5, { y: 0.1, dir: -1, col: '#e2e2dc', band: '#2f6b4a', rope: [EDGE - 1.6, QY - 0.6] });
   H.stLamps = [];
   if (o.office !== false) [109, 131, 153, 175].forEach((x, i) => H.stLamps.push(K.lamp(S, PSt, x, 5.4, 'street', { id: 'sl' + i, y: QY, reach: 9 })));
@@ -18531,7 +19842,7 @@ SCN.bridge = function (o) {
 
   // ---- left bank quay: crane, jetty and the armoury boat ----
   const PJ = H.PJ = S.plane(zb - 180, 'quay');
-  K.shore(S, PJ, { left: -EDGE + 2, right: EDGE + 6, qy: QY, col: '#5f5b57', pave: true });
+  K.shore(S, PJ, { left: -EDGE + 2, right: EDGE + 6, qy: QY, col: '#5f5b57', pave: true, mirror: 10 });
   K.sheds(S, PJ, -210, -116, { y: QY, h: 8 });
   K.sheds(S, PJ, 214, 300, { y: QY, h: 9 });
   brBoat(S, PJ, 95, 7, { y: 0.1, dir: 1, col: '#2f3d4a', band: '#c9a23a', cab: '#8a8f96', mast: false });
@@ -18574,7 +19885,7 @@ SCN.bridge = function (o) {
   // channel markers nearer the shooter: a can and a cone, each with its top mark, a band,
   // a ring of ripples where it sits, and at night a lamp that flashes and shows in the water
   const PNr = H.PNr = S.plane(zb - 330, 'channel');
-  K.shore(S, PNr, {});
+  K.shore(S, PNr, { mirror: 6 });
   const buoyDk = S.tone('#20242b', PNr), buoyW = S.tone('#e8e4d6', PNr), rip = mix(S.tone(S.pal.water, PNr), '#ffffff', 0.25);
   [[-30, '#3f8f4f'], [34, '#c8372d']].forEach((q) => { const c = S.tone(q[1], PNr), cD = S.tone(darken(q[1], 0.3), PNr), red = q[1] === '#c8372d';
     PNr.add({ x0: q[0] - 3, x1: q[0] + 3, layer: 0, draw(ctx, env) {
@@ -18686,14 +19997,7 @@ function rgGlow(ctx, x, y, r, rgb, a, ky) {
 // it blows, the flatter the plume lies. o: n puffs, rise (metres), speed, r0 and
 // r1 (puff size at the start and end), a (strength), col, lean, ph.
 function rgSmoke(ctx, env, x, y, o) {
-  const n = o.n || 6, rise = o.rise || 4, w = env.wind, flat = Math.min(1, Math.abs(w) / 9), r0 = o.r0 || 0.2, r1 = o.r1 || 1.1, a0 = o.a || 0.5;
-  ctx.fillStyle = o.col;
-  for (let i = 0; i < n; i++) {
-    const u = (((env.t * (o.speed || 0.4) + i / n + (o.ph || 0)) % 1) + 1) % 1;
-    ctx.globalAlpha = a0 * (1 - u) * Math.min(1, u * 7);
-    ctx.beginPath(); ctx.arc(x + w * u * u * rise * (o.lean || 0.5) + Math.sin(i * 2.4 + env.t * 0.8) * 0.1 * u * rise * 0.3, y + rise * u * (1 - 0.45 * flat * u), r0 + (r1 - r0) * u, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  kxPlume(ctx, env, x, y, { n: Math.round((o.n || 6) * 1.6), rise: o.rise || 4, r0: o.r0 || 0.2, r1: o.r1 || 1.1, speed: o.speed || 0.4, a: Math.min(0.9, (o.a || 0.5) * 1.6), col: o.col, lean: o.lean || 0.5, ph: o.ph || 0, flat: 0.06 });
 }
 // Loose snow torn off a roof edge at (x, y) once the wind gets up: little streamers
 // that fly out downwind, sink and thin away. It is the plainest tell of a strong
@@ -20427,6 +21731,98 @@ function rgDetail(S, H, q) {
     if (env.s < 0.7) return;
     for (const hx of huts) { if (hx < env.x0 - 15 || hx > env.x1 + 15) continue; rgSmoke(ctx, env, hx + 1.05, hA(hx) - 4.2 + 3.3, { n: 5, rise: 5, speed: 0.22, r0: 0.25, r1: 1.4, a: 0.35, col: S.tone('#9aa3ad', PV), lean: 1.2, ph: hx * 0.07 }); }
   } });
+}
+
+
+// ===== 07i_looks.js =====
+// ---------------------------------------------------------------------------
+// Each mission's own look. Missions at one location share a scene and often a time of day,
+// so on their own they would all look alike: eight navy nights downtown, five at the docks,
+// eight copies of one chalet and its meadow. A look gives a mission its own place and moment
+// (moonlit blue, sodium orange, neon on wet streets, golden hour, autumn, first light) by
+// changing only how things are drawn:
+//   pal       palette colours (never dark, litChance, star or fogD: see KX_PAL_COLOURS)
+//   lampCol   the colour of the street lamps' light (sodium, white LED), on people too
+//   sky       for 06b_sky.js: top, mid, bot, glow colours; heaps, cirrus, deck (how much of each
+//             kind of cloud, 0 to 1); moon (phase 0 new .. 0.5 full .. 1 new); stars (how many
+//             the town's glow leaves); milky (a Milky Way); rays; cloudCols; drift (cloud speed)
+//   grade     a colour wash over the finished picture (06c_air.js): { top, bot, a, warm, glow }
+//   wet       the ground still wet from rain (puddles that mirror the lights)
+//   dress     which dressing variant a location uses (autumn, frost, flowers, neon...)
+// S.time, S.weather and everything a mission is made of stay exactly as they were.
+// ---------------------------------------------------------------------------
+const LOOKS = {
+  // ---- chapter 1: Brickworks, one street ----
+  c1m1: { name: 'amber dusk', pal: { skyTop: '#2b2a5c', skyBot: '#f59a52', fog: '#c08670', amb: '#3e2c4e' }, sky: { mid: '#8a4e72', heaps: 0.5, cirrus: 0.9 }, grade: { bot: '#ff9a4a', a: 0.1, glow: 0.18 }, dress: 'autumn' },
+  c1m2: { name: 'moonlit blue', pal: { skyTop: '#040a1e', skyBot: '#1d3462', fog: '#17284e', amb: '#0a1632', water: '#10224a' }, lampCol: '#ffb860', sky: { moon: 0.5, stars: 0.7, heaps: 0.25, cirrus: 0.5, cloudCols: { lit: '#8a9cc6', body: '#22304f' } }, grade: { top: '#2a4a9a', a: 0.12 } },
+  c1m3: { name: 'thunder on wet brick', pal: { skyTop: '#06080f', skyBot: '#1e2234', fog: '#181c2a', amb: '#0a0c16' }, lampCol: '#ffd590', sky: { stars: 0 }, wet: 1, grade: { top: '#3a4a7a', a: 0.1 } },
+  c1m4: { name: 'spring morning', pal: { skyTop: '#2a78d4', skyBot: '#c4e2f6' }, sky: { heaps: 0.85, cirrus: 0.5 }, grade: { warm: 0.06, a: 0.08 } },
+  c1m5: { name: 'violet smog', pal: { skyTop: '#1d1a46', skyBot: '#d4807c', fog: '#9e6c82', amb: '#2e2448' }, sky: { mid: '#5e3e78', heaps: 0.25, cirrus: 1, rays: true }, grade: { bot: '#c86a9a', a: 0.1, glow: 0.12 } },
+  c1m6: { name: 'sodium orange', pal: { skyTop: '#0b0a14', skyBot: '#3e2c2c', fog: '#2c2228', amb: '#160f16' }, lampCol: '#ffaa50', sky: { mid: '#1a1420', heaps: 0.5, stars: 0.25, cityGlow: 1.6, cloudCols: { lit: '#4a3a3a', body: '#2a2026', shade: '#1c161c', under: '#5a3826' } }, grade: { bot: '#ff8a30', a: 0.1 } },
+  c1m7: { name: 'frosty and clear', pal: { skyTop: '#01040c', skyBot: '#0e1c36', fog: '#0c1830', amb: '#040a18' }, lampCol: '#e6eeff', sky: { moon: 0.18, stars: 1.3, heaps: 0, cirrus: 0.3 }, grade: { top: '#4a6aaa', a: 0.1 }, dress: 'frost' },
+  // ---- chapter 2: the docks ----
+  c2m1: { name: 'golden harbour', pal: { skyTop: '#2a2f60', skyBot: '#ffa448', fog: '#c88a66', amb: '#4a2e3c', sun: '#ffd27a', water: '#5a5a84' }, sky: { mid: '#a05a62', heaps: 0.45, cirrus: 1 }, grade: { bot: '#ffa040', a: 0.12, glow: 0.22 } },
+  c2m2: { name: 'sodium docks under low cloud', pal: { skyTop: '#0c0a12', skyBot: '#3a2a2a', fog: '#2a2026', amb: '#150e14', water: '#1a1418' }, lampCol: '#ffa64c', sky: { heaps: 0, deck: 0.7, stars: 0, cityGlow: 1.8, cloudCols: { lit: '#4a3632', body: '#2c2024', shade: '#1e161a', under: '#6a4026' } }, grade: { bot: '#ff8a30', a: 0.12 } },
+  c2m3: { name: 'first light in fog', pal: { skyTop: '#6a6e8c', skyBot: '#efd2c4', fog: '#dcc8c0', amb: '#7a6a80' }, sky: { mid: '#b8a2b0', heaps: 0, cirrus: 0 }, grade: { top: '#f0c8c8', a: 0.08 } },
+  c2m4: { name: 'full moon on the water', pal: { skyTop: '#030a1e', skyBot: '#1e3666', fog: '#182a50', amb: '#0a1834', water: '#12264e' }, sky: { moon: 0.5, stars: 0.8, heaps: 0.3, cirrus: 0.6, cloudCols: { lit: '#9aaad0', body: '#24324f' } }, grade: { top: '#3a5aaa', a: 0.12 } },
+  c2m5: { name: 'neon in the rain', pal: { skyTop: '#07061a', skyBot: '#2a1a44', fog: '#22183c', amb: '#120a26', water: '#1a1230' }, lampCol: '#dce6ff', sky: { stars: 0 }, wet: 1, grade: { top: '#8a3aaa', bot: '#2aa0c0', a: 0.11 } },
+  c2m6: { name: 'dark of the moon', pal: { skyTop: '#010208', skyBot: '#0a142a', fog: '#0a1428', amb: '#03070f', water: '#08101e' }, lampCol: '#c8f0d8', sky: { moon: 0.04, stars: 1.4, milky: 0.8, heaps: 0, cirrus: 0.2 }, grade: { top: '#1a3a5a', a: 0.1 } },
+  c2m7: { name: 'storm', pal: { skyTop: '#05070c', skyBot: '#1a2030', fog: '#141a26', amb: '#080a12' }, sky: { stars: 0 }, wet: 1, grade: { top: '#2a3a5a', a: 0.12 } },
+  // ---- chapter 3: the valley ----
+  c3m1: { name: 'high summer', pal: { skyTop: '#246fce', skyBot: '#bfe0f6' }, sky: { heaps: 0.75, cirrus: 0.6 }, grade: { a: 0.06, warm: 0.04 }, dress: 'summer' },
+  c3m2: { name: 'wind and broken cloud', pal: { skyTop: '#3478c4', skyBot: '#cddfe8', fog: '#c2d2dc' }, sky: { heaps: 1, cirrus: 0.4, drift: 3.5 }, grade: { a: 0.06 }, dress: 'windy' },
+  c3m8: { name: 'cold first light', pal: { skyTop: '#2e4a7c', skyBot: '#ead2c6', fog: '#c9c4cc', amb: '#56688a' }, sky: { mid: '#8a8aaa', heaps: 0.3, cirrus: 0.8 }, grade: { top: '#8aa0d0', a: 0.08 }, dress: 'frost' },
+  c3m3: { name: 'autumn', pal: { skyTop: '#3a82cc', skyBot: '#d8e6ee', grass: '#8f8a46', amb: '#ffe0b0', ambT: 0.06 }, sky: { heaps: 0.6, cirrus: 0.7 }, grade: { warm: 0.1, a: 0.08 }, dress: 'autumn' },
+  c3m4: { name: 'late afternoon gold', pal: { skyTop: '#3a7cc8', skyBot: '#f0e2c4', fog: '#e0d2b8', amb: '#ffd29a', ambT: 0.1 }, sky: { heaps: 0.5, cirrus: 0.9, glow: '#fff0d0' }, grade: { warm: 0.14, a: 0.1, glow: 0.12 }, dress: 'hay' },
+  c3m5: { name: 'whiteout', sky: { deck: 1 }, grade: { top: '#c8d8ea', a: 0.06 } },
+  c3m6: { name: 'alpenglow', pal: { skyTop: '#384a84', skyBot: '#f6b2a4', fog: '#dcb4b2', amb: '#6e5a7c' }, sky: { mid: '#a07aa0', heaps: 0.35, cirrus: 1 }, grade: { bot: '#ff9a8a', a: 0.1, glow: 0.1 }, dress: 'dew' },
+  c3m7: { name: 'hot August afternoon', pal: { skyTop: '#4688c6', skyBot: '#e6ecee', fog: '#d6dcdc', grass: '#8a9e48', amb: '#fff0d0', ambT: 0.06 }, sky: { heaps: 0.4, cirrus: 0.3, glow: '#f6f2e6' }, grade: { warm: 0.1, a: 0.08 }, dress: 'hay', heat: 1 },
+  // ---- chapter 4: downtown at night ----
+  c4m1: { name: 'blue hour offices', pal: { skyTop: '#060c22', skyBot: '#1e3a6a', fog: '#18305a', amb: '#08142c' }, lampCol: '#e4ecff', sky: { mid: '#102044', stars: 0.3, heaps: 0.3, cityGlow: 0.8, glow: '#2a4a80' }, grade: { top: '#3a6ad0', a: 0.1 } },
+  c4m2: { name: 'power cut under the moon', pal: { skyTop: '#02040c', skyBot: '#101c34', fog: '#0e1a30', amb: '#050a16' }, sky: { moon: 0.55, stars: 1.1, milky: 0.4, heaps: 0.2, cityGlow: 0.2, cloudCols: { lit: '#8a9ac0' } }, grade: { top: '#2a4a8a', a: 0.1 } },
+  c4m3: { name: 'party neon', pal: { skyTop: '#0c0620', skyBot: '#3a1a4a', fog: '#2a183c', amb: '#140a24' }, lampCol: '#ffd0e8', sky: { mid: '#1e0e32', stars: 0.2, heaps: 0.35, cityGlow: 1.2, cloudCols: { under: '#5a2a5a', body: '#24142e' } }, grade: { top: '#b04ab0', bot: '#4a2ad0', a: 0.1 }, dress: 'neon' },
+  c4m4: { name: 'sodium haze over the site', pal: { skyTop: '#0e0a10', skyBot: '#46302a', fog: '#3a2a26', amb: '#1a1210' }, lampCol: '#ffa64a', sky: { mid: '#22161a', stars: 0.1, heaps: 0, deck: 0.5, cityGlow: 2, cloudCols: { lit: '#5a3e30', body: '#2e2020', shade: '#20161a', under: '#7a4a2a' } }, grade: { bot: '#ff9030', a: 0.12 } },
+  c4m5: { name: 'after the rain', pal: { skyTop: '#040812', skyBot: '#1a2638', fog: '#16202e', amb: '#080e18' }, lampCol: '#ffd9a0', sky: { stars: 0.4, heaps: 0.55, cityGlow: 1, cloudCols: { under: '#3a3440' } }, wet: 0.8, grade: { top: '#3a5a8a', a: 0.08 } },
+  c4m6: { name: 'green mist', pal: { skyTop: '#03080a', skyBot: '#12302e', fog: '#12302c', amb: '#051412' }, lampCol: '#c8ffe0', sky: { mid: '#081a1c', stars: 0.15, heaps: 0, deck: 0.45, cityGlow: 1.2, cloudCols: { lit: '#3a5a52', body: '#16282a', shade: '#0e1c1e', under: '#2a4a40' } }, grade: { top: '#2a8a7a', a: 0.1 } },
+  c4m7: { name: 'neon storm', pal: { skyTop: '#06051a', skyBot: '#24183e', fog: '#1e1636', amb: '#100a22' }, lampCol: '#d8e4ff', sky: { stars: 0 }, wet: 1, grade: { top: '#7a3ab0', bot: '#2a8ac0', a: 0.12 }, dress: 'neon' },
+  c4m8: { name: 'before dawn', pal: { skyTop: '#0a0c26', skyBot: '#4a2e4a', fog: '#2e2240', amb: '#140e24' }, lampCol: '#ffd090', sky: { mid: '#1e1a40', glow: '#a05a50', stars: 0.6, moon: 0.92, heaps: 0.2, cirrus: 0.8, cloudCols: { lit: '#c08070', body: '#2e2440', under: '#3a2a3a' } }, grade: { bot: '#ff7a5a', a: 0.08 } },
+  // ---- chapter 5 ----
+  c5m1: { name: 'industrial sunset', pal: { skyTop: '#2a1e44', skyBot: '#f0884a', fog: '#b0705e', amb: '#3a2440' }, sky: { mid: '#9a4a5e', heaps: 0.3, cirrus: 1 }, grade: { bot: '#ff8a3a', a: 0.12, glow: 0.18 } },
+  c5m2: { name: 'golden afternoon', pal: { skyTop: '#2f70c4', skyBot: '#ece2c8', fog: '#d8d2bc', amb: '#ffd8a0', ambT: 0.06 }, sky: { heaps: 0.55, cirrus: 0.7, glow: '#fff4dc' }, grade: { top: '#3f6fb8', bot: '#ffb060', warm: 0.05, a: 0.09, glow: 0.1 }, heat: 0.6 },
+  c5m3: { name: 'moonlit river', pal: { skyTop: '#030a1c', skyBot: '#1a3060', fog: '#16284c', amb: '#0a1632', water: '#10224a' }, sky: { moon: 0.45, stars: 0.9, milky: 0.35, heaps: 0.25, cirrus: 0.5, cloudCols: { lit: '#8a9cc6' } }, grade: { top: '#3a5aaa', a: 0.1 } },
+  c5m4: { name: 'grey rain', sky: { deck: 1 }, wet: 1, grade: { top: '#9aa8b8', a: 0.06 } },
+  c5m5: { name: 'storm over the house', pal: { skyTop: '#04060c', skyBot: '#161c2a', fog: '#121824', amb: '#06080e' }, sky: { stars: 0 }, wet: 1, grade: { top: '#2a3a5a', a: 0.12 } },
+  c5m6: { name: 'pink dusk', pal: { skyTop: '#2a2a5c', skyBot: '#f29aa0', fog: '#c08a9a', amb: '#3a2c52' }, sky: { mid: '#8a5a8e', heaps: 0.5, cirrus: 0.9 }, grade: { bot: '#ff8aa0', a: 0.1, glow: 0.14 } },
+  c5m7: { name: 'red sunset', pal: { skyTop: '#1a1838', skyBot: '#e2603c', fog: '#aa5c58', amb: '#3a2236' }, sky: { mid: '#7a3450', heaps: 0.35, cirrus: 1 }, grade: { bot: '#ff5a30', a: 0.12, glow: 0.2 } },
+  c5m8: { name: 'sodium yard', pal: { skyTop: '#0a0a12', skyBot: '#34282a', fog: '#2a2024', amb: '#140e12' }, lampCol: '#ffaa50', sky: { stars: 0.3, heaps: 0.3, cityGlow: 1.6, cloudCols: { under: '#5a3826', body: '#261c22' } }, grade: { bot: '#ff9030', a: 0.1 } },
+  // ---- chapter 6: the ridge ----
+  c6m1: { name: 'high and bright', pal: { amb: '#fff4e4', ambT: 0.1 }, sky: { heaps: 0.25, cirrus: 0.6 }, grade: { top: '#9ab8e0', a: 0.06 } },
+  c6m2: { name: 'alpenglow dusk', pal: { skyTop: '#26285a', skyBot: '#f49478', fog: '#bf8a8a', amb: '#3a2c50' }, sky: { mid: '#7a5080', heaps: 0.3, cirrus: 1, milky: 0 }, grade: { bot: '#ff8a7a', a: 0.1, glow: 0.16 } },
+  c6m3: { name: 'first sun on the snow', pal: { skyTop: '#3a4c80', skyBot: '#f6d0a8', fog: '#e0c8b4', amb: '#ffc8a0', ambT: 0.2 }, sky: { mid: '#8a86aa', heaps: 0.2, cirrus: 1 }, grade: { top: '#9aaee0', bot: '#ffb0a0', a: 0.08 } },
+  c6m4: { name: 'blizzard', pal: { amb: '#a8b0ba', ambT: 0.26, fog: '#d0d6dc' }, sky: { deck: 1 }, grade: { top: '#c0d4ea', a: 0.08 } },
+  c6m5: { name: 'deep blue cold', pal: { skyTop: '#1a5ab8', skyBot: '#b8d4ee', amb: '#9ab8e8', ambT: 0.24, fog: '#c8dcf0' }, sky: { heaps: 0.15, cirrus: 0.9 }, grade: { top: '#6a9ae0', a: 0.08 } },
+  c6m6: { name: 'violet snow at dusk', pal: { skyTop: '#22224e', skyBot: '#c48aa4', fog: '#a88aa8', amb: '#2e2a4e' }, sky: { mid: '#5a4a7a', deck: 0.6 }, grade: { top: '#6a5ab0', bot: '#ff9ab0', a: 0.1 } },
+};
+
+// The mission whose scene is being built right now (set while its setup runs).
+const LK = { id: null };
+// A look for the scene being built: the mission's own, or a plain one for anything else (the Range).
+function lkLookFor(time, weather) {
+  const L = (LK.id && LOOKS[LK.id]) || null;
+  return Object.assign({ id: LK.id || time + weather }, L || {});
+}
+// Every mission's setup is wrapped as it is registered, so the scene it builds knows whose it is.
+// The setup itself runs exactly as before, with the same arguments, and returns the same thing.
+{
+  const lkMission = mission;
+  mission = function (def) {
+    if (def && typeof def.setup === 'function' && !def.setup.lkWrapped) {
+      const setup = def.setup, id = def.id;
+      def.setup = function () { const prev = LK.id; LK.id = id; try { return setup.apply(this, arguments); } finally { LK.id = prev; } };
+      def.setup.lkWrapped = true;
+    }
+    return lkMission(def);
+  };
 }
 
 
