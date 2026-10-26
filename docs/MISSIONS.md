@@ -124,9 +124,16 @@ mission({
   solve: [ ...bot script ]  or  solve(H, st, flags, sim) { return [...]; },
   testFlags: [{}, { sparedReyes: true }],   // only if the mission reads flags
   reward: { cr: 1200, xp: 280 },
+  cine: 'take',                     // optional: the kill camera's style for this mission (below)
 });
 ```
 `brief`, `objective`, `intel`, `after` and `par` may be functions of `flags`.
+
+`cine: 'take'` (or `cine: { style: 'take' }`) turns the kill camera for this
+mission into one unbroken real-time shot of the target in the real scene, from
+the shooter's side at three-quarters: no rifle, no chase, no X-ray, no numbers or
+stamps. Keep it for story moments. Leave it out for the usual film. The top of
+`src/21_killcam.js` has the details.
 
 Missions are played in the order they are registered. A mission written later
 can take its place in the story with `follows: '<id>'` and still sit at the end

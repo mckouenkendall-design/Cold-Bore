@@ -81,7 +81,7 @@ That joins every `src/*.js` (in filename order) and `src/style.css` into
 | `src/12_partart.js` | pictures of every part and the view through every scope |
 | `src/13_ragdoll.js` | ragdoll physics for falling bodies (picture only, never gameplay) |
 | `src/20_game.js` | the game loop, the in-mission display, the controls |
-| `src/21_killcam.js` | the kill camera |
+| `src/21_killcam.js` | the kill camera (its options are described at the top of the file); `21b` the X-ray, `21c` the camera work, `21d` the rifle, `21e` the words on screen |
 | `src/22_oracle.js` | runs a copy of the mission ahead to know where a shot will land |
 | `src/23_coach.js` | the coach for guided runs, driven by each mission's own solution |
 | `src/3*_missions_*.js`, `src/38_story.js` | the campaign |
