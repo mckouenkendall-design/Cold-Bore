@@ -341,13 +341,13 @@ function richSaveInPage() {
       await tapSel('.bench [data-a="back"]'); await wait(300);
       await tapSel('.tabb[data-tab="collection"]'); await wait(400);
       await tapSel('.seg [data-t="caches"]'); await wait(350);
-      const b0 = await ev(() => { const d = CB.Save.data; d.caches = []; CB.UI.collection(); return { cr: d.credits, skins: Object.keys(d.skins).length }; });
+      const b0 = await ev(() => { const d = CB.Save.data; d.caches = []; CB.UI.collection(); return { cr: d.credits, skins: Object.keys(d.skins).length, sets: Object.keys(d.sets || {}).length }; });
       await tapSel('.ccard.t-sealed [data-a="buycache"]'); await wait(400);
       ok(await ev((b) => CB.Save.data.caches.length === 1 && CB.Save.data.caches[0] === 'sealed' && CB.Save.data.credits === b.cr - 4500, b0), 'buying a sealed cache spends 4,500 credits and adds the cache');
       await tapSel('.cachebox [data-a="open"]'); await wait(700);
       await tapSel('#overlay [data-a="skip"]'); await wait(500); // Skip jumps straight to what was inside
       await look('70_cache_opened_by_touch', '[data-a="done"]', 100);
-      ok(await ev((b) => { const d = CB.Save.data; return d.caches.length === 0 && (Object.keys(d.skins).length === b.skins + 1 || d.credits > b.cr - 4500); }, b0), 'opening it gives a skin (or credits for one already owned)');
+      ok(await ev((b) => { const d = CB.Save.data; const setPaid = Object.keys(d.sets || {}).length > b.sets; return (d.caches.length === 0 || setPaid) && (Object.keys(d.skins).length === b.skins + 1 || d.credits > b.cr - 4500); /* finishing a skin set pays a cache of its own */ }, b0), 'opening it gives a skin (or credits for one already owned)');
       await tapSel('#overlay [data-a="done"]'); await wait(300);
       ok(await ev(() => !document.getElementById('overlay').classList.contains('show')), 'Done closes the cache');
       await tapSel('.tabb[data-tab="settings"]'); await wait(350);
