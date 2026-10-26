@@ -550,3 +550,27 @@ PAT_KINDS.tiger = [128, 96, (x, w, h, R, p, res) => {
     o[0] = A[0] + (B[0] - A[0]) * c; o[1] = A[1] + (B[1] - A[1]) * c; o[2] = A[2] + (B[2] - A[2]) * c;
   });
 }, { res: 2 }];
+
+// ---- Damascus Bloom: heat-coloured Damascus ---------------------------------------------------------------
+// The Damascus layers, but blued and anodised: each layer takes a colour from the palette as the
+// pattern flows (violet, royal blue, teal), with a thin hot orange line where some layers meet, and a
+// bright etched edge on every ridge. lines: 1 draws only the orange lines (a clear tile, so they can
+// glow and fade on their own coat).
+PAT_KINDS.bloom = [128, 96, (x, w, h, R, p, res) => {
+  const pal = (p.cols || ['#1c0b40', '#4a22b8', '#2a3fae', '#1e78c8', '#33168a', '#6a2fd8']).map(rgbOf), hot = rgbOf(p.hot || '#ff3f22');
+  const W1 = stFbm(R, w, h, 48, 3), W2 = stFbm(R, w, h, 20, 3), Fn = stNoise(R, w, h, 0.8), Dr = stCells(R, w, h, 5, 3, 0.4), linesOnly = !!p.lines, n = pal.length;
+  const col = [0, 0, 0];
+  stShade(x, w, h, res, (X, Y, o) => {
+    const q = Dr.q(X, Y), eye = Math.exp(-q.d * q.d / 40) * 7;
+    const f = Y * 0.5 + (W1(X, Y) - 0.5) * 36 + (W2(X, Y) - 0.5) * 9 + 2.2 * Math.sin(X * TAU / 32) + eye * Math.sin(Math.atan2(Y - q.e, X) * 2);
+    const ph = f * 0.42, layer = Math.floor(ph), u = ph - layer;  // one layer every ~4.6 texture pixels
+    const ci = ((layer % n) + n) % n, c0 = pal[ci], c1 = pal[(ci + 1) % n], t = smooth((u - 0.6) / 0.4);
+    // an orange line on every third layer boundary, about half a texture pixel wide
+    const edge = Math.min(u, 1 - u) / 0.42, isHot = ((layer % 5) + 5) % 5 === 0, la = isHot ? clamp((0.32 - edge) * res + 0.5, 0, 1) : 0, dark = clamp((0.22 - edge) * res + 0.5, 0, 1) * 0.55;
+    if (linesOnly) { o[0] = 255; o[1] = 96; o[2] = 60; o[3] = 255 * la; return; }
+    const ridge = Math.pow(1 - Math.abs(u - 0.5) * 2, 6) * 0.35, nz = (Fn(X, Y) - 0.5) * 0.12;
+    col[0] = c0[0] + (c1[0] - c0[0]) * t; col[1] = c0[1] + (c1[1] - c0[1]) * t; col[2] = c0[2] + (c1[2] - c0[2]) * t;
+    const k = (0.85 + ridge + nz) * (1 - dark);
+    o[0] = col[0] * k + (hot[0] - col[0] * k) * la; o[1] = col[1] * k + (hot[1] - col[1] * k) * la; o[2] = col[2] * k + (hot[2] - col[2] * k) * la;
+  });
+}, { res: ST_RES }];

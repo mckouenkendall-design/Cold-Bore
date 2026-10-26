@@ -133,6 +133,7 @@ const SKINS = [
   { id: 'quicksilver', name: 'Quicksilver', r: 4, furn: { anim: 'chrome' }, metal: { anim: 'chrome', fast: 1 }, acc: '#15181c', line: 'rgba(0,0,0,0.7)', shimmer: '#ffffff' },
   { id: 'thunder', name: 'Thunderhead', r: 4, furn: { anim: 'storm' }, metal: { anim: 'storm', dark: 1 }, acc: '#0d0f18', line: 'rgba(170,160,255,0.35)', glow: '#8f7dff', shimmer: '#f2ecff' },
   { id: 'lagoon', name: 'Lagoon', r: 4, furn: { anim: 'caustic' }, metal: { anim: 'caustic', deep: 1 }, acc: '#efe2b8', line: 'rgba(0,40,60,0.6)', shimmer: '#eaffff' },
+  { id: 'bloom', name: 'Damascus Bloom', r: 4, furn: { pat: 'bloom', seed: 'f', over: { pat: 'bloom', lines: 1, a: 'none', seed: 'f', blend: 'lighter', pulse: [0.15, 0.85, 0.3] } }, metal: { pat: 'bloom', seed: 'm', s: 0.8, over: { pat: 'bloom', lines: 1, a: 'none', seed: 'm', s: 0.8, blend: 'lighter', pulse: [0.15, 0.85, 0.3] } }, acc: { pat: 'bloom', seed: 'a', s: 0.6, over: { pat: 'bloom', lines: 1, a: 'none', seed: 'a', s: 0.6, blend: 'lighter', pulse: [0.15, 0.85, 0.3] } }, line: 'rgba(10,4,30,0.75)', rubber: '#120a24', shimmer: '#bfe8ff', lens: ['#ffb08a', '#3a1a9a', '#25c4d8'] },
 ];
 const SKIN_BY_ID = {}; SKINS.forEach((s) => { SKIN_BY_ID[s.id] = s; });
 
