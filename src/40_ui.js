@@ -171,18 +171,20 @@ UI.paintJob = function (j, time) {
     else if (j.kind === 'part') drawPartArt(x, j.slot, j.id, 3, 3, w - 6, h - 6, { gunId: j.gun, cfg: j.cfg, time: t, dim: j.dim });
     else if (j.kind === 'glass') drawReticleThumb(x, j.id, w / 2, h / 2, Math.min(w, h) / 2 - 0.5, { gunId: j.gun, cfg: j.cfg, time: t });
     else if (j.kind === 'swatch' && j.rifle) {
-      // in a small cell a skin whose only movement is the sweep of light keeps that light on the rifle
-      // (it starts again at the stock as it leaves the muzzle) instead of resting between sweeps
-      if (j.shimOnly === undefined) j.shimOnly = !!j.skin.shimmer && !/"(anim|drift|pulse|flash)"/.test(JSON.stringify(j.skin));
-      const tt = j.shimOnly && time !== undefined ? (((t * 0.35) % 1) + 0.3) / 0.35 : t;
-      drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: tt });
+      drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: t });
     }
     else if (j.kind === 'swatch') {
       drawSwatch(x, j.skin, 0, 0, w, h, t);
-      if (j.skin.shimmer && time !== undefined) { // the same band of light that sweeps along the rifle
-        const u = ((t * 0.35) % 1.6) - 0.3, bx = w * u, bw = Math.max(12, w * 0.2);
-        const g = x.createLinearGradient(bx - bw, 0, bx + bw, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, rgba(j.skin.shimmer, 0.55)); g.addColorStop(1, 'rgba(255,255,255,0)');
-        x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; x.transform(1, 0, -0.5, 1, h * 0.25, 0); x.fillRect(bx - bw, -2, bw * 2, h + 4); x.restore();
+      if (j.skin.shimmer && time !== undefined) { // the same winking glints as on the rifle
+        x.save(); x.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 3; i++) {
+          const per = 2.4 + i * 0.7, u = ((t + i * 1.3) % per) / per; if (u > 0.2) continue;
+          const a = Math.sin((u / 0.2) * Math.PI), gx = w * (0.2 + 0.3 * i), gy = h * (0.3 + 0.2 * (i % 2)), r = Math.min(w, h) * 0.22;
+          const g = x.createRadialGradient(gx, gy, 0, gx, gy, r * 0.6); g.addColorStop(0, 'rgba(255,255,255,' + (0.9 * a).toFixed(3) + ')'); g.addColorStop(1, rgba(j.skin.shimmer, 0));
+          x.fillStyle = g; x.beginPath(); x.arc(gx, gy, r * 0.6, 0, TAU); x.fill();
+          x.strokeStyle = 'rgba(255,255,255,' + (0.8 * a).toFixed(3) + ')'; x.lineWidth = 1; x.beginPath(); x.moveTo(gx - r * 1.4, gy); x.lineTo(gx + r * 1.4, gy); x.moveTo(gx, gy - r); x.lineTo(gx, gy + r); x.stroke();
+        }
+        x.restore();
       }
     } else if (j.kind === 'insig') { const s = Math.min(w, h); CB.insignia(x, j.n, (w - s) / 2, (h - s) / 2, s, j.pres); }
     else if (j.kind === 'portrait') { const s = Math.min(w, h); CB.portrait(x, j.cv.dataset.portrait || j.who, (w - s) / 2, (h - s) / 2, s, { mood: j.cv.dataset.mood || j.mood, t }); }
