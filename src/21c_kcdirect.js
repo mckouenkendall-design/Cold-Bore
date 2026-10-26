@@ -206,6 +206,8 @@ function kcDirect(K, V) {
     }
     K.fallK = w;
   }
+  // the kill cam director (54_director.js), or the owner's own saved cut, can take the camera
+  if (CB.Director && T >= K.Tb) { const DP = CB.Director.poseFor(K, V, kcP3); if (DP) P = DP; }
   kcApplyPose(c, P, W, H);
   return c;
 }

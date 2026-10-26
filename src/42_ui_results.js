@@ -360,6 +360,8 @@ UI.settings = function (fromTitle) {
     <div class="setgroup"><div class="eyebrow">Picture</div>${tog('lowRes', 'Lighter graphics', 'Draws the picture with fewer dots, which is easier on the phone. Try this if the scope feels choppy.')}</div>
     <div class="setgroup"><div class="eyebrow">Your progress</div>
       <button class="setrow" data-a="how"><div><b>How to play</b><i>Controls, the numbers under the scope, and how to run the game full screen.</i></div><span class="arrow">&rsaquo;</span></button>
+      <button class="setrow" data-a="director"><div><b>Kill cam director</b><i>Scrub through a kill and set the camera angles yourself. Your cut can then play in the game.</i></div><span class="arrow">&rsaquo;</span></button>
+      ${tog('myCut', 'Use my kill cam cut', 'Plays the camera you set in the director (from the bullet chase on) instead of the usual one.')}
       ${CB.Tester.on ? '<p class="dim">Backing up and erasing are switched off while tester mode is on, so they can only ever touch your real save.</p>' : `<button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
       <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>`}
     </div>
@@ -383,6 +385,7 @@ UI.settings = function (fromTitle) {
     },
     testerAgain() { CB.Tester.restart(); UI._chSet = false; UI.shots = {}; UI.shotKeys = []; UI.colSkin = null; UI.keepScroll(); UI.settings(fromTitle); UI.toast('Fresh tester save made.', 'good'); },
     how() { UI.howTo(); },
+    director() { CB.Director.open(); },
     back() { UI.title(); },
     export() {
       UI.overlay(`<div class="sheet tall"><div class="sh-head"><h3>Back up or move your save</h3><button class="x" data-a="close">${ICON.cross}</button></div><div class="sh-body twocol">

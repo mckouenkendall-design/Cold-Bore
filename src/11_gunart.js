@@ -1061,6 +1061,10 @@ function drawGun(ctx, gunId, cfg, cx, cy, w, h, o) {
   // (a different stretch each time, never the whole length), fading in and out as it goes
   if (skin.shimmer && o.time !== undefined) {
     const per = 3.6, k = Math.floor(o.time / per), u = (o.time - k * per) / 1.5;
+    { // a very faint gloss that breathes all the time, so the finish is never quite still
+      ctx.save(); ctx.beginPath(); for (let i = 0; i < order.length; i++) { const s = order[i]; if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass') continue; shapeTrace(ctx, s); }
+      ctx.clip(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.03 + 0.025 * Math.sin(o.time * 1.3); ctx.fillStyle = skin.shimmer; ctx.fillRect(G.x0 - 2, -20, span + 4, 50); ctx.restore();
+    }
     if (u < 1) {
       const h1 = (hashStr('sh' + k) % 1000) / 1000, a0 = 0.05 + 0.5 * h1, a1 = a0 + 0.35, bx = G.x0 + span * lerp(a0, a1, u), al = Math.sin(u * Math.PI);
       ctx.save(); ctx.beginPath();

@@ -450,6 +450,7 @@ Game.loop = function (ts) {
     else if (G.resK < 1 && G.fastN > 360) { G.resK = Math.min(1, G.resK * 1.25); G.fastN = 0; G.slowN = 0; G.frames = 0; G.resize(); }
   }
   const KC = CB.KillCam;
+  if (CB.Director && CB.Director.on) { CB.Director.tick(dt); return; } // the kill cam director runs the film itself
   G.medalTick(dt);
   // ---- the kill camera has the picture: it sets the pace, the world follows ----
   if (G.cine && KC && KC.active) {
