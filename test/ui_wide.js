@@ -259,6 +259,11 @@ function richSaveInPage() {
     await ev(() => { document.querySelector('[data-a="export"]').click(); }); await look('54_save_code', '[data-a="copy"]');
     await ev(() => { CB.UI.closeOverlay(); document.querySelector('[data-a="reset"]').click(); }); await look('55_erase_confirm', '[data-a="close"]');
     await ev(() => { CB.UI.closeOverlay(); CB.UI.toast('Bought: Ranger 4-12x Mil-Dot', 'good'); CB.UI.toast('Not enough credits.', 'bad'); }); await look('56_toasts', null, 200);
+    // the dossier (choices and endings) and the looks you can choose
+    await ev(() => { const d = CB.Save.data; d.outcomes = { c2m5: { spared: 1 } }; d.missions.c2m5 = { done: true, stars: 2, plays: 1, outcome: 'spared' }; d.flags.sparedReyes = true; CB.UI.tab = 'dossier'; CB.UI.hub(); });
+    await look('57_dossier', '[data-a="looks"]', 700);
+    await ev(() => CB.UI.looks()); await look('58_looks', '[data-a="close"]', 600);
+    await ev(() => CB.UI.closeOverlay());
     // results, with the real numbers from a run by the test bot
     const res = await ev(() => {
       const d = CB.Save.data, M = CB.MISSIONS[17], gid = 'halden';
