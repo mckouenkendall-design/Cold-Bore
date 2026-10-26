@@ -104,7 +104,7 @@ mission({
   id: 'c1m3', ch: 1, title: 'Thunder', range: 160,
   objective: 'Yellow raincoat on the roof, red umbrella on the street. Neither may warn the other.',
   brief: 'The Calloways moved their dice game and posted two spotters to watch for trouble. One on the roof in a yellow raincoat, one at the laundry door under a red umbrella. If either hears a shot, the game scatters and we start again. There is a storm over the harbour. Thunder is loud, and it is yours to use: fire inside it and nobody hears a thing.',
-  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.', 'A walker heading toward the laundry will see the street spotter fall. Marlow will call the street clear.'],
+  intel: ['Roof spotter: YELLOW raincoat, binoculars.', 'Street spotter: RED umbrella, by the laundry.', 'Lightning first, then about two seconds of thunder. Watch for the NOISE COVER light.', 'People with other umbrellas are just people.', 'A walker heading toward the laundry will see the street spotter fall. Marlow will call the street clear.', 'The laundry sign is fed from a grey box under the awning, just left of the red umbrella. He is standing in a puddle.'],
   guide: [
     'Two spotters: the YELLOW raincoat on the roof and the RED umbrella by the laundry door. People with other umbrellas are not targets.',
     'Your rifle is loud, so only fire inside thunder: lightning flashes, then NOISE COVER lights for about 2.5 seconds. It comes every 11 seconds, first about 5 seconds in.',
@@ -116,7 +116,13 @@ mission({
   wind: { v: 2.2, gust: 1.2 }, par: 2, rules: { kill: ['t1', 't2'] },
   vantages: [{ name: 'Tannery roof', desc: 'Straight across. Wet, but level.', eye: [0, 18, 0] }],
   look: [-10, 8],
-  setup() { const H = SCN.street({ z: 150, time: 'night', weather: 'rain', seed: 8 }); K.thing(H.S, H.PB, 'duck', H.b5.winX(2), H.b5.floorY(4) + 1.15, { }); return H; },
+  setup() {
+    const H = SCN.street({ z: 150, time: 'night', weather: 'rain', seed: 8 }); K.thing(H.S, H.PB, 'duck', H.b5.winX(2), H.b5.floorY(4) + 1.15, { });
+    // the laundry sign's feed comes down to a box under the awning, and the street spotter stands in a puddle
+    const at = H.street(-16);
+    H.cable = K.liveCable(H.S, at.plane, { id: 'junction', x: -16.9, y: 2.55, top: 3.85, floor: at.y, px: -16.35, pr: 0.8 });
+    return H;
+  },
   cast(H) {
     return [
       Object.assign(H.onRoof(H.b3, -3), { id: 't1', role: 'target', look: { coat: '#d8b52a', long: true, hat: 'hood', hatCol: '#d8b52a' }, anim: 'look',

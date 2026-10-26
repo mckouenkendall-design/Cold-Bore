@@ -7,7 +7,7 @@
 //   at the edge of the picture pointing to them) with what they noticed.
 // Display only: none of this changes the mission.
 // ---------------------------------------------------------------------------
-const CALL_OBJ = { lamp: 'LAMP OUT', bulb: 'LIGHT OUT', hook: 'HOOK SNAPPED', rope: 'ROPE CUT', barrel: 'DRUM HIT', tank: 'TANK HIT', fuse: 'FUSE BOX OUT', bell: 'BELL RUNG', horn: 'HORN', bottle: 'BOTTLE BROKEN', can: 'CAN HIT', pot: 'POT BROKEN', cctv: 'CAMERA OUT', valve: 'VALVE OPEN', radio: 'RADIO OUT', dish: 'DISH OUT', lock: 'LOCK SHOT OFF', flare: 'FLARE LIT', glint: 'SCOPE BROKEN', armour: 'GLASS HELD' };
+const CALL_OBJ = { lamp: 'LAMP OUT', bulb: 'LIGHT OUT', hook: 'HOOK SNAPPED', rope: 'ROPE CUT', barrel: 'DRUM HIT', tank: 'TANK HIT', fuse: 'FUSE BOX OUT', bell: 'BELL RUNG', horn: 'HORN', bottle: 'BOTTLE BROKEN', can: 'CAN HIT', pot: 'POT BROKEN', cctv: 'CAMERA OUT', valve: 'VALVE OPEN', radio: 'RADIO OUT', dish: 'DISH OUT', lock: 'LOCK SHOT OFF', flare: 'FLARE LIT', glint: 'SCOPE BROKEN', armour: 'GLASS HELD', junction: 'CABLE DOWN' };
 
 // Show the callout for every round that has come to rest since the last frame.
 Game.watchRounds = function () {
