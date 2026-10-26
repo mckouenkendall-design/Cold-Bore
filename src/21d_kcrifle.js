@@ -114,7 +114,11 @@ function kcDrawBeat(K, V, ctx) {
   const sh = [0, 0, lerp(SQ[2], MZ[2], pan), lerp(SQ[3], MZ[3], pan), lerp(SQ[4], MZ[4], pan)];
   // the layout: rifle units to screen. The rifle fits the screen's width at zoom 1.
   const span = Rf.x1 - Rf.x0, top = -15, bot = Rf.tri ? 28 : 17, base = Math.min((W * 0.86) / span, (H * 0.56) / (bot - top)) * 0.96;
-  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), z = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
+  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), zG = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan);
+  // (the kill cam director, 54_director.js, can set this shot's framing: zoom, where along the rifle, height, tilt)
+  K._gameRifle = { z: zG, fx: sh[2], cy: sh[3], tilt: sh[4] };
+  const DR = CB.Director ? CB.Director.camFor(K, 'rifle') : null; if (DR) { sh[2] = DR.fx; sh[3] = DR.cy; sh[4] = DR.tilt; }
+  const z = DR ? DR.z : zG, sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
   const fx = lerp(Rf.x0, Rf.x1, sh[2]), cx = W * 0.5 - flip * W * 1.5 * wh * wh * wh, cy = H * sh[3];
   // recoil: in this all-but-frozen moment the rifle has only begun to come back
   const rc = easeOut(Math.max(0, T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);

@@ -1367,7 +1367,7 @@ body.portrait .scr.drillres { flex-direction: column; text-align: center; } body
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 11:15 AM";
+const BUILD = "Oct 26, 11:41 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -31743,7 +31743,12 @@ function kcRig(K, W, H, u) {
     sx: W / 2 + K.side * lerp(0.2, 0.3, wide) * W * drift, sy: H / 2 - lerp(0.13, 0.05, wide) * H * dv };
 }
 function kcFlightCam(K, V) {
-  const W = V.W, H = V.H, c = K.cam, h = K.o.hit, d = K.dir, g = kcRig(K, W, H, clamp(K.fu || 0, 0, 1));
+  const W = V.W, H = V.H, c = K.cam, h = K.o.hit, d = K.dir, fw = 0.55 * Math.max(W, H);
+  let g = kcRig(K, W, H, clamp(K.fu || 0, 0, 1));
+  // (the kill cam director, 54_director.js, can place this camera: beside, above, behind, lens, framing)
+  K._gameFlight = { lat: g.lat * K.side, up: g.up, back: g.back, lens: g.f / fw, sx: g.sx / W, sy: g.sy / H };
+  const DF = CB.Director ? CB.Director.camFor(K, 'flight') : null;
+  if (DF) g = { f: fw * DF.lens, back: DF.back, lat: K.side * DF.lat, up: DF.up, sx: W * DF.sx, sy: H * DF.sy };
   c.x = K.bp[0] - d[0] * K.len + g.lat; c.y = K.bp[1] - d[1] * K.len + g.up; c.z = K.bp[2] - d[2] * K.len - g.back;
   c.yaw = 0; c.pitch = 0; c.f = g.f; kcCamAim(c);
   // slide the picture so the place the round will land sits where we want it on screen
@@ -33735,7 +33740,11 @@ function kcDrawBeat(K, V, ctx) {
   const sh = [0, 0, lerp(SQ[2], MZ[2], pan), lerp(SQ[3], MZ[3], pan), lerp(SQ[4], MZ[4], pan)];
   // the layout: rifle units to screen. The rifle fits the screen's width at zoom 1.
   const span = Rf.x1 - Rf.x0, top = -15, bot = Rf.tri ? 28 : 17, base = Math.min((W * 0.86) / span, (H * 0.56) / (bot - top)) * 0.96;
-  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), z = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
+  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), zG = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan);
+  // (the kill cam director, 54_director.js, can set this shot's framing: zoom, where along the rifle, height, tilt)
+  K._gameRifle = { z: zG, fx: sh[2], cy: sh[3], tilt: sh[4] };
+  const DR = CB.Director ? CB.Director.camFor(K, 'rifle') : null; if (DR) { sh[2] = DR.fx; sh[3] = DR.cy; sh[4] = DR.tilt; }
+  const z = DR ? DR.z : zG, sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
   const fx = lerp(Rf.x0, Rf.x1, sh[2]), cx = W * 0.5 - flip * W * 1.5 * wh * wh * wh, cy = H * sh[3];
   // recoil: in this all-but-frozen moment the rifle has only begun to come back
   const rc = easeOut(Math.max(0, T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);
@@ -43524,7 +43533,7 @@ CB.drawDrill = drawDrill;
 // the line it looks, lens), with times counted from the moment the round touches the skin, so a cut
 // made on this kill fits every kill. Settings has "Use my kill cam cut" to play it in the game.
 // ---------------------------------------------------------------------------
-const Director = CB.Director = { on: false, keys: [], free: null, mode: 'free', playing: false, rate: 1, len: 14 };
+const Director = CB.Director = { on: false, keys: [], free: {}, mode: 'free', playing: false, rate: 1, len: 14 };
 const DIR_SHOT = { m: 'c1m1', gun: 'fenwick', tid: 't', part: 'torso', at: 0.8 };
 const DIR_STORE = 'coldbore.kccut.v1';
 Director.load = function () { try { const j = JSON.parse(localStorage.getItem(DIR_STORE) || 'null'); if (j && Array.isArray(j.keys)) Director.keys = j.keys; } catch (e) { /* none saved */ } };
@@ -43532,22 +43541,39 @@ Director.save = function () { try { localStorage.setItem(DIR_STORE, JSON.stringi
 Director.load();
 
 // ---- the camera from keys ----
-// One camera setting: phi (degrees round the line, 0 from behind the round), el (degrees up), R (metres
-// away), s (metres along the line from the body's middle), lens (1 normal).
-const dirLerpKey = (a, b, u) => ({ phi: lerp(a.phi, b.phi, u), el: lerp(a.el, b.el, u), R: Math.exp(lerp(Math.log(a.R), Math.log(b.R), u)), s: lerp(a.s, b.s, u), lens: lerp(a.lens, b.lens, u) });
-Director.camAt = function (keys, t) {
-  if (!keys || !keys.length) return null;
-  if (t <= keys[0].t) return keys[0];
-  for (let i = 1; i < keys.length; i++) if (t <= keys[i].t) { const a = keys[i - 1], b = keys[i], u = smooth((t - a.t) / Math.max(1e-3, b.t - a.t)); return dirLerpKey(a, b, u); }
-  return keys[keys.length - 1];
+// Three kinds of camera, one for each part of the film, each with its own clock:
+//   rifle   the trigger and the muzzle (a flat close-up): z zoom, fx where along the rifle (0 butt to
+//           1 muzzle), cy height on screen (share), tilt (radians); clock: the film's time
+//   flight  the chase behind the round: lat beside it, up above it, back behind it (metres), lens,
+//           sx and sy where the target sits on screen (shares); clock: how far through the flight (0 to 1)
+//   body    from the swing on: phi round the round's line (degrees, 0 from behind it), el up, R metres
+//           away, s metres along the line, lens; clock: seconds from the round touching the skin
+Director.part = function (K) { return K.stage === 0 ? 'rifle' : K.stage === 1 ? 'flight' : 'body'; };
+Director.clock = function (K, part) { return part === 'rifle' ? K.T : part === 'flight' ? (K.fu || 0) : K.T - (K.Td || 0); };
+Director.camAt = function (keys, part, x) {
+  const L = (keys || []).filter((k) => (k.part || 'body') === part); if (!L.length) return null;
+  if (x <= L[0].t) return L[0]; if (x >= L[L.length - 1].t) return L[L.length - 1];
+  for (let i = 1; i < L.length; i++) if (x <= L[i].t) {
+    const a = L[i - 1], b = L[i], u = smooth((x - a.t) / Math.max(1e-4, b.t - a.t)), o = {};
+    for (const k in a) if (typeof a[k] === 'number') o[k] = k === 'R' ? Math.exp(lerp(Math.log(a[k]), Math.log(b[k]), u)) : lerp(a[k], b[k], u);
+    return o;
+  }
+  return L[L.length - 1];
 };
-// The film's time, counted from the round touching the skin.
 Director.rel = function (K) { return K.T - (K.Td || 0); };
+// What camera a part of the film should use now, or null for the game's own.
+Director.camFor = function (K, part) {
+  if (Director.on) {
+    if (Director.mode === 'free') return Director.free[part] || null;
+    if (Director.mode === 'cut') return Director.camAt(Director.keys, part, Director.clock(K, part));
+    return null;
+  }
+  if (Save.data && Save.data.settings && Save.data.settings.myCut && Director.keys.length) return Director.camAt(Director.keys, part, Director.clock(K, part));
+  return null;
+};
 // Asked by the kill camera (21c_kcdirect.js) every frame from the swing on: a pose, or null for the usual camera.
 Director.poseFor = function (K, V, P) {
-  let cam = null;
-  if (Director.on) cam = Director.mode === 'free' ? Director.free : Director.mode === 'cut' ? Director.camAt(Director.keys, Director.rel(K)) : null;
-  else if (Save.data && Save.data.settings && Save.data.settings.myCut && Director.keys.length) cam = Director.camAt(Director.keys, Director.rel(K));
+  const cam = Director.camFor(K, 'body');
   if (!cam || !K.sw || !K.plan) return null;
   const H = K.plan.H, d = K.dir, o = kcNewOrbit(), fb = 0.55 * Math.max(V.W, V.H) * kcTune.lensX;
   o.fx = H[0] + d[0] * cam.s; o.fy = H[1] + d[1] * cam.s; o.fz = H[2] + d[2] * cam.s;
@@ -43631,9 +43657,8 @@ Director.open = function () {
   Director.measure();
   Director.seek(Math.max(0, Director.len * 0.45));
   const KC = Director.film();
-  // start the free camera where the steady view would be
-  Director.free = { phi: 84, el: 9, R: 1.2, s: 0, lens: 1 };
-  if (KC && KC.rec && KC.rec.entry) { const e = KC.rec.entry; Director.free.phi = e[0]; Director.free.el = e[1]; }
+  // each part's free camera starts as the game's own the first time it is touched (see grab)
+  Director.free = {}; void KC;
   Director.build();
 };
 Director.close = function () {
@@ -43663,7 +43688,7 @@ Director.build = function () {
     <span class="lens">Lens <input type="range" min="0.5" max="2.5" step="0.05" value="1" data-d="lens"></span>
     <button data-d="key">Key</button><button data-d="del">Delete key</button><button data-d="clear">Clear all</button><button data-d="copy">Copy my cut</button>
   </div>
-  <div class="help">Free cam: drag to circle the body, pinch to go in and out, two fingers sideways to slide along the bullet's line. KEY saves the camera at this moment; MY CUT plays your keys. Keys: <b class="nk">0</b></div>
+  <div class="help">TRIGGER: drag moves the frame along the rifle, pinch zooms, two fingers sideways tilt. CHASE: drag puts the camera beside or above the round, pinch goes further behind, two fingers sideways move where the target sits. BODY: drag circles, pinch goes in and out, two fingers slide along the bullet's line. KEY saves the camera at this moment in that part; MY CUT plays your keys. Keys: <b class="nk">0</b></div>
   <div class="bar bot">
     <button data-d="back">&#9664;&#9664;</button><button data-d="prev">-1f</button><button data-d="play">Play</button><button data-d="next">+1f</button>
     <button data-d="rate">1x</button><span class="t">0.00 s</span>
@@ -43683,14 +43708,15 @@ Director.build = function () {
     else if (a === 'prev') { Director.playing = false; if (KC) Director.seek(Math.max(0, KC.T - 1 / 60)); }
     else if (a === 'back') { Director.playing = false; Director.seek(0); }
     else if (a === 'key' && KC) {
-      const t = +Director.rel(KC).toFixed(3), k = Object.assign({ t }, Director.free);
-      Director.keys = Director.keys.filter((x) => Math.abs(x.t - t) > 0.02).concat([k]).sort((x, y) => x.t - y.t); Director.save(); UI.toast('Key at ' + t.toFixed(2) + ' s', 'good');
+      const part = Director.part(KC), cam = Director.grab(KC, part), t = +Director.clock(KC, part).toFixed(4), k = Object.assign({ part, t }, cam), eps = part === 'flight' ? 0.004 : 0.02;
+      Director.keys = Director.keys.filter((x) => (x.part || 'body') !== part || Math.abs(x.t - t) > eps).concat([k]).sort((x, y) => (x.part === y.part ? x.t - y.t : 0)); Director.save();
+      UI.toast('Key: ' + ({ rifle: 'trigger and muzzle', flight: 'bullet chase', body: 'through the body' })[part] + ' at ' + (part === 'flight' ? Math.round(t * 100) + '% of the flight' : t.toFixed(2) + ' s'), 'good');
     } else if (a === 'del' && KC) {
-      const t = Director.rel(KC); let bi = -1, bd = 1e9; Director.keys.forEach((x, i) => { const dd = Math.abs(x.t - t); if (dd < bd) { bd = dd; bi = i; } });
+      const part = Director.part(KC), t = Director.clock(KC, part); let bi = -1, bd = 1e9; Director.keys.forEach((x, i) => { if ((x.part || 'body') !== part) return; const dd = Math.abs(x.t - t); if (dd < bd) { bd = dd; bi = i; } });
       if (bi >= 0) { Director.keys.splice(bi, 1); Director.save(); UI.toast('Key removed'); }
     } else if (a === 'clear') { if (b.dataset.sure) { Director.keys = []; Director.save(); b.textContent = 'Clear all'; delete b.dataset.sure; } else { b.dataset.sure = '1'; b.textContent = 'Tap again to clear'; } }
     else if (a === 'copy') {
-      const txt = 'KILLCAM CUT ' + JSON.stringify(Director.keys.map((k) => ({ t: k.t, phi: +k.phi.toFixed(1), el: +k.el.toFixed(1), R: +k.R.toFixed(3), s: +k.s.toFixed(3), lens: +k.lens.toFixed(2) })));
+      const txt = 'KILLCAM CUT ' + JSON.stringify(Director.keys.map((k) => { const o = {}; for (const f in k) o[f] = typeof k[f] === 'number' ? +k[f].toFixed(4) : k[f]; return o; }));
       const show = () => { let ta = q('textarea'); if (!ta) { ta = document.createElement('textarea'); el.appendChild(ta); ta.addEventListener('click', () => ta.select()); } ta.value = txt; ta.select(); };
       try { navigator.clipboard.writeText(txt).then(() => UI.toast('Copied. Paste it in the chat.', 'good'), show); } catch (er) { show(); }
       show();
@@ -43698,33 +43724,56 @@ Director.build = function () {
   });
   scrub.addEventListener('input', () => { Director.playing = false; Director.scrubTo = +scrub.value; });
   scrub.addEventListener('change', () => { Director.seek(+scrub.value); Director.scrubTo = null; });
-  q('[data-d=lens]').addEventListener('input', (e) => { Director.free.lens = +e.target.value; });
+  q('[data-d=lens]').addEventListener('input', (e) => { const KC = Director.film(); if (!KC) return; const part = Director.part(KC), c = Director.grab(KC, part); if (part === 'rifle') c.z = +e.target.value * 2; else c.lens = +e.target.value; Director.mode = 'free'; });
   // the free camera: gestures on the picture
   const pts = new Map(); let pinch = null;
   const stage = Game.stage;
-  const down = (e) => { if (!Director.on) return; e.stopPropagation(); e.preventDefault(); const hp = el.querySelector('.help'); if (hp) hp.style.display = 'none'; pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, R: Director.free.R, s: Director.free.s }; } };
+  const down = (e) => {
+    if (!Director.on) return; e.stopPropagation(); e.preventDefault(); const hp = el.querySelector('.help'); if (hp) hp.style.display = 'none';
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const KC = Director.film(); if (KC && pts.size === 2) { const part = Director.part(KC), F = Director.grab(KC, part), [a, b] = [...pts.values()]; Director.mode = 'free'; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, F0: Object.assign({}, F) }; }
+  };
   const move = (e) => {
     if (!Director.on || !pts.has(e.pointerId)) return; const p = pts.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    const F = Director.free; Director.mode = 'free';
-    if (pts.size === 1) { F.phi = F.phi - dx * 0.35; F.el = clamp(F.el + dy * 0.25, -80, 85); }
-    else if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2; F.R = clamp(pinch.R * (pinch.d / Math.max(10, d)), 0.15, 12); F.s = clamp(pinch.s + (mx - pinch.mx) * -0.002 * F.R, -3, 3); }
+    const KC = Director.film(); if (!KC) return; const part = Director.part(KC), F = Director.grab(KC, part), W = window.innerWidth; Director.mode = 'free';
+    if (pts.size === 1) {
+      if (part === 'body') { F.phi = F.phi - dx * 0.35; F.el = clamp(F.el + dy * 0.25, -80, 85); }
+      else if (part === 'rifle') { F.fx = clamp(F.fx - dx / (W * F.z), -0.1, 1.1); F.cy = clamp(F.cy + dy / window.innerHeight, 0, 1); }
+      else { const k = 0.0015 * Math.max(0.15, F.back); F.lat = clamp(F.lat - dx * k, -3, 3); F.up = clamp(F.up + dy * k, -1.5, 3); }
+    } else if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, k = pinch.d / Math.max(10, d), sl = mx - pinch.mx, F0 = pinch.F0;
+      if (part === 'body') { F.R = clamp(F0.R * k, 0.15, 12); F.s = clamp(F0.s + sl * -0.002 * F.R, -3, 3); }
+      else if (part === 'rifle') { F.z = clamp(F0.z / k, 0.5, 6); F.tilt = clamp(F0.tilt + sl * 0.002, -0.6, 0.6); }
+      else { F.back = clamp(F0.back * k, 0.05, 6); F.sx = clamp(F0.sx + sl / W, 0, 1); }
+    }
   };
   const up = (e) => { if (Director.on) e.stopPropagation(); pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
   Director.gest = { down, move, up };
   stage.addEventListener('pointerdown', down, true); stage.addEventListener('pointermove', move, true); stage.addEventListener('pointerup', up, true); stage.addEventListener('pointercancel', up, true);
   stage.addEventListener('wheel', (e) => { if (!Director.on) return; e.preventDefault(); Director.free.R = clamp(Director.free.R * (e.deltaY > 0 ? 1.1 : 0.9), 0.15, 12); }, { passive: false });
 };
+// The free camera for a part, made from the game's own camera at this moment the first time it is touched.
+Director.grab = function (K, part) {
+  if (!Director.free[part]) {
+    if (part === 'rifle') Director.free.rifle = Object.assign({ z: 2, fx: 0.5, cy: 0.5, tilt: 0 }, K._gameRifle || {});
+    else if (part === 'flight') Director.free.flight = Object.assign({ lat: 0.3, up: 0.15, back: 0.3, lens: 1.5, sx: 0.6, sy: 0.45 }, K._gameFlight || {});
+    else { const e = K.rec && K.rec.entry; Director.free.body = { phi: e ? e[0] : 84, el: e ? e[1] : 9, R: 1.2, s: 0, lens: 1 }; }
+  }
+  return Director.free[part];
+};
 // Keep the controls in step with the film.
 Director.ui = function () {
   const el = Director.el; if (!el) return;
   const KC = Director.film(), T = KC ? KC.T : 0;
-  el.querySelector('.t').textContent = T.toFixed(2) + ' s' + (KC ? '  ·  ' + (Director.rel(KC) >= 0 ? '+' : '') + Director.rel(KC).toFixed(2) : '');
+  el.querySelector('.t').textContent = T.toFixed(2) + ' s' + (KC ? '  ·  ' + ({ rifle: 'TRIGGER', flight: 'CHASE', body: 'BODY' })[Director.part(KC)] : '');
   const sc = el.querySelector('[data-d=scrub]'); if (Director.scrubTo === null || Director.scrubTo === undefined) sc.value = T.toFixed(2);
   el.querySelector('[data-d=play]').textContent = Director.playing ? 'Pause' : 'Play';
   el.querySelectorAll('[data-d=mode]').forEach((b) => b.classList.toggle('on', b.dataset.v === Director.mode));
   el.querySelector('.nk').textContent = Director.keys.length;
   const kms = el.querySelector('.kms'), sig = Director.keys.map((k) => k.t).join(',') + '|' + (KC ? KC.Td : 0);
-  if (kms._sig !== sig && KC) { kms._sig = sig; kms.innerHTML = Director.keys.map((k) => '<i class="km" style="left:' + clamp(((k.t + (KC.Td || 0)) / Director.len) * 100, 0, 100).toFixed(1) + '%"></i>').join(''); }
+  // key marks on the timeline (a chase key sits where that share of the flight falls in this film)
+  const at = (k) => (k.part === 'rifle' ? k.t : k.part === 'flight' ? (KC.Ta || 0) + k.t * (KC.Tf || 0) : k.t + (KC.Td || 0));
+  if (kms._sig !== sig && KC) { kms._sig = sig; kms.innerHTML = Director.keys.map((k) => '<i class="km" style="left:' + clamp((at(k) / Director.len) * 100, 0, 100).toFixed(1) + '%;background:' + ({ rifle: '#6fd0ff', flight: '#9cff7a' })[k.part] + '"></i>').join(''); }
 };
 
 

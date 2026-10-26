@@ -895,7 +895,12 @@ function kcRig(K, W, H, u) {
     sx: W / 2 + K.side * lerp(0.2, 0.3, wide) * W * drift, sy: H / 2 - lerp(0.13, 0.05, wide) * H * dv };
 }
 function kcFlightCam(K, V) {
-  const W = V.W, H = V.H, c = K.cam, h = K.o.hit, d = K.dir, g = kcRig(K, W, H, clamp(K.fu || 0, 0, 1));
+  const W = V.W, H = V.H, c = K.cam, h = K.o.hit, d = K.dir, fw = 0.55 * Math.max(W, H);
+  let g = kcRig(K, W, H, clamp(K.fu || 0, 0, 1));
+  // (the kill cam director, 54_director.js, can place this camera: beside, above, behind, lens, framing)
+  K._gameFlight = { lat: g.lat * K.side, up: g.up, back: g.back, lens: g.f / fw, sx: g.sx / W, sy: g.sy / H };
+  const DF = CB.Director ? CB.Director.camFor(K, 'flight') : null;
+  if (DF) g = { f: fw * DF.lens, back: DF.back, lat: K.side * DF.lat, up: DF.up, sx: W * DF.sx, sy: H * DF.sy };
   c.x = K.bp[0] - d[0] * K.len + g.lat; c.y = K.bp[1] - d[1] * K.len + g.up; c.z = K.bp[2] - d[2] * K.len - g.back;
   c.yaw = 0; c.pitch = 0; c.f = g.f; kcCamAim(c);
   // slide the picture so the place the round will land sits where we want it on screen
