@@ -105,15 +105,19 @@ function kcRifleSetup(K, V) {
 
 // ---- drawing ----------------------------------------------------------------------------------
 function kcDrawBeat(K, V, ctx) {
-  const o = K.o, W = V.W, H = V.H, T = K.T, pal = kcPal(o), dpr = V.dpr, S = o.sim.S || {};
+  // T counts from the moment the shot breaks; before it (the trigger squeeze) it is negative
+  const o = K.o, W = V.W, H = V.H, PRE = K.tn.pre || 0, T = K.T - PRE, pal = kcPal(o), dpr = V.dpr, S = o.sim.S || {};
   const Rf = K.rifle || kcRifleSetup(K, V);
-  const sh = kcRifleShots[Rf.shot] || kcRifleShots.side, flip = sh[5] ? -1 : 1;
+  // One camera for every film: close on the hand and the trigger while the finger squeezes, then the
+  // moment the shot breaks a quick pan along the barrel to the muzzle, to see the round leave it.
+  const pan = smooth((T - 0.02) / 0.24), SQ = kcRifleShots.action, MZ = kcRifleShots.muzzle, flip = 1;
+  const sh = [0, 0, lerp(SQ[2], MZ[2], pan), lerp(SQ[3], MZ[3], pan), lerp(SQ[4], MZ[4], pan)];
   // the layout: rifle units to screen. The rifle fits the screen's width at zoom 1.
   const span = Rf.x1 - Rf.x0, top = -15, bot = Rf.tri ? 28 : 17, base = Math.min((W * 0.86) / span, (H * 0.56) / (bot - top)) * 0.96;
-  const e = easeOut((T - 0.05) / 0.85), z = lerp(sh[0], sh[1], e), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
+  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), z = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
   const fx = lerp(Rf.x0, Rf.x1, sh[2]), cx = W * 0.5 - flip * W * 1.5 * wh * wh * wh, cy = H * sh[3];
   // recoil: in this all-but-frozen moment the rifle has only begun to come back
-  const rc = easeOut((T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);
+  const rc = easeOut(Math.max(0, T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);
   const tilt = sh[4] - 0.01 * rc;
   // rifle units (u, v) to screen: about (fx, 0), rotated by tilt, scaled, mirrored, placed at (cx, cy)
   const ca = Math.cos(tilt), sa = Math.sin(tilt);
@@ -152,7 +156,7 @@ function kcDrawBeat(K, V, ctx) {
   try { drawGun(ctx, o.gunId, o.cfg, (Rf.x0 + Rf.x1) / 2, (top2 + bot2) / 2, bxW, bxH, { time: 1.2 + T * 0.3, shadow: false }); } catch (er) { /* no rifle art: the rest still plays */ }
   // weather on the rifle, the hand, the bolt
   kcRifleWeather(ctx, Rf, T, S);
-  kcHand(ctx, K, Rf, T);
+  kcHand(ctx, K, Rf, T, PRE ? clamp(K.T / PRE, 0, 1) : 1);
   ctx.translate(rc, rc * 0.1);
   // ---- the flash and the gas in front
   kcMuzzleGas(ctx, K, Rf, mx, my, t1, T, true);
@@ -167,7 +171,7 @@ function kcDrawBeat(K, V, ctx) {
   // the side through a long lens. In screen space (the camera for it is set from the muzzle's place).
   toS(mx - rc, my - rc * 0.1, P);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const tip = T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
+  const tip = T < 0 ? -99 : T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
   const bc = kcCamAim({ x: 1000 * flip, y: 0, z: 0, yaw: -Math.PI / 2 * flip, pitch: 0, f: 1000 * sc, px: P[0], py: P[1] });
   ctx.save(); ctx.translate(P[0], P[1]); ctx.rotate(tilt * flip); ctx.translate(-P[0], -P[1]);
   ctx.beginPath(); if (flip > 0) ctx.rect(P[0], -H, W * 3, H * 3); else ctx.rect(P[0] - W * 3, -H, W * 3, H * 3); ctx.clip();
@@ -401,7 +405,7 @@ function kcFrontWeather(ctx, Rf, T, W, H) {
 }
 // The gloved hand: on the grip, finger on the trigger as the shot goes; then (a bolt action) up to
 // the bolt, lifting it and drawing it back, and the empty case spinning out of the port.
-function kcHand(ctx, K, Rf, T) {
+function kcHand(ctx, K, Rf, T, squeeze) {
   const gp = kcGrip[Rf.type] || kcGrip.classic, B = Rf.bolt;
   const glove = '#262826', glove2 = '#3d403c', seam = 'rgba(0,0,0,0.45)', sleeve = '#323a2d';
   // the bolt: lifted (up to 70 degrees about its root), then drawn back
@@ -443,7 +447,8 @@ function kcHand(ctx, K, Rf, T) {
   }
   // the index finger along to the trigger (while the hand is on the grip)
   if (reach < 0.5) {
-    const tx = gp.tr[0], ty = gp.tr[1], fx0 = hx + 0.5, fy0 = hy - 2.2;
+    // the finger curls back as it takes up the trigger, slowly, until the shot breaks
+    const sq = smooth(squeeze === undefined ? 1 : squeeze), tx = gp.tr[0] + 0.9 - sq * 1.6, ty = gp.tr[1] + 0.2 * sq, fx0 = hx + 0.5, fy0 = hy - 2.2;
     ctx.strokeStyle = glove; ctx.lineWidth = 1.7; ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0 - 0.6, tx, ty); ctx.stroke();
     ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(fx0 + 1, fy0 + 0.5); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0, tx - 0.4, ty + 0.4); ctx.stroke();
   }

@@ -32,6 +32,10 @@
 const kcRecipes = [
   // for the way in, the macro and the way out: [angle, height (degrees), size (half the picture's
   // height in metres), lens (1 normal, more is longer), drift (degrees a second)]; whip: seconds
+  // steady: the one the game uses. One calm view square across the round's line from the side the
+  // target faces, framing the whole body, looking at its middle (so it does not pan about), with only
+  // a slow drift; the way out pulls back a little to hold the spray. (The other four are kept for tests.)
+  { id: 'steady', steady: true, entry: [84, 9, 0.36, 1, 2.2], macro: [86, 9, 0.34, 1, 2.2], exit: [90, 8, 0.46, 1, 2.2], whip: 0.9 },
   { id: 'cut', entry: [40, 12, 0.2, 1, 7], macro: [92, 16, 0.15, 1.5, 4], exit: [112, 8, 0.46, 0.9, 6], whip: 0.22 },
   { id: 'ride', entry: [17, 7, 0.24, 1.1, -4], macro: [70, 28, 0.155, 1.5, -5], exit: [96, -5, 0.5, 0.85, 5], whip: 0.2 },
   { id: 'orbit', entry: [52, 18, 0.22, 1, 14], macro: [100, 20, 0.17, 1.3, 14], exit: [140, 14, 0.5, 0.9, 14], whip: 0.5 },
@@ -46,10 +50,10 @@ const kcWrap = (a) => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += 
 // Pick and vary this film's recipe (from the shot's own seed: where the round hit).
 function kcPickRecipe(K) {
   const R = makeRng(Math.round(K.cavSeed * 1000) + 31), pick = Math.floor(R.f() * kcRecipes.length) % kcRecipes.length;
-  const r = kcRecipes.find((q) => q.id === KillCam.testRecipe) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
+  const r = kcRecipes.find((q) => q.id === (KillCam.testRecipe || 'steady')) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
   const szK = K.part === 'head' ? 0.7 : 1;
   const jit = (v) => [v[0], v[1], v[2] * szK, v[3], v[4]]; // no random variation: the four recipes are the four looks
-  const rec = { id: r.id, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
+  const rec = { id: r.id, steady: !!r.steady, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
   rec.entrySide = 1;
   const key = K.plan && K.plan.key;
   rec.macroSide = key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1;
@@ -75,6 +79,7 @@ function kcShotOrbit(K, V, name, t, o) {
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
     if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
   }
+  if (rec.steady) s = name === 'exit' ? pl.sOut * 0.3 : name === 'lodged' ? s * 0.5 : 0; // the steady view looks at the body's middle
   o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;
   o.phi = side * (p[0] + p[4] * t * short) * kcDeg; o.el = (p[1] + 2.5 * Math.sin(t * 0.8)) * kcDeg;
   // (size is what fills the shorter side of the screen: the height on a phone held sideways)
@@ -142,7 +147,7 @@ function kcShotPose(K, V, P) {
     kcShotOrbit(K, V, K.shotPrev, T - K.shotPrevT0, kcO2);
     const u = (T - K.shotT0) / K.shotWhip;
     kcBlendOrbit(kcO2, kcO1, K.rec.whip > 0.4 ? smooth(u) : kcWhipK(u), kcO3);
-    K.whipping = Math.sin(u * Math.PI) * (K.rec.whip > 0.4 ? 0.35 : 1);
+    K.whipping = K.rec.steady ? 0 : Math.sin(u * Math.PI) * (K.rec.whip > 0.4 ? 0.35 : 1); // (no speed streaks in the steady view)
     K.orbNow = kcO3;
     return kcPoseFromOrbit(K, kcO3, P);
   }

@@ -1367,7 +1367,7 @@ body.portrait .scr.drillres { flex-direction: column; text-align: center; } body
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 10:19 AM";
+const BUILD = "Oct 26, 10:29 AM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -26461,20 +26461,6 @@ function skinPaints(skin, A) {
   return { furn: fac ? A.furn : skin.furn, metal: fac ? A.metal : skin.metal, acc: fac ? A.acc : (skin.acc || A.acc) };
 }
 
-// Where a rifle's glints sit: a dozen points on the painted parts, worked out once per rifle build and
-// kept on the shape list. Each winks for a fifth of its own period, the periods differ, so they never
-// line up into a sweep.
-function gunGlints(G, order) {
-  if (G._glints) return G._glints;
-  const cv = document.createElement('canvas'), x = cv.getContext('2d'), P = new Path2D(), out = [], R = makeRng(hashStr('glint' + G.x0 + G.x1 + order.length));
-  for (const s of order) { if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass' || s.zone === 'coil') continue; if (s.t === 'p') { P.moveTo(s.pts[0], s.pts[1]); for (let k = 2; k < s.pts.length; k += 2) P.lineTo(s.pts[k], s.pts[k + 1]); P.closePath(); } else if (s.t === 'r') P.rect(s.x, s.y, s.w, s.h); else P.arc(s.x, s.y, s.r, 0, TAU); }
-  for (let n = 0, tries = 0; n < 12 && tries < 400; tries++) {
-    const px = G.x0 + ((n + R.f()) / 12) * (G.x1 - G.x0), py = R.r(-14, 12);
-    if (!x.isPointInPath(P, px, py)) continue;
-    out.push({ x: px, y: py, r: R.r(2, 3.4), per: R.r(2.2, 4.2), ph: R.r(0, 5) }); n++;
-  }
-  G._glints = out; return out;
-}
 // Draw a rifle centred in the box (cx, cy, w, h).
 function drawGun(ctx, gunId, cfg, cx, cy, w, h, o) {
   o = o || {};
@@ -26524,26 +26510,19 @@ function drawGun(ctx, gunId, cfg, cx, cy, w, h, o) {
     }
     ctx.strokeStyle = lineCol; ctx.lineWidth = lineW; ctx.stroke();
   }
-  // legendary sheen: the finish catches the light in small star glints that wink on and off one after
-  // another at different spots on the rifle, over a very soft breathing gloss (instead of one band of light)
+  // legendary sheen: every few seconds a thin, soft streak of light slides along part of the rifle
+  // (a different stretch each time, never the whole length), fading in and out as it goes
   if (skin.shimmer && o.time !== undefined) {
-    const t = o.time, gl = gunGlints(G, order);
-    ctx.save(); ctx.beginPath();
-    for (let i = 0; i < order.length; i++) { const s = order[i]; if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass') continue; if (s.t === 'p') { ctx.moveTo(s.pts[0], s.pts[1]); for (let k = 2; k < s.pts.length; k += 2) ctx.lineTo(s.pts[k], s.pts[k + 1]); ctx.closePath(); } else if (s.t === 'r') ctx.rect(s.x, s.y, s.w, s.h); else ctx.arc(s.x, s.y, s.r, 0, TAU); }
-    ctx.clip(); ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.025 + 0.02 * Math.sin(t * 0.9); ctx.fillStyle = skin.shimmer; ctx.fillRect(G.x0 - 2, -20, span + 4, 50);
-    ctx.restore(); ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < gl.length; i++) {
-      const g = gl[i], u = (((t + g.ph) % g.per) + g.per) % g.per / g.per; if (u > 0.2) continue;
-      const a = Math.sin((u / 0.2) * Math.PI), r = g.r * (0.6 + 0.4 * a);
-      const rg = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, r * 0.7); rg.addColorStop(0, rgba('#ffffff', 0.95 * a)); rg.addColorStop(0.35, rgba(skin.shimmer, 0.45 * a)); rg.addColorStop(1, rgba(skin.shimmer, 0));
-      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(g.x, g.y, r * 0.7, 0, TAU); ctx.fill();
-      ctx.strokeStyle = rgba('#ffffff', 0.85 * a); ctx.lineCap = 'round';
-      ctx.lineWidth = 0.22; ctx.beginPath(); ctx.moveTo(g.x - r * 1.6, g.y); ctx.lineTo(g.x + r * 1.6, g.y); ctx.stroke();
-      ctx.lineWidth = 0.16; ctx.beginPath(); ctx.moveTo(g.x, g.y - r); ctx.lineTo(g.x, g.y + r); ctx.stroke();
-      ctx.lineWidth = 0.1; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(g.x - r * 0.5, g.y - r * 0.5); ctx.lineTo(g.x + r * 0.5, g.y + r * 0.5); ctx.moveTo(g.x + r * 0.5, g.y - r * 0.5); ctx.lineTo(g.x - r * 0.5, g.y + r * 0.5); ctx.stroke(); ctx.globalAlpha = 1;
+    const per = 3.6, k = Math.floor(o.time / per), u = (o.time - k * per) / 1.5;
+    if (u < 1) {
+      const h1 = (hashStr('sh' + k) % 1000) / 1000, a0 = 0.05 + 0.5 * h1, a1 = a0 + 0.35, bx = G.x0 + span * lerp(a0, a1, u), al = Math.sin(u * Math.PI);
+      ctx.save(); ctx.beginPath();
+      for (let i = 0; i < order.length; i++) { const s = order[i]; if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass') continue; if (s.t === 'p') { ctx.moveTo(s.pts[0], s.pts[1]); for (let k2 = 2; k2 < s.pts.length; k2 += 2) ctx.lineTo(s.pts[k2], s.pts[k2 + 1]); ctx.closePath(); } else if (s.t === 'r') ctx.rect(s.x, s.y, s.w, s.h); else ctx.arc(s.x, s.y, s.r, 0, TAU); }
+      ctx.clip();
+      const g2 = ctx.createLinearGradient(bx - 3.2, 0, bx + 3.2, 0); g2.addColorStop(0, 'rgba(255,255,255,0)'); g2.addColorStop(0.5, rgba(skin.shimmer, 0.38 * al)); g2.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g2; ctx.transform(1, 0, -0.45, 1, 0, 0); ctx.fillRect(bx - 5, -40, 18, 90);
+      ctx.restore();
     }
-    ctx.restore();
   }
   ctx.restore();
   return { scale: sc };
@@ -30925,7 +30904,8 @@ Game.bindInput = function () {
 const KillCam = CB.KillCam = { active: false, done: false, rate: 0.05 };
 
 const kcTune = {
-  beat: 0.95,        // seconds spent at the rifle
+  pre: 0.75,         // seconds of slow motion on the finger squeezing the trigger before the shot breaks
+  beat: 0.95,        // seconds spent at the rifle after the shot breaks
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
   swing: 1.3,        // seconds for the camera to come round
@@ -30935,8 +30915,8 @@ const kcTune = {
   approach: 1.05,    // seconds from the end of the swing to the round touching the skin
   touchV: 0.09,      // metres per second the round is down to as it touches
   touch: 0.35,       // seconds it all but stops there, the moment of impact
-  freeze: 0.5,       // seconds the film stops dead as the round reaches the main thing it hits
-  crawl: 0.36,       // metres per second the round is shown moving through the body
+  freeze: 0,         // seconds the film stops dead as the round reaches the main thing it hits
+  crawl: 0.27,       // metres per second the round is shown moving through the body
   linger: 0.85,      // seconds the exit hangs in the air before the hold
   rest: 0.5,         // seconds held on a round that stopped (in the body or just past it)
   insideMax: 4.6,    // seconds inside the body at most, whatever happens
@@ -30956,7 +30936,7 @@ const kcTune = {
 // The short cut (KillCam.cut = 'short', or o.cut): the same film in about five seconds, for
 // replays and second kills: a glimpse of the muzzle, a quick chase, the way in, the main thing
 // hit, the way out, the fall.
-const kcShortTune = Object.assign({}, kcTune, { beat: 0.14, flightMin: 0.4, flightMax: 0.55, swing: 0.6, approach: 0.45, touch: 0.16, crawl: 0.85, linger: 0.42, rest: 0.3, insideMax: 2.2, freeze: 0.32, hold: 0.45, holdMax: 1.5, out: 0.22, fallIn: 0.55 });
+const kcShortTune = Object.assign({}, kcTune, { pre: 0, beat: 0.14, flightMin: 0.4, flightMax: 0.55, swing: 0.6, approach: 0.45, touch: 0.16, crawl: 0.85, linger: 0.42, rest: 0.3, insideMax: 2.2, freeze: 0.32, hold: 0.45, holdMax: 1.5, out: 0.22, fallIn: 0.55 });
 KillCam.tune = kcTune; // (for tests and tuning; nothing in the game changes it)
 // bullet diameters in millimetres, by the rifle's calibre
 const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
@@ -31132,7 +31112,7 @@ KillCam.start = function (o) {
   // the timeline, in real seconds
   const far = clamp((K.dist - 100) / 800, 0, 1);
   K.Tf = lerp(K.tn.flightMin, K.tn.flightMax, far) * clamp(K.dist / 100, 0.45, 1);
-  K.Ta = K.tn.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + K.tn.swing;
+  K.Ta = (K.tn.pre || 0) + K.tn.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + K.tn.swing;
   // the round itself
   const mm = kcCalMm[st.cal] || 7.8;
   K.rad = (mm / 2000) * kcTune.bulletScale; K.len = K.rad * 2 * (st.cal === 'crail' ? 5.4 : 4.1);
@@ -31172,7 +31152,7 @@ KillCam.start = function (o) {
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
   K.Td = K.Tc + K.tn.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
@@ -31226,7 +31206,7 @@ function kcAdvance(K, o, dt) {
   const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
   K.prevRet = K.ret;
   let wr = 0; // how fast the world's clock runs this frame (world seconds per film second), for KillCam.rate
-  if (!K.snd.fly && T >= 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
+  if (!K.snd.fly && T >= (K.tn.pre || 0) + 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
   if (T < K.Ta) {
     // ---- 0: at the rifle. Time is all but stopped.
     K.stage = 0; K.speedK = 0;
@@ -31454,6 +31434,8 @@ function kcFire(K, ev) {
   if (ev.kind === 'wall') { kcWallHit(K, at); return; }
   K.dmg[ev.ref] = K.ct;
   if (pl.key === ev) K.cap = { text: ev.label, ref: ev.ref, kind: ev.kind, t0: K.T, s: ev.s };
+  // every organ and bone the round goes through joins the damage list (a pair, like the lungs, once)
+  { const tx = kcCapText[ev.ref]; if (tx && ev.ref !== 'lodged' && K.hits && !K.hits.some((h) => h.t[0] === tx[0])) K.hits.push({ t: tx, t0: K.T, key: pl.key === ev }); }
   if (ev.ref === 'skullIn' && K.burst) K.dmg.burst = K.ct + 0.1;
   // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
   // Everything with blood in it is scaled by how hard the round hits (K.gk, K.gx: see KillCam.start),
@@ -31961,7 +31943,7 @@ function kcDrawXray(K, V, ctx, dt) {
     }
     kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   }
-  kcCaption(ctx, K, c, V);
+  kcCaption(ctx, K, c, V); kcHitList(ctx, K, V);
 }
 // How the round looks now: spinning, its nose spreading (a soft or hollow point opens into petals),
 // tumbling end over end (a light round), still hot.
@@ -33182,7 +33164,7 @@ function kcXBrain(ctx, K, c, fig, al, items) {
       const lw = Math.max(0.6, 0.0042 * s);
       // the folds on each half: dark grooves, then a light edge beside each
       for (const sd of [-1, 1]) {
-        const W = kcXWorms('brain', 150, 13, 0.052, sd, -0.25);
+        const W = kcXWorms('brain', 230, 13, 0.052, sd);
         kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, W); ctx.globalAlpha = al * 0.85; ctx.strokeStyle = '#6e2c38'; ctx.lineWidth = lw; ctx.stroke();
         kcXOnEgg(ctx, c, hd, bx + Ra * 0.02, by + Rb * 0.03, bz, Ra * 0.995, Rb * 0.995, Rc * 0.995, W); ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f6d0cc'; ctx.lineWidth = lw * 0.6; ctx.stroke();
       }
@@ -33341,6 +33323,10 @@ function kcXDraw(ctx, K, c, fig, al) {
 const kcRecipes = [
   // for the way in, the macro and the way out: [angle, height (degrees), size (half the picture's
   // height in metres), lens (1 normal, more is longer), drift (degrees a second)]; whip: seconds
+  // steady: the one the game uses. One calm view square across the round's line from the side the
+  // target faces, framing the whole body, looking at its middle (so it does not pan about), with only
+  // a slow drift; the way out pulls back a little to hold the spray. (The other four are kept for tests.)
+  { id: 'steady', steady: true, entry: [84, 9, 0.36, 1, 2.2], macro: [86, 9, 0.34, 1, 2.2], exit: [90, 8, 0.46, 1, 2.2], whip: 0.9 },
   { id: 'cut', entry: [40, 12, 0.2, 1, 7], macro: [92, 16, 0.15, 1.5, 4], exit: [112, 8, 0.46, 0.9, 6], whip: 0.22 },
   { id: 'ride', entry: [17, 7, 0.24, 1.1, -4], macro: [70, 28, 0.155, 1.5, -5], exit: [96, -5, 0.5, 0.85, 5], whip: 0.2 },
   { id: 'orbit', entry: [52, 18, 0.22, 1, 14], macro: [100, 20, 0.17, 1.3, 14], exit: [140, 14, 0.5, 0.9, 14], whip: 0.5 },
@@ -33355,10 +33341,10 @@ const kcWrap = (a) => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += 
 // Pick and vary this film's recipe (from the shot's own seed: where the round hit).
 function kcPickRecipe(K) {
   const R = makeRng(Math.round(K.cavSeed * 1000) + 31), pick = Math.floor(R.f() * kcRecipes.length) % kcRecipes.length;
-  const r = kcRecipes.find((q) => q.id === KillCam.testRecipe) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
+  const r = kcRecipes.find((q) => q.id === (KillCam.testRecipe || 'steady')) || kcRecipes[pick]; // (KillCam.testRecipe: for tests only)
   const szK = K.part === 'head' ? 0.7 : 1;
   const jit = (v) => [v[0], v[1], v[2] * szK, v[3], v[4]]; // no random variation: the four recipes are the four looks
-  const rec = { id: r.id, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
+  const rec = { id: r.id, steady: !!r.steady, entry: jit(r.entry), macro: jit(r.macro), exit: jit(r.exit), lodged: [88, 18, 0.075 * szK, 1.5, 5], whip: r.whip };
   rec.entrySide = 1;
   const key = K.plan && K.plan.key;
   rec.macroSide = key && (key.ref === 'spine' || key.ref === 'spineC') ? -1 : 1;
@@ -33384,6 +33370,7 @@ function kcShotOrbit(K, V, name, t, o) {
     p = rec.exit; side *= rec.exitSide; s = (pl.sOut + 0.13 * szK) * 0.45; size = p[2] * 1.3 * (1 + 0.15 * smooth(t / 1.6));
     if (head) p = [Math.max(p[0], 128), p[1] + 14, p[2], p[3], p[4]]; // a head from further round and above: never face on to the wound
   }
+  if (rec.steady) s = name === 'exit' ? pl.sOut * 0.3 : name === 'lodged' ? s * 0.5 : 0; // the steady view looks at the body's middle
   o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;
   o.phi = side * (p[0] + p[4] * t * short) * kcDeg; o.el = (p[1] + 2.5 * Math.sin(t * 0.8)) * kcDeg;
   // (size is what fills the shorter side of the screen: the height on a phone held sideways)
@@ -33451,7 +33438,7 @@ function kcShotPose(K, V, P) {
     kcShotOrbit(K, V, K.shotPrev, T - K.shotPrevT0, kcO2);
     const u = (T - K.shotT0) / K.shotWhip;
     kcBlendOrbit(kcO2, kcO1, K.rec.whip > 0.4 ? smooth(u) : kcWhipK(u), kcO3);
-    K.whipping = Math.sin(u * Math.PI) * (K.rec.whip > 0.4 ? 0.35 : 1);
+    K.whipping = K.rec.steady ? 0 : Math.sin(u * Math.PI) * (K.rec.whip > 0.4 ? 0.35 : 1); // (no speed streaks in the steady view)
     K.orbNow = kcO3;
     return kcPoseFromOrbit(K, kcO3, P);
   }
@@ -33732,15 +33719,19 @@ function kcRifleSetup(K, V) {
 
 // ---- drawing ----------------------------------------------------------------------------------
 function kcDrawBeat(K, V, ctx) {
-  const o = K.o, W = V.W, H = V.H, T = K.T, pal = kcPal(o), dpr = V.dpr, S = o.sim.S || {};
+  // T counts from the moment the shot breaks; before it (the trigger squeeze) it is negative
+  const o = K.o, W = V.W, H = V.H, PRE = K.tn.pre || 0, T = K.T - PRE, pal = kcPal(o), dpr = V.dpr, S = o.sim.S || {};
   const Rf = K.rifle || kcRifleSetup(K, V);
-  const sh = kcRifleShots[Rf.shot] || kcRifleShots.side, flip = sh[5] ? -1 : 1;
+  // One camera for every film: close on the hand and the trigger while the finger squeezes, then the
+  // moment the shot breaks a quick pan along the barrel to the muzzle, to see the round leave it.
+  const pan = smooth((T - 0.02) / 0.24), SQ = kcRifleShots.action, MZ = kcRifleShots.muzzle, flip = 1;
+  const sh = [0, 0, lerp(SQ[2], MZ[2], pan), lerp(SQ[3], MZ[3], pan), lerp(SQ[4], MZ[4], pan)];
   // the layout: rifle units to screen. The rifle fits the screen's width at zoom 1.
   const span = Rf.x1 - Rf.x0, top = -15, bot = Rf.tri ? 28 : 17, base = Math.min((W * 0.86) / span, (H * 0.56) / (bot - top)) * 0.96;
-  const e = easeOut((T - 0.05) / 0.85), z = lerp(sh[0], sh[1], e), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
+  const e = easeOut((Math.max(0, T) - 0.05) / 0.85), z = lerp(lerp(SQ[0], SQ[1], smooth(K.T / Math.max(0.01, PRE))), lerp(MZ[0], MZ[1], e), pan), sc = base * z, wh = clamp((T - (K.Ta - 0.2)) / 0.2, 0, 1);
   const fx = lerp(Rf.x0, Rf.x1, sh[2]), cx = W * 0.5 - flip * W * 1.5 * wh * wh * wh, cy = H * sh[3];
   // recoil: in this all-but-frozen moment the rifle has only begun to come back
-  const rc = easeOut((T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);
+  const rc = easeOut(Math.max(0, T - 0.03) / 0.6) * 1.5 * (K.power > 0.7 ? 1.4 : 1);
   const tilt = sh[4] - 0.01 * rc;
   // rifle units (u, v) to screen: about (fx, 0), rotated by tilt, scaled, mirrored, placed at (cx, cy)
   const ca = Math.cos(tilt), sa = Math.sin(tilt);
@@ -33779,7 +33770,7 @@ function kcDrawBeat(K, V, ctx) {
   try { drawGun(ctx, o.gunId, o.cfg, (Rf.x0 + Rf.x1) / 2, (top2 + bot2) / 2, bxW, bxH, { time: 1.2 + T * 0.3, shadow: false }); } catch (er) { /* no rifle art: the rest still plays */ }
   // weather on the rifle, the hand, the bolt
   kcRifleWeather(ctx, Rf, T, S);
-  kcHand(ctx, K, Rf, T);
+  kcHand(ctx, K, Rf, T, PRE ? clamp(K.T / PRE, 0, 1) : 1);
   ctx.translate(rc, rc * 0.1);
   // ---- the flash and the gas in front
   kcMuzzleGas(ctx, K, Rf, mx, my, t1, T, true);
@@ -33794,7 +33785,7 @@ function kcDrawBeat(K, V, ctx) {
   // the side through a long lens. In screen space (the camera for it is set from the muzzle's place).
   toS(mx - rc, my - rc * 0.1, P);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const tip = T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
+  const tip = T < 0 ? -99 : T < 0.76 ? -4 + 30 * Math.pow(T / 0.76, 0.9) : 26 + 50 * (T - 0.76) + 1500 * (T - 0.76) * (T - 0.76);
   const bc = kcCamAim({ x: 1000 * flip, y: 0, z: 0, yaw: -Math.PI / 2 * flip, pitch: 0, f: 1000 * sc, px: P[0], py: P[1] });
   ctx.save(); ctx.translate(P[0], P[1]); ctx.rotate(tilt * flip); ctx.translate(-P[0], -P[1]);
   ctx.beginPath(); if (flip > 0) ctx.rect(P[0], -H, W * 3, H * 3); else ctx.rect(P[0] - W * 3, -H, W * 3, H * 3); ctx.clip();
@@ -34028,7 +34019,7 @@ function kcFrontWeather(ctx, Rf, T, W, H) {
 }
 // The gloved hand: on the grip, finger on the trigger as the shot goes; then (a bolt action) up to
 // the bolt, lifting it and drawing it back, and the empty case spinning out of the port.
-function kcHand(ctx, K, Rf, T) {
+function kcHand(ctx, K, Rf, T, squeeze) {
   const gp = kcGrip[Rf.type] || kcGrip.classic, B = Rf.bolt;
   const glove = '#262826', glove2 = '#3d403c', seam = 'rgba(0,0,0,0.45)', sleeve = '#323a2d';
   // the bolt: lifted (up to 70 degrees about its root), then drawn back
@@ -34070,7 +34061,8 @@ function kcHand(ctx, K, Rf, T) {
   }
   // the index finger along to the trigger (while the hand is on the grip)
   if (reach < 0.5) {
-    const tx = gp.tr[0], ty = gp.tr[1], fx0 = hx + 0.5, fy0 = hy - 2.2;
+    // the finger curls back as it takes up the trigger, slowly, until the shot breaks
+    const sq = smooth(squeeze === undefined ? 1 : squeeze), tx = gp.tr[0] + 0.9 - sq * 1.6, ty = gp.tr[1] + 0.2 * sq, fx0 = hx + 0.5, fy0 = hy - 2.2;
     ctx.strokeStyle = glove; ctx.lineWidth = 1.7; ctx.beginPath(); ctx.moveTo(fx0, fy0); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0 - 0.6, tx, ty); ctx.stroke();
     ctx.strokeStyle = seam; ctx.lineWidth = 0.3; ctx.beginPath(); ctx.moveTo(fx0 + 1, fy0 + 0.5); ctx.quadraticCurveTo((fx0 + tx) / 2, fy0, tx - 0.4, ty + 0.4); ctx.stroke();
   }
@@ -34159,7 +34151,8 @@ function kcStatsDraw(ctx, K, V) {
 }
 // A label on the main thing the round broke (or where it came to rest), on a line to it.
 function kcCaption(ctx, K, c, V) {
-  const cp = K.cap; if (!cp || !K.fig || K.short === 2) return;
+  // (what was hit is in the damage list now, kcHitList; the line to the body is kept for a round that lodged)
+  const cp = K.cap; if (!cp || !K.fig || K.short === 2 || (cp.ref !== 'lodged' && K.hits && K.hits.length)) return;
   const pl = K.plan, age = K.T - cp.t0 - 0.08, life = cp.ref === 'lodged' ? 1.6 : 1.5; if (age < 0 || age > life) return;
   const tx = kcCapText[cp.ref] || [cp.text || '', ''], fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
   kcTrack(K, cp.s, kcL0);
@@ -34187,6 +34180,24 @@ function kcCaption(ctx, K, c, V) {
   ctx.globalAlpha = a * 0.5; ctx.fillStyle = '#000'; ctx.fillRect(tx0 - 6, y1 - fs - 3, tw + 12, fs + 9);
   ctx.globalAlpha = a; ctx.fillStyle = '#f1f5f4'; kcSpaced(ctx, tx[0] + (tx[1] ? ':' : ''), tx0, y1, 2, true);
   if (tx[1]) { ctx.fillStyle = '#ff5a4e'; kcSpaced(ctx, tx[1], tx0 + w1 + 9, y1, 2, true); }
+  ctx.globalAlpha = 1;
+}
+// The damage list: everything the round has gone through, one line each as it happens, stacked down
+// the left side (the killing one in red). Gone as the X-ray fades back into the real scene.
+function kcHitList(ctx, K, V) {
+  const L = K.hits; if (!L || !L.length || K.short === 2) return;
+  const W = V.W, H = V.H, fade = 1 - smooth((K.fallK || 0) / 0.5); if (fade < 0.01) return;
+  const fs = W < 500 ? 14 : W < 700 ? 15 : 17, lh = fs + 9, x0 = Math.max(14, W * 0.03), y0 = kcBars(W, H) + 14;
+  ctx.font = '800 ' + fs + 'px ' + kcFont; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  for (let i = 0; i < L.length; i++) {
+    const h = L[i], age = K.T - h.t0, a = smooth(age / 0.15) * fade; if (a < 0.01) continue;
+    const slide = (1 - easeOut(age / 0.22)) * -24, y = y0 + i * lh + fs, x = x0 + slide;
+    const w1 = kcSpaced(ctx, h.t[0], 0, 0, 1.5, false), w2 = h.t[1] ? kcSpaced(ctx, h.t[1], 0, 0, 1.5, false) : 0, tw = w1 + 8 + w2;
+    ctx.globalAlpha = a * 0.55; ctx.fillStyle = '#000'; ctx.fillRect(x - 6, y - fs - 2, tw + 22, fs + 8);
+    ctx.globalAlpha = a; ctx.fillStyle = h.key ? '#ff5a4e' : '#f1f5f4'; ctx.fillRect(x - 6, y - fs - 2, 3, fs + 8);
+    ctx.fillStyle = '#f1f5f4'; kcSpaced(ctx, h.t[0], x + 4, y, 1.5, true);
+    ctx.fillStyle = h.key ? '#ff5a4e' : '#ffb27a'; kcSpaced(ctx, h.t[1], x + 12 + w1, y, 1.5, true);
+  }
   ctx.globalAlpha = 1;
 }
 // As the body falls: the stamp for what the shot was, knocked onto the picture, and up to two more below it.
@@ -39104,7 +39115,8 @@ const COS_TINTS = [
 ];
 const COS_TINT_BY_ID = {}; COS_TINTS.forEach((c) => { COS_TINT_BY_ID[c.id] = c; });
 // The colour the scope's marks are drawn in, for the picture code (null means the usual black).
-CB.reticleInk = function () { const d = Save.data, t = d && d.cos && COS_TINT_BY_ID[d.cos.tint]; return t && t.id !== 'black' ? t.col : null; };
+// (only in a mission: the scope on the title screen keeps the plain black reticle)
+CB.reticleInk = function () { const G = CB.Game; if (!G || G.state !== 'mission') return null; const d = Save.data, t = d && d.cos && COS_TINT_BY_ID[d.cos.tint]; return t && t.id !== 'black' ? t.col : null; };
 
 // ---- the rank track ----
 // What each rank hands you. The ten clearance ranks keep the sealed cache they always paid; every
@@ -39612,16 +39624,13 @@ UI.paintJob = function (j, time) {
     }
     else if (j.kind === 'swatch') {
       drawSwatch(x, j.skin, 0, 0, w, h, t);
-      if (j.skin.shimmer && time !== undefined) { // the same winking glints as on the rifle
-        x.save(); x.globalCompositeOperation = 'lighter';
-        for (let i = 0; i < 3; i++) {
-          const per = 2.4 + i * 0.7, u = ((t + i * 1.3) % per) / per; if (u > 0.2) continue;
-          const a = Math.sin((u / 0.2) * Math.PI), gx = w * (0.2 + 0.3 * i), gy = h * (0.3 + 0.2 * (i % 2)), r = Math.min(w, h) * 0.22;
-          const g = x.createRadialGradient(gx, gy, 0, gx, gy, r * 0.6); g.addColorStop(0, 'rgba(255,255,255,' + (0.9 * a).toFixed(3) + ')'); g.addColorStop(1, rgba(j.skin.shimmer, 0));
-          x.fillStyle = g; x.beginPath(); x.arc(gx, gy, r * 0.6, 0, TAU); x.fill();
-          x.strokeStyle = 'rgba(255,255,255,' + (0.8 * a).toFixed(3) + ')'; x.lineWidth = 1; x.beginPath(); x.moveTo(gx - r * 1.4, gy); x.lineTo(gx + r * 1.4, gy); x.moveTo(gx, gy - r); x.lineTo(gx, gy + r); x.stroke();
+      if (j.skin.shimmer && time !== undefined) { // the same thin streak of light as on the rifle
+        const per = 3.6, k = Math.floor(t / per), u = (t - k * per) / 1.5;
+        if (u < 1) {
+          const bx = w * lerp(0.1, 0.9, u), bw = Math.max(6, w * 0.06), al = Math.sin(u * Math.PI);
+          const g = x.createLinearGradient(bx - bw, 0, bx + bw, 0); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, rgba(j.skin.shimmer, 0.4 * al)); g.addColorStop(1, 'rgba(255,255,255,0)');
+          x.save(); x.globalCompositeOperation = 'lighter'; x.fillStyle = g; x.transform(1, 0, -0.45, 1, h * 0.25, 0); x.fillRect(bx - bw, -2, bw * 2, h + 4); x.restore();
         }
-        x.restore();
       }
     } else if (j.kind === 'insig') { const s = Math.min(w, h); CB.insignia(x, j.n, (w - s) / 2, (h - s) / 2, s, j.pres); }
     else if (j.kind === 'portrait') { const s = Math.min(w, h); CB.portrait(x, j.cv.dataset.portrait || j.who, (w - s) / 2, (h - s) / 2, s, { mood: j.cv.dataset.mood || j.mood, t }); }

@@ -61,7 +61,8 @@
 const KillCam = CB.KillCam = { active: false, done: false, rate: 0.05 };
 
 const kcTune = {
-  beat: 0.95,        // seconds spent at the rifle
+  pre: 0.75,         // seconds of slow motion on the finger squeezing the trigger before the shot breaks
+  beat: 0.95,        // seconds spent at the rifle after the shot breaks
   flightMin: 1.3,    // seconds of flight for a 100 m shot
   flightMax: 2.1,    // seconds of flight for a 900 m shot
   swing: 1.3,        // seconds for the camera to come round
@@ -71,8 +72,8 @@ const kcTune = {
   approach: 1.05,    // seconds from the end of the swing to the round touching the skin
   touchV: 0.09,      // metres per second the round is down to as it touches
   touch: 0.35,       // seconds it all but stops there, the moment of impact
-  freeze: 0.5,       // seconds the film stops dead as the round reaches the main thing it hits
-  crawl: 0.36,       // metres per second the round is shown moving through the body
+  freeze: 0,         // seconds the film stops dead as the round reaches the main thing it hits
+  crawl: 0.27,       // metres per second the round is shown moving through the body
   linger: 0.85,      // seconds the exit hangs in the air before the hold
   rest: 0.5,         // seconds held on a round that stopped (in the body or just past it)
   insideMax: 4.6,    // seconds inside the body at most, whatever happens
@@ -92,7 +93,7 @@ const kcTune = {
 // The short cut (KillCam.cut = 'short', or o.cut): the same film in about five seconds, for
 // replays and second kills: a glimpse of the muzzle, a quick chase, the way in, the main thing
 // hit, the way out, the fall.
-const kcShortTune = Object.assign({}, kcTune, { beat: 0.14, flightMin: 0.4, flightMax: 0.55, swing: 0.6, approach: 0.45, touch: 0.16, crawl: 0.85, linger: 0.42, rest: 0.3, insideMax: 2.2, freeze: 0.32, hold: 0.45, holdMax: 1.5, out: 0.22, fallIn: 0.55 });
+const kcShortTune = Object.assign({}, kcTune, { pre: 0, beat: 0.14, flightMin: 0.4, flightMax: 0.55, swing: 0.6, approach: 0.45, touch: 0.16, crawl: 0.85, linger: 0.42, rest: 0.3, insideMax: 2.2, freeze: 0.32, hold: 0.45, holdMax: 1.5, out: 0.22, fallIn: 0.55 });
 KillCam.tune = kcTune; // (for tests and tuning; nothing in the game changes it)
 // bullet diameters in millimetres, by the rifle's calibre
 const kcCalMm = { c22: 5.7, c556: 5.7, c308: 7.8, c762r: 7.9, c8mm: 8.2, c65: 6.7, c300m: 7.8, c338: 8.6, c408: 10.4, c50: 12.9, c300s: 7.8, c9s: 9, crail: 6 };
@@ -268,7 +269,7 @@ KillCam.start = function (o) {
   // the timeline, in real seconds
   const far = clamp((K.dist - 100) / 800, 0, 1);
   K.Tf = lerp(K.tn.flightMin, K.tn.flightMax, far) * clamp(K.dist / 100, 0.45, 1);
-  K.Ta = K.tn.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + K.tn.swing;
+  K.Ta = (K.tn.pre || 0) + K.tn.beat; K.Tb = K.Ta + K.Tf; K.Tc = K.Tb + K.tn.swing;
   // the round itself
   const mm = kcCalMm[st.cal] || 7.8;
   K.rad = (mm / 2000) * kcTune.bulletScale; K.len = K.rad * 2 * (st.cal === 'crail' ? 5.4 : 4.1);
@@ -308,7 +309,7 @@ KillCam.start = function (o) {
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
   K.Td = K.Tc + K.tn.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
@@ -362,7 +363,7 @@ function kcAdvance(K, o, dt) {
   const T = K.T, cap = o.tHit - K.step * 0.25; // before the hit is shown the world may not pass this
   K.prevRet = K.ret;
   let wr = 0; // how fast the world's clock runs this frame (world seconds per film second), for KillCam.rate
-  if (!K.snd.fly && T >= 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
+  if (!K.snd.fly && T >= (K.tn.pre || 0) + 0.08) { K.snd.fly = 1; kcSay(K, 'fly'); } // the tip clears the muzzle
   if (T < K.Ta) {
     // ---- 0: at the rifle. Time is all but stopped.
     K.stage = 0; K.speedK = 0;
@@ -590,6 +591,8 @@ function kcFire(K, ev) {
   if (ev.kind === 'wall') { kcWallHit(K, at); return; }
   K.dmg[ev.ref] = K.ct;
   if (pl.key === ev) K.cap = { text: ev.label, ref: ev.ref, kind: ev.kind, t0: K.T, s: ev.s };
+  // every organ and bone the round goes through joins the damage list (a pair, like the lungs, once)
+  { const tx = kcCapText[ev.ref]; if (tx && ev.ref !== 'lodged' && K.hits && !K.hits.some((h) => h.t[0] === tx[0])) K.hits.push({ t: tx, t0: K.T, key: pl.key === ev }); }
   if (ev.ref === 'skullIn' && K.burst) K.dmg.burst = K.ct + 0.1;
   // (lifetimes are in the spray's own slowed time: 0.15 of a second of it is a second on screen)
   // Everything with blood in it is scaled by how hard the round hits (K.gk, K.gx: see KillCam.start),
@@ -1097,7 +1100,7 @@ function kcDrawXray(K, V, ctx, dt) {
     }
     kcBullet(ctx, c, tipx, tipy, tipz, d[0], d[1], d[2], bo);
   }
-  kcCaption(ctx, K, c, V);
+  kcCaption(ctx, K, c, V); kcHitList(ctx, K, V);
 }
 // How the round looks now: spinning, its nose spreading (a soft or hollow point opens into petals),
 // tumbling end over end (a light round), still hot.

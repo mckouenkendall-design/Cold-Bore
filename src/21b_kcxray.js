@@ -821,7 +821,7 @@ function kcXBrain(ctx, K, c, fig, al, items) {
       const lw = Math.max(0.6, 0.0042 * s);
       // the folds on each half: dark grooves, then a light edge beside each
       for (const sd of [-1, 1]) {
-        const W = kcXWorms('brain', 150, 13, 0.052, sd, -0.25);
+        const W = kcXWorms('brain', 230, 13, 0.052, sd);
         kcXOnEgg(ctx, c, hd, bx, by, bz, Ra, Rb, Rc, W); ctx.globalAlpha = al * 0.85; ctx.strokeStyle = '#6e2c38'; ctx.lineWidth = lw; ctx.stroke();
         kcXOnEgg(ctx, c, hd, bx + Ra * 0.02, by + Rb * 0.03, bz, Ra * 0.995, Rb * 0.995, Rc * 0.995, W); ctx.globalAlpha = al * 0.35; ctx.strokeStyle = '#f6d0cc'; ctx.lineWidth = lw * 0.6; ctx.stroke();
       }

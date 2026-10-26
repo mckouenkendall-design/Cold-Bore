@@ -1008,20 +1008,6 @@ function skinPaints(skin, A) {
   return { furn: fac ? A.furn : skin.furn, metal: fac ? A.metal : skin.metal, acc: fac ? A.acc : (skin.acc || A.acc) };
 }
 
-// Where a rifle's glints sit: a dozen points on the painted parts, worked out once per rifle build and
-// kept on the shape list. Each winks for a fifth of its own period, the periods differ, so they never
-// line up into a sweep.
-function gunGlints(G, order) {
-  if (G._glints) return G._glints;
-  const cv = document.createElement('canvas'), x = cv.getContext('2d'), P = new Path2D(), out = [], R = makeRng(hashStr('glint' + G.x0 + G.x1 + order.length));
-  for (const s of order) { if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass' || s.zone === 'coil') continue; if (s.t === 'p') { P.moveTo(s.pts[0], s.pts[1]); for (let k = 2; k < s.pts.length; k += 2) P.lineTo(s.pts[k], s.pts[k + 1]); P.closePath(); } else if (s.t === 'r') P.rect(s.x, s.y, s.w, s.h); else P.arc(s.x, s.y, s.r, 0, TAU); }
-  for (let n = 0, tries = 0; n < 12 && tries < 400; tries++) {
-    const px = G.x0 + ((n + R.f()) / 12) * (G.x1 - G.x0), py = R.r(-14, 12);
-    if (!x.isPointInPath(P, px, py)) continue;
-    out.push({ x: px, y: py, r: R.r(2, 3.4), per: R.r(2.2, 4.2), ph: R.r(0, 5) }); n++;
-  }
-  G._glints = out; return out;
-}
 // Draw a rifle centred in the box (cx, cy, w, h).
 function drawGun(ctx, gunId, cfg, cx, cy, w, h, o) {
   o = o || {};
@@ -1071,26 +1057,19 @@ function drawGun(ctx, gunId, cfg, cx, cy, w, h, o) {
     }
     ctx.strokeStyle = lineCol; ctx.lineWidth = lineW; ctx.stroke();
   }
-  // legendary sheen: the finish catches the light in small star glints that wink on and off one after
-  // another at different spots on the rifle, over a very soft breathing gloss (instead of one band of light)
+  // legendary sheen: every few seconds a thin, soft streak of light slides along part of the rifle
+  // (a different stretch each time, never the whole length), fading in and out as it goes
   if (skin.shimmer && o.time !== undefined) {
-    const t = o.time, gl = gunGlints(G, order);
-    ctx.save(); ctx.beginPath();
-    for (let i = 0; i < order.length; i++) { const s = order[i]; if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass') continue; if (s.t === 'p') { ctx.moveTo(s.pts[0], s.pts[1]); for (let k = 2; k < s.pts.length; k += 2) ctx.lineTo(s.pts[k], s.pts[k + 1]); ctx.closePath(); } else if (s.t === 'r') ctx.rect(s.x, s.y, s.w, s.h); else ctx.arc(s.x, s.y, s.r, 0, TAU); }
-    ctx.clip(); ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.025 + 0.02 * Math.sin(t * 0.9); ctx.fillStyle = skin.shimmer; ctx.fillRect(G.x0 - 2, -20, span + 4, 50);
-    ctx.restore(); ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < gl.length; i++) {
-      const g = gl[i], u = (((t + g.ph) % g.per) + g.per) % g.per / g.per; if (u > 0.2) continue;
-      const a = Math.sin((u / 0.2) * Math.PI), r = g.r * (0.6 + 0.4 * a);
-      const rg = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, r * 0.7); rg.addColorStop(0, rgba('#ffffff', 0.95 * a)); rg.addColorStop(0.35, rgba(skin.shimmer, 0.45 * a)); rg.addColorStop(1, rgba(skin.shimmer, 0));
-      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(g.x, g.y, r * 0.7, 0, TAU); ctx.fill();
-      ctx.strokeStyle = rgba('#ffffff', 0.85 * a); ctx.lineCap = 'round';
-      ctx.lineWidth = 0.22; ctx.beginPath(); ctx.moveTo(g.x - r * 1.6, g.y); ctx.lineTo(g.x + r * 1.6, g.y); ctx.stroke();
-      ctx.lineWidth = 0.16; ctx.beginPath(); ctx.moveTo(g.x, g.y - r); ctx.lineTo(g.x, g.y + r); ctx.stroke();
-      ctx.lineWidth = 0.1; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(g.x - r * 0.5, g.y - r * 0.5); ctx.lineTo(g.x + r * 0.5, g.y + r * 0.5); ctx.moveTo(g.x + r * 0.5, g.y - r * 0.5); ctx.lineTo(g.x - r * 0.5, g.y + r * 0.5); ctx.stroke(); ctx.globalAlpha = 1;
+    const per = 3.6, k = Math.floor(o.time / per), u = (o.time - k * per) / 1.5;
+    if (u < 1) {
+      const h1 = (hashStr('sh' + k) % 1000) / 1000, a0 = 0.05 + 0.5 * h1, a1 = a0 + 0.35, bx = G.x0 + span * lerp(a0, a1, u), al = Math.sin(u * Math.PI);
+      ctx.save(); ctx.beginPath();
+      for (let i = 0; i < order.length; i++) { const s = order[i]; if (s.t === 'l' || s.zone === 'rubber' || s.zone === 'glass') continue; if (s.t === 'p') { ctx.moveTo(s.pts[0], s.pts[1]); for (let k2 = 2; k2 < s.pts.length; k2 += 2) ctx.lineTo(s.pts[k2], s.pts[k2 + 1]); ctx.closePath(); } else if (s.t === 'r') ctx.rect(s.x, s.y, s.w, s.h); else ctx.arc(s.x, s.y, s.r, 0, TAU); }
+      ctx.clip();
+      const g2 = ctx.createLinearGradient(bx - 3.2, 0, bx + 3.2, 0); g2.addColorStop(0, 'rgba(255,255,255,0)'); g2.addColorStop(0.5, rgba(skin.shimmer, 0.38 * al)); g2.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g2; ctx.transform(1, 0, -0.45, 1, 0, 0); ctx.fillRect(bx - 5, -40, 18, 90);
+      ctx.restore();
     }
-    ctx.restore();
   }
   ctx.restore();
   return { scale: sc };

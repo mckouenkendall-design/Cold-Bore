@@ -74,7 +74,8 @@ function kcStatsDraw(ctx, K, V) {
 }
 // A label on the main thing the round broke (or where it came to rest), on a line to it.
 function kcCaption(ctx, K, c, V) {
-  const cp = K.cap; if (!cp || !K.fig || K.short === 2) return;
+  // (what was hit is in the damage list now, kcHitList; the line to the body is kept for a round that lodged)
+  const cp = K.cap; if (!cp || !K.fig || K.short === 2 || (cp.ref !== 'lodged' && K.hits && K.hits.length)) return;
   const pl = K.plan, age = K.T - cp.t0 - 0.08, life = cp.ref === 'lodged' ? 1.6 : 1.5; if (age < 0 || age > life) return;
   const tx = kcCapText[cp.ref] || [cp.text || '', ''], fr = pl.part === 'head' ? K.fig.hd : K.fig.tor;
   kcTrack(K, cp.s, kcL0);
@@ -102,6 +103,24 @@ function kcCaption(ctx, K, c, V) {
   ctx.globalAlpha = a * 0.5; ctx.fillStyle = '#000'; ctx.fillRect(tx0 - 6, y1 - fs - 3, tw + 12, fs + 9);
   ctx.globalAlpha = a; ctx.fillStyle = '#f1f5f4'; kcSpaced(ctx, tx[0] + (tx[1] ? ':' : ''), tx0, y1, 2, true);
   if (tx[1]) { ctx.fillStyle = '#ff5a4e'; kcSpaced(ctx, tx[1], tx0 + w1 + 9, y1, 2, true); }
+  ctx.globalAlpha = 1;
+}
+// The damage list: everything the round has gone through, one line each as it happens, stacked down
+// the left side (the killing one in red). Gone as the X-ray fades back into the real scene.
+function kcHitList(ctx, K, V) {
+  const L = K.hits; if (!L || !L.length || K.short === 2) return;
+  const W = V.W, H = V.H, fade = 1 - smooth((K.fallK || 0) / 0.5); if (fade < 0.01) return;
+  const fs = W < 500 ? 14 : W < 700 ? 15 : 17, lh = fs + 9, x0 = Math.max(14, W * 0.03), y0 = kcBars(W, H) + 14;
+  ctx.font = '800 ' + fs + 'px ' + kcFont; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  for (let i = 0; i < L.length; i++) {
+    const h = L[i], age = K.T - h.t0, a = smooth(age / 0.15) * fade; if (a < 0.01) continue;
+    const slide = (1 - easeOut(age / 0.22)) * -24, y = y0 + i * lh + fs, x = x0 + slide;
+    const w1 = kcSpaced(ctx, h.t[0], 0, 0, 1.5, false), w2 = h.t[1] ? kcSpaced(ctx, h.t[1], 0, 0, 1.5, false) : 0, tw = w1 + 8 + w2;
+    ctx.globalAlpha = a * 0.55; ctx.fillStyle = '#000'; ctx.fillRect(x - 6, y - fs - 2, tw + 22, fs + 8);
+    ctx.globalAlpha = a; ctx.fillStyle = h.key ? '#ff5a4e' : '#f1f5f4'; ctx.fillRect(x - 6, y - fs - 2, 3, fs + 8);
+    ctx.fillStyle = '#f1f5f4'; kcSpaced(ctx, h.t[0], x + 4, y, 1.5, true);
+    ctx.fillStyle = h.key ? '#ff5a4e' : '#ffb27a'; kcSpaced(ctx, h.t[1], x + 12 + w1, y, 1.5, true);
+  }
   ctx.globalAlpha = 1;
 }
 // As the body falls: the stamp for what the shot was, knocked onto the picture, and up to two more below it.

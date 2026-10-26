@@ -64,7 +64,8 @@ const COS_TINTS = [
 ];
 const COS_TINT_BY_ID = {}; COS_TINTS.forEach((c) => { COS_TINT_BY_ID[c.id] = c; });
 // The colour the scope's marks are drawn in, for the picture code (null means the usual black).
-CB.reticleInk = function () { const d = Save.data, t = d && d.cos && COS_TINT_BY_ID[d.cos.tint]; return t && t.id !== 'black' ? t.col : null; };
+// (only in a mission: the scope on the title screen keeps the plain black reticle)
+CB.reticleInk = function () { const G = CB.Game; if (!G || G.state !== 'mission') return null; const d = Save.data, t = d && d.cos && COS_TINT_BY_ID[d.cos.tint]; return t && t.id !== 'black' ? t.col : null; };
 
 // ---- the rank track ----
 // What each rank hands you. The ten clearance ranks keep the sealed cache they always paid; every
