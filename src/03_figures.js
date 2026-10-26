@@ -93,15 +93,16 @@ function figPose(anim, t, ph, A) {
   const b = Math.sin(t * 1.6 + (A.seed || 0)) * 0.015;
   const p = { hy: FIG.hip + b * 0.4, lean: 0, tL: 0.04, tR: -0.04, kL: 0.02, kR: 0.02, aL: 0.06, aR: -0.06, eL: 0.12, eR: 0.12 };
   const s = Math.sin(ph);
+  // the state somebody is in (once dead, the one they died in, which drawFigure remembers), for the poses that go with it
+  const st = A.dead ? A._st : A.state;
   anim = figAimAs(A, anim);
   switch (anim) {
     case 'walk':
-      figGait(p, FIG_GAIT.walk, ph);
-      p.aL = -0.38 * s; p.aR = 0.38 * s; p.eL = 0.28; p.eR = 0.28; p.lean = 0.05;
+      figWalk(p, t, ph, A); // each person's own walk (src/03f_moves.js)
       break;
     case 'run': case 'panic':
       figGait(p, FIG_GAIT.run, ph); p.lean = 0.24;
-      if (anim === 'panic') { p.aL = 2.7 + 0.3 * s; p.aR = 2.5 - 0.3 * s; p.eL = 0.5; p.eR = 0.5; p.lean = 0.16; }
+      if (anim === 'panic') figPanic(p, t, ph, A);
       else { p.aL = -0.9 * s; p.aR = 0.9 * s; p.eL = 1.4; p.eR = 1.4; }
       break;
     case 'climb': { // up a ladder: hand over hand, a foot up to the next rung with each
@@ -133,15 +134,13 @@ function figPose(anim, t, ph, A) {
       break;
     }
     case 'talk':
-      p.aR = 0.5 + 0.2 * Math.sin(t * 3.1 + (A.seed || 0)); p.eR = 1.3 + 0.45 * Math.sin(t * 2.3);
-      p.aL = 0.15; p.eL = 0.5 + 0.2 * Math.sin(t * 1.7);
-      p.head = 0.05 * Math.sin(t * 1.3);
+      figTalk(p, t, A);
       break;
     case 'sit': case 'type': case 'sitphone': case 'sitdrink':
       p.hy = 0.5; p.tL = 1.5; p.tR = 1.42; p.kL = 1.5; p.kR = 1.42; p.lean = 0.04;
       if (anim === 'type') { p.aL = 0.75; p.eL = 0.8 + 0.06 * Math.sin(t * 9); p.aR = 0.7; p.eR = 0.85 + 0.06 * Math.cos(t * 11); p.lean = 0.12; }
       else if (anim === 'sitphone') { p.aR = 0.35; p.eR = 2.45; p.aL = 0.5; p.eL = 0.9; }
-      else if (anim === 'sitdrink') { const u = (Math.sin(t * 0.9 + (A.seed || 0)) > 0.75) ? 1 : 0; p.aR = 0.5; p.eR = u ? 2.2 : 1.2; p.aL = 0.5; p.eL = 0.9; }
+      else if (anim === 'sitdrink') { const u = smooth((Math.sin(t * 0.9 + (A.seed || 0)) - 0.6) / 0.3); p.aR = 0.5 + 0.05 * u; p.eR = lerp(1.2, 2.2, u); p.head = -0.1 * u; p.aL = 0.5; p.eL = 0.9; }
       else { p.aL = 0.55; p.eL = 0.9; p.aR = 0.5; p.eR = 0.95; }
       break;
     case 'lean':
@@ -152,9 +151,11 @@ function figPose(anim, t, ph, A) {
       break;
     case 'aim':
       p.aL = 1.45; p.eL = 0.1; p.aR = 1.5; p.eR = 0.05; p.tL = 0.22; p.tR = -0.2; p.lean = 0.06;
+      if (st === 'alarm') figAlarm(p, t, A); // a guard calling it in (src/03f_moves.js)
       break;
     case 'aimrifle':
       p.aL = 1.25; p.eL = 0.4; p.aR = 0.7; p.eR = 1.5; p.tL = 0.25; p.tR = -0.22; p.lean = 0.1;
+      if (st === 'alarm') figAlarm(p, t, A);
       break;
     case 'look':
       p.aL = 0.75; p.eL = 2.2; p.aR = 0.7; p.eR = 2.25; p.head = -0.05;
@@ -168,12 +169,11 @@ function figPose(anim, t, ph, A) {
     case 'kneel':
       p.hy = 0.47; p.tL = 0.4; p.kL = 1.95; p.tR = 0.3; p.kR = 1.9; p.aL = -0.5; p.eL = -0.7; p.aR = -0.55; p.eR = -0.7; p.lean = 0.08; p.head = 0.25;
       break;
-    case 'cower':
-      p.hy = 0.5; p.tL = 1.25; p.kL = 2.3; p.tR = 1.15; p.kR = 2.25; p.lean = 0.55; p.aL = 2.5; p.eL = 0.9; p.aR = 2.4; p.eR = 1.0;
-      p.hx = 0.02 * Math.sin(t * 18);
+    case 'cower': // crouched down low, feet on the ground (src/03f_moves.js)
+      figCower(p, t, A);
       break;
-    case 'work': // hands busy at waist height (welding, fishing, counting money)
-      p.lean = 0.18; p.aL = 0.7; p.eL = 0.8 + 0.1 * Math.sin(t * 5); p.aR = 0.6; p.eR = 0.9 + 0.1 * Math.cos(t * 6);
+    case 'work': // hands busy at waist height, with a tool that suits the person
+      figWork(p, t, A);
       break;
     case 'sweep':
       p.lean = 0.22; p.aL = 0.6 + 0.2 * Math.sin(t * 2.4); p.eL = 0.5; p.aR = 0.3 + 0.2 * Math.sin(t * 2.4); p.eR = 0.9;
@@ -213,13 +213,22 @@ function figPose(anim, t, ph, A) {
       }
       break;
     }
-    default: // stand
-      p.aL = 0.07 + b; p.aR = -0.05 - b;
+    default: // stand: each person's own way of waiting about, a suspicious one peering round
+      if (st === 'susp') figPeer(p, t, A);
+      else figStand(p, t, A, b);
   }
   return p;
 }
 
 const POSE_BLEND = 0.26, POSE_KEYS = ['hx', 'hy', 'lean', 'head', 'tL', 'tR', 'kL', 'kR', 'aL', 'aR', 'eL', 'eR'];
+// How far into a change of pose at u (0 to 1). The arms, head and body draw back a touch before they
+// go and go a touch too far before they settle; the hips and legs (which carry the weight) just ease.
+const POSE_SWING = { lean: 1, head: 1, aL: 1, aR: 1, eL: 1, eR: 1 };
+function figBlendK(u, key) {
+  if (POSE_SWING[key] !== 1) return smooth(u);
+  const c = 1.6, v = 2 * u;
+  return u < 0.5 ? (v * v * ((c + 1) * v - c)) / 2 : ((v - 2) * (v - 2) * ((c + 1) * (v - 2) + c) + 2) / 2;
+}
 
 // ---- changing pose ----------------------------------------------------------
 // Every change of pose eases over POSE_BLEND seconds, out of whatever the figure looked like at
@@ -237,7 +246,7 @@ function figLivePose(A) {
   const t = A.t || 0, ph = A.ph || 0, p = figPose(A.animCur || A.anim || 'stand', t, ph, A);
   if (A.animFrom && A.animAt !== undefined) {
     const u = (t - A.animAt) / POSE_BLEND;
-    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A), k = smooth(u); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, k); } }
+    if (u >= 0 && u < 1) { const q = figPose(A.animFrom, t, ph, A); for (let i = 0; i < POSE_KEYS.length; i++) { const key = POSE_KEYS[i]; p[key] = lerp(q[key] || 0, p[key] || 0, figBlendK(u, key)); } }
   }
   return p;
 }
@@ -317,15 +326,15 @@ const FIG_SHOES = ['#101114', '#2b2119', '#1c1e23'];
 const FGS = { ctx: null, A: null, L: null, env: null, st: null, anim: 'stand', px: 1, hi: false, fine: false, f: 1, fs: 1, fa: 1, fl: 1, wl: 1,
   sc: 1, ink: '#13161b', rim: null, rw: 0.02, light: 1, la: 0, lc: '#ffffff', lx: 0, ly: 1, hlx: 0, hly: 1, t: 0, seed: 0, bw: 1, lag: 0, mv: 0, dead: false, dT: 0, seated: false, grip: false,
   ux: 0, uy: 1, nx: 1, ny: 0, T: 0.56, ww: 0.08, wc: 0.09, wsh: 0.1, hdx: 0, hdy: 0, htilt: 0, wind: 0,
-  cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false,
+  cR: null, cL: null, dR: [0, 0], dL: [0, 0], nearHand: false, shL: null, shR: null,
   hip: [0, 0], neck: [0, 0], head: [0, 0], sh: [0, 0], knL: [0, 0], ftL: [0, 0], knR: [0, 0], ftR: [0, 0], elL: [0, 0], haL: [0, 0], elR: [0, 0], haR: [0, 0] };
 
 function figSeg(ctx, a, b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
 
 // Colours as they look in this light. `figDimK` is how far into the dark the person is.
-let figDimK = 0;
+let figDimK = 0, figFlashK = 0; // figFlashK: the one frame a person is hit, everything goes pale
 const figHex = (c) => typeof c === 'string' && c.charAt(0) === '#';
-function figC(c) { return figDimK > 0 && figHex(c) ? mix(c, '#05070b', figDimK) : c; }
+function figC(c) { if (figFlashK > 0) return figHex(c) ? mix(c, '#fff3e6', figFlashK) : c; return figDimK > 0 && figHex(c) ? mix(c, '#05070b', figDimK) : c; }
 function figSh(c, k) { return figHex(c) ? figC(mix(c, '#07090d', k)) : c; } // a darker shade of it
 function figHi(c, k) { return figHex(c) ? figC(mix(c, '#ffffff', k)) : c; } // a paler tint of it
 
@@ -427,22 +436,61 @@ function figSkirtPath(c, G, ww, len, flare, sag, swing, follow) {
   if (sag) c.quadraticCurveTo((x0 + x1) / 2 + (ax + bx) * sag, (y0 + y1) / 2 + (ay + by) * sag, x0, y0); else c.lineTo(x0, y0);
   c.lineTo(figPX(G, 0.06, -ww), figPY(G, 0.06, -ww)); c.closePath();
 }
-// A hand at the end of a forearm. Open hands curl a little and are never quite still.
-function figHandPath(c, G, el, ha, grip) {
-  const r = 0.033 * G.bw;
-  if (grip) { c.moveTo(ha[0] + r * 1.08, ha[1]); c.arc(ha[0], ha[1], r * 1.08, 0, TAU); return; }
+// A hand at the end of a forearm, close up. What shape it makes says what it is doing (G.handR,
+// G.handL, set in drawFigure; the far hand is L):
+//   relaxed  fingers curled a little, never quite still     grip   closed round something held
+//   fist     clenched                                        open   a flat palm, the thumb out
+//   point    a fist with the first finger out                splay  fingers spread (fright)
+// All of it is the same black as the arm: a hand reads by its outline.
+function figHandPath(c, G, el, ha, grip, which) {
+  const r = 0.033 * G.bw, type = grip ? 'grip' : (which ? G.handL : G.handR) || 'relaxed';
+  if (type === 'grip') { c.moveTo(ha[0] + r * 1.08, ha[1]); c.arc(ha[0], ha[1], r * 1.08, 0, TAU); return; }
   let dx = ha[0] - el[0], dy = ha[1] - el[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+  const nx = -dy * G.fs, ny = dx * G.fs; // across the hand, toward the thumb
+  const P = (u, v, i) => { FIG_TMP[i] = ha[0] + dx * u + nx * v; FIG_TMP[i + 1] = ha[1] + dy * u + ny * v; };
+  const cap = (u0, v0, u1, v1, r0, r1) => { P(u0, v0, 0); P(u1, v1, 2); figCap(c, FIG_TMP[0], FIG_TMP[1], FIG_TMP[2], FIG_TMP[3], r0, r1); };
+  const b = G.bw;
+  if (type === 'fist' || type === 'point') {
+    cap(-0.004, 0, 0.03 * b, -0.004, r * 1.02, r * 0.95); // the knuckles
+    cap(0.006, 0.018 * b, 0.03 * b, 0.026 * b, r * 0.4, r * 0.34); // the thumb across them
+    if (type === 'point') cap(0.035 * b, -0.008, 0.112 * b, -0.012, r * 0.36, r * 0.3); // and the finger out
+    return;
+  }
+  if (type === 'open' || type === 'splay') {
+    cap(0, 0, 0.045 * b, 0, r * 0.95, r * 0.86); // the palm
+    if (type === 'open') cap(0.045 * b, -0.002, 0.098 * b, -0.006, r * 0.72, r * 0.55); // the fingers together
+    else for (let i = 0; i < 4; i++) { const a = (i - 1.5) * 0.24; cap(0.045 * b, -0.01 + i * 0.006, (0.045 + Math.cos(a) * 0.058) * b, (-0.01 + Math.sin(a) * 0.058) * b, r * 0.26, r * 0.2); }
+    cap(0.008, 0.02 * b, 0.034 * b, 0.058 * b, r * 0.36, r * 0.3); // the thumb, out
+    return;
+  }
   const k = (0.45 + 0.22 * Math.sin(G.t * 1.1 + G.seed * 3 + el[1] * 7)) * G.fs, cs = Math.cos(k), sn = Math.sin(k);
   const fx = dx * cs - dy * sn, fy = dx * sn + dy * cs;
   figCap(c, ha[0], ha[1], ha[0] + fx * 0.052, ha[1] + fy * 0.052, r, r * 0.66);
   const tx = ha[0] - dy * G.fs * r * 0.8 + dx * 0.012, ty = ha[1] + dx * G.fs * r * 0.8 + dy * 0.012;
   c.moveTo(tx + r * 0.5, ty); c.arc(tx, ty, r * 0.5, 0, TAU);
 }
+// What each hand is doing, from the pose and the mood (see figHandPath).
+function figHandTypes(G, A) {
+  const an = G.anim, mood = A._mood;
+  let R = 'relaxed', L = 'relaxed';
+  if (G.dead) { G.handR = 'relaxed'; G.handL = 'open'; return; }
+  if (an === 'point') { R = 'point'; L = 'relaxed'; }
+  else if (an === 'hands') { R = L = 'open'; }
+  else if (an === 'wave') R = 'open';
+  else if (an === 'talk') { R = Math.sin(G.t * 1.3 + G.seed) > 0.2 ? 'open' : 'relaxed'; L = 'relaxed'; }
+  else if (an === 'cower') { R = L = figTraits(A).cower === 2 ? 'fist' : 'open'; }
+  else if (an === 'panic') { const P = figTraits(A).panic; R = L = P === 4 || P === 1 ? 'open' : 'splay'; if (A.sawKill && A.react > 0 && A.react < 0.85) R = 'open'; }
+  else if (A.state === 'susp' && an === 'stand') { R = 'open'; L = 'fist'; } // shading the eyes, a hand on the hip
+  else if (an === 'stand' && figTraits(A).pockets) { R = L = 'fist'; }
+  else if (mood === 'alarm' || mood === 'hurt' || (A.state === 'susp' && A.role === 'guard')) { R = L = 'fist'; }
+  else if (an === 'arms') { R = L = 'fist'; }
+  G.handR = R; G.handL = L;
+}
 // Limbs are painted in as few goes as possible, because every fill and stroke costs time on a phone.
 const FIG_ANKLE = 0.87, FIG_CUFF = 0.8; // how far down the shin the leg stops (inside the shoe), and where a sleeve or trouser leg ends
 // Everything behind the body: the far arm, both legs and both shoes. The far side is a shade darker.
 function figLimbsBack(c, G, K, farGrip) {
-  const st = G.st, bw = G.bw, px = G.px, sl = K.sleeve, lg = K.legs, hip = G.hip, sh = G.sh, elL = G.elL, haL = G.haL, knL = G.knL, knR = G.knR, ftL = G.ftL, ftR = G.ftR;
+  const st = G.st, bw = G.bw, px = G.px, sl = K.sleeve, lg = K.legs, hip = G.hip, sh = G.shL || G.sh, elL = G.elL, haL = G.haL, knL = G.knL, knR = G.knR, ftL = G.ftL, ftR = G.ftR;
   const cx = lerp(elL[0], haL[0], FIG_CUFF), cy = lerp(elL[1], haL[1], FIG_CUFF);
   const aLx = lerp(knL[0], ftL[0], FIG_ANKLE), aLy = lerp(knL[1], ftL[1], FIG_ANKLE), aRx = lerp(knR[0], ftR[0], FIG_ANKLE), aRy = lerp(knR[1], ftR[1], FIG_ANKLE);
   if (!G.hi) {
@@ -465,7 +513,7 @@ function figLimbsBack(c, G, K, farGrip) {
   // skin first: the far hand and whatever of the limbs is bare
   c.fillStyle = G.ink; c.beginPath();
   if (sl) figCap(c, cx, cy, haL[0], haL[1], ar2, ar2 * 0.94); else figChain(c, sh[0], sh[1], elL[0], elL[1], haL[0], haL[1], ar0, ar1, ar2, false);
-  if (fine) figHandPath(c, G, elL, haL, farGrip); else { c.moveTo(haL[0] + 0.036 * bw, haL[1]); c.arc(haL[0], haL[1], 0.036 * bw, 0, TAU); }
+  if (fine) figHandPath(c, G, elL, haL, farGrip, 1); else { c.moveTo(haL[0] + 0.036 * bw, haL[1]); c.arc(haL[0], haL[1], 0.036 * bw, 0, TAU); }
   if (lg) { if (fine) { figCap(c, kLx, kLy, aLx, aLy, lr2, lr2); figCap(c, kRx, kRy, aRx, aRy, lr2, lr2); } }
   else { figChain(c, hip[0], hip[1], knL[0], knL[1], aLx, aLy, lr0 - 0.004, lr1 - 0.004, lr2, true); figChain(c, hip[0], hip[1], knR[0], knR[1], aRx, aRy, lr0 - 0.004, lr1 - 0.004, lr2, false); }
   c.fill();
@@ -486,7 +534,7 @@ function figLimbsBack(c, G, K, farGrip) {
 }
 // The arm nearer to us, in front of everything. (At medium size its hand was painted with the head.)
 function figArmNear(c, G, K, grip) {
-  const bw = G.bw, sl = K.sleeve, sh = G.sh, el = G.elR, ha = G.haR;
+  const bw = G.bw, sl = K.sleeve, sh = G.shR || G.sh, el = G.elR, ha = G.haR;
   const cx = lerp(el[0], ha[0], FIG_CUFF), cy = lerp(el[1], ha[1], FIG_CUFF);
   if (!G.hi) {
     if (sl) { c.strokeStyle = figC(sl); c.lineWidth = Math.max(0.088 * bw, G.px * 1.1); c.beginPath(); c.moveTo(sh[0], sh[1]); c.lineTo(el[0], el[1]); c.lineTo(cx, cy); c.stroke(); }
@@ -497,7 +545,7 @@ function figArmNear(c, G, K, grip) {
   if (sl) { c.fillStyle = figC(sl); c.beginPath(); figChain(c, sh[0], sh[1], el[0], el[1], cx, cy, r0 + sa, r1 + sa, r2 + sa * 0.8, true); c.fill(); }
   c.fillStyle = G.ink; c.beginPath();
   if (sl) figCap(c, cx, cy, ha[0], ha[1], r2, r2 * 0.94); else figChain(c, sh[0], sh[1], el[0], el[1], ha[0], ha[1], r0, r1, r2, true);
-  if (G.fine) figHandPath(c, G, el, ha, grip); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
+  if (G.fine) figHandPath(c, G, el, ha, grip, 0); else { c.moveTo(ha[0] + 0.036 * bw, ha[1]); c.arc(ha[0], ha[1], 0.036 * bw, 0, TAU); }
   c.fill();
   if (G.fine && sl && (G.st.v & 1) && !G.dead) { // a watch just below the cuff
     const wx = lerp(el[0], ha[0], FIG_CUFF + 0.07), wy = lerp(el[1], ha[1], FIG_CUFF + 0.07);
@@ -768,10 +816,10 @@ function figHat(c, G, hat) {
 }
 // The head: neck up. mode 0 only traces the outline (for the pale rim); mode 1 paints it.
 function figHead(c, G, mode) {
-  const L = G.L, hr = FIG.headR, f = G.f, wl = G.wl, wr = 1 - wl, hat = L.hat, hair = L.hair, hi = G.hi, fine = G.fine, px = G.px;
+  const L = G.L, hr = FIG.headR, f = G.f, wl = G.wl, wr = 1 - wl, hat = G.hat, hair = L.hair, hi = G.hi, fine = G.fine, px = G.px;
   c.save(); c.translate(G.hdx, G.hdy); if (G.htilt) c.rotate(G.htilt);
   if (mode === 0) {
-    c.moveTo(hr, 0); c.arc(0, 0, hr, 0, TAU);
+    figHeadShape(c, G, hr);
     if (hair === 'long' && hat !== 'hood') { if (fine) { figFallPath(c, G, -1, wl); figFallPath(c, G, 1, wr); } }
     else if (hair === 'bun' && !hat) { c.moveTo(-f * hr * 0.82 + 0.078, hr * 0.74); c.arc(-f * hr * 0.82, hr * 0.74, 0.078, 0, TAU); }
     else if (hair === 'mohawk' && !hat) { c.moveTo(-hr * 0.5, hr * 0.8); c.quadraticCurveTo(0, hr * 1.75, hr * 0.5, hr * 0.8); }
@@ -785,7 +833,7 @@ function figHead(c, G, mode) {
   if (hair === 'long' && !hood) { c.fillStyle = figSh(hcol, 0.14); c.beginPath(); figFallPath(c, G, -1, wl); figFallPath(c, G, 1, wr); c.fill(); }
   else if (hair === 'bun' && !hat) { c.fillStyle = figC(hcol); c.beginPath(); c.arc(-f * hr * 0.82, hr * 0.74, 0.078, 0, TAU); c.fill(); if (fine) { c.strokeStyle = figSh(hcol, 0.3); c.lineWidth = Math.max(0.009, px * 0.7); c.beginPath(); c.arc(-f * hr * 0.82, hr * 0.74, 0.045, 0.5, 3.4); c.stroke(); } }
   // the head itself: round, with a little jaw and nose so you can tell which way it looks
-  c.fillStyle = G.ink; c.beginPath(); c.arc(0, 0, hr, 0, TAU);
+  c.fillStyle = G.ink; c.beginPath(); const bitten = figHeadShape(c, G, hr);
   { // the neck, in the same fill
     const cs = Math.cos(G.htilt), sn = Math.sin(G.htilt), dx = figPX(G, 0.95, 0) - G.hdx, dy = figPY(G, 0.95, 0) - G.hdy, nx = dx * cs + dy * sn, ny = -dx * sn + dy * cs, r = 0.04 * G.bw;
     if (hi) figCap(c, 0, 0, nx, ny, r, r); else { c.moveTo(-r, 0); c.lineTo(nx - r, ny); c.lineTo(nx + r, ny); c.lineTo(r, 0); c.closePath(); }
@@ -798,7 +846,10 @@ function figHead(c, G, mode) {
   }
   c.fill();
   if (hi && G.la > 0.03) { const a = Math.atan2(G.hly, G.hlx); c.beginPath(); c.arc(0, 0, hr - Math.max(0.011, px * 0.5), a - 0.85, a + 0.85); figLit(c, G, 0.02, 0.9); }
+  if (bitten && hi) figBiteEdge(c, G, hr);
   if (fine && !hood && hat !== 'helmet' && hair !== 'long' && !L.phones && G.fa > 0.5) { c.strokeStyle = G.ear; c.lineWidth = Math.max(0.011, px * 0.8); c.beginPath(); if (f > 0) c.arc(-hr * 0.26, -hr * 0.03, 0.026, 0.9, 4.5); else c.arc(hr * 0.26, -hr * 0.03, 0.026, Math.PI - 4.5, Math.PI - 0.9); c.stroke(); }
+  const face = fine && G.face; // eyes, brows and mouth (src/03b_faces.js)
+  if (face && !hood && L.glasses !== 'shades') figFace(c, G, 'eyes');
   // hair on the head
   if (hair && !hood && hat !== 'helmet') {
     c.fillStyle = figC(hcol);
@@ -825,12 +876,14 @@ function figHead(c, G, mode) {
     c.fillStyle = figC(bc); c.beginPath(); c.moveTo(Math.cos(a0) * R, Math.sin(a0) * R); c.arc(f * 0.012, -0.014, R, a0, -Math.PI / 2 + sr); c.quadraticCurveTo(f * hr * 0.36, -hr * 0.2, Math.cos(a0) * R, Math.sin(a0) * R); c.closePath(); c.fill();
     if (fine) { c.strokeStyle = figSh(bc, 0.3); c.lineWidth = Math.max(0.008, px * 0.7); c.beginPath(); c.moveTo(f * hr * 0.55, -hr * 0.5); c.lineTo(f * hr * 0.62, -hr * 0.92); c.moveTo(f * hr * 0.2, -hr * 0.62); c.lineTo(f * hr * 0.22, -hr * 1.02); c.stroke(); }
   }
+  if (face && !L.mask && !hood) figFace(c, G, 'mouth');
   if (L.mask) {
     c.fillStyle = figC(L.mask); c.beginPath(); c.arc(0, 0, hr * 1.03, Math.PI + 0.22, TAU - 0.22); c.closePath(); c.fill();
     if (hi) { c.strokeStyle = figHi(L.mask, 0.3); c.lineWidth = Math.max(0.011, px * 0.8); c.beginPath(); c.moveTo(-hr * 0.99, -hr * 0.2); c.lineTo(hr * 0.99, -hr * 0.2); c.stroke(); }
   }
   if (L.phones) { c.strokeStyle = figC(L.phones); c.lineWidth = Math.max(0.04, px); c.beginPath(); c.arc(0, 0, hr * 1.13, 0.32, Math.PI - 0.32); c.stroke(); }
   if (hat) figHat(c, G, hat);
+  if (face && hood) figFace(c, G, 'eyes'); // eyes in the shadow of the hood
   if (L.phones) {
     c.fillStyle = figC(L.phones); c.beginPath(); c.ellipse(-f * 0.022, -0.004, 0.066, 0.085, 0, 0, TAU); c.fill();
     if (hi) { c.fillStyle = figSh(L.phones, 0.4); c.beginPath(); c.ellipse(-f * 0.022, -0.004, 0.036, 0.052, 0, 0, TAU); c.fill(); }
@@ -935,10 +988,20 @@ function figStraps(c, G) {
 // Carried in both hands in front of the body: a box, or an open newspaper.
 function figBoth(c, G, mode) {
   const L = G.L, bag = L.bag, px = G.px, hi = G.hi, fine = G.fine;
-  const mx = (G.cL[0] + G.cR[0]) / 2, ls = G.lx >= 0 ? 1 : -1;
-  let my = (G.cL[1] + G.cR[1]) / 2;
+  let mx = (G.cL[0] + G.cR[0]) / 2, my = (G.cL[1] + G.cR[1]) / 2;
+  const ls = G.lx >= 0 ? 1 : -1;
+  // dropped: the box (or the newspaper) falls from between the hands and lies where it lands
+  let lz = null;
+  if (G.dead && (bag === 'box' || bag === 'paper')) {
+    const C = FIG_LOOSE[bag]; lz = figLoose(G, bag, figLooseFrom(G, bag, mx + C.cx, Math.max(my, 0.1) + C.cy, 0.7));
+    if (lz) { c.save(); c.translate(lz.x, lz.y); c.rotate(lz.r); c.translate(-C.cx, -C.cy); mx = 0; my = 0; }
+  }
+  if (lz) { figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, true); c.restore(); return; }
+  figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, false);
+}
+function figBothDraw(c, G, mode, bag, mx, my, ls, px, hi, fine, L, loose) {
   if (bag === 'box') {
-    my = Math.max(my, 0.1);
+    if (!loose) my = Math.max(my, 0.1);
     if (!mode) { figRR(c, mx - 0.25, my - 0.09, 0.5, 0.37, 0.014); return; }
     const col = L.bagCol || '#b08a52', dark = figSh(col, 0.3);
     c.fillStyle = figC(col); c.beginPath(); figRR(c, mx - 0.25, my - 0.09, 0.5, 0.37, 0.014); c.fill();
@@ -953,7 +1016,7 @@ function figBoth(c, G, mode) {
       c.beginPath(); c.moveTo(mx - 0.23, my + 0.268); c.lineTo(mx + 0.23, my + 0.268); figGlint(c, G, 0.014, 0.8);
     }
   } else if (bag === 'paper') {
-    my = Math.max(my, 0.06);
+    if (!loose) my = Math.max(my, 0.06);
     const col = '#e9e6dc', dip = 0.03;
     const trace = () => { c.moveTo(mx - 0.215, my - 0.03); c.lineTo(mx, my - 0.03 - dip); c.lineTo(mx + 0.215, my - 0.03); c.lineTo(mx + 0.215, my + 0.28); c.lineTo(mx, my + 0.28 - dip); c.lineTo(mx - 0.215, my + 0.28); c.closePath(); };
     if (!mode) { trace(); return; }
@@ -979,14 +1042,17 @@ function figCarry(c, G, mode) {
   const L = G.L, bag = L.bag, ha = G.cR, px = G.px, hi = G.hi, fine = G.fine, f = G.f, env = G.env, ls = G.lx >= 0 ? 1 : -1;
   switch (bag) {
     case 'case': {
-      c.save(); figHang(c, G, ha, 0.34);
+      if (G.dead && mode) figCasePapers(c, G);
+      c.save(); figHold(c, G, ha, 0.34, 'case');
       if (!mode) { figRR(c, -0.215, -0.335, 0.43, 0.285, 0.03); c.restore(); return; }
+      const burst = G.dead && G.st.loose && G.st.loose.case && G.st.loose.case.land !== null;
       const col = L.bagCol || '#7b5a36', dark = figSh(col, 0.36), metal = figC('#cdb67a');
       c.strokeStyle = dark; c.lineWidth = Math.max(0.024, px); c.beginPath(); c.moveTo(-0.07, -0.055); c.lineTo(-0.07, -0.012); c.quadraticCurveTo(-0.07, 0.004, -0.05, 0.004); c.lineTo(0.05, 0.004); c.quadraticCurveTo(0.07, 0.004, 0.07, -0.012); c.lineTo(0.07, -0.055); c.stroke();
       c.fillStyle = figC(col); c.beginPath(); figRR(c, -0.215, -0.335, 0.43, 0.285, 0.03); c.fill();
       if (hi) {
         c.fillStyle = '#000000'; c.globalAlpha = 0.17; c.beginPath(); figRR(c, -0.215, -0.335, 0.43, 0.1, 0.03); c.fill(); c.globalAlpha = 1;
         c.strokeStyle = dark; c.lineWidth = Math.max(0.012, px * 0.8); c.beginPath(); c.moveTo(-0.215, -0.128); c.lineTo(0.215, -0.128); c.stroke(); // where the lid meets the body
+        if (burst) { c.fillStyle = figC('#1a1410'); c.beginPath(); c.moveTo(-0.2, -0.128); c.lineTo(0.2, -0.128); c.lineTo(0.18, -0.105); c.lineTo(-0.18, -0.105); c.closePath(); c.fill(); } // sprung open
         c.fillStyle = metal; c.fillRect(-0.135, -0.152, 0.04, 0.048); c.fillRect(0.095, -0.152, 0.04, 0.048); // clasps
         if (fine) {
           c.fillRect(-0.084, -0.062, 0.028, 0.02); c.fillRect(0.056, -0.062, 0.028, 0.02); // handle mounts
@@ -1002,7 +1068,7 @@ function figCarry(c, G, mode) {
       c.restore(); return;
     }
     case 'duffel': {
-      c.save(); figHang(c, G, ha, 0.47);
+      c.save(); figHold(c, G, ha, 0.47, 'duffel');
       if (!mode) { figDuffelPath(c); c.restore(); return; }
       const col = L.bagCol || '#3f4a5c', dark = figSh(col, 0.32), web = figSh(col, 0.56), yt = -0.165, yb = -0.445;
       // the far handle, behind the bag
@@ -1038,7 +1104,7 @@ function figCarry(c, G, mode) {
       c.restore(); return;
     }
     case 'shopping': {
-      c.save(); figHang(c, G, ha, 0.48);
+      c.save(); figHold(c, G, ha, 0.48, 'shopping');
       const trace = () => { c.moveTo(-0.125, -0.105); c.lineTo(0.125, -0.105); c.lineTo(0.155, -0.465); c.lineTo(-0.155, -0.465); c.closePath(); };
       if (!mode) { trace(); c.restore(); return; }
       const col = L.bagCol || '#e9e2d0', dark = figSh(col, 0.3);
@@ -1058,7 +1124,7 @@ function figCarry(c, G, mode) {
     }
     case 'cup': {
       c.save();
-      if (G.dead) { c.translate(ha[0] + G.fs * 0.06, Math.max(0.045, ha[1] - 0.02)); c.rotate(-G.fs * 1.5 * smooth(G.dT / 0.5)); }
+      if (G.dead) { if (!figHold(c, G, ha, 0, 'cup')) { c.restore(); return; } }
       else { c.translate(ha[0], ha[1]); const up = clamp((ha[1] - G.neck[1]) / 0.12, 0, 1); if (up) c.rotate(f * 0.75 * up); }
       const trace = () => { c.moveTo(-0.032, -0.03); c.lineTo(0.032, -0.03); c.lineTo(0.044, 0.105); c.lineTo(-0.044, 0.105); c.closePath(); };
       if (!mode) { trace(); c.restore(); return; }
@@ -1077,7 +1143,7 @@ function figCarry(c, G, mode) {
     }
     case 'flowers': {
       c.save();
-      if (G.dead) { c.translate(ha[0], Math.max(0.05, ha[1])); c.rotate(-G.fs * 1.45 * smooth(G.dT / 0.5)); } else { c.translate(ha[0], ha[1]); c.rotate(-f * 0.3 + G.lag * 1.2); }
+      if (G.dead) figHold(c, G, ha, 0, 'flowers'); else { c.translate(ha[0], ha[1]); c.rotate(-f * 0.3 + G.lag * 1.2); }
       if (!mode) { c.moveTo(-0.03, -0.03); c.lineTo(0.03, -0.03); c.lineTo(0.14, 0.27); c.quadraticCurveTo(0.12, 0.44, 0, 0.44); c.quadraticCurveTo(-0.12, 0.44, -0.14, 0.27); c.closePath(); c.restore(); return; }
       const col = L.bagCol || '#e85d75', green = figC('#4c9a56');
       c.strokeStyle = green; c.lineWidth = Math.max(0.014, px * 0.9); c.beginPath(); c.moveTo(0, 0); c.lineTo(-0.02, -0.1); c.moveTo(0, 0); c.lineTo(0.015, -0.11); c.moveTo(0, 0); c.lineTo(0, -0.09); c.stroke();
@@ -1096,7 +1162,10 @@ function figCarry(c, G, mode) {
       if (!mode) return;
       const col = L.bagCol || '#d8d2c4', w = Math.max(0.03, px);
       let x0 = ha[0], y0 = ha[1] + 0.035, x1 = ha[0] + f * 0.12, y1 = 0.004, hook = 1;
-      if (G.dead) { const k = smooth(G.dT / 0.55); y0 = lerp(y0, 0.03, k); x1 = lerp(x1, ha[0] + G.fs * 0.86, k); y1 = lerp(0.004, 0.022, k); hook = 1 - k * 0.6; }
+      if (G.dead) { // let go: it falls, clatters and lies on the ground (the crook at its own end)
+        const L = figLoose(G, 'cane', figLooseFrom(G, 'cane', ha[0] + G.fs * 0.06, ha[1] - 0.4, 0.6));
+        if (L) { const cx = Math.cos(L.r) * 0.43, cy = Math.sin(L.r) * 0.43; x0 = L.x - cx; y0 = L.y - cy; x1 = L.x + cx; y1 = L.y + cy; hook = 0.8; }
+      }
       c.strokeStyle = figC(col); c.lineWidth = w; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x0, y0);
       c.quadraticCurveTo(x0 - f * 0.006, y0 + 0.075 * hook, x0 - f * 0.055, y0 + 0.075 * hook); c.quadraticCurveTo(x0 - f * 0.105, y0 + 0.075 * hook, x0 - f * 0.105, y0 + 0.02 * hook); c.stroke();
       if (hi) {
@@ -1107,8 +1176,9 @@ function figCarry(c, G, mode) {
     }
     case 'umbrella': {
       let R0 = 2.16 - ha[1], hy = ha[1], tilt = clamp(-G.wind * 0.012, -0.1, 0.1) + G.lag * 0.5 - clamp(Math.atan2(lerp(ha[0], G.neck[0], 0.75) - ha[0], R0 + 0.2), -0.4, 0.4);
-      if (G.dead) { const k = smooth(G.dT / 0.65); R0 = 1.32; hy = Math.max(0.04, ha[1]); tilt = G.fs * 1.08 * k; }
-      c.save(); c.translate(ha[0], hy); c.rotate(tilt);
+      c.save();
+      if (G.dead) { R0 = 1.32; figHold(c, G, ha, 0, 'umbrella'); } // let go: the wind takes it
+      else { c.translate(ha[0], hy); c.rotate(tilt); }
       if (!mode) { figBrollyPath(c, R0); c.restore(); return; }
       const col = L.bagCol || '#c0392b', dark = figSh(col, 0.4), top = R0 + 0.41;
       if (mode === 2) { // only the crook handle, which goes in front of the body
@@ -1170,7 +1240,7 @@ function figCarry(c, G, mode) {
 function figClip(c, G, mode) {
   const L = G.L, ha = G.cL, f = G.f, px = G.px;
   c.save();
-  if (G.dead) { c.translate(ha[0], Math.max(0.03, ha[1])); c.rotate(G.fs * 1.5 * smooth(G.dT / 0.5)); } else { c.translate(ha[0], ha[1] + 0.085); c.rotate(-f * 0.12); }
+  if (G.dead) figHold(c, G, ha, 0, 'clip'); else { c.translate(ha[0], ha[1] + 0.085); c.rotate(-f * 0.12); }
   if (!mode) { figRR(c, -0.116, -0.15, 0.232, 0.315, 0.016); c.restore(); return; }
   const col = L.bagCol || '#e7e2d4';
   c.fillStyle = figSh(col, 0.26); c.beginPath(); figRR(c, -0.116, -0.15, 0.232, 0.315, 0.016); c.fill();
@@ -1185,10 +1255,15 @@ function figClip(c, G, mode) {
 
 // ---- things that belong to what somebody is doing --------------------------
 function figRifle(c, G) {
-  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead;
+  const A = G.A, px = G.px, held = (G.anim === 'guard' || G.anim === 'aimrifle') && !G.dead && !G.radio;
   const a = G.haR, b = G.haL;
   let dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), ox = a[0], oy = a[1];
-  if (G.dead) { ox = G.cR[0] - G.fs * 0.1; oy = Math.max(G.cR[1], 0.045); dx = G.fs; dy = 0.5 * (1 - smooth(G.dT / 0.45)); l = 0.34; }
+  const dp = G.dead ? figAimAs(A, A.deathPose) : '', dropped = dp === 'guard' || dp === 'aimrifle'; // (a slung rifle stays on the back)
+  if (dropped) { // dropped: it clatters down, bounces and lies flat
+    const C = FIG_LOOSE.rifle, L = figLoose(G, 'rifle', figLooseFrom(G, 'rifle', G.st.drop[0] + G.fs * C.cx, Math.max(0.2, G.st.drop[1]), 0.8));
+    ox = L ? L.x - Math.cos(L.r) * C.cx : G.cR[0]; oy = L ? L.y - Math.sin(L.r) * C.cx : Math.max(G.cR[1], 0.045); dx = L ? Math.cos(L.r) : G.fs; dy = L ? Math.sin(L.r) : 0; l = 0.34;
+  }
+  else if (G.radio) { ox = b[0]; oy = b[1]; dx = G.fs * 0.45; dy = -0.89; l = 0.3; } // hanging by the grip from one hand while the other has the radio
   else if (!held || l < 0.05) { // not in the hands: slung on the back, muzzle up
     const o = -G.fl * (G.wc + 0.03); ox = figPX(G, 0.42, o); oy = figPY(G, 0.42, o); dx = G.ux + G.nx * G.fl * 0.2; dy = G.uy + G.ny * G.fl * 0.2; l = 0.3;
   }
@@ -1216,6 +1291,7 @@ function figRifle(c, G) {
 }
 function figProps(c, G) {
   const anim = G.anim, ha = G.haR, f = G.f, px = G.px, env = G.env, hi = G.hi;
+  if (G.radio || G.tool) { figTool(c, G, G.radio ? 'radio' : G.tool); return; } // (src/03g_tools.js)
   if (anim === 'aim') {
     // a pistol, pointing where the arm points
     let dx = ha[0] - G.elR[0], dy = ha[1] - G.elR[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
@@ -1255,6 +1331,10 @@ function figProps(c, G) {
     c.fillStyle = figC('#23272e'); c.beginPath(); figRR(c, -0.04, -0.045, 0.08, 0.155, 0.014); c.fill();
     if (env.dark) { c.fillStyle = '#cfe6ff'; c.fillRect(-0.03, -0.03, 0.06, 0.125); }
     else if (hi) { c.fillStyle = figC('#5d7691'); c.fillRect(-0.03, -0.03, 0.06, 0.125); }
+    if (G.fine) { // close up: a thumb working the screen
+      const k = Math.sin(G.t * 7.3 + G.seed) * Math.sin(G.t * 1.7 + G.seed * 2), ty = 0.012 + 0.04 * Math.max(0, k), tx = 0.012 * Math.sin(G.t * 3.1 + G.seed);
+      c.fillStyle = G.ink; c.beginPath(); figCap(c, f * 0.046, -0.03, f * 0.004 + tx, ty, 0.014, 0.011); c.fill();
+    }
     c.restore();
     if (env.dark) { // the screen lights the side of the face
       c.fillStyle = '#cfe6ff'; c.globalAlpha = 0.1; c.beginPath(); c.arc(ha[0], ha[1] + 0.04, 0.34, 0, TAU); c.fill();
@@ -1540,6 +1620,14 @@ function figWallBlood(c, G, R) {
     c.moveTo(cx + dr * 1.7, cy); c.ellipse(cx, cy, dr * 1.7, dr, an, 0, TAU);
   }
   c.fill();
+  // a body that was against the wall slides down it and leaves a smear from the spray to where it ends up
+  if (dz <= 0.6 && G.dT > 0.1) {
+    const cy = Math.max(0.12, lerp(G.hip[1], G.neck[1], 0.62)), y1 = Math.min(y, Math.max(cy, y - (y - cy) * smooth((G.dT - 0.1) / 0.8)));
+    if (y - y1 > 0.03) {
+      c.strokeStyle = figC(FIG_BLOOD); c.lineCap = 'round'; c.lineWidth = r * 0.4; c.globalAlpha = 0.78; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + (rng.f() - 0.5) * r * 0.4, (y + y1) / 2, x + (rng.f() - 0.5) * r * 0.5, y1); c.stroke();
+      c.lineWidth = r * 0.18; c.globalAlpha = 0.6; c.beginPath(); c.moveTo(x - r * 0.3, y - r * 0.1); c.lineTo(x - r * 0.25, y1 + r * 0.1); c.moveTo(x + r * 0.32, y - r * 0.1); c.lineTo(x + r * 0.28, y1 + r * 0.15); c.stroke(); c.globalAlpha = 0.86;
+    }
+  }
   // and it runs down the wall, slowly
   if (T > 0.4) {
     const run = 0.04 + 0.26 * smooth((T - 0.4) / 9);
@@ -1598,24 +1686,107 @@ function figGroundBlood(c, G, R) {
   c.globalAlpha = 0.92 * smooth(T / 0.7); c.beginPath(); c.ellipse(x, y, r, h, 0, 0, Math.PI); c.fill();
   if (G.hi) {
     c.fillStyle = figC(FIG_BLOOD2); c.beginPath(); c.ellipse(x + r * 0.08, y, r * 0.58, h * 0.6, 0, 0, Math.PI); c.fill();
-    if (G.la > 0.05 && G.fine) { c.globalAlpha = G.la * 0.45; c.strokeStyle = G.lc; c.lineWidth = Math.max(0.008, G.px * 0.7); c.beginPath(); c.ellipse(x + (G.lx >= 0 ? 1 : -1) * r * 0.25, y, r * 0.5, h * 0.82, 0, Math.PI * 0.3, Math.PI * 0.7); c.stroke(); }
+    // it is wet: the sky (or the lamp) shines in it, brightest on the side toward the light
+    const ls = G.lx >= 0 ? 1 : -1;
+    c.globalAlpha = (G.env.night ? 0.15 + 0.5 * G.la : 0.32) * smooth(T / 1.2); c.fillStyle = G.env.night ? G.lc : '#d7e0ea';
+    c.beginPath(); c.ellipse(x + ls * r * 0.28, y - h * 0.18, r * 0.36, Math.max(G.px * 0.6, h * 0.22), 0, 0, TAU); c.fill();
+    if (G.fine) { c.globalAlpha *= 0.7; c.beginPath(); c.ellipse(x - ls * r * 0.35, y - h * 0.3, r * 0.12, Math.max(G.px * 0.5, h * 0.12), 0, 0, TAU); c.fill(); }
   }
   c.globalAlpha = 1;
 }
-// The wound on the body: blood soaking out round it (more for a round that went through), and
-// close up the hole itself; on the head, blood running down from it.
+// The wound on the body. On the trunk, a stain that soaks out through the clothes for several
+// seconds (faster and further from a round that went through) and never past the edge of the body;
+// then the hole, bright and wet so it shows on a dark coat. On the black head, a bright wound and
+// blood running from it, the way down in the world whichever way the head now lies.
 function figWound(c, G, R) {
-  const p = figWoundPos(G, R), x = p[0], y = p[1], head = R.part === 'head', k = 0.55 + 0.45 * smooth(G.dT / 2.2);
-  const r = (head ? 0.034 : 0.04) + 0.035 * R.exitK + 0.012 * R.power;
-  c.fillStyle = figC('#6a1216'); c.beginPath(); c.arc(x, y, r * k, 0, TAU); c.moveTo(x + r * 0.5 + r * 0.6 * k, y - r * 0.5 * k); c.arc(x + r * 0.5, y - r * 0.5 * k, r * 0.6 * k, 0, TAU);
-  if (G.hi) { c.moveTo(x - r * 0.2 + r * 0.32, y - r * 1.1 * k); c.arc(x - r * 0.2, y - r * 1.1 * k, r * 0.32, 0, TAU); }
+  const p = figWoundPos(G, R), x = p[0], y = p[1], head = R.part === 'head', T = G.dT;
+  const r = (head ? 0.034 : 0.04) + 0.035 * R.exitK + 0.012 * R.power, rng = makeRng(R.seed + 13);
+  if (!head && G.hi) {
+    const grow = 1 - Math.exp(-T / (3.4 - 1.4 * R.exitK)), sr = r * 0.9 + (0.06 + 0.1 * R.exitK + 0.03 * R.power) * grow;
+    c.save(); c.beginPath(); figTorsoPath(c, G, G.ww + 0.004, G.wc + 0.004, G.wsh, -0.06); c.clip();
+    c.fillStyle = figC('#4d070c'); c.globalAlpha = 0.8; c.beginPath(); c.moveTo(x + sr, y); c.arc(x, y, sr, 0, TAU);
+    for (let i = 0; i < 6; i++) { // lobes, more of them below: it runs down as it soaks
+      const an = -Math.PI / 2 + (rng.f() - 0.5) * 3.6, d = sr * (0.45 + 0.5 * rng.f()), lr = sr * (0.35 + 0.3 * rng.f()) * (0.6 + 0.4 * grow), lx = x + Math.cos(an) * d, ly = y + Math.sin(an) * d * (1 + 0.6 * grow);
+      c.moveTo(lx + lr, ly); c.arc(lx, ly, lr, 0, TAU);
+    }
+    c.fill();
+    c.fillStyle = figC('#2c0306'); c.globalAlpha = 0.55; c.beginPath(); c.arc(x, y - sr * 0.15, sr * 0.55, 0, TAU); c.fill(); // wetter in the middle
+    c.globalAlpha = 1; c.restore();
+  }
+  // the hole: a bright wet ring round a dark middle
+  c.fillStyle = figC('#9e1420'); c.beginPath(); c.arc(x, y, r * 0.75, 0, TAU);
+  if (G.hi) { c.moveTo(x + r * 0.3 + r * 0.42, y - r * 0.55); c.arc(x + r * 0.3, y - r * 0.55, r * 0.42, 0, TAU); }
   c.fill();
   if (!G.hi) return;
-  c.fillStyle = figC('#170305'); c.beginPath(); c.arc(x, y, Math.max(G.px * 0.9, 0.007 + 0.008 * R.power), 0, TAU); c.fill();
-  if (head) { // runs down (the way down in the world, whichever way the head now lies)
-    const len = 0.025 + 0.085 * smooth((G.dT - 0.15) / 2.5);
-    c.strokeStyle = figC(FIG_BLOODL); c.lineCap = 'round'; c.lineWidth = Math.max(G.px * 0.8, 0.016); c.beginPath(); c.moveTo(x, y); c.lineTo(x + 0.006, y - len); c.stroke();
+  c.fillStyle = figC('#1c0204'); c.beginPath(); c.arc(x, y, Math.max(G.px * 0.9, r * 0.32), 0, TAU); c.fill();
+  if (G.fine) { c.fillStyle = 'rgba(255,215,215,0.35)'; c.beginPath(); c.arc(x - r * 0.28, y + r * 0.32, Math.max(G.px * 0.6, r * 0.16), 0, TAU); c.fill(); } // its wet shine
+  if (head) { // runs down, and keeps running for a while, two trickles
+    const len = 0.03 + 0.12 * smooth((T - 0.1) / 3);
+    c.strokeStyle = figC('#a3141f'); c.lineCap = 'round'; c.lineWidth = Math.max(G.px * 0.8, 0.018); c.beginPath();
+    c.moveTo(x, y); c.quadraticCurveTo(x + 0.01, y - len * 0.5, x + 0.004, y - len);
+    c.moveTo(x + r * 0.4, y - r * 0.3); c.lineTo(x + r * 0.45, y - r * 0.3 - len * 0.6); c.stroke();
+    c.fillStyle = figC('#a3141f'); c.beginPath(); c.arc(x + 0.004, y - len, 0.014, 0, TAU); c.fill();
   }
+}
+// The heaviest rounds (the .408, the .50, the coil gun) take a piece out of the head where they come
+// out. Adds the head's outline with that bite out of it to the current path (head space), or the plain
+// circle. Leaves where the bite is in FIG_BITE for the ragged red edge.
+const FIG_BITE = [0, 0, 0, 0];
+function figHeadShape(c, G, hr) {
+  const R = G.A.rd;
+  if (!G.dead || !G.gore || !R || R.part !== 'head' || !(R.cal === 'c408' || R.cal === 'c50' || R.cal === 'crail')) { c.moveTo(hr, 0); c.arc(0, 0, hr, 0, TAU); return false; }
+  // the exit: the back of the skull, toward the top (which shows whichever way the body lies)
+  const w = R.wound || { u: 0, n: 0.06 }, rng = makeRng(R.seed + 61);
+  const beta = Math.atan2(0.75, -0.65 * G.fs) + (rng.f() - 0.5) * 0.5 + w.u * 0, rb = hr * (R.cal === 'c408' ? 0.5 : 0.6), D = hr * 1.08;
+  const bx = Math.cos(beta) * D, by = Math.sin(beta) * D, cd = clamp((hr * hr + D * D - rb * rb) / (2 * hr * D), -1, 1), del = Math.acos(cd);
+  c.moveTo(Math.cos(beta + del) * hr, Math.sin(beta + del) * hr);
+  c.arc(0, 0, hr, beta + del, beta - del + TAU);
+  const p2x = Math.cos(beta - del) * hr - bx, p2y = Math.sin(beta - del) * hr - by, p1x = Math.cos(beta + del) * hr - bx, p1y = Math.sin(beta + del) * hr - by;
+  c.arc(bx, by, rb, Math.atan2(p2y, p2x), Math.atan2(p1y, p1x), true);
+  c.closePath();
+  FIG_BITE[0] = bx; FIG_BITE[1] = by; FIG_BITE[2] = rb; FIG_BITE[3] = beta;
+  return true;
+}
+// the torn edge of the bite: bright and ragged, with a fleck or two of bone
+function figBiteEdge(c, G, hr) {
+  const bx = FIG_BITE[0], by = FIG_BITE[1], rb = FIG_BITE[2], beta = FIG_BITE[3], rng = makeRng(G.A.rd.seed + 62);
+  c.strokeStyle = figC('#b0182a'); c.lineWidth = Math.max(G.px, 0.024); c.lineCap = 'round'; c.beginPath();
+  const a0 = beta + Math.PI - 1.15, a1 = beta + Math.PI + 1.15;
+  for (let i = 0; i <= 8; i++) { const a = lerp(a0, a1, i / 8), rr = rb * (1 + (rng.f() - 0.5) * 0.18); if (i) c.lineTo(bx + Math.cos(a) * rr, by + Math.sin(a) * rr); else c.moveTo(bx + Math.cos(a) * rr, by + Math.sin(a) * rr); }
+  c.stroke();
+  if (G.fine) { c.fillStyle = figC('#e8dccb'); c.beginPath(); for (let i = 0; i < 3; i++) { const a = lerp(a0, a1, 0.2 + 0.3 * i), x = bx + Math.cos(a) * rb * 1.04, y = by + Math.sin(a) * rb * 1.04; c.moveTo(x + 0.012, y); c.arc(x, y, 0.012, 0, TAU); } c.fill(); }
+}
+
+// What the ground throws up when a body lands on it: dust off dirt and paving, a burst of powder off
+// snow, a splash off water. Drawn in front of the body, gone in under a second.
+// back: the clouds, drawn behind the body; front: the grit and the splash, drawn in front of it.
+function figLandPuff(c, G, R, front) {
+  const s = R.s, L = s && s.land; if (!L || G.A.inVeh || (R.env && (R.env.seat || R.env.car))) return;
+  const T = G.dT - s.landT; if (T < 0 || T > 0.9) return;
+  const mat = (R.env && R.env.mat) || 'dirt', sc = G.sc, x = L[0] / sc, y = figFloorAt(G, R, x), k = clamp(Math.abs(L[3]) / 2.5, 0.35, 1), u = T / 0.9;
+  if (mat === 'water') { // a splash: a crown of drops thrown up and out, and a ring that spreads
+    if (!front) return;
+    c.fillStyle = figC('#d7e8f2'); c.globalAlpha = 0.85 * (1 - u); c.beginPath();
+    for (let i = 0; i < 9; i++) { const sx = (i - 4) / 4, vx = sx * (0.9 + 0.4 * k), vy = (1.8 - Math.abs(sx)) * 1.6 * k, px = x + vx * T, py = y + vy * T - 4.9 * T * T, r = 0.025 + 0.015 * (1 - Math.abs(sx)); if (py < y) continue; c.moveTo(px + r, py); c.arc(px, py, r, 0, TAU); }
+    c.fill();
+    c.strokeStyle = figC('#e8f2f8'); c.lineWidth = Math.max(0.02, G.px); c.globalAlpha = 0.6 * (1 - u); c.beginPath(); c.ellipse(x, y + 0.01, 0.3 + 1.1 * easeOut(u), 0.05 + 0.08 * easeOut(u), 0, 0, TAU); c.stroke();
+    c.globalAlpha = 1; return;
+  }
+  const col = mat === 'snow' ? '#f3f6f9' : mat === 'interior' ? '#cfc9bd' : mat === 'metal' ? '#b9bcc0' : mat === 'hard' ? '#c7c2b8' : '#b9a684';
+  const big = mat === 'snow' ? 1.5 : mat === 'metal' ? 0.5 : 1, a = (mat === 'snow' ? 0.6 : 0.38) * k * Math.pow(1 - u, 1.5);
+  if (a < 0.02) return;
+  if (front) { // grit thrown out, falling back
+    if (!G.hi || mat === 'metal') return;
+    c.globalAlpha = Math.min(1, a * 2); c.fillStyle = figC(mat === 'snow' ? '#ffffff' : '#8a7a60'); c.beginPath();
+    for (let i = 0; i < 6; i++) { const sx = (i - 2.5) / 2.5, px = x + sx * (0.6 + 0.4 * k) * T * 2, py = y + (1.2 - Math.abs(sx) * 0.5) * k * T * 2 - 4.9 * T * T * 1.4, r = Math.max(G.px * 0.8, 0.015); if (py < y) continue; c.moveTo(px + r, py); c.arc(px, py, r, 0, TAU); }
+    c.fill(); c.globalAlpha = 1; return;
+  }
+  // two low clouds rolling out to either side, and a little that rises in the middle
+  c.fillStyle = figC(col); c.globalAlpha = a; c.beginPath();
+  for (let i = -1; i <= 1; i += 2) { const d = (0.25 + 0.75 * easeOut(u * 1.4)) * big * (0.6 + 0.4 * k), cx = x + i * d * 0.8, r = (0.1 + 0.2 * easeOut(u)) * big; c.moveTo(cx + r * 1.6, y + r * 0.6); c.ellipse(cx, y + r * 0.6, r * 1.6, r * 0.7, 0, 0, TAU); }
+  const rm = (0.08 + 0.18 * easeOut(u)) * big; c.moveTo(x + rm * 1.3, y + 0.05 + 0.25 * u * big); c.ellipse(x, y + 0.05 + 0.25 * u * big, rm * 1.3, rm, 0, 0, TAU);
+  c.fill();
+  c.globalAlpha = 1;
 }
 
 // ---- the figure ------------------------------------------------------------
@@ -1630,7 +1801,7 @@ function figRim(c, G, K) {
   const bw = G.bw, rw = G.rw, bag = G.L.bag;
   c.strokeStyle = G.rim;
   c.lineWidth = Math.max((K.sleeve ? 0.094 : 0.078) * bw + 2 * rw, G.px * 2.7);
-  c.beginPath(); figSeg(c, G.sh, G.elL); figSeg(c, G.elL, G.haL); figSeg(c, G.sh, G.elR); figSeg(c, G.elR, G.haR);
+  c.beginPath(); figSeg(c, G.shL || G.sh, G.elL); figSeg(c, G.elL, G.haL); figSeg(c, G.shR || G.sh, G.elR); figSeg(c, G.elR, G.haR);
   c.moveTo(G.hip[0], G.hip[1]); c.lineTo(G.knL[0], G.knL[1]); c.lineTo(lerp(G.knL[0], G.ftL[0], FIG_ANKLE), lerp(G.knL[1], G.ftL[1], FIG_ANKLE));
   c.moveTo(G.hip[0], G.hip[1]); c.lineTo(G.knR[0], G.knR[1]); c.lineTo(lerp(G.knR[0], G.ftR[0], FIG_ANKLE), lerp(G.knR[1], G.ftR[1], FIG_ANKLE));
   if (!G.hi) {
@@ -1638,7 +1809,7 @@ function figRim(c, G, K) {
     // head and hat get a slightly enlarged pale fill behind them instead of a traced outline
     figSeg(c, G.hip, G.neck); c.stroke();
     c.fillStyle = G.rim; c.beginPath(); c.save(); c.translate(G.hdx, G.hdy); if (G.htilt) c.rotate(G.htilt);
-    const k = 1 + rw / FIG.headR; c.scale(k, k); c.moveTo(FIG.headR, 0); c.arc(0, 0, FIG.headR, 0, TAU); if (G.L.hat) figHatPath(c, G, G.L.hat);
+    const k = 1 + rw / FIG.headR; c.scale(k, k); c.moveTo(FIG.headR, 0); c.arc(0, 0, FIG.headR, 0, TAU); if (G.hat) figHatPath(c, G, G.hat);
     c.restore(); c.fill();
     return;
   }
@@ -1675,6 +1846,7 @@ function drawFigure(ctx, A, env) {
     const xa = m.e + m.a * (A.x - 2.3) + m.c * A.y, xb = m.e + m.a * (A.x + 2.3) + m.c * A.y;
     if ((ya > H && yb > H) || (ya < 0 && yb < 0) || (xa > W && xb > W) || (xa < 0 && xb < 0)) return;
   }
+  if (A.woundFx) figBloodTrail(ctx, A, env); // drops left behind by somebody wounded (src/03e_wounded.js)
   if (A.dead) rdLead = env.lead || 0; // a fall drawn in slow motion moves every frame, not only on the world's steps
   const J = actorJoints(A), L = A.look || {}, sc = J.scale || 1, hpx = (1.8 * sc) / env.px;
   rdLead = 0;
@@ -1686,14 +1858,19 @@ function drawFigure(ctx, A, env) {
   G.sc = sc; G.f = f; G.fs = f < 0 ? -1 : 1; G.fa = Math.abs(f); G.fl = dead ? f : st.fl; G.wl = (1 + f) / 2;
   G.dead = dead; G.dT = A.deadT || 0; G.t = A.t || 0; G.seed = A.seed || 0; G.wind = env.wind || 0;
   G.bw = L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.86 : 1;
+  if (!L.build) { const T = figTraits(A); G.bw = T.bw * (T.broad ? 1.08 : 1); } // heavy, slight, broad (drawn only: the shapes a round is tested against stay the same)
+  if (!dead) A._st = A.state; // remembered so the pose a body falls from is the one it was drawn in
   const an = dead ? figAimAs(A, A.deathPose) : figAnimNow(A);
+  G.pressHand = null; if (A.woundFx && !dead) figWounded(A, G, an); // the flinch and the hand to the wound, drawn only
   G.seated = an === 'sit' || an === 'type' || an === 'sitphone' || an === 'sitdrink' || an === 'drive' || an === 'sleep';
+  figTurnView(G, A); // half way round a turn: seen from the front (src/03h_turn.js)
   const mv = dead ? 0 : figMv(A);
   G.mv = dead ? 0 : mv; G.lag = dead ? 0 : clamp((st.s - st.vs * 0.03) * inv, -0.2, 0.2);
   // the light: how dim, and where the bright edge goes
   figDimK = env.dim || 0;
   const light = env.light === undefined ? 1 : env.light;
   G.light = light; G.ink = env.ink || '#13161b'; G.rim = env.rim || null; G.rw = Math.max(px * 0.8, Math.min(0.0225, px * 2.3)) * (env.nv ? 1.3 : 1);
+  if (A._flash > 0) { figDimK = 0; figFlashK = 0.55; G.ink = '#cfc6b8'; G.rim = 'rgba(255,250,240,0.95)'; G.rw *= 1.6; } // hit: one pale frame (src/06b_hitfx.js)
   if (env.night) {
     const dx = env.lampDx || 0, dy = Math.max(0.8, (env.lampH || 5) - 1.3), l = Math.hypot(dx, dy);
     G.lx = dx / l; G.ly = dy / l; G.la = 0.5 * light * (env.nv ? 0.5 : 1); G.lc = env.lampCol || '#ffd27a';
@@ -1717,16 +1894,21 @@ function drawFigure(ctx, A, env) {
     G.dR[0] = st.drop[0] + slide; G.dR[1] = Math.max(0, st.drop[1] - fall); G.dL[0] = st.drop[2] + slide; G.dL[1] = Math.max(0, st.drop[3] - fall);
     G.cR = G.dR; G.cL = G.dL;
   }
+  G.hat = L.hat && figHatOff(G) ? null : L.hat; // a hat knocked off or shaken off lies on the ground (src/03c_loose.js)
+  if (G.fine) { A._mood = faceMood(A); G.face = true; G.back = false; } else G.face = false;
+  G.anim = an; if (G.fine) { figHandTypes(G, A); if (G.pressHand === 'R') G.handR = 'open'; else if (G.pressHand === 'L') G.handL = 'open'; }
   const K = figWear(G), bag = L.bag, anim = G.anim = an;
-  const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
-  const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || FIG_GRIP_ANIM[anim] === 1), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
+  G.radio = !dead && figRadioUp(A, anim); G.tool = !dead && anim === 'work' ? figWorkTool(A) : null;
+  const gunHeld = (anim === 'guard' || anim === 'aimrifle') && !dead && !G.radio, hasRifle = L.gun === 'rifle' || anim === 'guard' || anim === 'aimrifle';
+  const nearGrip = !dead && (FIG_HAND_BAGS[bag] === 1 || (FIG_GRIP_ANIM[anim] === 1 && !G.radio) || G.radio || !!G.tool), farGrip = !dead && (bag === 'clip' || gunHeld || anim === 'sweep' || anim === 'look');
 
   c.save(); c.translate(A.x, A.y); if (sc !== 1) c.scale(sc, sc);
   c.lineCap = 'round'; c.lineJoin = 'round';
-  const gore = dead && figBloody(A, env);
+  const gore = G.gore = dead && figBloody(A, env);
   if (gore) { figWallBlood(c, G, A.rd); figMist(c, G, A.rd); }
   if ((light > 0.02 || !env.night) && hpx > 26) figShadow(c, G);
   if (gore) figGroundBlood(c, G, A.rd);
+  if (dead && A.rd && hpx > 24) figLandPuff(c, G, A.rd, false);
   if (G.rim) figRim(c, G, K);
 
   // far side first: the arm and leg that are further from us, a shade darker
@@ -1734,6 +1916,7 @@ function drawFigure(ctx, A, env) {
   if (hasRifle && !gunHeld) figRifle(c, G);
   if (bag === 'umbrella') figCarry(c, G, 1); // held on the far side: only its handle shows in front
   figLimbsBack(c, G, K, farGrip);
+  if (A.woundFx && !dead && FIG_WSEG[A.woundFx.seg][2] === 'L') figWoundStain(c, G);
   figClothes(c, G, K);
   if (hi) figDetails(c, G, K);
   if (bag === 'backpack' || bag === 'guitar') figStraps(c, G);
@@ -1747,12 +1930,18 @@ function drawFigure(ctx, A, env) {
   if (hasRifle && gunHeld) figRifle(c, G);
   if (FIG_HAND_BAGS[bag] === 1) figCarry(c, G, bag === 'umbrella' ? 2 : 1);
   figArmNear(c, G, K, nearGrip);
+  if (A.woundFx && !dead && FIG_WSEG[A.woundFx.seg][2] === 'R') figWoundStain(c, G);
   if (bag === 'box' || bag === 'paper') {
     figBoth(c, G, 1);
     if (hi && !dead) { const mx = (G.haL[0] + G.haR[0]) / 2, my = Math.max((G.haL[1] + G.haR[1]) / 2, 0.1), w = bag === 'box' ? 0.25 : 0.212, y = bag === 'box' ? my - 0.07 : my + 0.03; c.fillStyle = G.ink; c.beginPath(); c.arc(mx - w, y, 0.03, 0, TAU); c.moveTo(mx + w + 0.03, y); c.arc(mx + w, y, 0.03, 0, TAU); c.fill(); }
   } else if (bag === 'clip') figClip(c, G, 1);
   if (!dead) figProps(c, G);
+  else {
+    if (A.rd && hpx > 24) figLandPuff(c, G, A.rd, true);
+    if (L.hat && !G.hat && A.rd) figLooseHat(c, G);
+  }
   c.restore();
+  figFlashK = 0;
 }
 
 // ---- far away --------------------------------------------------------------
@@ -1761,8 +1950,8 @@ function drawFigure(ctx, A, env) {
 function figDrawFar(ctx, A, env, J, L) {
   const sc = J.scale, f = J.f, dead = !!A.dead;
   const lw = FIG.lw * sc * (L.build === 'big' ? 1.3 : L.build === 'thin' ? 0.85 : 1), minw = env.px * 1.1;
-  const ink = env.ink || '#13161b', rim = env.rim;
-  figDimK = env.dim || 0;
+  const flash = A._flash > 0, ink = flash ? '#cfc6b8' : env.ink || '#13161b', rim = flash ? 'rgba(255,250,240,0.95)' : env.rim;
+  figDimK = flash ? 0 : env.dim || 0; figFlashK = flash ? 0.55 : 0;
   const D = figC;
   ctx.save(); ctx.translate(A.x, A.y);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1799,7 +1988,7 @@ function figDrawFar(ctx, A, env, J, L) {
   if (L.scarf) { ctx.strokeStyle = D(L.scarf); ctx.lineWidth = Math.max(lw * 1.5, minw * 1.3); ctx.beginPath(); ctx.moveTo(J.neck[0] - 0.08 * sc, J.neck[1] - 0.01 * sc); ctx.lineTo(J.neck[0] + 0.08 * sc, J.neck[1] - 0.01 * sc); ctx.moveTo(J.neck[0] - f * 0.07 * sc, J.neck[1]); ctx.lineTo(J.neck[0] - f * 0.16 * sc, J.neck[1] - 0.34 * sc); ctx.stroke(); }
   // head, hair, hat
   ctx.fillStyle = ink; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
-  const hair = L.hair, hat = L.hat;
+  const hair = L.hair, hat = figHatGone(A, dead, A.deadT || 0) ? null : L.hat; // (a hat that has fallen off is too small to see from here)
   if (hair && hat !== 'hood' && hat !== 'helmet') {
     ctx.fillStyle = D(hair === 'white' ? '#e8e8e2' : (L.hairCol || (hair === 'long' ? '#6b4a2b' : hair === 'bun' ? '#3a2a20' : hair === 'mohawk' ? '#e0413a' : '#7a5a3a')));
     ctx.beginPath();
@@ -1860,6 +2049,7 @@ function figDrawFar(ctx, A, env, J, L) {
     else if (an === 'smoke') { ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, Math.max(0.04, env.px * 0.8), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(J.haR[0] + f * 0.1, J.haR[1] + 0.03, 0.22, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
   }
   ctx.restore();
+  figFlashK = 0;
 }
 
 CB.fig = { drawFigure, actorJoints, figHit, figPose, figJoints };
