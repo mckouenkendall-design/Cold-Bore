@@ -37,10 +37,11 @@ K.chimney = function (S, P, x, y, o) {
     R4(ctx, x - 0.55, y + 1.6, 1.1, 0.25, capC);
     if (s > 9) { R4(ctx, x - 0.62, y + 1.72, 1.24, 0.08, capC); R4(ctx, x - 0.3, y + 1.85, 0.24, 0.34, potC); R4(ctx, x + 0.08, y + 1.85, 0.24, 0.28, potC); R4(ctx, x - 0.33, y + 2.15, 0.3, 0.05, S.tone('#7d3f22', P)); R4(ctx, x + 0.05, y + 2.09, 0.3, 0.05, S.tone('#7d3f22', P)); }
     // smoke: soft puffs that swell, thin and lean with the wind
-    for (let i = 0; i < 9; i++) { const u = ((env.t * 0.16 + i / 9) % 1), r = 0.4 + u * 1.9; kxPuff(ctx, smoke, x + env.wind * u * u * 3.2 + Math.sin(u * 6 + i) * 0.3, y + 2.2 + u * 6.5, r * 1.15, r, (1 - u) * (night ? 0.3 : 0.5) * Math.min(1, u * 8)); }
+    kxPlume(ctx, env, x, y + 2.2, { n: 12, rise: 6.5, r0: 0.35, r1: 2.0, speed: 0.16, a: night ? 0.45 : 0.7, col: smoke, lean: 0.12, ph: x * 0.07 });
   } });
 };
 // A cable.  o.birds: how many small birds sit on it; o.layer; o.sway: false keeps it still.
+const kxWireFly = [], kxWireAt = [0, 0];
 K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
   o = o || {};
   const c = S.tone('#14161a', P), sg = sag || 1.5, birds = [], D = makeRng(Math.floor(x0 * 7 + y0 * 13 + x1 * 3) + 411);
@@ -50,9 +51,11 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
     ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.03, env.px * 0.8);
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
     if (birds.length && env.s > 5) { // birds: a body, a head and a tail, bobbing now and then
-      ctx.fillStyle = c; ctx.beginPath();
+      ctx.fillStyle = c; ctx.beginPath(); kxWireFly.length = 0;
       for (let i = 0; i < birds.length; i++) {
         const u = birds[i][0], bx = (1 - u) * (1 - u) * x0 + 2 * u * (1 - u) * mx + u * u * x1, byy = (1 - u) * (1 - u) * y0 + 2 * u * (1 - u) * my + u * u * y1, f = birds[i][2];
+        // a loud shot: they burst off the wire and come back when it has been quiet a while
+        const fl = kxFlight(S, P.z, env.t, i * 7.3 + x0); if (fl) { if (kxFleeAt(fl, bx, byy, f, i * 3.1 + x0, kxWireAt)) kxWireFly.push(kxWireAt[0], kxWireAt[1], i); continue; }
         if (bx < env.x0 - 1 || bx > env.x1 + 1) continue;
         const bob = Math.sin(env.t * 0.9 + birds[i][1] * 30) > 0.93 ? 0.03 : 0;
         ctx.moveTo(bx + 0.11, byy + 0.09); ctx.ellipse(bx, byy + 0.09, 0.11, 0.075, 0, 0, TAU); ctx.moveTo(bx + f * 0.1 + 0.05, byy + 0.17 + bob); ctx.arc(bx + f * 0.1, byy + 0.17 + bob, 0.05, 0, TAU);
@@ -60,6 +63,7 @@ K.wire = function (S, P, x0, y0, x1, y1, sag, o) {
         ctx.moveTo(bx + f * 0.14, byy + 0.18 + bob); ctx.lineTo(bx + f * 0.2, byy + 0.16 + bob); ctx.lineTo(bx + f * 0.14, byy + 0.15 + bob); ctx.closePath();
       }
       ctx.fill();
+      if (kxWireFly.length) { ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.05, env.px * 1.1); ctx.lineCap = 'round'; ctx.beginPath(); for (let i = 0; i < kxWireFly.length; i += 3) kxBirdPath(ctx, kxWireFly[i], kxWireFly[i + 1], 0.46, env.t, kxWireFly[i + 2], true); ctx.stroke(); ctx.lineCap = 'butt'; }
     }
   } });
 };
@@ -301,7 +305,7 @@ K.skyExtras = function (S, P, o) {
       poly(ctx, [sx - w, base, sx + w, base, sx + w * 0.62, base + h, sx - w * 0.62, base + h], c);
       if (s > 0.8) { poly(ctx, [sx + w * 0.3, base, sx + w, base, sx + w * 0.62, base + h, sx + w * 0.2, base + h], c2); R4(ctx, sx - w * 0.72, base + h - h * 0.03, w * 1.44, h * 0.03, c2); if (s > 2) { ctx.fillStyle = c2; for (let k = 1; k < 5; k++) ctx.fillRect(sx - w * (1 - k * 0.07), base + h * k * 0.2, w * 2 * (1 - k * 0.07), h * 0.008); } }
       // smoke drifting off the top
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.03 + k / 7 + i * 0.37) % 1, r = h * (0.07 + u * 0.3); kxPuff(ctx, smoke, sx + (env.wind || 1) * u * h * 0.5 + Math.sin(u * 7 + k) * h * 0.03, base + h + u * h * 0.5 + r * 0.4, r * 1.3, r, (1 - u) * 0.42 * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, sx, base + h, { n: 11, rise: h * 0.55, r0: h * 0.05, r1: h * 0.3, speed: 0.03, a: 0.62, col: smoke, drift: (env.wind || 1) * h * 0.5, ph: i * 0.37, flat: 0 });
       if (night && Math.sin(env.t * 1.3 + i * 2.1) > 0) { circ(ctx, sx, base + h + 1, Math.max(0.8, env.px * 1.2), '#ff4a3d'); if (s > 0.6) kxGlow(ctx, '#ff4a3d', sx, base + h + 1, Math.max(4, env.px * 5), 0.5); }
     }
     if (o.holder) { // the gas holder: a drum inside a ring of lattice columns
@@ -779,6 +783,110 @@ function stFacade(S, P, Bs, o) {
   });
   return clear;
 }
+// Autumn on the street: fallen leaves, orange, red and yellow, drifted deep against the kerbs,
+// scattered over the pavements and the road, and a few tumbling along the road in the wind.
+// All flat on the ground or skittering along it, from streams of their own.
+const ST_LEAF = ['#c8682a', '#a8402a', '#d8a03a', '#8a5a2a', '#b8782a'];
+function stLeaf(D, R, x, y, sq) { const l = R.r(0.12, 0.22), hh = Math.max(0.03, l * sq * 0.9); D.at = 5; D.poly([x, y, x + l * 0.5, y + hh, x + l, y, x + l * 0.5, y - hh], R.pick(ST_LEAF), 0.95, l); }
+// A drift of leaves along a kerb: a lumpy brown bank at card height y, up to h deep (towards the
+// viewer; a negative h lies away from them), in pieces.
+function stDrift(D, R, y, h) {
+  D.at = 2.5;
+  for (let x = -75; x < 75;) {
+    const l = R.r(2, 9), p = [x + l, y, x, y]; for (let u = x; u < x + l; u += R.r(0.2, 0.6)) p.push(u, y - h * R.r(0.25, 1));
+    p.push(x + l, y - h * 0.3); D.poly(p, R.chance(0.5) ? '#9a5a2a' : '#a8682e', 0.6, 0.6); x += l + R.r(0.2, 3);
+  }
+  D.at = 0;
+}
+function stAutumn(S, H, seed, wet) {
+  const PB = H.PB, PS = H.PS, PR = H.PR;
+  K.deco(S, PB, { ground: true, seed: 5211 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    for (let x = -75; x < 75; x += R.r(0.4, 2)) { const n = R.i(1, 5); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 1), -R.r(0.01, bd * 0.12), sq); }   // blown up against the walls
+    for (let i = 0; i < 150 * 2.4; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, bd * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5221 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), gy = -(hk + face), sq = Math.max(0.12, E.tilt * 1.5), rb = E.hOf(7);
+    stDrift(D, R, gy + 0.01, 0.07);
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 9); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), gy - R.r(0.0, 0.07), sq); }
+    for (let i = 0; i < 150 * 2.2; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.02, hk * 0.92), sq);
+    for (let i = 0; i < 150 * 0.4; i++) stLeaf(D, R, R.r(-75, 75), gy - R.r(0.05, Math.max(0.06, rb - hk - face) * 0.95), sq);
+    D.at = 0;
+  });
+  K.deco(S, PR, { ground: true, seed: 5231 + seed }, (D, R) => {
+    const near = 5.3;
+    stDrift(D, R, -near + 0.02, -0.22);        // (this kerb is the near one: the leaves lie up the road from it)
+    for (let x = -75; x < 75; x += R.r(0.3, 1.2)) { const n = R.i(3, 8); for (let k = 0; k < n; k++) stLeaf(D, R, x + R.r(0, 0.9), -near + R.r(0.02, 0.3), 0.3); }
+    for (let i = 0; i < 150 * 0.5; i++) stLeaf(D, R, R.r(-75, 75), -R.r(0.2, near - 0.4), 0.22);
+    for (let i = 0; i < 150 * 1.2; i++) stLeaf(D, R, R.r(-75, 75), -near - R.r(0.4, 5), 0.3);
+    D.at = 0;
+  });
+  if (wet) return;
+  // a handful tumbling along the road with the wind, now skating, now flipping over
+  const cols = ST_LEAF.map((c) => S.tone(c, PR)), L = []; { const R = makeRng(5241 + seed); for (let i = 0; i < 14; i++) L.push([R.r(0, 150), R.r(0.6, 1.3), R.r(0.3, 4.9), R.r(0, TAU), i % cols.length, R.r(0.09, 0.14)]); }
+  PR.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 5) return;
+    const t = env.t, w = env.wind || 1, dir = w >= 0 ? 1 : -1, sp = 0.5 + Math.min(3, Math.abs(w)) * 0.45;
+    for (let i = 0; i < L.length; i++) {
+      const q = L[i], g = t * sp * q[1] + Math.sin(t * 0.8 + q[3]) * 1.2 + q[0], xx = -75 + (((g % 150) + 150) % 150), x = dir * xx; if (x < env.x0 - 1 || x > env.x1 + 1) continue;
+      const hop = Math.max(0, Math.sin(t * 2.3 * q[1] + q[3])) * 0.12, fl = Math.cos(t * 5 * q[1] + q[3]), l = q[5], y = -q[2] + hop;
+      ctx.fillStyle = cols[q[4]]; ctx.beginPath(); ctx.moveTo(x - l * 0.5, y); ctx.lineTo(x, y + l * 0.3 * fl + 0.01); ctx.lineTo(x + l * 0.5, y); ctx.lineTo(x, y - l * 0.3 * fl - 0.01); ctx.closePath(); ctx.fill();
+    }
+  } });
+}
+// A hoar frost: the pavements and the road's edges furred white, rime thick along the kerbs,
+// the puddles frozen over and crazed, and the frost glittering under the lamps.
+function stFrost(S, H, seed) {
+  const PB = H.PB, PS = H.PS, PR = H.PR, glints = [];
+  K.deco(S, PB, { ground: true, seed: 5251 + seed }, (D, R) => {
+    const E = stEye(D, PB), bd = E.hOf(7) * 0.93, sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -bd, 150, bd - 0.01, '#dfe8f2', 0.14);
+    for (let x = -75; x < 75; x += R.r(1, 4)) stFlat(D, R, x, -R.r(0.02, bd * 0.9), R.r(0.6, 2.2), Math.max(0.03, sq * R.r(0.3, 0.8)), '#eef4fa', 0.16);
+    D.at = 20; for (let i = 0; i < 900; i++) D.rect(R.r(-75, 75), -R.r(0.02, bd * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  K.deco(S, PS, { ground: true, seed: 5261 + seed }, (D, R) => {
+    const E = stEye(D, PS), hk = E.hOf(3.3), face = 0.15 * (1 + hk / E.eyr), sq = Math.max(0.12, E.tilt * 1.5);
+    D.rect(-75, -hk, 150, hk - 0.01, '#dfe8f2', 0.16);
+    D.rect(-75, -hk - face * 0.35, 150, face * 0.35, '#f2f6fa', 0.45);                         // rime along the edge of the kerb
+    for (let x = -75; x < 75; x += R.r(1, 3.5)) stFlat(D, R, x, -R.r(0.02, hk * 0.9), R.r(0.5, 1.8), Math.max(0.03, sq * R.r(0.25, 0.6)), '#eef4fa', 0.18);
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -R.r(0.02, hk * 0.95), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+    for (let i = 0; i < 140; i++) glints.push(R.r(-75, 75), -R.r(0.03, hk * 0.9), R.r(0, 50), R.r(2, 5));
+  });
+  K.deco(S, PR, { ground: true, seed: 5271 + seed }, (D, R) => {
+    const near = 5.3;
+    // frost on the road where the tyres have not cleared it: along both gutters and the crown
+    // (in patches, not one sheet: a nearer plane's ground may take over part way along)
+    for (let x = -75; x < 75; x += R.r(0.8, 2.6)) {
+      stFlat(D, R, x, -R.r(0.2, 0.6), R.r(0.5, 1.6), R.r(0.08, 0.2), '#dfe8f2', 0.16);
+      stFlat(D, R, x + R.r(0, 1), -near + R.r(0.15, 0.5), R.r(0.5, 1.6), R.r(0.1, 0.25), '#dfe8f2', 0.18);
+      stFlat(D, R, x + R.r(0, 1), -near - R.r(0.3, 4.6), R.r(0.6, 1.8), R.r(0.2, 0.5), '#dfe8f2', 0.15);
+    }
+    for (let i = 0; i < 7; i++) {   // puddles frozen over, white at the rims, crazed across
+      const x = R.r(-60, 60), y = -R.pick([0.45, near - 0.3]) + R.r(-0.1, 0.1), rx = R.r(0.35, 0.8), ry = R.r(0.06, 0.12);
+      D.at = 3; stFlat(D, R, x, y, rx, ry, '#c4d2de', 0.45); D.at = 6; stFlat(D, R, x, y + ry * 0.15, rx * 0.7, ry * 0.55, '#9fb0c0', 0.35);
+      D.at = 14; for (let k = 0; k < 4; k++) { const a = R.r(-rx * 0.7, rx * 0.7); D.seg(x + a, y - ry * 0.6, x + a + R.r(-0.3, 0.3), y + ry * 0.6, 0.012, '#f4f8fc', 0.7); }
+      D.at = 6; D.line([x - rx, y, x - rx * 0.7, y + ry * 0.75, x, y + ry, x + rx * 0.7, y + ry * 0.75, x + rx, y], 0.03, '#f4f8fc', 0.6);
+    }
+    D.at = 20; for (let i = 0; i < 700; i++) D.rect(R.r(-75, 75), -near - R.r(0.05, 4.8), 0.03, 0.012, '#ffffff', 0.6);
+    D.at = 0;
+  });
+  // the frost glittering: a few crystals catch the lamp (or the sky) at a time
+  PS.add({ x0: -1e4, x1: 1e4, layer: 0, draw(ctx, env) {
+    if (env.s < 6 || !glints.length) return;
+    const t = env.t, r = Math.max(env.px * 1.2, 0.02);
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); let any = false;
+    for (let i = 0; i < glints.length; i += 4) {
+      const x = glints[i]; if (x < env.x0 || x > env.x1) continue;
+      const k = Math.sin(t * glints[i + 3] + glints[i + 2]); if (k < 0.93) continue;
+      const y = glints[i + 1], rr = r * (1 + (k - 0.93) * 25);
+      ctx.moveTo(x - rr, y); ctx.lineTo(x, y + rr * 0.35); ctx.lineTo(x + rr, y); ctx.lineTo(x, y - rr * 0.35); ctx.closePath(); any = true;
+    }
+    if (any) ctx.fill();
+  } });
+}
 function stDetail(S, H, q) {
   const PB = H.PB, PS = H.PS, PR = H.PR, night = S.pal.dark > 0.3, wet = S.weather === 'rain' || S.weather === 'storm', seed = q.seed || 3;
   const last = H.b[H.b.length - 1], rowX0 = H.b[0].x, rowX1 = last.x + last.w;
@@ -862,14 +970,29 @@ function stDetail(S, H, q) {
     stLitter(D, R, -75, 75, -0.15, -near + 0.3, 0.16, 0.12);
   });
 
+  // ---- the day's own dressing (07i_looks.js): autumn leaves, or a hoar frost ----
+  const dress = S.look && S.look.dress;
+  if (dress === 'autumn') stAutumn(S, H, seed, wet); else if (dress === 'frost') stFrost(S, H, seed);
+
   // ---- pigeons on the cornices, by day ----
   if (S.pal.dark < 0.45 && !wet && birds.length) {
-    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB);
+    const body = S.tone('#80868f', PB), head = S.tone('#5b616a', PB), dk = S.tone('#33373d', PB), fly = [];
+    // the ones in flight are drawn over the roofs (worked out below, with the ones sitting)
+    PB.add({ x0: -1e4, x1: 1e4, layer: 2, draw(ctx, env) {
+      if (!fly.length || env.s < 7) return;
+      ctx.strokeStyle = head; ctx.lineWidth = Math.max(0.06, env.px * 1.2); ctx.lineCap = 'round'; ctx.beginPath();
+      for (let i = 0; i < fly.length; i += 3) kxBirdPath(ctx, fly[i], fly[i + 1], 0.6, env.t, fly[i + 2], true);
+      ctx.stroke(); ctx.lineCap = 'butt';
+    } });
     PB.add({ x0: rowX0 - 1, x1: rowX1 + 1, layer: 0, draw(ctx, env) {
       if (env.s < 7) return;
       const t = env.t, st = [];
+      fly.length = 0;
       for (let i = 0; i < birds.length; i++) {
-        const b = birds[i]; if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
+        const b = birds[i];
+        // a loud shot sends them all off the cornices; they drift back once it has been quiet a while
+        const fl = kxFlight(S, PB.z, t, b[0] * 1.7 + i); if (fl) { if (kxFleeAt(fl, b[0], b[1], b[3], i + b[0], kxWireAt)) fly.push(kxWireAt[0], kxWireAt[1], i); continue; }
+        if (b[0] < env.x0 - 1 || b[0] > env.x1 + 1) continue;
         // every few seconds each one pecks, turns about, or gives a little hop
         const cyc = (t + b[2]) / 3.7, c = Math.floor(cyc), u = cyc - c, hk = kxH(c, b[2]), dir = hk > 0.5 ? b[3] : -b[3];
         const hop = hk > 0.82 && u < 0.2 ? Math.sin((u / 0.2) * Math.PI) * 0.12 : 0, peck = hk > 0.3 && hk < 0.7 && u > 0.4 && u < 0.6 ? Math.sin(((u - 0.4) / 0.2) * Math.PI) : 0;
@@ -916,7 +1039,7 @@ function stDetail(S, H, q) {
       if (env.s < 4) return;
       R4(ctx, vx - 0.17, vy - 0.1, 0.34, 0.22, gr);
       if (env.s > 14) { ctx.fillStyle = gr2; ctx.beginPath(); for (let k = 0; k < 4; k++) ctx.rect(vx - 0.14, vy - 0.07 + k * 0.05, 0.28, 0.02); ctx.fill(); }
-      for (let k = 0; k < 7; k++) { const u = (env.t * 0.3 + k / 7) % 1, r = 0.12 + u * 0.26; kxPuff(ctx, sc, vx - u * 0.3 + Math.sin(u * 7 + k) * 0.05, vy + 0.1 + u * 1.4, r * 1.25, r, 0.5 * (1 - u) * Math.min(1, u * 6)); }
+      kxPlume(ctx, env, vx, vy + 0.1, { n: 9, rise: 1.5, r0: 0.1, r1: 0.42, speed: 0.3, a: 0.75, col: sc, drift: -0.3 + (env.wind || 0) * 0.08, steam: true });
     } });
   });
 

@@ -620,7 +620,7 @@ K.twBackTowers = function (S, z, o) {
         for (let k = 0; k < 2; k++) {
           const px = x0 + t.w * 0.56 + k * 4.4;
           R4(ctx, px, t.h, 3.4, 2.5, body2); R4(ctx, px + 0.7, t.h + 2.5, 2.0, 0.9, body3);
-          if (s > 5) for (let j = 0; j < 3; j++) { const u = (env.t * 0.07 + j / 3 + T.puff + k * 0.37) % 1; twPuff(ctx, px + 1.7 + env.wind * u * u * 5, t.h + 3.6 + u * 11, 1.6 + u * 4.5, 1.3 + u * 3.2, '#8fa0c4', (1 - u) * Math.min(1, u * 5) * 0.3); }
+          if (s > 2) kxPlume(ctx, env, px + 1.7, t.h + 3.6, { n: 8, rise: 11, r0: 1.4, r1: 4.6, speed: 0.07, a: 0.5, col: '#7f8fb2', lean: 0.45, ph: T.puff + k * 0.37, steam: true });
         }
         line(ctx, x0 + t.w * 0.2, t.h + 3.2, x0 + t.w * 0.2, t.h + 10, body3, 0.25, env);
         twBeacon(ctx, env, x0 + t.w * 0.2, t.h + 10.3, T.ph + 1);
@@ -990,7 +990,7 @@ K.twSite = function (S, P, o) {
     const gx = fx1 - 0.6;
     R4(ctx, gx, 0.12, 1.7, 0.95, genC[li]); R4(ctx, gx + 0.1, 0, 0.2, 0.12, dark); R4(ctx, gx + 1.4, 0, 0.2, 0.12, dark); R4(ctx, gx + 0.12, 0.3, 0.7, 0.6, dark);
     if (s > 9) { ctx.fillStyle = genC[li]; for (let k = 0; k < 4; k++) ctx.fillRect(gx + 0.17, 0.38 + k * 0.13, 0.6, 0.04); R4(ctx, gx + 1.05, 0.7, 0.4, 0.22, cabDoor); circ(ctx, gx + 1.15, 0.81, 0.04, '#52e07a'); R4(ctx, gx + 1.3, 1.07, 0.1, 0.3, dark); }
-    for (let k = 0; k < 4; k++) { const u = (env.t * 0.3 + k / 4) % 1; twPuff(ctx, gx + 1.35 + env.wind * u * u * 1.2, 1.45 + u * 2.2, 0.3 + u * 0.9, 0.3 + u * 0.8, '#8b93a3', (1 - u) * Math.min(1, u * 5) * 0.25); }
+    kxPlume(ctx, env, gx + 1.35, 1.45, { n: 7, rise: 2.2, r0: 0.25, r1: 0.95, speed: 0.3, a: 0.45, col: '#8b93a3', lean: 0.55 });
     // the cables that feed the floodlights: slung overhead from the cabin, and along the ground from the generator
     ctx.strokeStyle = dark; ctx.lineWidth = Math.max(0.035, env.px * 0.6); ctx.beginPath();
     for (let i = 0; i < Z.lamps.length; i++) {
@@ -1037,6 +1037,26 @@ K.twSite = function (S, P, o) {
   Z.levelY = (l) => l * fh;
   return Z;
 };
+
+// ---- a city in neon (a mission's look: 07i_looks.js) ---------------------------------
+// The far towers outlined in coloured light: a line along the crown of some, a strip up one
+// edge of others, a few slow colour changes. Painted on the far skyline only, nothing near.
+function twNeonCity(S, P) {
+  const D = makeRng(7717 + Math.round(P.z)), bl = P.kxBuildings || [], cols = ['#ff4fc8', '#4fe8ff', '#b46bff', '#ff8a3d', '#5dff9a'], list = [];
+  for (let i = 0; i < bl.length; i++) { const b = bl[i]; if (!D.chance(0.38)) continue; list.push([b.x, b.w, b.h, D.pick(cols), D.i(0, 2), D.f()]); }
+  P.add({ x0: -2000, x1: 2000, layer: 0, draw(ctx, env) {
+    const s = env.s, lw = Math.max(env.px * 1.6, 0.6), t = env.t;
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i], x = q[0], w = q[1], h = q[2]; if (x + w < env.x0 || x > env.x1) continue;
+      const on = q[4] === 2 ? 0.55 + 0.45 * Math.sin(t * 0.8 + q[5] * 9) : 1, col = q[3];
+      ctx.globalAlpha = on; ctx.fillStyle = col;
+      if (q[4] !== 1) ctx.fillRect(x + w * 0.04, h - lw * 1.5, w * 0.92, lw);
+      if (q[4] !== 0) ctx.fillRect(q[5] > 0.5 ? x + w * 0.04 : x + w * 0.96 - lw, h * 0.15, lw, h * 0.83);
+      ctx.globalAlpha = 1;
+      if (s > 0.25) { const gx = x + w / 2; kxGlow(ctx, col, gx, h, Math.max(w * 0.7, env.px * 20), 0.22 * on); }
+    }
+  } });
+}
 
 // ---- a helicopter (a vehicle kind, so it flies on a routine like any car) ----------
 CARS.twheli = { len: 12, h: 3.8, body: 3.8, cab: [-0.5, 0.5], win: [], seats: [], wheel: 0, solid: true,
@@ -1093,11 +1113,12 @@ SCN.towers = function (o) {
   const S = makeScene({ time: 'night', weather: o.weather, seed, refZ, exits: [-64, 64], ambience: 'city', groundMat: 'hard',
     bounds: { x0: (-50 * refZ) / (z0 - 44) - 3, x1: (50 * refZ) / (z0 - 4) + 3, y0: -2, y1: 60 } });
   const H = { S, z0, refZ, focus };
-  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm';   // decoration only
+  const DS = makeRng(seed * 389 + 77), wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet);   // decoration only (a look can leave it wet after rain)
 
   // far away: the rest of the city
-  K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
+  const PSk = K.skyline(S, z0 + 1500, { seed: 31 + seed, hMin: 70, hMax: 250, cols: ['#566478', '#5f6d82', '#4a586c'] });
   K.skyline(S, z0 + 560, { seed: 17 + seed, hMin: 16, hMax: 30, x0: -700, x1: 700, cols: ['#465264', '#4e5a6c', '#3c4858'] });
+  if (S.look && S.look.dress === 'neon') twNeonCity(S, PSk);
   // fireworks over the harbour (drawn only while they are going off)
   const PW = S.plane(z0 + 400, 'fireworks'); H.fw = null;
   // on the same plane: banks of low cloud drifting over the far rooftops
@@ -1285,7 +1306,7 @@ SCN.towers = function (o) {
         const px = -16.6 + k * 3.7;
         R4(ctx, px + 0.2, by, 0.16, 0.45, c2); R4(ctx, px + 2.44, by, 0.16, 0.45, c2); R4(ctx, px, by + 0.45, 2.8, 2.1, c1); R4(ctx, px + 0.6, by + 2.55, 1.6, 0.7, c2); R4(ctx, px + 0.5, by + 3.2, 1.8, 0.1, c3);
         if (s > 7) { ctx.fillStyle = c2; for (let j = 0; j < 4; j++) ctx.fillRect(px + 0.2, by + 0.7 + j * 0.4, 2.4, 0.12); }
-        for (let j = 0; j < 5; j++) { const u = (env.t * 0.09 + j / 5 + k * 0.43) % 1; twPuff(ctx, px + 1.4 + env.wind * u * u * 3.2, by + 3.5 + u * 6.5, 0.9 + u * 2.6, 0.8 + u * 2.0, '#8fa0c4', (1 - u) * Math.min(1, u * 5) * 0.3); }
+        kxPlume(ctx, env, px + 1.4, by + 3.5, { n: 9, rise: 6.5, r0: 0.8, r1: 2.8, speed: 0.09, a: 0.5, col: '#7f8fb2', lean: 0.5, ph: k * 0.43, steam: true });
       }
       if (H.cradleKit) { const cx = H.cradleKit.x; R4(ctx, cx - 1.1, by + 0.07, 2.2, 1.15, c3); R4(ctx, cx - 0.9, by + 1.22, 1.8, 0.1, c2); if (s > 8) { R4(ctx, cx - 0.8, by + 0.35, 0.7, 0.5, c2); circ(ctx, cx - 0.8, by + 0.1, 0.12, c2); circ(ctx, cx + 0.8, by + 0.1, 0.12, c2); } }
       line(ctx, -4.4, by, -4.4, by + 5.6, c2, 0.1, env); line(ctx, -3.6, by, -3.6, by + 3.8, c2, 0.08, env);              // masts

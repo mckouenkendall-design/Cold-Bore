@@ -107,7 +107,7 @@ View.prototype.draw = function (sim, dt, simDt) {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, V.W, V.H);
   ctx.save();
   ctx.beginPath(); if (V.round) ctx.arc(cam.cx, cam.cy, V.R, 0, TAU); else ctx.rect(0, 0, V.W, V.H); ctx.clip();
-  V.drawWorld(sim, cam, dt, simDt);
+  V._scopeDraw = true; V.drawWorld(sim, cam, dt, simDt); V._scopeDraw = false;
   V.drawGlassFx(sim, cam, dt);
   V.drawLens(sim, cam);
   ctx.restore();
@@ -135,42 +135,8 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
   const cx = cam.cx, cy = cam.cy, hw = cam.hw, hh = cam.hh, ppm = cam.ppm;
   const aim = { x: cam.ax, y: cam.ay }, eye = { x: cam.ex, y: cam.ey, z: cam.ez };
   const farStop = sim.farStop || 1e9;
-  // ---- sky ----
-  const hor = cy + aim.y * ppm - ((0 - eye.y) / 4000) * 1000 * ppm * 0; // horizon line (angle 0)
-  const g = ctx.createLinearGradient(0, hor - 230 * ppm, 0, hor);
-  g.addColorStop(0, pal.skyTop); g.addColorStop(1, pal.skyBot);
-  ctx.fillStyle = g; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
-  if (pal.star > 0) {
-    ctx.fillStyle = '#ffffff';
-    const stars = S.sky.stars;
-    for (let i = 0; i < stars.length; i++) {
-      const sx = cx + (stars[i][0] - aim.x * 0.98) * ppm * 0.6, sy = cy - (stars[i][1] - aim.y * 0.98) * ppm * 0.6;
-      if (Math.abs(sx - cx) > hw || Math.abs(sy - cy) > hh) continue;
-      ctx.globalAlpha = pal.star * (0.35 + 0.65 * stars[i][3]) * (0.8 + 0.2 * Math.sin(V.rt * 2 + i));
-      ctx.fillRect(sx, sy, stars[i][2] * 1.3, stars[i][2] * 1.3);
-    }
-    ctx.globalAlpha = 1;
-  }
-  { // sun or moon
-    const sx = cx + (S.sky.sun[0] - aim.x) * ppm, sy = cy - (S.sky.sun[1] - aim.y) * ppm, sr = (pal.dark > 0.5 ? 4.5 : 7) * ppm;
-    if (S.weather !== 'rain' && S.time !== 'overcast' && sx > cx - hw - sr * 4 && sx < cx + hw + sr * 4) {
-      const gg = ctx.createRadialGradient(sx, sy, sr * 0.2, sx, sy, sr * 4);
-      gg.addColorStop(0, rgba(pal.sun, 0.55)); gg.addColorStop(1, rgba(pal.sun, 0));
-      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(sx, sy, sr * 4, 0, TAU); ctx.fill();
-      ctx.fillStyle = pal.sun; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, TAU); ctx.fill();
-      if (pal.dark > 0.5) { ctx.fillStyle = pal.skyTop; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(sx + sr * 0.45, sy - sr * 0.2, sr * 0.9, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    }
-  }
-  ctx.fillStyle = pal.cloud;
-  for (let i = 0; i < S.sky.clouds.length; i++) {
-    const c = S.sky.clouds[i];
-    const drift = ((sim.t * 0.25 * (1 + c.s) * sign(sim.windBase || 1) + c.x + 300) % 600) - 300;
-    const px = cx + (drift - aim.x) * ppm, py = cy - (c.y - aim.y) * ppm;
-    if (px < cx - hw - c.w * ppm || px > cx + hw + c.w * ppm || py < cy - hh - 40 * ppm || py > cy + hh + 40 * ppm) continue;
-    ctx.globalAlpha = S.weather === 'clear' ? 0.75 : 0.9;
-    for (let j = 0; j < c.n; j++) { ctx.beginPath(); ctx.ellipse(px + ((j / (c.n - 1)) - 0.5) * c.w * ppm * 0.8, py - Math.sin(j * 2.3 + c.s * 9) * c.h * ppm * 0.25, c.w * ppm * 0.26, c.h * ppm * (0.45 + 0.25 * Math.sin(j * 1.7 + c.s * 5)), 0, 0, TAU); ctx.fill(); }
-  }
-  ctx.globalAlpha = 1;
+  // ---- sky (06b_sky.js) ----
+  V.drawSky(sim, cam);
 
   // ---- the world, far to near ----
   const nv = !!st.scope.nv;
@@ -263,9 +229,10 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     for (let i = 0; i < sim.steam.length; i++) {
       const sm = sim.steam[i]; if (sm.plane !== P || sm.until < sim.t) continue;
       const u = clamp((sim.t - sm.from) / 1.5, 0, 1) * clamp((sm.until - sim.t) / 2, 0, 1);
-      ctx.fillStyle = 'rgba(232,236,240,0.5)';
-      for (let j = 0; j < 9; j++) { const ph = sim.t * 0.5 + j * 1.7; ctx.globalAlpha = 0.5 * u; ctx.beginPath(); ctx.arc(sm.x + Math.sin(ph) * 2.2 + (j - 4) * 0.5, sm.y + 0.6 + ((ph * 0.9) % 4.5), 1.1 + (j % 3) * 0.5, 0, TAU); ctx.fill(); }
-      ctx.globalAlpha = 1;
+      // a jet of steam roaring out of the valve and rolling up into a thick cloud
+      const col = S.pal.dark > 0.5 ? '#aab4c4' : '#eef1f4';
+      kxPlume(ctx, env, sm.x - 0.8, sm.y + 0.3, { n: 13, rise: 4.8, r0: 0.5, r1: 2.2, speed: 0.42, a: 0.85 * u, col, drift: env.wind * 0.25 - 0.6, steam: true });
+      kxPlume(ctx, env, sm.x + 0.8, sm.y + 0.3, { n: 13, rise: 4.4, r0: 0.6, r1: 2.3, speed: 0.38, a: 0.85 * u, col, drift: env.wind * 0.25 + 0.6, ph: 0.5, steam: true });
     }
     // speech and alert marks
     for (let i = 0; i < sim.actors.length; i++) {
@@ -329,21 +296,11 @@ View.prototype.drawWorld = function (sim, cam, dt, simDt, o) {
     }
   }
 
-  // ---- weather in front of everything ----
-  if (S.weather === 'rain' || S.weather === 'storm') V.drawRain(sim, cam, S.weather === 'storm');
-  else if (S.weather === 'snow') {
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    const n = Math.round(80 * clamp((hw * hh) / 36000, 0.7, 3));
-    for (let i = 0; i < n; i++) {
-      const sp = 40 + (i % 5) * 22;
-      const x = cx - hw + (((i * 97.3 + V.rt * (sim.wind() * 14 + Math.sin(V.rt + i) * 6)) % (hw * 2)) + hw * 2) % (hw * 2), y = cy - hh + ((i * 53.7 + V.rt * sp) % (hh * 2));
-      ctx.beginPath(); ctx.arc(x, y, 1 + (i % 3) * 0.7, 0, TAU); ctx.fill();
-    }
-  }
-  if (S.weather === 'fog') { ctx.fillStyle = rgba(pal.fog, 0.22); ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // lightning flash
-  if (sim.flashT && sim.t - sim.flashT < 0.35) { ctx.fillStyle = 'rgba(235,240,255,' + (0.55 * (1 - (sim.t - sim.flashT) / 0.35) * (Math.sin(sim.t * 70) > -0.3 ? 1 : 0.3)) + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-
+  // ---- weather in front of everything, then the colour of the hour (06c_air.js) ----
+  V.drawWeather(sim, cam);
+  V.drawGrade(sim, cam);
+  if (V._scopeDraw) V.drawShimmer(sim, cam);   // (through the scope only, not in the kill camera)
+  V.keepFrame(sim);
 };
 
 // Rain. Three depths of streaks, every drop with its own speed, length, brightness and
@@ -370,7 +327,7 @@ View.prototype.drawRain = function (sim, cam, storm) {
       const sp = (far ? 520 : near ? 1500 : 900) * r.sp, len = (far ? 9 : near ? 34 : 18) * r.len, sl = slant + r.lean + (near ? slant * 0.25 : 0);
       const span = H2 + len + 20, tt = r.y * span + t * sp, cyc = Math.floor(tt / span), yy = (tt - cyc * span) - len - 10;
       const hsh = Math.sin(i * 91.7 + cyc * 47.3) * 43758.5453, lane = hsh - Math.floor(hsh); // a fresh place to fall every time round
-      const xx = (((lane * W2 + sl * yy) % W2) + W2) % W2;
+      const xx = (((lane * W2 + sl * yy - cam.ax * cam.ppm) % W2) + W2) % W2;   // the rain is out in the world: it pans with it
       ctx.moveTo(cx - hw + xx, cy - hh + yy); ctx.lineTo(cx - hw + xx + sl * len, cy - hh + yy + len);
     }
     ctx.stroke();
@@ -410,15 +367,19 @@ View.prototype.drawLens = function (sim, cam) {
     ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let y = cy - hh + ((V.rt * 40) % 3); y < cy + hh; y += 3) ctx.fillRect(cx - hw, y, hw * 2, 1);
   }
   if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,244,214,' + V.flash * 0.5 + ')'; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2); }
-  // soft dark edge
+  // the scope's own coating, flare, rain and frost on the lens, the hide (06d_glass.js)
+  V.drawGlass(sim, cam);
+  // soft dark edge (each make of scope darkens its rim a little differently)
+  const edge = glassOf(st).edge;
   let vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,0.28)'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(0.82, 'rgba(0,0,0,' + edge.toFixed(2) + ')'); vg.addColorStop(1, V.round ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.96)');
   ctx.fillStyle = vg; ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
   // thin colour fringe, like real glass
   ctx.strokeStyle = 'rgba(90,150,255,0.16)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, R - 4, 0, TAU); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,170,90,0.10)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, R - 8, 0, TAU); ctx.stroke();
+  V.drawFrost(sim, cam);
 
-  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticle(sim, cx, cy, ppm); }
+  if (V.mode !== 'plain' && !V.noReticle) { V.drawMark(sim, cam); V.drawReticleLit(sim, cam); }
 
   // eye-box shadow: a black crescent that swings in when the rifle moves
   const sm = Math.hypot(V.shadowX, V.shadowY) + V.blackout * R * 0.25;
@@ -447,7 +408,7 @@ View.prototype.bdcMarks = function (sim) {
 View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const V = this, ctx = V.ctx, st = sim.st, R = V.RR || V.R, Rv = Math.min(R, V.hh || R), type = st.scope.ret;
   const nvc = st.scope.nv;
-  const col = nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)';
+  const col = V.retInk || (nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)');   // retInk: the lit middle after dark (06d_glass.js)
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'butt';
   const L = (x1, y1, x2, y2, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(cx + x1, cy + y1); ctx.lineTo(cx + x2, cy + y2); ctx.stroke(); };
   const thin = clamp(ppm * 0.035, 0.9, 1.6);

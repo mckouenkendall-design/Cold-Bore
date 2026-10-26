@@ -71,14 +71,7 @@ function rgGlow(ctx, x, y, r, rgb, a, ky) {
 // it blows, the flatter the plume lies. o: n puffs, rise (metres), speed, r0 and
 // r1 (puff size at the start and end), a (strength), col, lean, ph.
 function rgSmoke(ctx, env, x, y, o) {
-  const n = o.n || 6, rise = o.rise || 4, w = env.wind, flat = Math.min(1, Math.abs(w) / 9), r0 = o.r0 || 0.2, r1 = o.r1 || 1.1, a0 = o.a || 0.5;
-  ctx.fillStyle = o.col;
-  for (let i = 0; i < n; i++) {
-    const u = (((env.t * (o.speed || 0.4) + i / n + (o.ph || 0)) % 1) + 1) % 1;
-    ctx.globalAlpha = a0 * (1 - u) * Math.min(1, u * 7);
-    ctx.beginPath(); ctx.arc(x + w * u * u * rise * (o.lean || 0.5) + Math.sin(i * 2.4 + env.t * 0.8) * 0.1 * u * rise * 0.3, y + rise * u * (1 - 0.45 * flat * u), r0 + (r1 - r0) * u, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  kxPlume(ctx, env, x, y, { n: Math.round((o.n || 6) * 1.6), rise: o.rise || 4, r0: o.r0 || 0.2, r1: o.r1 || 1.1, speed: o.speed || 0.4, a: Math.min(0.9, (o.a || 0.5) * 1.6), col: o.col, lean: o.lean || 0.5, ph: o.ph || 0, flat: 0.06 });
 }
 // Loose snow torn off a roof edge at (x, y) once the wind gets up: little streamers
 // that fly out downwind, sink and thin away. It is the plainest tell of a strong

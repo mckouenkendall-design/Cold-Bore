@@ -155,6 +155,9 @@ function dkSeaSetup(S, dk) {
   for (let i = 0; i < S.objects.length; i++) { const ob = S.objects[i]; if (ob.kind === 'lamp' && ob.plane) dkLight(S, { P: ob.plane, x: ob.x, y: ob.y, a: S.pal.dark > 0.5 ? 0.85 : 0.32, w: 0.55, ob }); }
   const clear = S.weather === 'clear', fog = S.weather === 'fog';
   dk.sunA = clear ? (S.pal.dark > 0.5 ? 0.42 : 0.6) : fog ? 0.22 : 0; dk.sunCss = S.pal.sun;
+  // how clearly the water mirrors what stands over it: rain and wind break it up
+  const wet = S.weather === 'rain' || S.weather === 'storm';
+  dk.reflA = wet ? 0.3 : fog ? 0.34 : S.pal.dark > 0.5 ? 0.55 : 0.5; dk.reflR = S.weather === 'storm' ? 3 : wet ? 2 : 1;
 }
 K.sea = function (S, P, o) {
   o = o || {};
@@ -164,7 +167,9 @@ K.sea = function (S, P, o) {
   if (o.sheen) col = mix(col, S.tone(o.sheen, P, true), 0.6);       // the sky lying on the water near the horizon
   const hi = mix(col, night ? '#8fa6cc' : '#ffffff', o.shine === undefined ? (night ? 0.17 : 0.26) : o.shine), lo = mix(col, '#000812', night ? 0.34 : 0.17);
   const X0 = o.x0 === undefined ? -6000 : o.x0, X1 = o.x1 === undefined ? 6000 : o.x1;
-  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z) };
+  // mirror: how many metres of what stands over this water it reflects (only what stands on its
+  // own waterline: the near strips would otherwise mirror the water beyond them)
+  const dk = dkOf(S), me = { P, y, col, hi, lo, X0, X1, nxt: null, bot: col, rows: [], sd: o.seed || Math.round(P.z), mirror: o.mirror === undefined ? 16 : o.mirror }; S._water = true;
   dk.seas.push(me);
   if (o.ground !== false) { P.groundY = y; P.groundMat = 'water'; }
   P.add({ x0: X0, x1: X1, layer: o.layer || 0, draw(ctx, env) { dkSeaDraw(ctx, env, S, dk, me); } });
@@ -182,6 +187,8 @@ function dkSeaDraw(ctx, env, S, dk, me) {
   const yb = Math.max(e0 - 2 * px, cut ? ybn - 2 * px : y - 400), yt = Math.min(y, e1 + 2 * px); if (yb >= yt) return;
   if ((y - ybn) * s < 6) R4(ctx, xa, yb, xb - xa, yt - yb, me.col);
   else { const g = ctx.createLinearGradient(0, y, 0, ybn); g.addColorStop(0, me.col); g.addColorStop(1, me.bot); ctx.fillStyle = g; ctx.fillRect(xa, yb, xb - xa, yt - yb); }
+  // the quay, the ships, the lamps and the sky standing over this water, mirrored in it
+  if (me.mirror > 0) kxReflect(ctx, env, y, yb, xa, xb, dk.reflA, dk.reflR + Math.abs(env.wind) * 0.12, me.sd, me.mirror);
 
   // dark shapes: the quay wall, piles and hulls mirrored in the water, broken into bands
   const ms = dk.mirrors;
@@ -287,9 +294,13 @@ function dkSeaDraw(ctx, env, S, dk, me) {
 function dkMirCol(S, P, hex) { return mix(S.tone(hex, P), S.tone(darken(S.pal.water, 0.25), P), 0.5); }
 // A gull, standing. About 0.4 m long: obviously a bird, and drawn behind the people.
 // w, g, b are its white, grey and beak colours. dir 1 faces right.
-function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep) {
+const dkGullAt = [0, 0];
+function dkGull(ctx, env, x, y, dir, w, g, b, ink, asleep, S, z) {
   const s = env.s;
   if (s < 3.5) return;
+  // a loud shot: the gull lifts off and wheels away, and comes back to the same spot later
+  const fl = S ? kxFlight(S, z, env.t, x * 3.7 + y) : null;
+  if (fl) { if (kxFleeAt(fl, x, y, -dir, x + y, dkGullAt)) { ctx.strokeStyle = w; ctx.lineWidth = Math.max(0.06, env.px * 1.3); ctx.lineCap = 'round'; ctx.beginPath(); kxBirdPath(ctx, dkGullAt[0], dkGullAt[1] + 0.2, 0.9, env.t * 0.7, x, true); ctx.stroke(); ctx.lineCap = 'butt'; } return; }
   if (s < 9) { R4(ctx, x - 0.17, y + 0.1, 0.34, 0.16, w); R4(ctx, x + dir * 0.08 - 0.06, y + 0.24, 0.12, 0.12, w); return; }
   const t = env.t, look = asleep ? 0 : (Math.sin(t * 0.43 + x * 3.1) > 0.55 ? -1 : 1) * dir, nod = asleep ? -0.04 : Math.sin(t * 2.1 + x) > 0.93 ? -0.03 : 0;
   ctx.strokeStyle = b; ctx.lineWidth = Math.max(0.018, env.px * 0.7); ctx.beginPath(); ctx.moveTo(x - 0.03, y); ctx.lineTo(x - 0.03, y + 0.1); ctx.moveTo(x + 0.04, y); ctx.lineTo(x + 0.04, y + 0.1); ctx.stroke();
@@ -526,16 +537,12 @@ K.buoy = function (S, P, x, wy, o) {
   return K.thing(S, P, 'bell', x, wy + 1.95, Object.assign({ id: 'bell', lure: 24, lureY: 0, r: 0.46 }, o.bell || {}));
 };
 
-// A ribbon of smoke: rises from (x, y), leans with the wind, and thins out in four steps.
-function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed) {
-  // puffs that rise along a path leaning with the wind, swelling and thinning as they go
-  ctx.fillStyle = css;
-  for (let i = 0; i < 12; i++) {
-    const u = (((t * 0.07 + i / 12 + seed * 0.013) % 1) + 1) % 1, r = (w0 + (w1 - w0) * u) * 0.5;
-    ctx.globalAlpha = a0 * (1 - u) * (1 - u) * 1.4;
-    ctx.beginPath(); ctx.ellipse(x + wind * u * u * len * 0.42 + Math.sin(u * 7 + i * 1.3 + seed) * 0.05 * len * u, y + u * len, r, r * 0.8, 0, 0, TAU); ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+// A ribbon of smoke: rises from (x, y) and leans with the wind (see kxPlume). It may be drawn
+// inside a boat's own moving frame, so it is not culled here by the plane's edges.
+const dkSmokeEnv = { s: 1, px: 1, t: 0, wind: 0, x0: -1e9, x1: 1e9 };
+function dkSmoke(ctx, x, y, t, wind, len, w0, w1, css, a0, seed, env) {
+  const E = dkSmokeEnv; E.s = env ? env.s : 4; E.px = 1 / E.s; E.t = t; E.wind = 0;
+  kxPlume(ctx, E, x, y, { n: 12, rise: len, r0: w0 * 0.5, r1: w1 * 0.5, speed: 0.07, a: Math.min(0.9, a0 * 2.1), col: css, drift: wind * len * 0.42, ph: seed * 0.013 });
 }
 // A container seen from a long way off: its colour, and close enough, its ribs and frame.
 function dkBoxLite(ctx, s, x, y, w, h, c, d) {
@@ -653,7 +660,7 @@ K.freighter = function (S, P, sx, wy, o) {
       }
     }
     // a thread of smoke from the funnel
-    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx);
+    dkSmoke(ctx, fx, top + 13.1, t, env.wind, 13, 1.1, 5.2, night ? 'rgb(112,122,142)' : 'rgb(72,74,82)', night ? 0.24 : 0.34, sx, env);
     if (S.hornUntil && t < S.hornUntil) { // whistle steam while the horn sounds
       const k = clamp((t - S.hornFrom) / 0.4, 0, 1) * clamp((S.hornUntil - t) / 0.6, 0, 1); ctx.fillStyle = 'rgba(238,242,246,0.75)';
       for (let i = 0; i < 7; i++) { const u = ((t * 0.9 + i / 7) % 1); ctx.globalAlpha = (1 - u) * 0.8 * k; ctx.beginPath(); ctx.arc(fx + 2.4 + env.wind * u * 1.6 + u * 1.2, top + 11.4 + u * 4.4, 0.35 + u * 1.5, 0, TAU); ctx.fill(); }
@@ -778,7 +785,7 @@ K.supplyBarge = function (S, P, x, wy, o) {
       ctx.strokeStyle = ringR; ctx.beginPath(); ctx.arc(x + 3.2, D + 1.62, 0.2, 0.3, 1.2); ctx.moveTo(x + 3.2 + 0.2 * Math.cos(3.44), D + 1.62 + 0.2 * Math.sin(3.44)); ctx.arc(x + 3.2, D + 1.62, 0.2, 3.44, 4.34); ctx.stroke();
       R4(ctx, x + 4.3, D + 2.72, 0.16, 0.85, dk); R4(ctx, x + 4.22, D + 3.5, 0.32, 0.09, dk); line(ctx, x + 1.45, D + 2.72, x + 1.45, D + 4.5, dk, 0.03, env);
     }
-    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
+    if (room.lit) { dkSmoke(ctx, x + 4.38, D + 3.6, t, env.wind, 3.2, 0.2, 1.0, 'rgb(150,158,172)', 0.2, x, env); dkGlow(ctx, x + 2.3, D + 0.75, 1.5, '255,214,130', 0.22, 0.8); }
     // cargo under a tarpaulin amidships: a lit ridge, a shaded end, folds, and a hem
     poly(ctx, [x + 9.5, D, x + 15.5, D, x + 15.0, D + 1.5, x + 13.2, D + 1.9, x + 10.2, D + 1.4], tarp);
     if (s > 3) {
@@ -1081,7 +1088,7 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
       ctx.moveTo(-L / 2 + 6, 10.05); ctx.lineTo(-L / 2 + 12.6, 10.05); ctx.moveTo(L / 2 - 13.5, 11.2); ctx.lineTo(L / 2 - 13.5, 15); ctx.moveTo(L / 2 - 14.6, 13.6); ctx.lineTo(L / 2 - 12.4, 13.6);
       ctx.stroke();
     }
-    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01);
+    dkSmoke(ctx, -L / 2 + 15.3, 12.1, t, env.wind * dir - 3.5, 11, 1.4, 5.5, S.pal.dark > 0.5 ? 'rgb(112,122,142)' : 'rgb(72,74,82)', 0.26, x * 0.01, env);
     if (lit) { // masthead and stern lights, and her coloured side light: red to port, green to starboard
       dkGlow(ctx, L / 2 - 13.5, 15.1, 2.4, '255,244,214', 0.8); circ(ctx, L / 2 - 13.5, 15.1, 0.2, '#fff3c4');
       dkGlow(ctx, L / 2 - 9.6, 10.3, 1.5, dir > 0 ? '90,255,140' : '255,80,60', 0.8); circ(ctx, L / 2 - 9.6, 10.3, 0.15, dir > 0 ? '#6dff9a' : '#ff5a48');
@@ -1098,6 +1105,48 @@ CARS.ferry = { len: 54, h: 12, body: 4.2, cab: [-0.5, 0.5], win: [], seats: [], 
   } };
 
 // ---- the location ------------------------------------------------------------
+// A harbour tug working out past the breakwater, a long way off: black hull, red boot top,
+// white house, a buff funnel puffing smoke, bow wave and a wake behind. She crosses one way
+// and later comes back the other; after dark only her lights show much: the masthead lights,
+// the side light she shows (green going right, red going left) and a lit wheelhouse. Behind
+// the breakwater her hull is hidden and only the house shows over the stones. Drawn only.
+function dkTug(S, P, wy, lit, seed) {
+  const hull = S.tone('#20242a', P), boot = S.tone('#8a2f28', P), house = S.tone('#e2ddd0', P), house2 = S.tone('#b8b2a4', P), fun = S.tone('#c98a2b', P), funK = S.tone('#15181c', P), fend = S.tone('#121418', P);
+  const win = S.tone(lit ? S.pal.lit : S.pal.glass, P, true), foam = rgba(S.tone('#e8eef2', P), 0.55), smoke = S.pal.dark > 0.5 ? 'rgb(70,74,86)' : 'rgb(98,96,98)';
+  const run = 1900, sp = 2.6, ph = 760 + (seed % 7) * 37;   // she comes into the usual view about a minute in
+  const at = (t) => { const g = t * sp + ph, lap = Math.floor(g / run), u = g - lap * run, dir = lap % 2 ? -1 : 1; return [dir > 0 ? -950 + u : 950 - u, dir]; };
+  P.add({ x0: -1000, x1: 1000, layer: 0, draw(ctx, env) {
+    const t = env.t, [x, dir] = at(t), s = env.s;
+    if (x + 60 < env.x0 || x - 60 > env.x1 || s < 0.5) return;
+    const bob = Math.sin(t * 0.9) * 0.08, pitch = Math.sin(t * 0.7 + 1) * 0.012;
+    // the wake: lines of foam spreading and fading behind her, and the wave at her bow
+    ctx.fillStyle = foam;
+    for (let k = 0; k < 5; k++) { const l = 10 + k * 9, a0 = x - dir * (10 + k * 7); ctx.globalAlpha = 0.7 * (1 - k / 5.5); ctx.beginPath(); const xa = Math.min(a0, a0 - dir * l), y = wy - 0.12 - k * 0.07; ctx.rect(xa, y, l, Math.max(env.px * 0.9, 0.18 - k * 0.02)); ctx.fill(); }
+    ctx.globalAlpha = 0.8; poly(ctx, [x + dir * 10.6, wy - 0.15, x + dir * 13.2, wy - 0.25, x + dir * 10.2, wy + 0.55], foam); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(x, wy + bob); ctx.scale(dir, 1); ctx.rotate(pitch);
+    // hull, boot top, the thick fender round her bow
+    poly(ctx, [-10.6, 1.45, 10.9, 2.3, 9.6, -0.45, -9.9, -0.45], hull);
+    R4(ctx, -9.8, -0.45, 19.3, 0.5, boot);
+    if (s > 3) { R4(ctx, -10.5, 1.3, 21.2, 0.22, house2); poly(ctx, [9.2, 2.2, 11.3, 2.35, 10.4, 0.2, 9.1, 0.6], fend); }
+    // the house, the wheelhouse up on it, the funnel and the mast
+    R4(ctx, -5.2, 1.5, 9.4, 1.9, house); R4(ctx, -0.2, 3.4, 4.6, 2.0, house);
+    R4(ctx, 0.1, 4.25, 4.0, 0.75, win);
+    if (s > 4) { ctx.fillStyle = house; for (let k = 1; k < 4; k++) ctx.fillRect(0.1 + k, 4.25, 0.12, 0.75); R4(ctx, -4.6, 2.2, 0.9, 0.7, win); R4(ctx, -2.8, 2.2, 0.9, 0.7, win); R4(ctx, -0.4, 5.35, 5.0, 0.18, house2); }
+    poly(ctx, [-3.6, 3.4, -1.6, 3.4, -1.9, 6.6, -3.5, 6.6], fun); R4(ctx, -3.55, 6.1, 1.65, 0.5, funK);
+    line(ctx, 2.2, 5.4, 2.2, 9.6, funK, 0.14, env);
+    if (s > 4) { line(ctx, 1.4, 8.6, 3.0, 8.6, funK, 0.08, env); line(ctx, -9.0, 1.6, -9.0, 2.6, funK, 0.12, env); line(ctx, -9.6, 2.6, -7.6, 2.6, funK, 0.08, env); }
+    ctx.restore();
+    // her smoke, carried back by her own way and by the wind
+    kxPlume(ctx, env, x - dir * 2.6, wy + bob + 6.6, { rise: 9, r0: 0.45, r1: 2.6, n: 9, speed: 0.35, a: 0.42, col: smoke, drift: -dir * 7 + (env.wind || 0) * 1.5, ph: 0.3 });
+    if (lit) {   // masthead lights (two: she has a tow), the side light she shows, her stern light
+      const mx = x + dir * 2.2, my = wy + bob;
+      circ(ctx, mx, my + 9.6, 0.22, '#fff6dc'); circ(ctx, mx, my + 8.9, 0.22, '#fff6dc'); dkGlow(ctx, mx, my + 9.25, 2.4, '255,246,220', 0.7);
+      const side = dir > 0 ? ['#6dff9a', '109,255,154'] : ['#ff5a48', '255,90,72'];
+      circ(ctx, x + dir * 4.6, my + 3.9, 0.2, side[0]); dkGlow(ctx, x + dir * 4.6, my + 3.9, 1.8, side[1], 0.75);
+      circ(ctx, x - dir * 10.2, my + 1.9, 0.18, '#fff6dc'); dkGlow(ctx, x - dir * 10.2, my + 1.9, 1.4, '255,246,220', 0.5);
+    }
+  } });
+}
 SCN.docks = function (o) {
   o = o || {};
   const z = o.z || 255, wy = -2.2, seed = o.seed || 4;
@@ -1153,7 +1202,7 @@ SCN.docks = function (o) {
       for (let i = 0; i < 2; i++) { const cx = i ? 548 : 262, ch = i ? 44 : 58; if (cx < v0 - 60 || cx > v1 + 60) continue;
         poly(ctx, [cx - 2.6, wy + 1.4, cx + 2.6, wy + 1.4, cx + 1.7, wy + ch, cx - 1.7, wy + ch], stackC);
         if (s > 1.2) { R4(ctx, cx - 1.85, wy + ch - 6, 3.7, 2.2, stackR); R4(ctx, cx - 1.95, wy + ch - 12, 3.9, 2.2, stackR); }
-        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx);
+        dkSmoke(ctx, cx, wy + ch + 0.5, t * 0.7, env.wind, 46, 3.4, 20, night ? 'rgb(96,106,128)' : 'rgb(120,116,120)', night ? 0.22 : 0.3, cx, env);
         if (lit) { const b = dkPulse(t, 1.3, cx, 0); R4(ctx, cx - 1, wy + ch, 2, 2, mix('#5a1f1a', '#ff5a48', b)); dkGlow(ctx, cx, wy + ch + 1, 5, '255,70,50', 0.7 * b); } }
       // a ship lying at the terminal, its boxes stacked on the quay, and the big cranes over them
       if (-420 < v1 && -335 > v0) { poly(ctx, [-424, wy + 9, -338, wy + 9, -334, wy + 12, -344, wy - 0.2, -420, wy - 0.2], shipH); R4(ctx, -420, wy + 9, 20, 11, shipW); R4(ctx, -414, wy + 20, 6, 6, stackR);
@@ -1211,6 +1260,7 @@ SCN.docks = function (o) {
       dkFoam(ctx, env, xa, xb, wy, 31, foam);
     } });
     K.lighthouse(S, PBW, bx1, wy + 2.8, 19);
+    if (S.weather !== 'storm') dkTug(S, PBW, wy, lit, seed);
     if (S.pal.dark < 0.5 && !rainy) { // gulls wheeling off the breakwater, a long way off: gliding mostly, a few beats now and then
       const gc = S.tone('#eef0ee', PBW);
       PBW.add({ x0: bx1 - 130, x1: bx1 + 40, layer: 2, draw(ctx, env) {
@@ -1489,7 +1539,7 @@ SCN.docks = function (o) {
           if (h < 0.34) { R4(ctx, bx - 0.2, 0.12, 0.4, 0.06, rope); R4(ctx, bx - 0.2, 0.2, 0.4, 0.05, rope2); ctx.strokeStyle = rope; ctx.lineWidth = Math.max(0.05, px * 0.7); ctx.beginPath(); ctx.moveTo(bx + 0.2, 0.15); ctx.quadraticCurveTo(bx + 0.6, 0.2, bx + 0.85, 0); ctx.lineTo(bx + 0.9, -0.34); ctx.stroke(); }
           else if (h < 0.64) { for (let i = 0; i < 3; i++) { ctx.fillStyle = i % 2 ? rope2 : rope; ctx.beginPath(); ctx.ellipse(bx + 0.85, 0.06 + i * 0.055, 0.33 - i * 0.04, 0.05, 0, 0, TAU); ctx.fill(); } }
         }
-        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night);
+        if (gulls && h > 0.8) dkGull(ctx, env, bx, 0.5, h > 0.9 ? 1 : -1, gullW, gullG, gullB, gullK, night, S, PQ.z);
       }
       dkFoam(ctx, env, xa, xb, wy, 5, foamQ);
     } });
@@ -1595,7 +1645,7 @@ SCN.docks = function (o) {
 
   // ---- the basin in front: boat lane, then open water toward the shooter ----
   const PL = S.plane(z - 5, 'lane');
-  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08 });
+  K.sea(S, PL, { y: wy, rows: 5, seed: 17, deep: 0.08, mirror: 4 });
   H.PL = PL; H.laneY = wy - 0.25;                 // y for a launch so that it floats at its waterline
   if (o.bell !== undefined && o.bell !== false) H.bell = K.buoy(S, PL, typeof o.bell === 'number' ? o.bell : o.bell.x, wy, { bell: typeof o.bell === 'number' ? {} : o.bell });
   if (o.barge) {
@@ -1611,7 +1661,7 @@ SCN.docks = function (o) {
   }
   if (o.skiff) H.skiff = K.skiff(S, PL, o.skiff.x, wy, o.skiff);
   const PW = S.plane(z - 42, 'basin');
-  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16 });
+  K.sea(S, PW, { y: wy, rows: 5, seed: 23, deep: 0.16, mirror: 5 });
   H.PW = PW;
   if (o.ketch) K.ketch(S, PW, o.ketch.x, wy, o.ketch);
   const dolX = o.dolphinX === undefined ? -27 : o.dolphinX;
@@ -1624,7 +1674,7 @@ SCN.docks = function (o) {
       R4(ctx, dx - 0.62, wy - 0.3, 0.42, 1.8, pc2); R4(ctx, dx + 0.24, wy - 0.3, 0.4, 1.55, pc2);
       R4(ctx, dx - 0.3, wy - 0.3, 0.6, 2.3, pc); R4(ctx, dx - 0.36, wy + 2.0, 0.72, 0.2, cap);
       if (s > 4) { R4(ctx, dx - 0.3, wy + 0.4, 0.14, 1.6, pcHi); R4(ctx, dx - 0.66, wy - 0.3, 1.32, 0.7, weedW); R4(ctx, dx - 0.66, wy + 0.92, 1.34, 0.17, ropeW); R4(ctx, dx - 0.66, wy + 0.98, 1.34, 0.035, ropeW2); }
-      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, dx + 0.44, wy + 1.25, -1, gW, gG, gB, gK, night, S, PW.z);
       dkFoam(ctx, env, dx - 0.8, dx + 0.8, wy, 13, foam);
     } });
   }
@@ -1645,7 +1695,7 @@ SCN.docks = function (o) {
   }
   // ---- nearest: a trawler's masthead in the corner, with a pennant that shows the wind ----
   const PN = S.plane(Math.round(z * 0.6), 'near');
-  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24 });
+  K.sea(S, PN, { y: wy, rows: 4, seed: 29, deep: 0.24, mirror: 5 });
   H.PN = PN;
   if (o.mast !== false) {
     const mx = o.mastX === undefined ? -26.5 : o.mastX, my = o.mastY === undefined ? 6.3 : o.mastY, mc = S.tone('#2a2620', PN), mc2 = S.tone('#8a6d4c', PN), mc3 = S.tone('#a88a62', PN), steel = S.tone('#c9ced3', PN);
@@ -1664,7 +1714,7 @@ SCN.docks = function (o) {
       if (s > 6) { ctx.fillStyle = mc; ctx.fillRect(mx - 0.13, my - 2.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, my - 0.3, 0.26, 0.09); ctx.fillRect(mx - 0.13, wy + 2.4, 0.26, 0.09); ctx.fillRect(mx + 1.36, my - 2.5, 0.12, 0.24);
         poly(ctx, [mx + 0.55, my - 1.25, mx + 0.75, my - 1.0, mx + 0.55, my - 0.75, mx + 0.35, my - 1.0], steel); }
       if (lit) dkGlow(ctx, mx, my - 2.0, 0.75, '255,240,200', 0.7); circ(ctx, mx, my - 2.0, 0.08, lit ? '#fff3c4' : mc);
-      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night);
+      if (gulls) dkGull(ctx, env, mx - 1.1, my - 2.14, 1, gW, gG, gB, gK, night, S, PN.z);
       ctx.restore();
     } });
     K.pennant(S, PN, mx, my, 1.7, o.flagCol || '#c0392b', { sway: (t) => lean(t) * (my - piv) });

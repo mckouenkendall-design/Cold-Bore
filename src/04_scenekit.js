@@ -25,10 +25,17 @@ const PALS = {
     glass: '#2b4257', lit: '#ffe0a0', litChance: 0.25, star: 0, cloud: '#ffffff', ground: '#eef2f6', road: '#b9c3cc', grass: '#e4eaef', water: '#7f9db4', sun: '#ffffff', inRoom: '#34404e', dark: 0.05 },
 };
 
+// The palette entries a mission's look may change: colours only. Never dark, litChance, star or
+// fogD, which decide what can be seen and which windows are lit.
+const KX_PAL_COLOURS = ['skyTop', 'skyBot', 'fog', 'amb', 'ambT', 'glass', 'lit', 'cloud', 'ground', 'road', 'grass', 'water', 'sun', 'inRoom'];
 function makeScene(o) {
   o = o || {};
   const pal = Object.assign({}, PALS[o.time || 'day']);
+  // the look of the mission being built (07i_looks.js): its own colours for the time of day
+  const look = lkLookFor(o.time || 'day', o.weather || 'clear');
+  if (look.pal) for (let i = 0; i < KX_PAL_COLOURS.length; i++) { const k = KX_PAL_COLOURS[i]; if (look.pal[k] !== undefined) pal[k] = look.pal[k]; }
   const S = {
+    look, lampCol: look.lampCol || null,
     time: o.time || 'day', weather: o.weather || 'clear', pal, planes: [], objects: [], props: [], rooms: {}, zoneLamps: {},
     exits: o.exits || [-60, 60], rng: makeRng(o.seed || 7), refZ: o.refZ || 300, fogK: o.fog || 1, groundMat: o.groundMat || 'dirt',
     sky: { stars: [], clouds: [], sun: o.sun || [40, 60] }, darkZones: {}, litZones: {}, bounds: o.bounds || { x0: -45, x1: 45, y0: -2, y1: 32 }, decals: [], ambience: o.ambience || 'city',
@@ -308,6 +315,150 @@ function kxPuff(ctx, col, x, y, rx, ry, alpha) {
   const a = ctx.globalAlpha; ctx.globalAlpha = a * alpha; ctx.drawImage(kxBlob(col), x - rx, y - ry, rx * 2, ry * 2); ctx.globalAlpha = a;
 }
 
+// Is the air wet enough to catch light (rain, a storm, fog)?
+function kxMisty(S) { return S.weather === 'rain' || S.weather === 'storm' || S.weather === 'fog'; }
+
+// ---- birds that take fright -------------------------------------------------------------
+// A loud shot reaches the birds sitting about the scene a moment after it is fired (sound
+// covers about 343 metres a second). They burst off their perches, climb away from the noise
+// and stay away for half a minute or so, then drift back in and settle. The view tells the
+// scene when a loud shot goes off (kxScareNow); whatever draws perched birds asks kxFlight
+// where each one is. Picture only: nothing in the game knows about them.
+function kxScareNow(S, t) {
+  const sc = S._scare;
+  if (sc && t < sc.until + 8) sc.until = Math.max(sc.until, t + 30);   // still away or coming back: they stay away longer
+  else S._scare = { t, until: t + 30 };
+}
+// For a bird sitting on a plane at distance z: null while it sits, else { u, k }: u from 0 on
+// the perch to 1 out of sight, k = 1 while it flees and -1 while it comes back in.
+function kxFlight(S, z, t, seed) {
+  const sc = S._scare; if (!sc) return null;
+  const lag = z / 343 + kxH(seed, 3) * 0.35, t0 = sc.t + lag; if (t < t0) return null;
+  const up = (t - t0) / 2.8; if (up < 1) return { u: up, k: 1 };
+  const back = sc.until + lag + kxH(seed, 7) * 14; if (t < back) return { u: 1, k: 1 };
+  const dn = (t - back) / 3.4; if (dn < 1) return { u: 1 - dn, k: -1 };
+  return null;
+}
+// A bird in flight, its wings beating (faster as it takes off), drawn as a stroke. Adds to the
+// current path: x, y where it is, w its wingspan in metres. The caller strokes once for all.
+function kxBirdPath(ctx, x, y, w, t, seed, fast) {
+  const fl = Math.sin(t * (fast ? 16 : 10) + seed * 9.1), h = w * 0.5;
+  ctx.moveTo(x - h, y + fl * h * 0.55); ctx.quadraticCurveTo(x - h * 0.45, y + h * 0.18 + fl * h * 0.2, x, y); ctx.quadraticCurveTo(x + h * 0.45, y + h * 0.18 + fl * h * 0.2, x + h, y + fl * h * 0.55);
+}
+// Where a frightened bird is now, from its perch (x, y), flying off the way it faces: up and
+// away, quick at first. Returns null once it is out of sight.
+function kxFleeAt(f, x, y, dir, seed, out) {
+  if (!f || f.u >= 0.999) return null;
+  const u = f.u, far = 9 + kxH(seed, 11) * 8, e = u * u * (3 - 2 * u) * 0.35 + u * 0.65;
+  out[0] = x + dir * far * e * (0.6 + 0.4 * u); out[1] = y + 0.15 + far * 0.75 * e * e + 0.5 * e;
+  return out;
+}
+
+// ---- reflections in water --------------------------------------------------------------
+// Whatever has already been drawn above a waterline (the far bank, a ship, the quay and its
+// lamps, the bridge, the sky) is copied once, turned over and laid under the line in thin
+// strips, each strip pushed sideways by the ripples and fading out with depth, so water
+// mirrors the scene that actually stands over it. yW is the waterline and yN the nearest
+// height of this stretch of water (both on the plane being drawn), xa..xb how far it runs,
+// a how strong the reflection is, rough how much the ripples break it up. Picture only.
+const kxRefl = { c: null, g: null, w: 0, h: 0, src: null, srcCv: null, y0: 1e9, y1: -1e9 };
+// The last finished picture of the world (kept by the view when a scene has water), so the
+// water can mirror things drawn after it: the quay, its lamps, the people and boats on it.
+// It is one frame old, which nobody can see.
+function kxReflSource(ctx) { return kxRefl.src && kxRefl.srcCv === ctx.canvas && kxRefl.src.width === ctx.canvas.width && kxRefl.src.height === ctx.canvas.height ? kxRefl.src : ctx.canvas; }
+function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed, hMax) {
+  const m = kxM(ctx); if (m.b || m.c || m.d >= 0 || a < 0.02) return;
+  const cv = ctx.canvas, Wc = cv.width, Hc = cv.height, Yw = m.d * yW + m.f, Yn = Math.min(Hc, m.d * yN + m.f);
+  const X0 = Math.max(0, Math.floor(m.a * xa + m.e)), X1 = Math.min(Wc, Math.ceil(m.a * xb + m.e)), w = X1 - X0;
+  if (w < 4 || Yn <= Math.max(0, Yw) + 2) return;
+  // only what stands on or just behind this waterline reflects in this stretch (hMax metres of it):
+  // things far behind reflect in the water out near them, not here
+  const depth = Math.floor(Math.min(Yn - Yw, Yw, Hc * 0.55, 460, (hMax || 1e9) * Math.abs(m.d))); if (depth < 6) return;
+  if (!kxRefl.c || kxRefl.w < w || kxRefl.h < depth) { kxRefl.w = Math.max(kxRefl.w, w); kxRefl.h = Math.max(kxRefl.h, depth); if (!kxRefl.c) kxRefl.c = kxCanvas(kxRefl.w, kxRefl.h); else { kxRefl.c.width = kxRefl.w; kxRefl.c.height = kxRefl.h; } kxRefl.g = kxRefl.c.getContext('2d'); }
+  const g = kxRefl.g; g.clearRect(0, 0, w, depth); g.drawImage(kxReflSource(ctx), X0, Yw - depth, w, depth, 0, 0, w, depth);
+  kxRefl.y0 = Math.min(kxRefl.y0, Yw - depth); kxRefl.y1 = Math.max(kxRefl.y1, Yw);   // the rows to keep for next frame
+  const t = env.t, k = Math.abs(m.d) / Math.max(1e-6, env.s), sd = seed || 0;   // k: device pixels per CSS pixel
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  let d = Math.max(0, Math.floor(-Yw));
+  while (d < depth) {
+    const hb = Math.max(3, Math.round((3 + d * 0.07) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
+    const u = d / depth, wob = Math.sin(t * (1.3 + (d % 7) * 0.09) + d * 0.23 + sd) * (0.3 + d * 0.035) * rough * k;
+    ctx.globalAlpha = a * Math.pow(1 - u, 0.8);
+    ctx.drawImage(kxRefl.c, 0, sy, w, hb, X0 + wob, Yw + d, w, hb);
+    d += hb;
+  }
+  ctx.restore();
+}
+
+// ---- smoke and steam ------------------------------------------------------------------
+// The light in the air this frame, set by the view as it draws the sky: which side the sun
+// (or moon) is on, and the colours a puff of smoke takes on its lit and its shaded side.
+const kxAir = { side: 1, lit: '#ffffff', shade: '#7d8aa0', key: 'd' };
+// One ball of smoke, lit from above and from the sun's side: a shaded underside, a body and a
+// lit cap in three soft steps, with a soft rim so neighbouring balls run together.
+const kxBallPics = new Map();
+function kxBall(col) {
+  const key = col + kxAir.key; let c = kxBallPics.get(key); if (c) return c;
+  if (kxBallPics.size > 80) kxBallPics.clear();
+  const N = 64; c = kxCanvas(N, N);
+  const g = c.getContext('2d'), im = g.createImageData(N, N), d = im.data, B = rgbOf(col.charAt(0) === '#' ? col : kxHexOf(col));
+  const Lt = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.lit, 0.45)), Sh = rgbOf(mix(col.charAt(0) === '#' ? col : kxHexOf(col), kxAir.shade, kxAir.soft ? 0.22 : 0.36));
+  const lx = kxAir.side * 0.42, ly = 0.78, lz = 0.46;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    // (row 0 is the bottom: planes are drawn with y up, which turns a picture over)
+    const u = (i + 0.5) / N * 2 - 1, v = (j + 0.5) / N * 2 - 1, dd = Math.sqrt(u * u + v * v), k = (j * N + i) * 4;
+    if (dd >= 1) { d[k + 3] = 0; continue; }
+    const nz = Math.sqrt(1 - dd * dd), dot = u * lx + v * ly + nz * lz, t1 = smooth((dot + 0.15) / 0.45), t2 = smooth((dot - 0.6) / 0.25);
+    for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.round(lerp(lerp(Sh[ch], B[ch], t1), Lt[ch], t2));
+    d[k + 3] = Math.round(255 * smooth((1 - dd) / 0.2));
+  }
+  g.putImageData(im, 0, 0); kxBallPics.set(key, c); return c;
+}
+function kxHexOf(css) { // 'rgb(r,g,b)' or 'r,g,b' to '#rrggbb'
+  const m = String(css).match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/); if (!m) return '#cccccc';
+  const h = (v) => { const s = (+v).toString(16); return s.length < 2 ? '0' + s : s; };
+  return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+}
+// A plume billowing up from (x, y). Each puff swells and slows as it climbs and is carried off
+// downwind (the harder it blows the flatter the plume lies); close up, every puff is a knot of
+// smaller ones that turn over as they rise, so the column reads as one rolling mass.
+//   o.rise how high it climbs before it has thinned away (m); o.r0, o.r1 the size of a puff at
+//   the mouth and at the top; o.n puffs in the column; o.speed how fast they come (cycles a
+//   second); o.a how thick it is at the mouth; o.col its colour ('#hex' or 'rgb(r,g,b)');
+//   o.lean how far the wind carries it (a fraction of the rise for each m/s of wind) or o.drift
+//   a fixed distance at the top in metres; o.ph a phase; o.steam: steam thins out faster.
+const kxPlumeU = [];
+function kxPlume(ctx, env, x, y, o) {
+  const rise = o.rise || 4, r0 = o.r0 || 0.2, r1 = o.r1 || 1.2, a0 = o.a === undefined ? 0.5 : o.a, w = env.wind || 0;
+  // enough puffs that each overlaps the next, so the column never breaks up into separate balls
+  const n = Math.min(26, Math.max(o.n || 8, Math.ceil(rise / ((r0 + r1) * 0.5 * 0.75))));
+  const flat = 1 / (1 + Math.abs(w) * (o.flat === undefined ? 0.1 : o.flat)), reach = o.drift !== undefined ? o.drift : w * (o.lean === undefined ? 0.5 : o.lean) * rise;
+  const xa = Math.min(x, x + reach) - r1 * 1.6, xb = Math.max(x, x + reach) + r1 * 1.6;
+  if (xb < env.x0 || xa > env.x1 || (env.y1 !== undefined && y - r1 > env.y1) || (env.y0 !== undefined && y + rise + r1 * 2 < env.y0)) return;
+  const pic = kxBall(o.col || '#e6e9ee'), s = env.s, t = env.t, sp = o.speed || 0.2, ph = o.ph || 0, fade = o.steam ? 1.9 : 1.3;
+  kxPlumeU.length = 0;
+  for (let i = 0; i < n; i++) kxPlumeU.push((((t * sp + i / n + ph) % 1) + 1) % 1, i);
+  // oldest (highest) first, so the thick young puffs near the mouth lie over them
+  const order = []; for (let i = 0; i < n; i++) order.push(i); order.sort((p, q) => kxPlumeU[q * 2] - kxPlumeU[p * 2]);
+  const al = ctx.globalAlpha;
+  for (let oi = 0; oi < n; oi++) {
+    const u = kxPlumeU[order[oi] * 2], i = kxPlumeU[order[oi] * 2 + 1];
+    const a = a0 * Math.pow(1 - u, fade) * Math.min(1, u * 9); if (a < 0.01) continue;
+    const r = Math.max(r0 + (r1 - r0) * Math.pow(u, 0.7), env.px * 1.2), lift = rise * (1 - Math.pow(1 - u, 1.6)) * flat;
+    const curl = Math.sin(u * 5.5 + i * 1.7 + t * 0.35) * r * 0.32;
+    const px = x + reach * Math.pow(u, 1.35) + curl, py = y + lift + Math.cos(u * 4 + i * 2.3) * r * 0.15;
+    const rs = r * s;
+    ctx.globalAlpha = al * a;
+    if (rs < 9) { ctx.drawImage(pic, px - r, py - r, r * 2, r * 2); continue; }
+    // a knot of three, turning slowly as it rises, and a ring of small ones round the top close up
+    const spin = i * 1.3 + u * 2.4;
+    for (let k = 0; k < 3; k++) { const an = spin + k * 2.09, rr = r * 0.62, ox = Math.cos(an) * r * 0.42, oy = Math.sin(an) * r * 0.3; ctx.drawImage(pic, px + ox - rr, py + oy - rr, rr * 2, rr * 2); }
+    ctx.drawImage(pic, px - r * 0.7, py + r * 0.05 - r * 0.7, r * 1.4, r * 1.4);
+    if (rs > 45) for (let k = 0; k < 4; k++) { const an = 0.5 + k * 0.7 + Math.sin(spin + k) * 0.2, rr = r * 0.34; ctx.drawImage(pic, px + Math.cos(an) * r * 0.72 - rr, py + Math.sin(an) * r * 0.62 - rr, rr * 2, rr * 2); }
+  }
+  ctx.globalAlpha = al;
+}
+
 // Brick tiles. One tile holds a patch of running-bond brickwork as see-through dark
 // mortar lines and the odd darker or paler brick, so the same tile works over a wall of
 // any colour. There are a few sizes; the wall picks the one nearest the zoom.
@@ -460,7 +611,7 @@ K.ground = function (S, P, o) {
   const edge = o.edge ? S.tone(o.edge, P) : mix(col, '#ffffff', 0.12);
   P.groundY = y; P.groundMat = o.mat || S.groundMat;
   const kind = o.kind || (o.stripes ? 'road' : 'plain');
-  const wet = S.weather === 'rain' || S.weather === 'storm', dark = S.pal.dark;
+  const wet = S.weather === 'rain' || S.weather === 'storm' || !!(S.look && S.look.wet), dark = S.pal.dark;   // (a look can leave the ground wet after rain)
   const D = makeRng(8101 + Math.round(P.z * 3) + (o.seed || 0) * 17);
   const joint = mix(col, '#000000', 0.2), jointHi = mix(col, '#ffffff', 0.07), paint = S.tone('#d9d2b0', P), paintOld = mix(paint, col, 0.45);
   const bx0 = Math.max(x0, -95), bx1 = Math.min(x1, 95);
@@ -814,6 +965,21 @@ K.skyline = function (S, z, o) {
       const bx = b.x + b.w * 0.5, by = b.top === 2 ? base + b.h * 1.18 : b.kind === 5 ? base + b.h * (1.16 + b.k1 * 0.1) : base + b.h + 1.4, r = Math.max(0.7, env.px * 1.3);
       circ(ctx, bx, by, r, '#ff4a3d'); if (s > 0.8) kxGlow(ctx, '#ff4a3d', bx, by, r * 5, 0.5);
     }
+    // after dark, traffic on the roads along the foot of the row: white lamps one way, red the other
+    if (S.pal.dark > 0.3 && o.traffic !== false && s > 0.12) {
+      const span = x1 - x0, r = Math.max(env.px * 0.9, 0.35);
+      for (let lane = 0; lane < 2; lane++) {
+        ctx.fillStyle = lane ? '#ff5a48' : '#fff2cc'; ctx.beginPath();
+        const dir = lane ? -1 : 1, sp = lane ? 11 : 13, gap = 37 + lane * 11, yy = base + 0.9 + lane * 0.5;
+        for (let k = 0; k * gap < span; k++) {
+          const h = kxH(k * 1.3 + lane, (o.seed || 11)); if (h < 0.35) continue;
+          const xx = x0 + ((((k * gap + h * 20 + dir * env.t * sp * (0.8 + h * 0.4)) % span) + span) % span);
+          if (xx < env.x0 - 2 || xx > env.x1 + 2) continue;
+          ctx.rect(xx - r * 1.4, yy, r, r); ctx.rect(xx + r * 0.4, yy, r, r);
+        }
+        ctx.fill();
+      }
+    }
     // the foot of the row sinks into the air
     if (hz > 0) kxFadeAt(ctx, fogC, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), (o.hMin || 30) * 1.6, hz);
   } });
@@ -830,7 +996,9 @@ K.mountains = function (S, z, o) {
   const pts = []; let x = x0;
   while (x <= x1) { pts.push([x, base + H * (0.35 + 0.65 * Math.abs(vnoise(x / (o.rough || 420), o.seed || 5))) * (0.75 + 0.25 * R.f())]); x += R.r(60, 170) * (o.step || 1); }
   const rock = S.tone(o.col || '#5f6b78', P), shade = S.tone(darken(o.col || '#5f6b78', 0.22), P), snow = S.tone(o.snowCol || '#f2f6fa', P);
-  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = mix(shade, '#000000', 0.12);
+  // every tone goes through the haze, so in thick air the folds fade with the rock instead of
+  // hanging in the sky on their own
+  const light = S.tone(lighten(o.col || '#5f6b78', 0.1), P), snowSh = mix(snow, shade, 0.3), deep = S.tone(darken(o.col || '#5f6b78', 0.31), P);
   // ridges, gullies and the tree line come from a stream of their own
   const D = makeRng((o.seed || 5) * 71 + 3), peaks = [], sl = o.snowLine || 0.62;
   for (let i = 1; i < pts.length - 1; i++) {
@@ -862,6 +1030,17 @@ K.mountains = function (S, z, o) {
         ctx.fillStyle = light; ctx.beginPath(); ctx.moveTo(b[0], b[1]); for (let k = 0; k < rg.length; k += 2) ctx.lineTo(rg[k], rg[k + 1]); ctx.lineTo(rg[rg.length - 2] - (b[1] - base) * 0.12, rg[rg.length - 1]); ctx.lineTo(lerp(b[0], a[0], 0.45), lerp(b[1], a[1], 0.45)); ctx.closePath(); ctx.fill();
         ctx.fillStyle = deep; ctx.beginPath(); ctx.moveTo(b[0] + (c[0] - b[0]) * 0.1, b[1] - (b[1] - c[1]) * 0.1); ctx.lineTo(lerp(b[0], c[0], 0.5), lerp(b[1], c[1], 0.5)); ctx.lineTo(lerp(b[0], c[0], 0.3), base + (b[1] - base) * 0.2); ctx.closePath(); ctx.fill();
         if (env.s > 0.05) { ctx.strokeStyle = shade; ctx.lineWidth = Math.max(1.2, env.px); ctx.beginPath(); const gl = peaks[q].gul; for (let g = 0; g < gl.length; g++) { ctx.moveTo(gl[g][0], gl[g][1]); ctx.lineTo(gl[g][2], gl[g][3]); } ctx.stroke(); }
+        if (env.s * (b[1] - base) > 160) { // bands of rock across the faces, tilted the same way, broken here and there
+          const n = env.s * (b[1] - base) > 420 ? 9 : 5, dip = 0.18 + kxH(q, 2) * 0.12;
+          ctx.save(); ctx.beginPath(); ctx.moveTo(a[0], base); ctx.lineTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(c[0], base); ctx.closePath(); ctx.clip();   // kept inside this peak
+          ctx.strokeStyle = deep; ctx.globalAlpha = 0.32; ctx.lineWidth = Math.max(env.px * 1.1, 1.5); ctx.beginPath();
+          for (let k = 1; k <= n; k++) {
+            const yy = base + (b[1] - base) * (0.18 + 0.6 * k / (n + 1)), xa = lerp(a[0], b[0], clamp((yy - a[1]) / Math.max(1, b[1] - a[1]), 0, 1)) + 6, xb = lerp(c[0], b[0], clamp((yy - c[1]) / Math.max(1, b[1] - c[1]), 0, 1)) - 6;
+            if (xb - xa < 20) continue;
+            for (let sgm = 0; sgm < 3; sgm++) { if (kxH(q * 7 + k, sgm) < 0.3) continue; const u0 = sgm / 3 + 0.04, u1 = (sgm + 1) / 3 - 0.04; ctx.moveTo(lerp(xa, xb, u0), yy + (u0 - 0.5) * (xb - xa) * dip); ctx.lineTo(lerp(xa, xb, u1), yy + (u1 - 0.5) * (xb - xa) * dip); }
+          }
+          ctx.stroke(); ctx.globalAlpha = 1; ctx.restore();
+        }
       }
       if (o.snow !== false && b[1] - base > H * sl) {
         const d = (b[1] - base - H * sl) * 0.9 + 12;
@@ -880,6 +1059,13 @@ K.mountains = function (S, z, o) {
       ctx.lineTo(x1, base - 50); ctx.closePath(); ctx.fill();
     }
     kxFadeAt(ctx, S.pal.fog, Math.max(x0, env.x0), base, Math.min(x1, env.x1) - Math.max(x0, env.x0), H * 0.45, 0.3);
+    // after dark a radio mast on a few of the summits shows a slow red warning light
+    if (S.pal.dark > 0.3 && P.haze < 0.985) for (let q = 0; q < peaks.length; q += 3) {
+      const b = pts[peaks[q].i]; if (b[0] < env.x0 - 20 || b[0] > env.x1 + 20) continue;
+      const on = Math.pow(Math.max(0, Math.sin(env.t * 1.6 + q * 1.3)), 4), r = Math.max(env.px * 1.4, 1.2);
+      if (env.s > 0.02) { ctx.strokeStyle = deep; ctx.lineWidth = Math.max(env.px, 0.6); ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(b[0], b[1] + Math.max(env.px * 6, 30)); ctx.stroke(); }
+      circ(ctx, b[0], b[1] + Math.max(env.px * 6, 30), r, rgba('#ff4a3d', 0.35 + 0.65 * on)); kxGlow(ctx, '#ff4a3d', b[0], b[1] + Math.max(env.px * 6, 30), r * 6, 0.45 * on);
+    }
   } });
   return P;
 };
@@ -1202,6 +1388,17 @@ K.building = function (S, P, o) {
         else kxSpillAt(ctx, spillSp, op.x, op.y, op.w, op.h, 1, true);
       }
       if (any && stamp) ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+      // in rain or mist each lit window throws a soft shaft of light down through the wet air
+      if (any && kxMisty(S) && s > 3) {
+        ctx.globalAlpha = 1;
+        for (const key in B.wins) {
+          const op = B.wins[key]; if (op.x + op.w < vx0 - 2 || op.x > vx1 + 2) continue;
+          if (env.y0 !== undefined && (op.y - 2.6 > env.y1 || op.y < env.y0)) continue;
+          const room = S.rooms[op.room]; if (!room || !room.lit) continue;
+          kxFadeAt(ctx, '#ffd98a', op.x - op.w * 0.08, op.y, op.w * 1.16, -2.6, 0.13 * dark);
+        }
+        ctx.globalAlpha = 0.3 * dark;
+      }
       if (o.shop && S.rooms[B.shop.room].lit && B.shop.x < vx1 + 2 && B.shop.x + B.shop.w > vx0 - 2) { if (!any) { ctx.globalCompositeOperation = 'lighter'; any = true; } ctx.globalAlpha = 0.3 * dark; kxSpillAt(ctx, kxSpill('#ffe7b3'), B.shop.x, B.shop.y, B.shop.w, B.shop.h, 1.6); }
       if (any) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
     }
@@ -1396,6 +1593,19 @@ K.building = function (S, P, o) {
         else if (b[1] === 2) { R4(ctx, bx - 0.6, ry - 0.1, 1.2, 0.4, vc); poly(ctx, [bx - 0.6, ry + 0.3, bx + 0.6, ry + 0.3, bx + 0.45, ry + 0.56, bx - 0.45, ry + 0.56], S.tone(S.pal.glass, P)); if (env.s > 14) { ctx.fillStyle = vc2; ctx.fillRect(bx - 0.02, ry + 0.3, 0.04, 0.26); ctx.fillRect(bx - 0.6, ry + 0.28, 1.2, 0.04); } }
         else { line(ctx, bx, ry - 0.1, bx, ry + 0.5, vc, 0.06, env); ctx.fillStyle = dishC; ctx.beginPath(); ctx.ellipse(bx + 0.06, ry + 0.62, 0.16, 0.36, -0.5, 0, TAU); ctx.fill(); if (env.s > 12) { ctx.fillStyle = dishD; ctx.beginPath(); ctx.ellipse(bx + 0.1, ry + 0.6, 0.09, 0.27, -0.5, 0, TAU); ctx.fill(); line(ctx, bx + 0.08, ry + 0.6, bx + 0.42, ry + 0.82, vc, 0.03, env); } }
       }
+    } });
+  }
+  // the hour of long shadows: with the sun low and clear, the upper floors catch its warm light
+  // while the shadow of the roofs across the way lies over the lower ones, its edge on a slant
+  if ((S.time === 'dusk' || S.time === 'dawn') && S.pal.dark < 0.5 && S.weather === 'clear') {
+    const sd = S.sky.sun[0] < 0 ? -1 : 1, sl = -0.1 * sd, ys = base + H * (0.3 + 0.25 * kxH(x, w)), warm = S.time === 'dusk' ? 'rgba(255,150,80,0.1)' : 'rgba(255,190,150,0.09)', cool = S.time === 'dusk' ? 'rgba(40,24,70,0.16)' : 'rgba(50,50,90,0.13)';
+    P.add({ x0: x, x1: x + w, layer: 0, draw(ctx, env) {
+      if (env.s < 0.8) return;
+      const a = Math.max(x, env.x0), b = Math.min(x + w, env.x1); if (b <= a) return;
+      const ya = ys + (a - x) * sl, yb = ys + (b - x) * sl;
+      ctx.fillStyle = cool; ctx.beginPath(); ctx.moveTo(a, base); ctx.lineTo(a, ya); ctx.lineTo(b, yb); ctx.lineTo(b, base); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = warm; ctx.beginPath(); ctx.moveTo(a, ya); ctx.lineTo(a, base + H); ctx.lineTo(b, base + H); ctx.lineTo(b, yb); ctx.closePath(); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
     } });
   }
   // for detail added on top by a scene: what the wall is made of and what is already fixed to it
@@ -1881,7 +2091,7 @@ K.fence = function (S, P, x0, x1, h, o) {
 K.lamp = function (S, P, x, h, zone, o) {
   o = o || {}; const y = o.y || 0, post = S.tone('#20242b', P);
   const arm = o.arm === undefined ? 0.9 : o.arm;
-  const postHi = S.tone('#414855', P), lc = o.col || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
+  const postHi = S.tone('#414855', P), lc = o.col || S.lampCol || '#ffe196', glassOn = lighten(lc, 0.55), wet = S.weather === 'rain' || S.weather === 'storm', foggy = S.weather === 'fog';
   let kit = null;
   const ob = S.obj({ kind: 'lamp', id: o.id, plane: P, x: x + arm, y: y + h - 0.12, r: o.r || 0.3, zone, on: true, mat: 'glass', layer: 2, reach: o.reach || 9,
     draw(ctx, env) {
@@ -1968,6 +2178,8 @@ K.lamp = function (S, P, x, h, zone, o) {
   }
   if (o.style && o.style !== 'post') kit = kxLampKit(S, P, ob, o, x, y, h, arm);
   ob.baseY = y; ob.postX = x; ob.poolK = o.pool === false ? 0 : 1;
+  // a lamp of another colour (sodium, white) tints the people it lights the same colour as its pool
+  if (!o.col && S.lampCol) ob.col = S.lampCol;
   return ob;
 };
 
@@ -2670,12 +2882,38 @@ function drawCar(ctx, env, S, P, kind, x, y, dir, colHex, st) {
     kxGlow(ctx, '#ff4a3d', -L / 2 + 0.04, c.body - 0.19, braking ? 1.0 : 0.5, braking ? 0.7 : 0.35);
     if (braking && s > 5) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.22; ctx.drawImage(kxBlob('#ff4a3d'), -L / 2 - 2.2, -0.12, 2.6, 0.3); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   }
+  if (s > 12) kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, !st);
   if (night && st && st.moving) { // headlight beam, and its patch on the road ahead
     ctx.globalCompositeOperation = 'lighter'; const g = ctx.createLinearGradient(L / 2, 0, L / 2 + 9, 0); g.addColorStop(0, 'rgba(255,240,190,0.28)'); g.addColorStop(1, 'rgba(255,240,190,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(L / 2, c.body - 0.2); ctx.lineTo(L / 2 + 9, c.body + 0.9); ctx.lineTo(L / 2 + 9, 0); ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 0.3; ctx.drawImage(kxBlob('#fff0be'), L / 2 + 0.5, -0.22, 7, 0.5); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
   ctx.restore();
+}
+// Close up, the weather on a car (drawn only, in the car's own frame): in rain the drops burst
+// in little crowns on the roof, bonnet and boot; on a frosty night a car parked for the night
+// has rime along its roof and bonnet. The glass is left clear, so whoever sits inside still shows.
+function kxCarWeather(ctx, env, S, c, L, x, c0, c1, slopeF, slopeR, parked) {
+  const rain = S.weather === 'rain' || S.weather === 'storm', frost = parked && S.look && S.look.dress === 'frost';
+  if (!rain && !frost) return;
+  if (frost) {
+    ctx.fillStyle = 'rgba(236,243,250,0.75)'; ctx.beginPath();
+    ctx.rect(c0 + slopeR + 0.05, c.h - 0.035, c1 - c0 - slopeR - 0.08, 0.05);
+    ctx.rect(c1 + slopeF + 0.05, c.body - 0.03, L / 2 - c1 - slopeF - 0.2, 0.04); ctx.rect(-L / 2 + 0.12, c.body - 0.03, Math.max(0, c0 + L / 2 - 0.2), 0.04);
+    ctx.fill();
+    return;
+  }
+  // three places the rain lands: the roof, the bonnet, the boot; each splash lasts a fifth of a second
+  const t = env.t, n = env.s > 30 ? 9 : 5, r = Math.max(0.012, env.px * 0.7), hx = (k) => kxH(k * 7.31, x * 0.13);
+  ctx.strokeStyle = 'rgba(225,235,248,0.6)'; ctx.lineWidth = r; ctx.lineCap = 'round'; ctx.beginPath();
+  for (let k = 0; k < n; k++) {
+    const u = (t * 5 + hx(k) * 9) % 1, cyc = Math.floor(t * 5 + hx(k) * 9), h2 = kxH(cyc, k + x), part = k % 3;
+    const xa = part === 0 ? c0 + slopeR + 0.1 : part === 1 ? c1 + slopeF + 0.1 : -L / 2 + 0.15, xb = part === 0 ? c1 - 0.1 : part === 1 ? L / 2 - 0.25 : c0 - 0.1;
+    if (xb <= xa) continue;
+    const px = xa + (xb - xa) * h2, py = part === 0 ? c.h : c.body, sp = 0.05 + u * 0.09, up = Math.sin(u * Math.PI) * 0.07;
+    ctx.moveTo(px - sp * 0.4, py + 0.01); ctx.lineTo(px - sp, py + up); ctx.moveTo(px + sp * 0.4, py + 0.01); ctx.lineTo(px + sp, py + up);
+  }
+  ctx.stroke(); ctx.lineCap = 'butt';
 }
 // A side window that can be wound down. st.pane[i] = { a, b, t0, dur, gone }: the pane moves
 // from a to b (0 = shut, 1 = all the way down) over dur seconds from time t0.
