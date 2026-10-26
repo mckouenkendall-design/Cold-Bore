@@ -122,7 +122,7 @@ UI.paintIn = function (box, where) {
     const j = UI.jobFor(cv); if (!j) return;
     j.where = where; cv._job = j;
     if (j.lazy) lazy.push(cv);
-    else if (j.kind === 'thumb') UI.queue(j);
+    else if (j.kind === 'thumb' || j.kind === 'tphoto') UI.queue(j);
     else { UI.paintJob(j); j.done = true; j.vis = true; if (j.anim) UI.live.push(j); }
   });
   if (lazy.length) UI.watch(where, lazy);
@@ -139,6 +139,7 @@ UI.jobFor = function (cv) {
     return { cv, lazy, kind: 'swatch', skin: sk, anim: uiSkinMoves(sk), seen: ds.fresh !== undefined ? ds.swatch : null };
   }
   if (ds.mthumb) return { cv, lazy, kind: 'thumb', id: ds.mthumb, v: +ds.v || 0 };
+  if (ds.tphoto) return { cv, lazy, kind: 'tphoto', id: ds.tphoto };
   // drawn pictures (45_ui_art.js and 44_portraits.js); the ones that move are redrawn while on screen
   if (ds.insignia) return { cv, lazy, kind: 'insig', n: +ds.insignia, pres: +ds.pres || 0 };
   if (ds.portrait) return { cv, lazy, kind: 'portrait', who: ds.portrait, mood: ds.mood || 'calm', anim: ds.mood === 'talk' };
@@ -180,6 +181,7 @@ UI.paintJob = function (j, time) {
     else if (j.kind === 'medal') { const s = Math.min(w, h); CB.drawMedal(x, j.id, (w - s) / 2, (h - s) / 2, s, j.tier); }
     else if (j.kind === 'tint') CB.drawTint(x, j.id, w, h);
     else if (j.kind === 'drill') CB.drawDrill(x, j.id, w, h);
+    else if (j.kind === 'tphoto') { const M = MISSION_BY_ID[j.id], s = M && UI.targetPhoto(M, w, h); if (s) x.drawImage(s, 0, 0, s.width, s.height, 0, 0, w, h); }
     else if (j.kind === 'thumb') {
       const M = MISSION_BY_ID[j.id], s = M && UI.sceneShot(M, j.v, w, h);
       if (s) { x.drawImage(s.cv, 0, 0, s.cv.width, s.cv.height, 0, 0, w, h); if (j.cv.id === 'thumb') { const lab = document.getElementById('thtime'); if (lab) lab.textContent = s.label + '  ·  ' + s.dist + ' m'; } }
@@ -218,7 +220,7 @@ UI.pump = function () {
     const j = UI.pq.shift(); j.queued = false;
     if (!j.cv.isConnected) continue;
     UI.paintJob(j); j.done = true;
-    if (j.kind === 'thumb') break; // a scene picture is a big job: one per turn
+    if (j.kind === 'thumb' || j.kind === 'tphoto') break; // a scene or a target photo is a big job: one per turn
   }
   if (UI.pq.length) setTimeout(UI.pump, 16); else UI.pumping = false;
 };
@@ -452,37 +454,7 @@ UI.rankInfo = function () {
   if (cur && box) box.scrollTop = Math.max(0, cur.offsetTop - box.clientHeight / 2 + cur.offsetHeight / 2);
 };
 
-// ---- contracts -------------------------------------------------------------------------------
-UI.contracts = function () {
-  const d = Save.data;
-  // open on the furthest chapter reached the first time
-  if (!UI._chSet) { UI._chSet = true; for (let n = 6; n >= 1; n--) if (Progress.chapterOpen(n)) { UI.chapter = n; break; } }
-  const n = UI.chapter, c = CHAPTER_BY_N[n], list = MISSIONS.filter((m) => m.ch === n), open = Progress.chapterOpen(n);
-  if (open && !d.seen['ch' + n]) return UI.chapterIntro(n, () => UI.contracts());
-  const st = list.reduce((s, m) => s + ((d.missions[m.id] && d.missions[m.id].stars) || 0), 0);
-  const chips = CHAPTERS.map((k) => { const o = Progress.chapterOpen(k.n); return `<button class="chip ${k.n === n ? 'on' : ''} ${o ? '' : 'locked'}" data-a="chap" data-n="${k.n}" title="${esc(k.title)}"><b>${ROMAN[k.n]}</b>${o ? '' : ICON.lock}</button>`; }).join('');
-  const rows = open ? list.map((m, i) => {
-    const rec = d.missions[m.id] || { stars: 0 }, ok = Progress.missionOpen(m);
-    return `<button class="mrow ${ok ? '' : 'locked'} ${rec.done ? 'done' : ''}" data-a="mission" data-id="${m.id}" ${ok ? '' : 'data-snd="deny"'}>
-      <span class="mth">${ok ? '<canvas data-mthumb="' + m.id + '" data-lazy></canvas>' : ICON.lock}<span class="num">${i + 1}</span>${ok ? starsHtml(rec.stars || 0) : ''}</span>
-      <span class="mb"><span class="mt"><b>${ok ? esc(m.title) : 'Locked'}</b><i>${ok ? m.range + ' m' + (m.outcomes && m.outcomes.some((o) => o.set) ? '  ·  a choice' : '') : 'Finish the contract before it'}</i></span>
-      ${ok ? `<span class="tags"><i class="medal ${rec.ch ? 'on' : ''}" title="Challenge">${ICON.medal}</i><i class="duck ${d.ducks[m.id] ? 'on' : ''}" title="Rubber duck">${ICON.duck}</i></span>` : ''}</span>
-    </button>`;
-  }).join('') : `<div class="empty">${ICON.lock}<p>Finish chapter ${ROMAN[n - 1]} to open this one.</p></div>`;
-  UI.render(UI.shell(`<div class="chips">${chips}</div>`, `
-    <div class="scroll">
-      <div class="chhead"><div><div class="eyebrow">Chapter ${ROMAN[n]}  ·  ${esc(c.place)}</div><h2>${esc(c.title)}</h2></div>
-        <div class="chmeta"><span>${starsHtml(0, 'one on')} ${st} / ${list.length * 3}</span>${open ? '<button class="lnk" data-a="story">Chapter opening</button>' : ''}</div></div>
-      <div class="mlist">${rows}</div>
-      ${open && Progress.chapterDone(n) && c.outro ? '<div class="outro"><div class="eyebrow">Afterwards</div><p>' + esc(c.outro) + '</p></div>' : ''}
-      ${d.seen.ending && n === 6 ? '<button class="btn ghost wide" data-a="epi">Read the ending again</button>' : ''}
-    </div>`), UI.shellHandlers({
-    chap(ds) { UI.chapter = +ds.n; UI.contracts(); },
-    story() { UI.chapterIntro(n, () => UI.contracts()); },
-    epi() { UI.epilogue(() => UI.contracts()); },
-    mission(ds) { const M = MISSION_BY_ID[ds.id]; if (!Progress.missionOpen(M)) { UI.toast('Finish the contract before it first.'); return; } UI.brief(M); },
-  }), 'is-contracts');
-};
+// ---- contracts: see 47_ui_board.js (the case board) ----
 
 // ---- briefing: see 46_ui_brief.js (the dossier) ----
 

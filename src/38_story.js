@@ -31,6 +31,25 @@ const CHAPTERS = [
 ];
 const CHAPTER_BY_N = {}; CHAPTERS.forEach((c) => { CHAPTER_BY_N[c.n] = c; });
 
+// The five decisions, for the case board and the dossier. Each has the two ways it can go (the
+// story switch it sets) and a line for every way the contract can end that leads there.
+const DECISIONS = [
+  { m: 'c2m5', flag: 'sparedReyes', who: 'reyes', q: 'Tomas Reyes saw your muzzle flash, and he was walking to the detective.', yes: 'Reyes reached Varga', no: 'Reyes never reached the gate',
+    ways: { shot: 'You shot Reyes', silenced: 'The gunman got to him first', spared: 'You shot the gunman', ran: 'Reyes ran for it' } },
+  { m: 'c4m5', flag: 'savedBrandt', who: 'brandt', q: 'Marlow ordered Nadia Brandt dead. A masked man was on the fire escape.', yes: 'Brandt finished her story', no: 'Brandt never finished it',
+    ways: { saved: 'You stopped the masked man', waited: 'You waited, and he did it', toolate: 'You were too late', obeyed: 'You did as Marlow said' } },
+  { m: 'c5m5', flag: 'sparedMarlow', who: 'marlow', q: 'Marlow was burning the files and leaving.', yes: 'You left Marlow for Varga', no: 'You ended it at the safehouse',
+    ways: { spared: 'You wrecked her car and radio', killed: 'You shot Marlow' } },
+  { m: 'c6m5', flag: 'sparedRook', who: 'rook', q: 'Rook stood up with his hands raised, the way the man did three years ago.', yes: 'You let Rook walk away', no: 'Rook stayed on the ridge',
+    ways: { back: 'You shot him as he left', killed: 'You shot him, hands raised', early: 'You fired before he stood', rifle: 'You shot his rifle instead', wide: 'You put it wide, on purpose', held: 'You held your fire' } },
+  { m: 'c6m6', flag: 'arrestedAurel', who: 'aurel', q: 'Aurel\'s helicopter was lifting off. One shot.', yes: 'Varga arrested Aurel', no: 'Aurel never left Harrow Ridge',
+    ways: { killed: 'You shot Aurel through the cabin', arrested: 'You took out the tail rotor' } },
+];
+const ENDINGS = [
+  { title: 'Clean Hands', how: 'Spare all five' }, { title: 'The Wide Shot', how: 'Spare three or four' },
+  { title: 'Failure to Engage', how: 'Spare one or two' }, { title: 'Balanced Books', how: 'Spare none' },
+];
+
 // What each story page shows behind its words: the place (the scene of a contract, seen wide,
 // panning slowly) and, when the page is about someone, their portrait. m is a contract id, v its
 // vantage, who a portrait (44_portraits.js).
