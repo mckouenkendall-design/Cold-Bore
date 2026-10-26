@@ -110,8 +110,9 @@ function kcStampDraw(ctx, K, V) {
   // it lands as the body does (but not in the first moment of the fall), or a little later if the
   // body never quite goes down; once it is there it stays put
   if (K.stampT0 === undefined) {
+    // (the short cut is over too soon to wait for the landing)
     const a0 = K.holdT0 + 0.75;
-    if (K.landT !== undefined ? K.T >= Math.max(a0, K.landT + 0.05) : K.T >= K.holdT0 + 1.6) K.stampT0 = K.T; else return;
+    if (K.short ? K.T >= K.holdT0 + 0.4 : K.landT !== undefined ? K.T >= Math.max(a0, K.landT + 0.05) : K.T >= K.holdT0 + 1.6) K.stampT0 = K.T; else return;
   }
   const age = K.T - K.stampT0;
   const W = V.W, H = V.H, G = CB.Game || {}, sf = G.safe || {}, lb = kcBars(W, H);
