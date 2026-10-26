@@ -76,7 +76,9 @@ function kcShotOrbit(K, V, name, t, o) {
   }
   o.fx = H[0] + d[0] * s; o.fy = H[1] + d[1] * s; o.fz = H[2] + d[2] * s;
   o.phi = side * (p[0] + p[4] * t * short) * kcDeg; o.el = (p[1] + 2.5 * Math.sin(t * 0.8)) * kcDeg;
-  o.f = fb * p[3]; o.R = Math.max(head ? 0.42 : 0.55, (o.f * size) / (0.5 * Hh)); o.f = (o.R * 0.5 * Hh) / size; o.ax = 0.5; o.ay = 0.5;
+  // (size is what fills the shorter side of the screen: the height on a phone held sideways)
+  const sd = 0.5 * Math.min(W, Hh);
+  o.f = fb * p[3]; o.R = Math.max(head ? 0.42 : 0.55, (o.f * size) / sd); o.f = (o.R * sd) / size; o.ax = 0.5; o.ay = 0.5;
   return o;
 }
 // Orbit settings to a camera pose: round the line's own axes (sw.B back along the line, sw.N level
