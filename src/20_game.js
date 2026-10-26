@@ -348,7 +348,7 @@ Game.start = function (missionId, opts) {
   if (opts.guided) { try { G.coach = new Coach(G.sim, opts.guided === true ? 3 : opts.guided); } catch (e) { G.coach = null; if (window.console) console.error(e); } }
   document.body.classList.toggle('guided', !!G.coach);
   G.hud.coach.className = 'h-coach'; ['fire', 'breath', 'reload', 'sZero'].forEach((k) => G.hud[k].classList.remove('go'));
-  G.acc = 0; G.cine = false; G.slowT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
+  G.acc = 0; G.cine = false; G.slowT = 0; G.medalQ = []; G.medalT = 0; G.gunId = gunId; G.cfg = cfg; document.body.classList.remove('cine');
   G.view.fx = []; G.view.assist = Save.data.settings.assist; G.view.pax = undefined; G.view.hold = null; G.view.pip = null; G.view.rangeInfo = null; G.view.bdcCache = null;
   // every mission starts with no mark; the MARK button and the M key only for players who get it
   G.view.mark = null; clearTimeout(G.markT);
@@ -456,6 +456,7 @@ Game.loop = function (ts) {
     else if (G.resK < 1 && G.fastN > 360) { G.resK = Math.min(1, G.resK * 1.25); G.fastN = 0; G.slowN = 0; G.frames = 0; G.resize(); }
   }
   const KC = CB.KillCam;
+  G.medalTick(dt);
   // ---- the kill camera has the picture: it sets the pace, the world follows ----
   if (G.cine && KC && KC.active) {
     const until = KC.advance(dt); let guard = 0;
@@ -506,6 +507,14 @@ Game.loop = function (ts) {
   Sfx.tick(sim, dt, G.scale * (G.focusT > 0 ? FOCUS_RATE : 1)); // (focus muffles the world, as slow motion does)
 };
 // hand what happened in the world to the picture and the sound
+// Medals made certain during the run (CB.Medals.watch, 50_medals.js) wait while the kill camera has the
+// screen, then show one at a time.
+Game.medalTick = function (dt) {
+  const G = Game, sim = G.sim; if (!sim || !CB.Medals || sim.M.practice) return;
+  try { const got = CB.Medals.watch(sim); if (got && got.length) G.medalQ = (G.medalQ || []).concat(got); } catch (e) { /* medals are a nicety */ }
+  G.medalT = Math.max(0, (G.medalT || 0) - dt);
+  if (!G.cine && G.medalQ && G.medalQ.length && G.medalT <= 0) { CB.Medals.toast(G.medalQ.shift()); G.medalT = 0.9; }
+};
 Game.pumpEvents = function () {
   const G = Game, sim = G.sim;
   if (!sim.ev.length) return;

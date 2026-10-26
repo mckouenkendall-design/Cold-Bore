@@ -41,23 +41,7 @@ UI.dossier = function () {
   }), 'is-dossier');
 };
 
-// The reticle tint in the scope. View.drawReticle (06_view.js) draws the marks in one dark ink; while
-// it runs, that one colour is swapped for the chosen tint and nothing else changes. If the view ever
-// asks CB.reticleInk() for its ink itself, this does nothing more.
-(function () {
-  if (typeof View !== 'function' || !View.prototype.drawReticle || View.prototype.drawReticle._tinted) return;
-  const base = View.prototype.drawReticle, DARK = 'rgba(6,7,9,0.94)';
-  const P = CanvasRenderingContext2D.prototype, dS = Object.getOwnPropertyDescriptor(P, 'strokeStyle'), dF = Object.getOwnPropertyDescriptor(P, 'fillStyle');
-  const tinted = function (sim) {
-    const ink = CB.reticleInk && CB.reticleInk(), ctx = this.ctx;
-    if (!ink || !ctx || !dS || !dF || (sim && sim.st && sim.st.scope && sim.st.scope.nv)) return base.apply(this, arguments);
-    const swap = (desc) => ({ configurable: true, get() { return desc.get.call(this); }, set(v) { desc.set.call(this, v === DARK ? ink : v); } });
-    Object.defineProperty(ctx, 'strokeStyle', swap(dS)); Object.defineProperty(ctx, 'fillStyle', swap(dF));
-    try { return base.apply(this, arguments); } finally { delete ctx.strokeStyle; delete ctx.fillStyle; }
-  };
-  tinted._tinted = true;
-  View.prototype.drawReticle = tinted;
-})();
+// The reticle tint in the scope: View.drawReticle (06_view.js) asks CB.reticleInk() for its ink.
 
 // Choose a calling card and a reticle tint. Locked ones say how to earn them.
 UI.looks = function () {

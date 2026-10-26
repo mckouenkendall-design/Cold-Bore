@@ -408,7 +408,8 @@ View.prototype.bdcMarks = function (sim) {
 View.prototype.drawReticle = function (sim, cx, cy, ppm) {
   const V = this, ctx = V.ctx, st = sim.st, R = V.RR || V.R, Rv = Math.min(R, V.hh || R), type = st.scope.ret;
   const nvc = st.scope.nv;
-  const col = V.retInk || (nvc ? 'rgba(10,30,14,0.95)' : 'rgba(6,7,9,0.94)');   // retInk: the lit middle after dark (06d_glass.js)
+  // retInk: the lit middle after dark (06d_glass.js); otherwise the player's chosen reticle tint (CB.reticleInk, 39_progress.js)
+  const col = V.retInk || (nvc ? 'rgba(10,30,14,0.95)' : ((CB.reticleInk && CB.reticleInk()) || 'rgba(6,7,9,0.94)'));
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = 'butt';
   const L = (x1, y1, x2, y2, w) => { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(cx + x1, cy + y1); ctx.lineTo(cx + x2, cy + y2); ctx.stroke(); };
   const thin = clamp(ppm * 0.035, 0.9, 1.6);

@@ -353,7 +353,7 @@ UI.settings = function (fromTitle) {
       <div class="setrow col"><div><b>Help while aiming</b></div><div class="opts">${help.map((h) => `<button class="opt ${s.assist === h[0] ? 'on' : ''}" data-a="assist" data-v="${h[0]}"><b>${h[1]}</b><i>${h[2]}</i></button>`).join('')}</div></div>
     </div>
     <div class="setgroup"><div class="eyebrow">The shot</div>
-      ${tog('killcam', 'Kill camera', 'On the shot that finishes a contract, follow the bullet all the way in.')}
+      <div class="setrow col"><div><b>Kill camera</b><i>On the shot that finishes a contract, follow the bullet all the way in. A contract you have already won shows a short cut unless the shot is a notable one.</i></div><div class="opts">${[['always', 'Every time', 'Every contract-winning shot.'], ['notable', 'Notable shots', 'Headshots, long shots, moving targets, two at once, through glass or cover, and the end of a chapter.'], ['off', 'Off', 'Never. The scope stays on the target.']].map((o) => `<button class="opt ${(Game.killcamWhen ? Game.killcamWhen() : 'always') === o[0] ? 'on' : ''}" data-a="kcw" data-v="${o[0]}"><b>${o[1]}</b><i>${o[2]}</i></button>`).join('')}</div></div>
       ${tog('gore', 'Blood and X-ray detail', 'Turn off for a clean version of the kill camera and no blood in the scope.')}
     </div>
     <div class="setgroup"><div class="eyebrow">Sound</div>${sld('sfx', 'Effects', 0, 1, 0.05)}${sld('music', 'Music', 0, 1, 0.05)}</div>
@@ -373,6 +373,7 @@ UI.settings = function (fromTitle) {
   const h = {
     tog(ds) { s[ds.k] = !s[ds.k]; Save.write(); if (ds.k === 'lowRes') Game.resize(); UI.keepScroll(); UI.settings(fromTitle); },
     assist(ds) { s.assist = ds.v; Save.write(); UI.keepScroll(); UI.settings(fromTitle); },
+    kcw(ds) { s.killcamWhen = ds.v; s.killcam = ds.v !== 'off'; Save.write(); UI.keepScroll(); UI.settings(fromTitle); },
     // tester mode (temporary): switch saves, then forget every picture and choice the menus were holding
     tester() {
       const on = !CB.Tester.on; CB.Tester.set(on);
