@@ -18,16 +18,17 @@ const path = require('path');
   if (process.argv[2] === 'old') await page.addStyleTag({ content: 'body.in-mission #overlay .sh-body * { touch-action: none !important; }' });
   await page.evaluate(() => CB.Game.start('c2m1'));
   await page.waitForTimeout(1800);
-  // a hint and a radio message, then tap each
-  await page.evaluate(() => { CB.Game.pushMsg('hint', 'A test hint that should close when tapped.', 30); CB.Game.pushMsg('Marlow', 'A test radio line.', 30); });
-  await page.waitForTimeout(300);
-  for (const sel of ['.h-msg .hintbox', '.h-sub .radio']) {
-    const b = await page.locator(sel).first().boundingBox();
+  // a hint and a radio message, then tap each. One at a time, and the box is marked and checked as an
+  // object, so a hint the mission itself shows meanwhile (which replaces ours) is not mistaken for ours.
+  for (const [sel, push] of [['.h-msg .hintbox', "CB.Game.pushMsg('hint', 'A test hint that should close when tapped.', 30)"], ['.h-sub .radio', "CB.Game.pushMsg('Marlow', 'A test radio line.', 30)"]]) {
+    const b = await page.evaluate(([sel, push]) => { (0, eval)(push); const e = document.querySelector(sel); if (!e) return null; e.dataset.t = '1'; const r = e.getBoundingClientRect(); return r.width ? { x: r.x, y: r.y, width: r.width, height: r.height } : null; }, [sel, push]);
     ok(!!b, sel + ' is on screen');
     if (!b) continue;
     const id = tid++; await touch('touchStart', [{ x: b.x + b.width / 2, y: b.y + b.height / 2, id }]); await page.waitForTimeout(60); await touch('touchEnd', []);
-    await page.waitForTimeout(900);
-    ok(await page.locator(sel).count() === 0, sel + ' closes on a tap');
+    // a tap cuts the box's time to now; it then fades over 0.6 s of game time and goes
+    const cut = await page.evaluate((sel) => { const e = document.querySelector(sel + '[data-t]'); return !e || e._until <= CB.Game.sim.t + 1e-6; }, sel);
+    for (let w = 0; w < 80 && await page.locator(sel + '[data-t]').count() > 0; w++) await page.waitForTimeout(100);
+    ok(cut && await page.locator(sel + '[data-t]').count() === 0, sel + ' closes on a tap');
   }
   // a drag that starts on a message still aims
   await page.evaluate(() => CB.Game.pushMsg('hint', 'Drag across me.', 30)); await page.waitForTimeout(300);
