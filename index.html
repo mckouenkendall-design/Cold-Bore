@@ -1367,7 +1367,7 @@ body.portrait .scr.drillres { flex-direction: column; text-align: center; } body
 <script>
 (function(){
 "use strict";
-const BUILD = "Oct 26, 12:22 PM";
+const BUILD = "Oct 26, 1:19 PM";
 
 // ===== 00_util.js =====
 // ---------------------------------------------------------------------------
@@ -31031,7 +31031,18 @@ function kcLoc(fr, a, b, c, out) {
 }
 // A point on the round's own line, s metres past where it meets the body's middle (pl.H). The round,
 // the wound track, the entry and exit marks and the tears all use this, so they always line up.
-function kcTrack(K, s, out) { const H = K.plan.H, d = K.dir; out[0] = H[0] + d[0] * s; out[1] = H[1] + d[1] * s; out[2] = H[2] + d[2] * s; return out; }
+function kcTrack(K, s, out) {
+  const H = K.plan.H, d = K.dir; out[0] = H[0] + d[0] * s; out[1] = H[1] + d[1] * s; out[2] = H[2] + d[2] * s;
+  // Once the round is in, the track belongs to the body: it is held in the head's (or the trunk's)
+  // own frame as it was at the moment of the hit, so when the hit knocks the head back and turns it,
+  // the hole, the channel and the round inside go with it instead of hanging where the head was.
+  const f0 = K.tr0, fig = K.fig, fr = fig && (K.plan.part === 'head' ? fig.hd : fig.tor);
+  if (f0 && fr) {
+    const x = out[0] - f0.o[0], y = out[1] - f0.o[1], z = out[2] - f0.o[2];
+    kcLoc(fr, x * f0.S[0] + y * f0.S[1] + z * f0.S[2], x * f0.U[0] + y * f0.U[1] + z * f0.U[2], x * f0.F[0] + y * f0.F[1] + z * f0.F[2], out);
+  }
+  return out;
+}
 // The same, put straight through the camera.
 function kcLocP(c, fr, a, b, cc, out) { kcLoc(fr, a, b, cc, kcL1); return kcProj(c, kcL1[0], kcL1[1], kcL1[2], out); }
 // Add a run of such points to the current path. pts = [a, b, c, a, b, c, ...] in metres times k.
@@ -31157,7 +31168,7 @@ KillCam.start = function (o) {
   K.bp = [path[0][1], path[0][2], path[0][3], path[0][0]]; K.s = -K.dS; K.spd = 0; K.speedK = 0;
   K.Td = K.Tc + K.tn.approach; // the moment of impact
   K.hitT = null; K.holdT0 = null; K.outT0 = null; K.killSeen = false; K.skipN = 0; K.stopped = false;
-  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.mush = 0; K.spin = 0;
+  K.plan = null; K.fig = null; K.sw = null; K.dmg = {}; K.parts = []; K.lens = []; K.rip = []; K.cap = null; K.hits = []; K.tr0 = null; K.mush = 0; K.spin = 0;
   K.hat = null; K.plate = null; K.chan = null; K.streak = 0; K.rifle = null; K.snd = {}; K.err = null;
   K.cam = kcCamAim({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, f: 600, px: 0, py: 0 });
   K.rng = makeRng((Math.round(h.x * 977) ^ Math.round(h.y * 7919) ^ Math.round(h.z * 13)) + 4099);
@@ -31261,6 +31272,7 @@ function kcAdvance(K, o, dt) {
       if (T >= K.Td) {
         // the tip touches the skin: this is the frame the world is allowed to make the kill
         K.hitT = T; K.stage = 3; K.s = pl.sIn;
+        { const fr = K.fig && (pl.part === 'head' ? K.fig.hd : K.fig.tor); if (fr) K.tr0 = { o: fr.o.slice(), S: fr.S.slice(), U: fr.U.slice(), F: fr.F.slice() }; } // the body's frame at the hit (kcTrack)
         K.ret = Math.max(K.ret, o.tHit + K.step * 1.002);
       }
     } else {
@@ -31935,8 +31947,10 @@ function kcDrawXray(K, V, ctx, dt) {
   if (xr > 0.01) kcXDraw(ctx, K, c, fig, figA * xr * xa);
   if (K.hitT !== null && xa > 0.01) { kcHoles(ctx, K, c, fig, figA * xa); kcRipples(ctx, K, c, fig); }
   // the round, while any of it is still to be seen
-  const tipx = pl.H[0] + d[0] * K.s, tipz = pl.H[2] + d[2] * K.s;
-  let tipy = pl.H[1] + d[1] * K.s, tum = 0;
+  // (inside the body the round rides the body's own track; past the far side it flies on straight from where it came out)
+  const sIn2 = K.hitT !== null ? Math.min(K.s, pl.sOut) : K.s; kcTrack(K, sIn2, kcL1);
+  const past = K.s - sIn2, tipx = kcL1[0] + d[0] * past, tipz = kcL1[2] + d[2] * past;
+  let tipy = kcL1[1] + d[1] * past, tum = 0;
   // a round with nothing left after the far side drops, turning over, to the floor
   if (K.spent && K.spentT !== undefined) { const ft = T - K.spentT; tipy = Math.max(K.rad, tipy - 1.6 * ft * ft); tum = Math.sin(Math.min(ft, 1.2) * 3) * 1.4; }
   const inside = K.hitT !== null ? clamp((K.s - pl.sIn) / 0.25, 0, 1) : 0;
