@@ -110,6 +110,8 @@ async function inTheGame(browser, errs) {
   ok(!!seen.fireNow, 'FIRE NOW showed on the card and the fire button');
   await page.waitForTimeout(1500);
   ok(await page.locator('.results').count() === 1, 'the run ends on the results screen');
+  // the results are a payout sequence now (stars land one by one): jump to its end before reading them
+  await page.evaluate(() => { if (CB.UI.payEnd) CB.UI.payEnd(true); }); await page.waitForTimeout(400);
   const r = await page.evaluate(() => ({ stars: document.querySelectorAll('.bigstars .stars i.on').length, note: (document.querySelector('.gnote') || {}).innerText || '', caches: CB.Save.data.caches.length, rec: CB.Save.data.missions.c1m1, g: CB.Save.data.stats.guns.fenwick }));
   ok(r.stars === 3, 'three stars (' + r.stars + ')');
   ok(/guided run: no caches this time/i.test(r.note), 'the results say "Guided run: no caches this time."');

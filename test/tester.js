@@ -13,6 +13,7 @@ const path = require('path');
   const cdp = await ctx.newCDPSession(page);
   let tid = 1;
   const tap = async (sel) => {
+    await page.locator(sel).first().scrollIntoViewIfNeeded(); await page.waitForTimeout(150); // the switch is under About, at the end of Settings
     const b = await page.locator(sel).first().boundingBox(); if (!b) throw new Error('no ' + sel);
     const id = tid++, x = b.x + b.width / 2, y = b.y + b.height / 2;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id }] }); await page.waitForTimeout(40);

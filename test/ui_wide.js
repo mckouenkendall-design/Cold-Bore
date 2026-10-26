@@ -245,6 +245,8 @@ function richSaveInPage() {
     ok(await ev(() => { const b = [...document.querySelectorAll('[data-a="buycache"]')]; return b.length === 3 && !b[0].classList.contains('off') && b[1].classList.contains('off') && b[2].classList.contains('off') && /not enough credits/i.test(document.querySelector('.ccard.t-vault .cc-why').innerText); }), 'a cache you cannot afford has its Buy button off and says why');
     ok(await ev(() => /no real money/i.test(document.querySelector('.caches').innerText) && /credits/i.test(document.querySelector('.caches').innerText) && ['50%', '30%', '14%', '5%', '1%', '22%', '38%'].every((p) => document.querySelector('.cgrid').innerText.indexOf(p) >= 0)), 'the caches page says there is no real money and shows the odds as percentages');
     await ev(() => { CB.Save.data.credits = 46200; CB.UI.colTab = 'progress'; CB.UI.collection(); }); await look('44_progress', null);
+    await ev(() => { CB.UI.colTab = 'medals'; CB.UI.collection(); }); await look('44b_medals', null);
+    await ev(() => { document.querySelector('.medals').scrollTop = 99999; }); await look('44c_medals_end', null);
     // opening a cache: the case drops in, then the two latches are tapped by finger before it opens
     await ev(() => { CB.UI.colTab = 'caches'; CB.UI.collection(); CB.UI.openCache('vault'); }); await look('45_cache_shaking', null, 250);
     await look('45b_cache_latches', '#overlay [data-a="skip"]', 500);
@@ -253,6 +255,9 @@ function richSaveInPage() {
     ok(await ev(() => !!document.querySelector('.cacheopen.shown')), 'tapping both latches opens the case and shows what was inside');
     await ev(() => { CB.UI.closeOverlay(); CB.UI.tab = 'range'; CB.UI.hub(); }); await look('50_range', '[data-a="go"]', 600);
     await ev(() => { CB.UI.rangeCfg.dist = 1800; CB.UI.rangeCfg.wind = -8; CB.UI.range(); }); await look('51_range_far', '[data-a="go"]', 600);
+    await ev(() => { CB.UI.rangeTab = 'drills'; CB.UI.range(); }); await look('51b_range_drills', '[data-a="drill"]', 600);
+    await ev(() => { CB.UI.drillResult(CB.drillMission('plates'), { win: true, time: 15, shots: 6, stats: { dhits: 5, dLast: 13.2 } }, {}); }); await look('51c_drill_result', '[data-a="again"]', 700);
+    await ev(() => { CB.UI.rangeTab = 'free'; });
     await ev(() => { CB.UI.rangeCfg.dist = 300; CB.UI.rangeCfg.wind = 0; CB.UI.tab = 'settings'; CB.UI.hub(); }); await look('52_settings', null);
     await ev(() => { document.querySelector('#ui .scroll').scrollTop = 99999; }); await look('53_settings_end', null, 300);
     ok(await ev(() => { const t = document.querySelector('#ui').innerText; return /kill camera/i.test(t) && /blood and x-ray detail/i.test(t) && !/slow motion/i.test(t); }), 'settings has the kill camera and blood switches and no slow motion switch');

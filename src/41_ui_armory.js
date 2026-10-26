@@ -374,7 +374,7 @@ UI.dope = function (st) {
 // Four pages under one tab: the skins, the caches (open and buy), the medal case, and the progress counters.
 UI.collection = function () {
   const d = Save.data, t = Progress.totals(), nC = d.caches.length, sub = UI.colTab;
-  const seg = `<div class="seg">${[['skins', 'Skins'], ['caches', 'Caches'], ['progress', 'Progress']].map((s) => `<button class="${sub === s[0] ? 'on' : ''}" data-a="sub" data-t="${s[0]}">${s[1]}${s[0] === 'caches' && nC ? '<em>' + nC + '</em>' : ''}</button>`).join('')}</div>`;
+  const seg = `<div class="seg">${[['skins', 'Skins'], ['caches', 'Caches'], ['medals', 'Medals'], ['progress', 'Progress']].map((s) => `<button class="${sub === s[0] ? 'on' : ''}" data-a="sub" data-t="${s[0]}">${s[1]}${s[0] === 'caches' && nC ? '<em>' + nC + '</em>' : ''}</button>`).join('')}</div>`;
   let body;
   const h = {
     sub(ds) { UI.colTab = ds.t; UI.collection(); },
@@ -384,6 +384,7 @@ UI.collection = function () {
       if (err) { Sfx.ui('deny'); UI.toast(err, 'bad'); return; }
       Sfx.ui('buy'); UI.toast(CACHE_NAME[ds.t] + ' bought. Open it when you like.', 'good'); UI.keepScroll(); UI.collection();
     },
+    buyshelf(ds) { UI.shelfBuy(ds); },
   };
   if (sub === 'caches') {
     const blurb = { field: 'Also earned for three-star runs and challenges.', sealed: 'Also earned for new ranks, chapters and ducks.', vault: 'Only sold here. Never holds a common skin.' };
@@ -399,9 +400,11 @@ UI.collection = function () {
     body = `<div class="scroll caches">
       <div class="cachebox ${nC ? 'has' : ''}"><div class="cb-ic">${ICON.box}</div><div class="cb-t"><b>${nC ? nC + (nC === 1 ? ' cache' : ' caches') + ' to open' : 'No caches waiting'}</b><i>Each cache holds one rifle skin. Earn them by playing, or buy them here with the credits you earn in missions. There is no real money in this game.</i></div>${nC ? '<button class="btn pri" data-a="open" data-t="best" data-snd="riser">Open one</button>' : ''}</div>
       <div class="cgrid">${cards}</div>
+      ${UI.shelfHtml ? UI.shelfHtml() : ''}
       <p class="fine">The percentages are the chance of each kind of skin. Within a kind you get one you do not own yet, for as long as there is one left. Once you own a whole kind, a cache may give you a skin from the next kind up or down instead, or a duplicate, which is traded in for credits straight away: ${DUPE_CR.map((c, r) => RAR[r].toLowerCase() + ' ' + fmtCr(c)).join(', ')}.</p>
     </div>`;
   } else if (sub === 'medals' && UI.medalsBody) {
+    if (UI.medalSweep) UI.medalSweep(); // anything reached and not yet paid is paid as the case opens
     body = UI.medalsBody();
   } else if (sub === 'progress') {
     const tile = (n, max, label) => `<div class="ptile ${n >= max ? 'full' : ''}"><b>${n}<small>/${max}</small></b><span>${label}</span><i><i style="width:${Math.round((n / max) * 100)}%"></i></i></div>`;
@@ -484,7 +487,7 @@ UI.openCache = function (tier) {
     fit(ds, b) { const c = gunCfg(gunId); c.skin = s.id; d.guns[gunId].cfg = c; Save.write(); UI.toast(s.name + ' fitted to ' + GUN_BY_ID[gunId].name + '.', 'good'); if (b) b.classList.add('off'); },
     next() { UI.openCache(how === 'best' ? 'best' : undefined); },
     all() { UI.openAll([res]); },
-    done() { UI.closeOverlay(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
+    done() { UI.closeOverlay(); if (UI.medalSweep) UI.medalSweep(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
   }, 'center tk');
   const root = UI.over.querySelector('.cacheopen'), cv = root.querySelector('.co-case');
   root.style.setProperty('--sc', CB.RAR_GLOW[steps[0]]);
@@ -549,7 +552,7 @@ UI.openAll = function (first) {
   UI.overlay(`<div class="sheet tall openall"><div class="sh-head"><div class="sh-t"><div class="eyebrow">${got.length} caches opened</div><h3>${nNew} new ${nNew === 1 ? 'skin' : 'skins'}${cr ? '  ·  +' + fmtCr(cr) + ' credits' : ''}</h3></div><button class="x" data-a="done">${ICON.cross}</button></div>
     <div class="sh-body">${got.reduce((a, x) => a.concat(x.sets || []), []).map((S) => `<div class="co-set">${ICON.check}<b>Set complete: ${esc(S.name)}</b><i>+${fmtCr(S.cr)} cr and a ${esc(CACHE_NAME[S.cache].toLowerCase())}</i></div>`).join('')}<div class="oagrid">${got.map((x, i) => `<div class="oa r${x.skin.r} ${x.dupe ? 'dupe' : 'new'}" style="animation-delay:${Math.min(i, 20) * 0.06}s"><span class="oa-pic bed"><canvas data-gun="${gunId}" data-lazy ${uiCfgAttr(Object.assign({}, gunCfg(gunId), { skin: x.skin.id }))}></canvas></span><b>${esc(x.skin.name)}</b><i>${RAR[x.skin.r]}</i><em>${x.dupe ? '+' + fmtCr(x.cr) + ' cr' : 'New'}</em></div>`).join('')}</div>
     <div class="cta"><button class="btn pri" data-a="done">Done</button></div></div></div>`, {
-    done() { UI.closeOverlay(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
+    done() { UI.closeOverlay(); if (UI.medalSweep) UI.medalSweep(); if (UI.afterCache) { const f = UI.afterCache; UI.afterCache = null; f(); } else UI.collection(); },
   });
 };
 
@@ -594,7 +597,14 @@ function rangeMission(dist, wind) {
 UI.range = function () {
   const d = Save.data, R = UI.rangeCfg, g = GUN_BY_ID[d.equipped], st = buildStats(d.equipped, gunCfg(d.equipped));
   const dp = Bal.dope(st, st.zeroAng, R.dist, Math.abs(R.wind));
-  UI.render(UI.shell('<div class="hd"><div class="eyebrow">Practice</div><h2>The Range</h2></div>', `<div class="split rangev">
+  // two pages: free practice, and the scored drills (53_drills.js)
+  const nMed = UI.drillsHtml ? (CB.DRILLS || []).reduce((a, D) => a + (((d.drills || {})[D.id] || {}).medal || 0), 0) : 0;
+  const seg = UI.drillsHtml ? `<div class="seg">${[['free', 'Free practice'], ['drills', 'Drills']].map((s) => `<button class="${(UI.rangeTab || 'free') === s[0] ? 'on' : ''}" data-a="rsub" data-t="${s[0]}">${s[1]}${s[0] === 'drills' ? '<em class="dm">' + nMed + '/12</em>' : ''}</button>`).join('')}</div>` : '<div class="hd"><div class="eyebrow">Practice</div><h2>The Range</h2></div>';
+  if (UI.rangeTab === 'drills' && UI.drillsHtml) {
+    UI.render(UI.shell(seg, `<div class="scroll">${UI.drillsHtml()}</div>`), UI.shellHandlers({ rsub(ds) { UI.rangeTab = ds.t; UI.range(); }, drill(ds) { UI.startDrill(ds.id); } }), 'is-range');
+    return;
+  }
+  UI.render(UI.shell(seg, `<div class="split rangev">
     <div class="side">
       <p class="dim">Steel plates and a paper target at any distance, in any wind. No fee, no rating, no hurry. The best place to learn what a rifle does and what the marks on a scope mean.</p>
       <div class="stepper"><button class="sq" data-a="d" data-v="-100" aria-label="Closer">&minus;</button><div><span>Distance</span><b>${R.dist} m</b></div><button class="sq" data-a="d" data-v="100" aria-label="Further">+</button></div>
@@ -608,6 +618,7 @@ UI.range = function () {
     d(ds) { R.dist = clamp(R.dist + +ds.v, 100, 1800); UI.keepScroll(); UI.range(); },
     w(ds) { R.wind = clamp(R.wind + +ds.v, -8, 8); UI.keepScroll(); UI.range(); },
     gun() { UI.gunPicker(null); },
+    rsub(ds) { UI.rangeTab = ds.t; UI.range(); },
     go() { MISSION_BY_ID.range = rangeMission(R.dist, R.wind); UI.launch('range', {}); },
   }), 'is-range');
 };

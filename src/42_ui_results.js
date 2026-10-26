@@ -65,7 +65,7 @@ UI.results = function (M, res, last) {
   const nC = pay.caches.length, topTier = ['vault', 'sealed', 'field'].find((k) => pay.caches.indexOf(k) >= 0) || 'field';
   const cachebox = nC ? `<button class="cachebox has crate rv" data-k="cache" data-a="caches" data-snd="riser"><span class="cb-case"><canvas data-case="${topTier}" data-live="1"></canvas></span><div class="cb-t"><b>${nC} ${nC === 1 ? 'cache' : 'caches'} earned</b><i>Left on the table for you. Tap to open ${nC === 1 ? 'it' : 'them'}.</i></div></button>` : '';
   const scoreCard = score ? `<div class="rew scorecard rv" data-k="extra"><div class="eyebrow">Score</div>${(score.parts || []).map((p) => `<div class="rl"><span>${esc(p.label)}</span><b>${p.pts > 0 ? '+' : ''}${fmtCr(p.pts)}</b></div>`).join('')}<div class="rl tot"><span>Total</span><b>${fmtCr(score.total)}</b></div></div>` : '';
-  const medalRow = medals.length ? `<div class="rs-medals rv" data-k="medals"><div class="eyebrow">${medals.length === 1 ? 'Medal' : medals.length + ' medals'}</div><div class="mdrow">${medals.map((m) => `<div class="md t${m.tier}"><canvas data-medal="${m.id}" data-tier="${m.tier}"></canvas><div><b>${esc(m.name)}${m.tiers > 1 ? ' ' + ROMAN[m.tier] : ''}</b><span>${esc(m.payText)}</span></div></div>`).join('')}</div></div>` : '';
+  const medalRow = medals.length ? `<div class="rs-medals rv" data-k="medals"><div class="eyebrow">${medals.length === 1 ? 'Medal' : medals.length + ' medals'}</div><div class="mdrow">${medals.map((m) => `<div class="md t${m.tier} ${m.tiers === 1 ? 'once' : ''}"><canvas data-medal="${m.id}" data-tier="${m.tier}"></canvas><div><b>${esc(m.name)}</b><i class="mdt">${m.tiers > 1 ? MEDAL_TIER_NAME[m.tier] : 'Earned once'}</i><span>${esc(m.payText)}</span></div></div>`).join('')}</div></div>` : '';
   const mastRow = mastery && mastery.ups.length ? `<div class="rs-mast rv" data-k="medals"><div class="eyebrow">Rifle mastery  ·  ${esc(GUN_BY_ID[last.opts.gun] ? GUN_BY_ID[last.opts.gun].name : '')} level ${CB.Mastery.level(last.opts.gun)}</div>${mastery.ups.map((u) => `<div class="rl"><span>${esc(u.text.replace(/^[^:]*: /, ''))}</span><b>${esc(u.pay || '')}</b></div>`).join('')}${mastery.skins.length ? `<div class="mskins">${mastery.skins.map((id) => `<span class="mskin own"><span class="ms-pic bed"><canvas data-gun="${last.opts.gun}" ${uiCfgAttr(Object.assign({}, gunCfg(last.opts.gun), { skin: id }))}></canvas></span><b>${esc(SKIN_BY_ID[id].name)}</b><i>New skin, this rifle only</i></span>`).join('')}</div>` : ''}</div>` : '';
   const choiceNote = win && res.outcome && res.outcome.set ? `<div class="decision rv" data-k="extra"><span class="dstamp">Decision recorded</span><span>${pay.outcomeNew ? 'A new way this has gone. ' : ''}This choice changes later contracts. The dossier keeps every way it has gone; play it again to choose differently.</span></div>` : '';
   const nextLabel = pay.storyEnd ? 'The ending' : next ? (pay.chapterDone ? 'Continue' : 'Next contract') : 'Contracts';
@@ -339,14 +339,14 @@ UI.settings = function (fromTitle) {
   const tog = (key, label, sub) => `<button class="setrow" data-a="tog" data-k="${key}"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><span class="sw ${s[key] ? 'on' : ''}"><i></i></span></button>`;
   const sld = (key, label, min, max, step, sub) => `<div class="setrow col"><div><b>${label}</b>${sub ? '<i>' + sub + '</i>' : ''}</div><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${s[key]}" aria-label="${label}"></div>`;
   const help = [['full', 'Full help', 'An amber marker in the scope shows where the bullet will land. Put the marker on the target. MARK locks a target\'s distance so the marker stays right while you aim high.'], ['notes', 'Spotter\'s notes', 'You are told the range, the wind and how far to hold. You do the aiming. Recommended.'], ['veteran', 'Veteran', 'No range, no wind number, no hold. Read flags, smoke and the scope marks yourself. Pays 25% more.']];
-  const body = `<div class="scroll">
-    <div class="setcols">
-    <div class="setgroup tester-group"><div class="eyebrow">Tester mode (temporary)</div>
-      <button class="setrow" data-a="tester"><div><b>Unlock everything</b><i>${CB.Tester.on
+  // tester mode (temporary) lives under About, at the end, with the build stamp
+  const tester = `<button class="setrow" data-a="tester"><div><b>Tester mode: unlock everything</b><i>${CB.Tester.on
         ? 'On. Every rifle, part, scope, skin and contract is open, with a million credits and some caches. Your real progress is set aside and comes back exactly as it was when you switch this off.'
-        : 'Opens every rifle, part, scope, skin and contract, so you can try it all early. Your real progress is set aside, untouched, until you switch it off. Nothing you do while it is on counts toward it.'}</i></div><span class="sw ${CB.Tester.on ? 'on' : ''}"><i></i></span></button>
-      ${CB.Tester.on ? '<button class="setrow" data-a="testerAgain"><div><b>Start the tester save again</b><i>Throws away stars and loadouts made in tester mode and makes a fresh copy of your real progress with everything unlocked.</i></div><span class="arrow">&rsaquo;</span></button>' : ''}
-    </div>
+        : 'Temporary, for trying things early. Opens every rifle, part, scope, skin and contract. Your real progress is set aside, untouched, until you switch it off. Nothing you do while it is on counts toward it.'}</i></div><span class="sw ${CB.Tester.on ? 'on' : ''}"><i></i></span></button>
+      ${CB.Tester.on ? '<button class="setrow" data-a="testerAgain"><div><b>Start the tester save again</b><i>Throws away stars and loadouts made in tester mode and makes a fresh copy of your real progress with everything unlocked.</i></div><span class="arrow">&rsaquo;</span></button>' : ''}`;
+  const body = `<div class="scroll">
+    ${CB.Tester.on ? '<div class="tester-on">Tester mode is on. Switch it off under About, at the end of this page.</div>' : ''}
+    <div class="setcols">
     <div class="setgroup"><div class="eyebrow">Aiming</div>
       ${sld('sens', 'Drag speed', 0.25, 1.4, 0.05, 'How far the scope moves when you drag. Lower is finer.')}
       ${tog('invert', 'Reverse the drag', 'Off: the view follows your finger. On: the crosshair follows your finger.')}
@@ -363,8 +363,12 @@ UI.settings = function (fromTitle) {
       ${CB.Tester.on ? '<p class="dim">Backing up and erasing are switched off while tester mode is on, so they can only ever touch your real save.</p>' : `<button class="setrow" data-a="export"><div><b>Back up or move your save</b><i>Copy a code you can paste into this game on another phone or browser.</i></div><span class="arrow">&rsaquo;</span></button>
       <button class="setrow danger" data-a="reset"><div><b>Erase everything and start again</b></div><span class="arrow">&rsaquo;</span></button>`}
     </div>
+    <div class="setgroup about"><div class="eyebrow">About</div>
+      <div class="setrow info"><div><b>Cold Bore</b><i>No ads, no real money, no accounts. Everything is earned by playing. Progress is stored only in this browser on this device${Save.ok ? '' : ' (this browser is currently refusing to store it, so it will be lost when the tab closes)'}.</i></div></div>
+      <div class="setrow info"><div><b>Build</b><i class="bld">${BUILD}</i></div></div>
+      ${tester}
     </div>
-    <p class="fine">Cold Bore. No ads, no real money, no accounts. Progress is stored only in this browser on this device${Save.ok ? '' : ' (this browser is currently refusing to store it, so it will be lost when the tab closes)'}. Sound is generated live, so there is nothing to download.</p>
+    </div>
     </div>`;
   const h = {
     tog(ds) { s[ds.k] = !s[ds.k]; Save.write(); if (ds.k === 'lowRes') Game.resize(); UI.keepScroll(); UI.settings(fromTitle); },
@@ -397,7 +401,7 @@ UI.settings = function (fromTitle) {
       });
     },
   };
-  const eb = `<div class="eyebrow">Make it yours <span class="bld">Build ${BUILD}</span></div>`;
+  const eb = '<div class="eyebrow">Make it yours</div>';
   if (fromTitle) UI.render(`<div class="scr settings"><div class="bar"><button class="ib" data-a="back" data-snd="back">${ICON.back}</button><div class="bar-t">${eb}<h2>Settings</h2></div></div>${body}</div>`, h, 'is-settings');
   else UI.render(UI.shell(`<div class="hd">${eb}<h2>Settings</h2></div>`, body), UI.shellHandlers(h), 'is-settings');
   UI.root.querySelectorAll('input[type=range]').forEach((inp) => {

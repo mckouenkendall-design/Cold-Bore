@@ -200,6 +200,9 @@ Progress.apply = function (M, res, info) {
     if (res.challenge && !rec.ch) { out.chNew = true; rec.ch = true; add('Challenge', base * 0.5, bx * 0.25); }
     if (res.challenge && !rec.chPaid) { if (guided) out.held.push('challenge'); else { rec.chPaid = true; out.caches.push('field'); } }
     if (res.stars === 3 && !rec.c3paid) { if (guided) out.held.push('stars'); else { rec.c3paid = true; out.caches.push('field'); } }
+    // the daily contract: double its fee, once a day, on a contract already finished before
+    const dl = Progress.daily();
+    if (dl && dl.id === M.id && !dl.paid && rec.done && !guided) { add('Daily contract, double fee', dl.cr, dl.xp); d.daily.paid = 1; const ms = d.mstat || (d.mstat = {}); ms.daily = (ms.daily || 0) + 1; out.daily = true; }
     if (d.settings.assist === 'veteran') add('Veteran bonus', out.cr * 0.25, 0);
     const wasDone = Progress.chapterDone(M.ch);
     // Contracts added in an update slot in with `follows`. A save that had already finished every
@@ -244,7 +247,7 @@ Progress.apply = function (M, res, info) {
   }
   if (CB.Medals) {
     out.medals = CB.Medals.check(M, res, out, info || {});
-    out.medals.forEach((m) => { out.cr += m.cr || 0; out.xp += m.xp || 0; if (m.cache) out.caches.push(m.cache); out.lines.push({ label: 'Medal: ' + m.name + (m.tiers > 1 ? ' ' + ROMAN[m.tier] : ''), cr: m.cr || 0, xp: m.xp || 0, note: m.cache && !m.cr && !m.xp ? CACHE_NAME[m.cache] : '' }); });
+    out.medals.forEach((m) => { out.cr += m.cr || 0; out.xp += m.xp || 0; if (m.cache) out.caches.push(m.cache); out.lines.push({ label: 'Medal: ' + m.name + (m.tiers > 1 ? ', ' + MEDAL_TIER_NAME[m.tier].toLowerCase() : ''), cr: m.cr || 0, xp: m.xp || 0, note: m.cache && !m.cr && !m.xp ? CACHE_NAME[m.cache] : '' }); });
   }
   d.credits += out.cr; d.xp += out.xp;
   // the rank track: every rank passed hands over its reward (once per run through the track)
@@ -307,6 +310,65 @@ Progress.checkSets = function () {
   const d = Save.data, out = []; if (!d.sets) d.sets = {};
   SKIN_SETS.forEach((s) => { if (d.sets[s.id] || !s.skins.length || !s.skins.every((id) => d.skins[id])) return; d.sets[s.id] = 1; d.credits += s.cr; if (s.cache) d.caches.push(s.cache); out.push(s); });
   return out;
+};
+
+// ---- what changes every day (at midnight, the phone's own time) ----
+// A day as a number (20261025), and a little random series that is the same all day for one save.
+function dayKey(t) { const x = new Date(t === undefined ? Date.now() : t); return x.getFullYear() * 10000 + (x.getMonth() + 1) * 100 + x.getDate(); }
+function dayRand(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+Progress.dayKey = dayKey;
+// Hours until the day turns over, for "new stock in 5 h".
+Progress.hoursLeft = function () { const n = new Date(), m = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1); return Math.max(1, Math.ceil((m - n) / 3600000)); };
+
+// The daily contract: one contract you have already finished pays double its fee if you win it
+// again today (once a day). Needs two finished contracts to choose from.
+// The choice is kept for the day, so finishing a new contract does not change it.
+Progress.daily = function () {
+  const d = Save.data; if (!d || d.tester) return null;
+  const day = dayKey();
+  if (!d.daily || d.daily.day !== day || !MISSION_BY_ID[d.daily.id]) {
+    const done = MISSIONS.filter((m) => !m.practice && d.missions[m.id] && d.missions[m.id].done);
+    if (done.length < 2) return null;
+    d.daily = { day, id: done[Math.floor(dayRand(day * 7 + ((d.created || 1) % 9973))() * done.length)].id, paid: 0 };
+    Save.write();
+  }
+  const M = MISSION_BY_ID[d.daily.id];
+  return { id: M.id, M, day, cr: M.reward.cr * 2, xp: M.reward.xp, paid: !!d.daily.paid };
+};
+
+// Pip's shelf: a few looks at fixed prices, new every day. A calling card or reticle tint you can
+// only get here, and skins you do not own yet, one cheaper and two dearer, so a skin you want can
+// be bought outright instead of hoped for in a cache.
+const SHELF_SKIN_PRICE = [700, 1400, 3200, 7000, 15000];
+const SHELF_LOOK_PRICE = { card: 2500, tint: 1800 };
+Progress.shelf = function () {
+  const d = Save.data, day = dayKey();
+  if (d.shelf && d.shelf.day === day) return d.shelf;
+  const r = dayRand(day * 13 + ((d.created || 1) % 7919)), pick = (a) => a[Math.floor(r() * a.length)], items = [];
+  const looks = COS_CARDS.filter((c) => /^Pip/.test(c.how) && !d.cos.cards[c.id]).map((c) => ({ k: 'card', id: c.id }))
+    .concat(COS_TINTS.filter((t) => /^Pip/.test(t.how) && !d.cos.tints[t.id]).map((t) => ({ k: 'tint', id: t.id })));
+  if (looks.length) { const it = pick(looks); it.price = SHELF_LOOK_PRICE[it.k]; items.push(it); }
+  [[0, 1], [2], [r() < 0.25 ? 4 : 3]].forEach((rs) => {
+    let pool = SKINS.filter((s) => !s.ex && s.id !== 'factory' && rs.indexOf(s.r) >= 0 && !d.skins[s.id] && !items.some((x) => x.id === s.id));
+    if (!pool.length) pool = SKINS.filter((s) => !s.ex && s.id !== 'factory' && !d.skins[s.id] && !items.some((x) => x.id === s.id));
+    if (pool.length) { const s = pick(pool); items.push({ k: 'skin', id: s.id, price: SHELF_SKIN_PRICE[s.r] }); }
+  });
+  d.shelf = { day, items, sold: {} }; Save.write();
+  return d.shelf;
+};
+// Whether a shelf item is already yours (a cache may have given you the skin since).
+Progress.shelfOwned = function (it) { const d = Save.data; return it.k === 'skin' ? !!d.skins[it.id] : it.k === 'card' ? !!d.cos.cards[it.id] : !!d.cos.tints[it.id]; };
+// Buy item i from today's shelf. Returns null if it worked, or a short reason if not.
+Progress.buyShelf = function (i) {
+  const d = Save.data, S = Progress.shelf(), it = S.items[i];
+  if (!it) return 'That has gone.';
+  if (S.sold[i] || Progress.shelfOwned(it)) return 'Already yours.';
+  if (d.credits < it.price) return 'Not enough credits.';
+  d.credits -= it.price; S.sold[i] = 1;
+  if (it.k === 'skin') d.skins[it.id] = 1; else if (it.k === 'card') d.cos.cards[it.id] = 1; else d.cos.tints[it.id] = 1;
+  Progress.lastSets = it.k === 'skin' ? Progress.checkSets() : [];
+  Save.write();
+  return null;
 };
 
 // Buy a cache with credits. Returns null if it worked, or a short reason if not.

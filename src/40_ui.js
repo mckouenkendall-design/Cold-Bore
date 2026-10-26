@@ -170,7 +170,13 @@ UI.paintJob = function (j, time) {
     if (j.kind === 'gun') drawGun(x, j.id, j.cfg, w / 2, h / 2, w - 10, h - 8, { time: t });
     else if (j.kind === 'part') drawPartArt(x, j.slot, j.id, 3, 3, w - 6, h - 6, { gunId: j.gun, cfg: j.cfg, time: t, dim: j.dim });
     else if (j.kind === 'glass') drawReticleThumb(x, j.id, w / 2, h / 2, Math.min(w, h) / 2 - 0.5, { gunId: j.gun, cfg: j.cfg, time: t });
-    else if (j.kind === 'swatch' && j.rifle) drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: t });
+    else if (j.kind === 'swatch' && j.rifle) {
+      // in a small cell a skin whose only movement is the sweep of light keeps that light on the rifle
+      // (it starts again at the stock as it leaves the muzzle) instead of resting between sweeps
+      if (j.shimOnly === undefined) j.shimOnly = !!j.skin.shimmer && !/"(anim|drift|pulse|flash)"/.test(JSON.stringify(j.skin));
+      const tt = j.shimOnly && time !== undefined ? (((t * 0.35) % 1) + 0.3) / 0.35 : t;
+      drawGun(x, j.rifle, j.cfg, w / 2, h / 2 + 1, w - 8, h - 6, { time: tt });
+    }
     else if (j.kind === 'swatch') {
       drawSwatch(x, j.skin, 0, 0, w, h, t);
       if (j.skin.shimmer && time !== undefined) { // the same band of light that sweeps along the rifle
@@ -311,28 +317,46 @@ UI.attractStep = function (dt) {
 };
 
 // ---- title -------------------------------------------------------------------------------
+// The next contract to play: the first open one not yet finished (null once every one is).
+UI.nextContract = function () { const d = Save.data; return MISSIONS.find((m) => Progress.missionOpen(m) && !(d.missions[m.id] && d.missions[m.id].done)) || null; };
+// Where a contract sits in the story, as on the case board: III.4 is the fourth of chapter three.
+UI.contractNo = function (M) { return ROMAN[M.ch] + '.' + (MISSIONS.filter((m) => m.ch === M.ch).indexOf(M) + 1); };
+// The title. Coming back, the tagline gives way to your card: the calling card you chose behind
+// your rank insignia, the xp to the next rank, the rifle you carry and the contract waiting.
 UI.title = function () {
-  const has = Object.keys(Save.data.missions).length > 0 || Save.data.seen.prologue;
+  const d = Save.data, has = Object.keys(d.missions).length > 0 || d.seen.prologue;
   UI.ensure();
   if (!UI.attract) UI.attractStart(); else UI.attractLayout();
+  let me = '<p class="t-tag">The first shot from a cold barrel.<br>The one you do not get back.</p>';
+  if (has && d.seen.prologue) {
+    const x = Progress.rankXp(), r = rankOf(x), nx = UI.nextContract(), g = GUN_BY_ID[d.equipped] || GUNS[0];
+    const nextLine = nx ? 'Next: ' + esc(nx.title) + '  ·  ' + UI.contractNo(nx) : 'Every contract closed';
+    me = `<div class="t-me"><canvas class="tm-card" data-card="${(d.cos && d.cos.card) || 'plain'}" data-live="1"></canvas><span class="tm-shade"></span>
+      <canvas class="tm-ins" data-insignia="${r.n}" data-pres="${d.prestige || 0}"></canvas>
+      <span class="tm-t"><i>${r.n}  ·  ${esc(r.name)}</i><i class="xp"><i style="width:${UI.xpPct(x).toFixed(0)}%"></i></i><b>${nextLine}</b>${UI.dailyLine && UI.dailyLine() ? '<em>' + UI.dailyLine() + '</em>' : ''}</span>
+      <span class="tm-gun"><canvas data-gun="${g.id}" ${uiCfgAttr(gunCfg(g.id))}></canvas><i>${esc(g.name)}</i></span></div>`;
+  }
+  const nC = d.caches.length;
   UI.render(`
     <div class="scr title">
-      <div class="t-main">
+      <div class="t-main ${has && d.seen.prologue ? 'back' : ''}">
         <div class="eyebrow">A long-range story in six chapters</div>
         <h1 class="logo">COLD<span class="ret"></span>BORE</h1>
-        <p class="t-tag">The first shot from a cold barrel.<br>The one you do not get back.</p>
+        ${me}
         <div class="t-acts">
           <button class="btn pri big" data-a="play" data-snd="go">${has ? 'Continue' : 'Begin'}</button>
-          <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button></div>
+          <div class="t-links"><button class="btn ghost" data-a="how">How to play</button><button class="btn ghost" data-a="settings">Settings</button>${nC && d.seen.prologue ? `<button class="btn ghost t-caches" data-a="caches" aria-label="${nC} ${nC === 1 ? 'cache' : 'caches'} to open">${ICON.box}<span>${nC}</span></button>` : ''}</div>
         </div>
-        <div class="t-note">No ads and no real money. Everything is earned by playing.<br>Progress saves on this device${Save.ok ? '' : ' (this browser is blocking saves)'}.<br><span class="bld">Build ${BUILD}</span></div>
+        <div class="t-note">No ads and no real money. Everything is earned by playing.${Save.ok ? '' : '<br>This browser is blocking saves, so progress is lost when the tab closes.'}</div>
         <div class="t-turn">${ICON.turn}<span>Made to be played with the phone held sideways. Turn it for the full picture.</span></div>
       </div>
     </div>`, {
     play() { UI.attractStop(); if (!Save.data.seen.prologue) UI.prologue(); else UI.hub(); },
+    caches() { UI.attractStop(); UI.tab = 'collection'; UI.colTab = 'caches'; UI.hub(); },
     how() { UI.howTo(); },
     settings() { UI.settings(true); },
   }, 'is-title');
+  if (UI.medalSweep) UI.medalSweep(); // medals reached since the last contract (or by an older save) are paid here
 };
 
 // ---- story cards ---------------------------------------------------------------------------
