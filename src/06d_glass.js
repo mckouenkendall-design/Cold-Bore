@@ -27,7 +27,7 @@ function glassOf(st) { return SCOPE_GLASS[st.scope.id] || SCOPE_GLASS.ranger; }
 View.prototype.drawGlass = function (sim, cam) {
   const V = this, ctx = V.ctx, S = sim.S, st = sim.st, G = glassOf(st), nv = !!st.scope.nv;
   const x0 = cam.cx - cam.hw, y0 = cam.cy - cam.hh, W = cam.hw * 2, H = cam.hh * 2;
-  if (G.tint && !nv) { ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = G.ta * 2.2; ctx.fillStyle = G.tint; ctx.fillRect(x0, y0, W, H); ctx.restore(); }
+  // (the coating's tint is laid on with the colour of the hour, in one pass: see drawGrade)
   if (V.mode !== 'plain') V.drawHide(sim, cam);
   if (!nv) V.drawFlare(sim, cam);
   V.drawLensWet(sim, cam);
@@ -80,21 +80,26 @@ View.prototype.drawLensWet = function (sim, cam) {
     }
   }
   if (L.drops.length) {
-    ctx.save();
+    // all the drops in a few fills (each grows in as it beads and shrinks away as it dries)
+    const D = V._lwPos || (V._lwPos = []); D.length = 0;
     for (let i = L.drops.length - 1; i >= 0; i--) {
       const q = L.drops[i]; q.t += dt; if (q.t > q.life) { L.drops.splice(i, 1); continue; }
       const fade = Math.min(1, q.t * 3) * Math.min(1, (q.life - q.t) / 1.2);
-      const x = cam.cx + Math.cos(q.a) * q.rr * R, y = cam.cy + Math.sin(q.a) * q.rr * R + q.t * q.slide * R, r = q.s * R;
-      if (q.kind === 0) {
-        ctx.globalAlpha = 0.5 * fade; ctx.fillStyle = 'rgba(10,14,20,0.55)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.08, r, r * 1.08, 0, 0, TAU); ctx.fill();
-        ctx.globalAlpha = 0.55 * fade; ctx.fillStyle = 'rgba(200,215,235,0.35)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.15, r * 0.78, r * 0.84, 0, 0, TAU); ctx.fill();
-        ctx.globalAlpha = 0.8 * fade; ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(x - r * 0.32, y - r * 0.35, r * 0.18, 0, TAU); ctx.fill();
-        if (q.slide > 0.012) { ctx.globalAlpha = 0.25 * fade; ctx.fillStyle = 'rgba(200,215,235,0.4)'; ctx.fillRect(x - r * 0.25, y - q.t * q.slide * R, r * 0.5, q.t * q.slide * R); }
-      } else {
-        ctx.globalAlpha = 0.75 * fade * (1 - q.t / q.life * 0.5); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(0.8, r * 0.18); ctx.lineCap = 'round'; ctx.beginPath();
-        for (let k = 0; k < 3; k++) { const an = q.sp * 3 + k * Math.PI / 3; ctx.moveTo(x - Math.cos(an) * r, y - Math.sin(an) * r); ctx.lineTo(x + Math.cos(an) * r, y + Math.sin(an) * r); }
-        ctx.stroke(); ctx.globalAlpha = 0.5 * fade; ctx.drawImage(kxBlob('#ffffff'), x - r * 1.4, y - r * 1.4, r * 2.8, r * 2.8);
-      }
+      D.push(cam.cx + Math.cos(q.a) * q.rr * R, cam.cy + Math.sin(q.a) * q.rr * R + q.t * q.slide * R, q.s * R * (0.4 + 0.6 * fade), q.kind, q.slide > 0.012 ? q.t * q.slide * R : 0, q.sp, fade);
+    }
+    ctx.save();
+    const pass = (style, fn) => { ctx.fillStyle = style; ctx.beginPath(); for (let i = 0; i < D.length; i += 7) if (D[i + 3] === 0) fn(D[i], D[i + 1], D[i + 2], D[i + 4]); ctx.fill(); };
+    pass('rgba(10,14,20,0.3)', (x, y, r) => { ctx.moveTo(x + r, y + r * 0.08); ctx.ellipse(x, y + r * 0.08, r, r * 1.08, 0, 0, TAU); });
+    pass('rgba(200,215,235,0.1)', (x, y, r, tr) => { if (tr > r) ctx.rect(x - r * 0.25, y - tr, r * 0.5, tr); });
+    pass('rgba(200,215,235,0.2)', (x, y, r) => { ctx.moveTo(x + r * 0.78, y + r * 0.15); ctx.ellipse(x, y + r * 0.15, r * 0.78, r * 0.84, 0, 0, TAU); });
+    pass('rgba(255,255,255,0.65)', (x, y, r) => { ctx.moveTo(x - r * 0.14, y - r * 0.35); ctx.arc(x - r * 0.32, y - r * 0.35, r * 0.18, 0, TAU); });
+    // snowflakes: a soft white bloom each, then every flake's three strokes in one line
+    let flakes = 0, rs = 0; const bl = kxBlob('#ffffff');
+    for (let i = 0; i < D.length; i += 7) { if (D[i + 3] !== 1) continue; flakes++; rs += D[i + 2]; const r = D[i + 2]; ctx.globalAlpha = 0.5 * D[i + 6]; ctx.drawImage(bl, D[i] - r * 1.4, D[i + 1] - r * 1.4, r * 2.8, r * 2.8); }
+    if (flakes) {
+      ctx.globalAlpha = 0.65; ctx.strokeStyle = '#ffffff'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.8, rs / flakes * 0.18); ctx.beginPath();
+      for (let i = 0; i < D.length; i += 7) { if (D[i + 3] !== 1) continue; const x = D[i], y = D[i + 1], r = D[i + 2]; for (let k = 0; k < 3; k++) { const an = D[i + 5] * 3 + k * Math.PI / 3; ctx.moveTo(x - Math.cos(an) * r, y - Math.sin(an) * r); ctx.lineTo(x + Math.cos(an) * r, y + Math.sin(an) * r); } }
+      ctx.stroke();
     }
     ctx.restore();
   }

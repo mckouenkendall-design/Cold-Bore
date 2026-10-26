@@ -381,7 +381,7 @@ function kxReflect(ctx, env, yW, yN, xa, xb, a, rough, seed, hMax) {
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   let d = Math.max(0, Math.floor(-Yw));
   while (d < depth) {
-    const hb = Math.max(2, Math.round((2 + d * 0.045) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
+    const hb = Math.max(3, Math.round((3 + d * 0.07) * k * 0.5)), sy = depth - d - hb; if (sy < 0) break;
     const u = d / depth, wob = Math.sin(t * (1.3 + (d % 7) * 0.09) + d * 0.23 + sd) * (0.3 + d * 0.035) * rough * k;
     ctx.globalAlpha = a * Math.pow(1 - u, 0.8);
     ctx.drawImage(kxRefl.c, 0, sy, w, hb, X0 + wob, Yw + d, w, hb);

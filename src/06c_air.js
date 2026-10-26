@@ -103,7 +103,7 @@ View.prototype.drawFogVeil = function (sim, cam) {
 };
 
 // The colour of the hour. Every look (07i_looks.js) can lay a wash over the finished picture:
-// a soft-light tint from the top and another from the bottom (blue in the shadows on a moonlit
+// a soft tint from the top and another from the bottom (blue in the shadows on a moonlit
 // night, amber low down at sunset), a little more colour by day, and the glow of a low sun in
 // the air. Painted in thin flat bands, never as a gradient, and kept light enough that people
 // and the things players look for stay as easy to see as before.
@@ -118,14 +118,19 @@ View.prototype.drawGrade = function (sim, cam) {
   // one pass of soft light in flat bands: the top tint fading down, the bottom tint fading up,
   // a warm cast over all of it (each band is cut on whole pixels so none overlap)
   const top = G.top || null, bot = G.bot || null, warm = G.warm || 0;
-  if (top || bot || warm) {
-    const n = 12; ctx.globalCompositeOperation = 'soft-light';
+  // looking through the scope, its glass adds its own faint coating colour (06d_glass.js)
+  const gl = V._scopeDraw && !sim.st.scope.nv ? glassOf(sim.st) : null, tint = gl && gl.tint ? gl.tint : null, ta = tint ? gl.ta * 2.2 : 0;
+  if (top || bot || warm || tint) {
+    // (overlay at half strength looks much like soft light and costs a fifth as much on a phone
+    // that draws in software)
+    const n = 9; ctx.globalCompositeOperation = 'overlay';
     let prev = Math.round(y0);
     for (let i = 0; i < n; i++) {
       const v = (i + 0.5) / n, ka = top ? 1 - v : 0, kb = bot ? v : 0, next = Math.round(y0 + (H * (i + 1)) / n);
       let col = top && bot ? mix(top, bot, kb / Math.max(1e-6, ka + kb)) : (top || bot || '#ffb86a'), al = a * 2.4 * Math.max(ka, kb);
       if (warm) { col = mix(col, '#ffb86a', warm / (warm + al + 1e-6)); al += warm * 2.5; }
-      if (al > 0.005 && next > prev) { ctx.fillStyle = col; ctx.globalAlpha = clamp(al, 0, 1); ctx.fillRect(x0, prev, W, next - prev); }
+      if (tint) { col = mix(col, tint, ta / (ta + al + 1e-6)); al += ta; }
+      if (al > 0.005 && next > prev) { ctx.fillStyle = col; ctx.globalAlpha = clamp(al * 0.5, 0, 1); ctx.fillRect(x0, prev, W, next - prev); }
       prev = next;
     }
   }
